@@ -9,18 +9,37 @@
 
 #include <kernel/types.h>
 
-#define PXS_PROTOCOL_VERSION "0.0.1"
+#define PXS_PROTOCOL_VERSION 1
 #define PXS_MAGIC 0x28082012
 
 typedef uint64_t EFI_PHYSICAL_ADDRESS;
 typedef uint64_t EFI_VIRTUAL_ADDRESS;
 
+typedef enum {
+    EfiReservedMemoryType,
+    EfiLoaderCode,
+    EfiLoaderData,
+    EfiBootServicesCode,
+    EfiBootServicesData,
+    EfiRuntimeServicesCode,
+    EfiRuntimeServicesData,
+    EfiConventionalMemory,
+    EfiUnusableMemory,
+    EfiACPIReclaimMemory,
+    EfiACPIMemoryNVS,
+    EfiMemoryMappedIO,
+    EfiMemoryMappedIOPortSpace,
+    EfiPalCode,
+    EfiPersistentMemory,
+    EfiMaxMemoryType
+} EFI_MEMORY_TYPE;
+
 typedef struct {
-  uint32_t                Type;
-  EFI_PHYSICAL_ADDRESS    PhysicalStart;
-  EFI_VIRTUAL_ADDRESS     VirtualStart;
-  uint32_t                NumberOfPages;
-  uint32_t                Attribute;
+    uint32_t                Type;
+    EFI_PHYSICAL_ADDRESS    PhysicalStart;
+    EFI_VIRTUAL_ADDRESS     VirtualStart;
+    uint64_t                NumberOfPages;
+    uint64_t                Attribute;
 } EFI_MEMORY_DESCRIPTOR;
 
 typedef struct {
@@ -49,9 +68,9 @@ typedef struct {
     PXS_FRAMEBUFFER_INFO    Framebuffer;
     // Memory Map
     EFI_MEMORY_DESCRIPTOR   *MemoryMap;
-    unsigned int            MemoryMapSize;
-    unsigned int            MapKey;
-    unsigned int            DescriptorSize;
+    uint64_t                MemoryMapSize;
+    uint64_t                MapKey;
+    uint64_t                DescriptorSize;
     uint32_t                DescriptorVersion;
     // System Tables
     void                    *Rsdp;

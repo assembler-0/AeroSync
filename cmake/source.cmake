@@ -17,6 +17,10 @@ set(LIB_SOURCES
     lib/string.c
 )
 
+set(MM_SOURCES
+    mm/pmm.c
+)
+
 # ============================================================================
 # Build Include Directories
 # ============================================================================
@@ -34,4 +38,5 @@ set(C_SOURCES
         ${KERNEL_SOURCES}
         ${LIB_SOURCES}
         ${DRIVER_SOURCES}
+        ${MM_SOURCES}
 )

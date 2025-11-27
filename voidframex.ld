@@ -6,7 +6,7 @@ ENTRY(start_kernel)
 
 /* Define constants */
 PAGE_SIZE = 4K;
-KERNEL_BASE = 0;
+KERNEL_BASE = 0x100000;
 
 SECTIONS
 {
