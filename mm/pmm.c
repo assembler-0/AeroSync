@@ -2,6 +2,7 @@
 #include <drivers/uart/serial.h>
 #include <kernel/panic.h>
 #include <lib/string.h>
+#include <lib/printk.h>
 
 static uint8_t *bitmap = NULL;
 static uint64_t bitmap_size = 0;
@@ -23,7 +24,7 @@ static int bitmap_test(uint64_t bit) {
 }
 
 void pmm_init(PXS_BOOT_INFO *boot_info) {
-    serial_write("Initializing PMM...\n");
+    printk("Initializing PMM...\n");
 
     EFI_MEMORY_DESCRIPTOR *map = boot_info->MemoryMap;
     uint64_t map_entries = boot_info->MemoryMapSize / boot_info->DescriptorSize;
@@ -34,20 +35,9 @@ void pmm_init(PXS_BOOT_INFO *boot_info) {
         descriptor_size = sizeof(EFI_MEMORY_DESCRIPTOR);
     }
 
-    serial_write("Map Ptr: 0x"); serial_write_hex((uint64_t)map);
-    serial_write(" Entries: "); serial_write_dec(map_entries);
-    serial_write("\n");
-
     // 1. Calculate total memory and highest physical address
     for (uint64_t i = 0; i < map_entries; i++) {
         EFI_MEMORY_DESCRIPTOR *desc = (EFI_MEMORY_DESCRIPTOR *)((uint8_t *)map + (i * descriptor_size));
-        
-        // Debug print all entries to see the layout
-        serial_write("E"); serial_write_dec(i);
-        serial_write(" T:"); serial_write_dec(desc->Type);
-        serial_write(" S:0x"); serial_write_hex(desc->PhysicalStart);
-        serial_write(" P:"); serial_write_dec(desc->NumberOfPages);
-        serial_write("\n");
 
         uint64_t end_addr = desc->PhysicalStart + (desc->NumberOfPages * PAGE_SIZE);
         
@@ -65,20 +55,9 @@ void pmm_init(PXS_BOOT_INFO *boot_info) {
         }
     }
 
-    serial_write("Total Memory: ");
-    serial_write_dec(total_memory / 1024 / 1024);
-    serial_write(" MB\n");
-    serial_write("Highest Page Index: ");
-    serial_write_dec(highest_page);
-    serial_write("\n");
-
     // 2. Calculate bitmap size
     bitmap_size = highest_page / 8;
     if (highest_page % 8) bitmap_size++;
-    
-    serial_write("Bitmap Size: ");
-    serial_write_dec(bitmap_size);
-    serial_write(" bytes\n");
 
     // 3. Find a place for the bitmap (First large enough Conventional Memory block)
     int bitmap_found = 0;
@@ -98,10 +77,6 @@ void pmm_init(PXS_BOOT_INFO *boot_info) {
     if (!bitmap_found) {
         panic("PMM: Could not find memory for bitmap!\n");
     }
-
-    serial_write("Bitmap Address: 0x");
-    serial_write_hex((uint64_t)bitmap);
-    serial_write("\n");
 
     // 4. Initialize bitmap: Mark all as used first
     // This assumes all memory is used/reserved unless explicitly freed later
@@ -128,12 +103,7 @@ void pmm_init(PXS_BOOT_INFO *boot_info) {
     // 6. Mark Bitmap itself as used
     uint64_t bitmap_start_page = (uint64_t)bitmap / PAGE_SIZE;
     uint64_t bitmap_pages = (bitmap_size + PAGE_SIZE - 1) / PAGE_SIZE;
-    
-    serial_write("Reserving Bitmap: 0x");
-    serial_write_hex((uint64_t)bitmap);
-    serial_write(" Pages: ");
-    serial_write_dec(bitmap_pages);
-    serial_write("\n");
+
 
     for (uint64_t i = 0; i < bitmap_pages; i++) {
         if (!bitmap_test(bitmap_start_page + i)) {
@@ -146,11 +116,6 @@ void pmm_init(PXS_BOOT_INFO *boot_info) {
     uint64_t kernel_start_page = boot_info->KernelPhysicalBase / PAGE_SIZE;
     uint64_t kernel_pages = (boot_info->KernelFileSize + PAGE_SIZE - 1) / PAGE_SIZE;
 
-    serial_write("Reserving Kernel: 0x");
-    serial_write_hex(boot_info->KernelPhysicalBase);
-    serial_write(" Pages: ");
-    serial_write_dec(kernel_pages);
-    serial_write("\n");
 
     for (uint64_t i = 0; i < kernel_pages; i++) {
          if (!bitmap_test(kernel_start_page + i)) {
@@ -163,10 +128,6 @@ void pmm_init(PXS_BOOT_INFO *boot_info) {
     if (boot_info->InitrdAddress != 0 && boot_info->InitrdSize != 0) {
         uint64_t initrd_start_page = boot_info->InitrdAddress / PAGE_SIZE;
         uint64_t initrd_pages = (boot_info->InitrdSize + PAGE_SIZE - 1) / PAGE_SIZE;
-        
-        serial_write("Reserving Initrd: 0x");
-        serial_write_hex(boot_info->InitrdAddress);
-        serial_write("\n");
 
         for (uint64_t i = 0; i < initrd_pages; i++) {
             if (!bitmap_test(initrd_start_page + i)) {
@@ -178,15 +139,9 @@ void pmm_init(PXS_BOOT_INFO *boot_info) {
 
     used_memory = total_memory - free_memory;
 
-    serial_write("PMM Initialized. Free RAM: ");
-    serial_write_dec(free_memory / 1024 / 1024);
-    serial_write(" MB\n");
-
     // Verification
     if (bitmap[0] == 0xFF && bitmap[1] == 0xFF) {
-         serial_write("WARNING: Bitmap starts with 0xFFFF. Memory might not be free.\n");
-    } else {
-         serial_write("Bitmap sanity check passed (start is not all 1s).\n");
+         printk("WARNING: Bitmap starts with 0xFFFF. Memory might not be free.\n");
     }
 }
 

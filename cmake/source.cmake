@@ -1,6 +1,10 @@
 # ============================================================================
 # Sources Organization
 # ============================================================================
+set(ARCH_SOURCES
+    arch/x64/cpu.c
+)
+
 set(INIT_SOURCES
     init/main.c
 )
@@ -15,6 +19,8 @@ set(DRIVER_SOURCES
 
 set(LIB_SOURCES
     lib/string.c
+    lib/printk.c
+    lib/log.c
 )
 
 set(MM_SOURCES
@@ -39,4 +45,5 @@ set(C_SOURCES
         ${LIB_SOURCES}
         ${DRIVER_SOURCES}
         ${MM_SOURCES}
+        ${ARCH_SOURCES}
 )

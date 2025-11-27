@@ -71,11 +71,3 @@
 /* ========================
  * BARRIERS
  * ======================== */
-
-#define barrier()       __asm__ __volatile__("" ::: "memory")
-#define cpu_relax()     __asm__ __volatile__("pause" ::: "memory")
-#define cpu_isync()     __asm__ __volatile__("sfence" ::: "memory")
-#define cpu_hlt()       __asm__ __volatile__("hlt" ::: "memory")
-#define cpu_cli()       __asm__ __volatile__("cli" ::: "memory")
-#define cpu_sti()       __asm__ __volatile__("sti" ::: "memory")
-#define system_hlt()    do { cpu_cli(); cpu_hlt(); } while (1)

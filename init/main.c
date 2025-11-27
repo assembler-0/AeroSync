@@ -3,6 +3,8 @@
 #include <kernel/panic.h>
 #include <drivers/uart/serial.h>
 #include <mm/pmm.h>
+#include <arch/x64/cpu.h>
+#include <lib/printk.h>
 
 #define VOIDFRAMEX_VERSION "0.0.1"
 #define VOIDFRAMEX_BUILD_DATE __DATE__ " " __TIME__
@@ -18,12 +20,11 @@ start_kernel(PXS_BOOT_INFO* pxs_info) {
             serial_init_port(COM4) != 0
         ) panic("failed to initialize all serial port (COM1-4)\n");
 
-    serial_write("VoidFrameX (R) v");
-    serial_write(VOIDFRAMEX_VERSION);
-    serial_write("\ncopyright (C) 2025 assembler-0");
-    serial_write("\nbuild: ");
-    serial_write(VOIDFRAMEX_BUILD_DATE);
-    serial_write("\n");
+    printk_init();
+
+    printk("VoidFrameX (R) v%s\n", VOIDFRAMEX_VERSION);
+    printk("copyright (C) 2025 assembler-0\n");
+    printk("build: %s\n", VOIDFRAMEX_BUILD_DATE);
 
     pmm_init(pxs_info);
 
