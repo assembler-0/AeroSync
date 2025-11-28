@@ -118,7 +118,7 @@ int log_write_str(int level, const char *msg) {
     int max_payload = (int)KLOG_RING_SIZE - (int)sizeof(klog_hdr_t) - 1;
     if (len > max_payload) len = max_payload;
 
-    uint64_t flags = spinlock_lock_irqsave(klog_lock);
+    uint64_t flags = spinlock_lock_irqsave(&klog_lock);
 
     uint32_t need = sizeof(klog_hdr_t) + (uint32_t)len;
     if (rb_space() < need) rb_drop_oldest(need);
@@ -146,7 +146,7 @@ int log_write_str(int level, const char *msg) {
         rb_advance(&klog_head, (uint32_t)len);
     }
 
-    spinlock_unlock_irqrestore(klog_lock, flags);
+    spinlock_unlock_irqrestore(&klog_lock, flags);
     return len;
 }
 
@@ -154,10 +154,10 @@ int log_read(char *out_buf, int out_buf_len, int *out_level) {
     if (!out_buf || out_buf_len <= 0) return 0;
     if (!klog_inited) return 0;
 
-    uint64_t flags = spinlock_lock_irqsave(klog_lock);
+    uint64_t flags = spinlock_lock_irqsave(&klog_lock);
 
     if (klog_head == klog_tail) {
-        spinlock_unlock_irqrestore(klog_lock, flags);
+        spinlock_unlock_irqrestore(&klog_lock, flags);
         return 0; // empty
     }
 
@@ -193,6 +193,6 @@ int log_read(char *out_buf, int out_buf_len, int *out_level) {
     out_buf[to_copy] = '\0';
     if (out_level) *out_level = hdr.level;
 
-    spinlock_unlock_irqrestore(klog_lock, flags);
+    spinlock_unlock_irqrestore(&klog_lock, flags);
     return to_copy;
 }

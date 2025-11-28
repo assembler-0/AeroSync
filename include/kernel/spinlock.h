@@ -6,7 +6,8 @@
 #define DEADLOCK_TIMEOUT_CYCLES 100000000ULL
 #define MAX_BACKOFF_CYCLES 1024
 
-typedef volatile int* spinlock_t;
+// A spinlock is a simple integer flag stored inline; pass its address to APIs
+typedef volatile int spinlock_t;
 
 // Exponential backoff delay
 static inline void backoff_delay(uint64_t cycles) {
@@ -149,6 +150,7 @@ static inline void spinlock_unlock(volatile int* lock) {
 
 static inline irq_flags_t spinlock_lock_irqsave(volatile int* lock) {
     irq_flags_t flags = save_irq_flags();
+    cpu_cli();
     spinlock_lock(lock);  // Uses the advanced version above
     return flags;
 }

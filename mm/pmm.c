@@ -3,6 +3,11 @@
 #include <kernel/panic.h>
 #include <lib/string.h>
 #include <lib/printk.h>
+#include <kernel/spinlock.h>
+
+// Linker symbols defining the actual kernel physical range (including BSS)
+extern uint8_t _kernel_phys_start[];
+extern uint8_t _kernel_phys_end[];
 
 static uint8_t *bitmap = NULL;
 static uint64_t bitmap_size = 0;
@@ -10,6 +15,10 @@ static uint64_t highest_page = 0;
 static uint64_t used_memory = 0;  // Tracks used RAM pages * PAGE_SIZE
 static uint64_t total_memory = 0; // Tracks total usable RAM * PAGE_SIZE
 static uint64_t free_memory = 0;  // Tracks currently free RAM * PAGE_SIZE
+
+// Synchronization and Optimization
+static volatile int pmm_lock = 0;
+static uint64_t last_free_index = 0;
 
 static void bitmap_set(uint64_t bit) {
     bitmap[bit / 8] |= (1 << (bit % 8));
@@ -61,8 +70,11 @@ void pmm_init(PXS_BOOT_INFO *boot_info) {
 
     // 3. Find a place for the bitmap (First large enough Conventional Memory block)
     int bitmap_found = 0;
-    uint64_t kernel_start = boot_info->KernelPhysicalBase;
-    uint64_t kernel_end = kernel_start + boot_info->KernelFileSize;
+    
+    // Use linker symbols for robust kernel protection (includes BSS)
+    uint64_t kernel_start = (uint64_t)_kernel_phys_start;
+    uint64_t kernel_end = (uint64_t)_kernel_phys_end;
+    
     uint64_t initrd_start = boot_info->InitrdAddress;
     uint64_t initrd_end = initrd_start + boot_info->InitrdSize;
     
@@ -145,9 +157,9 @@ void pmm_init(PXS_BOOT_INFO *boot_info) {
         }
     }
     
-    // 7. Mark Kernel as used
-    uint64_t kernel_start_page = boot_info->KernelPhysicalBase / PAGE_SIZE;
-    uint64_t kernel_pages = (boot_info->KernelFileSize + PAGE_SIZE - 1) / PAGE_SIZE;
+    // 7. Mark Kernel as used (using updated safe ranges)
+    uint64_t kernel_start_page = kernel_start / PAGE_SIZE;
+    uint64_t kernel_pages = (kernel_end - kernel_start + PAGE_SIZE - 1) / PAGE_SIZE;
 
 
     for (uint64_t i = 0; i < kernel_pages; i++) {
@@ -171,22 +183,43 @@ void pmm_init(PXS_BOOT_INFO *boot_info) {
     }
 
     used_memory = total_memory - free_memory;
+    last_free_index = 0; // Start search from beginning
 
     // Verification
     if (bitmap[0] == 0xFF && bitmap[1] == 0xFF) {
          printk("WARNING: Bitmap starts with 0xFFFF. Memory might not be free.\n");
     }
+    printk("PMM: Physical Memory Manager initialized\n");
 }
 
 void *pmm_alloc_page() {
-    for (uint64_t i = 0; i < highest_page; i++) {
+    irq_flags_t flags = spinlock_lock_irqsave(&pmm_lock);
+
+    // Search from last_free_index to end
+    for (uint64_t i = last_free_index; i < highest_page; i++) {
         if (!bitmap_test(i)) {
             bitmap_set(i);
             free_memory -= PAGE_SIZE;
             used_memory += PAGE_SIZE;
+            last_free_index = i + 1;
+            spinlock_unlock_irqrestore(&pmm_lock, flags);
             return (void *)(i * PAGE_SIZE);
         }
     }
+
+    // Wrap around: Search from 0 to last_free_index
+    for (uint64_t i = 0; i < last_free_index; i++) {
+        if (!bitmap_test(i)) {
+            bitmap_set(i);
+            free_memory -= PAGE_SIZE;
+            used_memory += PAGE_SIZE;
+            last_free_index = i + 1;
+            spinlock_unlock_irqrestore(&pmm_lock, flags);
+            return (void *)(i * PAGE_SIZE);
+        }
+    }
+
+    spinlock_unlock_irqrestore(&pmm_lock, flags);
     return NULL;
 }
 
@@ -194,7 +227,11 @@ void *pmm_alloc_pages(size_t count) {
     if (count == 0) return NULL;
     if (count == 1) return pmm_alloc_page();
 
-    for (uint64_t i = 0; i < highest_page; i++) {
+    irq_flags_t flags = spinlock_lock_irqsave(&pmm_lock);
+
+    // Basic search for contiguous pages (doesn't use wrap-around optimization for simplicity yet)
+    // But we start from last_free_index to be smart.
+    for (uint64_t i = last_free_index; i < highest_page; i++) {
         if (!bitmap_test(i)) {
             int found = 1;
             for (size_t j = 1; j < count; j++) {
@@ -211,26 +248,71 @@ void *pmm_alloc_pages(size_t count) {
                 }
                 free_memory -= (count * PAGE_SIZE);
                 used_memory += (count * PAGE_SIZE);
+                last_free_index = i + count;
+                spinlock_unlock_irqrestore(&pmm_lock, flags);
                 return (void *)(i * PAGE_SIZE);
             }
         }
     }
+    
+    // Fallback search from 0 if above failed
+    if (last_free_index > 0) {
+         for (uint64_t i = 0; i < last_free_index; i++) {
+            if (!bitmap_test(i)) {
+                int found = 1;
+                for (size_t j = 1; j < count; j++) {
+                    if ((i + j) >= highest_page || bitmap_test(i + j)) {
+                        found = 0;
+                        i += j;
+                        break;
+                    }
+                }
+
+                if (found) {
+                    for (size_t j = 0; j < count; j++) {
+                        bitmap_set(i + j);
+                    }
+                    free_memory -= (count * PAGE_SIZE);
+                    used_memory += (count * PAGE_SIZE);
+                    last_free_index = i + count;
+                    spinlock_unlock_irqrestore(&pmm_lock, flags);
+                    return (void *)(i * PAGE_SIZE);
+                }
+            }
+        }
+    }
+
+    spinlock_unlock_irqrestore(&pmm_lock, flags);
     return NULL;
 }
 
 void pmm_free_page(void *address) {
     uint64_t page = (uint64_t)address / PAGE_SIZE;
+    
     if (page < highest_page) {
+        irq_flags_t flags = spinlock_lock_irqsave(&pmm_lock);
+        
         if (bitmap_test(page)) {
              bitmap_unset(page);
              free_memory += PAGE_SIZE;
              used_memory -= PAGE_SIZE;
+             
+             // Optimization: If we freed a page lower than our current search pointer,
+             // update pointer so we pick this up next time.
+             if (page < last_free_index) {
+                 last_free_index = page;
+             }
         }
+        
+        spinlock_unlock_irqrestore(&pmm_lock, flags);
     }
 }
 
 void pmm_free_pages(void *address, size_t count) {
     uint64_t page = (uint64_t)address / PAGE_SIZE;
+    
+    irq_flags_t flags = spinlock_lock_irqsave(&pmm_lock);
+    
     for (size_t i = 0; i < count; i++) {
         if (page + i < highest_page) {
             if (bitmap_test(page + i)) {
@@ -240,6 +322,12 @@ void pmm_free_pages(void *address, size_t count) {
             }
         }
     }
+    
+    if (page < last_free_index) {
+        last_free_index = page;
+    }
+
+    spinlock_unlock_irqrestore(&pmm_lock, flags);
 }
 
 uint64_t pmm_get_total_memory() {
