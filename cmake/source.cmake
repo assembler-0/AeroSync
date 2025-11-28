@@ -3,6 +3,7 @@
 # ============================================================================
 set(ARCH_SOURCES
     arch/x64/cpu.c
+    arch/x64/gdt.c
 )
 
 set(INIT_SOURCES

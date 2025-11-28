@@ -36,6 +36,7 @@
 #define __alias(x)      __attribute__((alias(x)))
 #define __section(x)    __attribute__((section(x)))
 #define __visibility(x) __attribute__((visibility(x)))
+#define __attrib(x)     __attribute__((x))
 
 /* ========================
  * ABI ATTRIBUTES (UEFI!)

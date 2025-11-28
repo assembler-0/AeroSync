@@ -2,7 +2,7 @@
 #include <kernel/spinlock.h>
 #include <string.h>
 #include <drivers/uart/serial.h>
-
+#include <compiler.h>
 // Simple global ring buffer for log messages, Linux-like but minimal
 
 #ifndef KLOG_RING_SIZE
@@ -12,7 +12,7 @@
 typedef struct {
     uint8_t level;     // log level
     uint16_t len;      // payload length (bytes)
-} __attribute__((packed)) klog_hdr_t;
+} __packed klog_hdr_t;
 
 void serial_putc(char c) { serial_write_char(c); }
 

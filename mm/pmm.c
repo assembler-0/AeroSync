@@ -32,6 +32,66 @@ static int bitmap_test(uint64_t bit) {
     return bitmap[bit / 8] & (1 << (bit % 8));
 }
 
+// Find the index of the next zero bit at or after start_bit, wrapping once.
+// Returns highest_page if none found.
+static inline uint64_t bitmap_find_zero_from(uint64_t start_bit) {
+    if (highest_page == 0) return highest_page;
+
+    const uint64_t bits = highest_page; // total usable bits
+    const uint64_t words = (bits + 63) / 64;
+    uint64_t w = start_bit / 64;
+    uint64_t b = start_bit % 64;
+
+    for (int pass = 0; pass < 2; ++pass) {
+        // Scan first word with prefix mask
+        {
+            uint64_t word = ((const uint64_t *)bitmap)[w];
+            // Set all bits below starting bit to 1 so they are ignored
+            uint64_t prefix_mask = (b == 0) ? 0ULL : ((1ULL << b) - 1ULL);
+            word |= prefix_mask;
+            // For last word, mask bits beyond 'bits' to 1 so they're ignored
+            if (w == words - 1) {
+                uint64_t tail_bits = bits % 64;
+                if (tail_bits != 0) {
+                    uint64_t tail_mask = ~0ULL << tail_bits;
+                    word |= tail_mask;
+                }
+            }
+            uint64_t inv = ~word;
+            if (inv) {
+                uint64_t offset = __builtin_ctzll(inv);
+                uint64_t bit_index = w * 64 + offset;
+                if (bit_index < bits) return bit_index;
+            }
+        }
+
+        // Scan subsequent full words fast
+        uint64_t wi = (w + 1) % words;
+        while (wi != w) {
+            uint64_t word = ((const uint64_t *)bitmap)[wi];
+            if (wi == words - 1) {
+                uint64_t tail_bits = bits % 64;
+                if (tail_bits != 0) {
+                    uint64_t tail_mask = ~0ULL << tail_bits;
+                    word |= tail_mask;
+                }
+            }
+            if (~word) {
+                uint64_t inv = ~word;
+                uint64_t offset = __builtin_ctzll(inv);
+                uint64_t bit_index = wi * 64 + offset;
+                if (bit_index < bits) return bit_index;
+            }
+            wi = (wi + 1) % words;
+        }
+
+        // Wrap: next pass starts at bit 0
+        w = 0; b = 0;
+    }
+
+    return highest_page; // not found
+}
+
 void pmm_init(PXS_BOOT_INFO *boot_info) {
     printk("Initializing PMM...\n");
 
@@ -195,28 +255,15 @@ void pmm_init(PXS_BOOT_INFO *boot_info) {
 void *pmm_alloc_page() {
     irq_flags_t flags = spinlock_lock_irqsave(&pmm_lock);
 
-    // Search from last_free_index to end
-    for (uint64_t i = last_free_index; i < highest_page; i++) {
-        if (!bitmap_test(i)) {
-            bitmap_set(i);
-            free_memory -= PAGE_SIZE;
-            used_memory += PAGE_SIZE;
-            last_free_index = i + 1;
-            spinlock_unlock_irqrestore(&pmm_lock, flags);
-            return (void *)(i * PAGE_SIZE);
-        }
-    }
-
-    // Wrap around: Search from 0 to last_free_index
-    for (uint64_t i = 0; i < last_free_index; i++) {
-        if (!bitmap_test(i)) {
-            bitmap_set(i);
-            free_memory -= PAGE_SIZE;
-            used_memory += PAGE_SIZE;
-            last_free_index = i + 1;
-            spinlock_unlock_irqrestore(&pmm_lock, flags);
-            return (void *)(i * PAGE_SIZE);
-        }
+    // Fast path: find next zero bit using 64-bit scanning starting at hint
+    uint64_t bit = bitmap_find_zero_from(last_free_index);
+    if (bit < highest_page) {
+        bitmap_set(bit);
+        free_memory -= PAGE_SIZE;
+        used_memory += PAGE_SIZE;
+        last_free_index = bit + 1;
+        spinlock_unlock_irqrestore(&pmm_lock, flags);
+        return (void *)(bit * PAGE_SIZE);
     }
 
     spinlock_unlock_irqrestore(&pmm_lock, flags);

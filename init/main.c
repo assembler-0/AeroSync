@@ -4,6 +4,7 @@
 #include <drivers/uart/serial.h>
 #include <mm/pmm.h>
 #include <arch/x64/cpu.h>
+#include <arch/x64/gdt.h>
 #include <lib/printk.h>
 
 #define VOIDFRAMEX_VERSION "0.0.1"
@@ -25,6 +26,9 @@ start_kernel(PXS_BOOT_INFO* pxs_info) {
     printk("VoidFrameX (R) v%s\n", VOIDFRAMEX_VERSION);
     printk("copyright (C) 2025 assembler-0\n");
     printk("build: %s\n", VOIDFRAMEX_BUILD_DATE);
+
+    // Bring up a minimal, flexible GDT so we can later enable VMM/APIC safely
+    gdt_init();
 
     pmm_init(pxs_info);
 
