@@ -11,14 +11,14 @@
 
 void __init __noreturn __noinline __sysv_abi
 start_kernel(PXS_BOOT_INFO* pxs_info) {
-    if (pxs_info->Magic != PXS_MAGIC) panic("PXS Magic mismatch\n");
-    if (pxs_info->Version != PXS_PROTOCOL_VERSION) panic("PXS Protocol version mismatch\n");
+    if (pxs_info->Magic != PXS_MAGIC) panic_early();
+    if (pxs_info->Version != PXS_PROTOCOL_VERSION) panic_early();
 
     if (serial_init() != 0)
         if (serial_init_port(COM2) != 0 ||
             serial_init_port(COM3) != 0 ||
             serial_init_port(COM4) != 0
-        ) panic("failed to initialize all serial port (COM1-4)\n");
+        ) panic_early();
 
     printk_init();
 
@@ -30,11 +30,8 @@ start_kernel(PXS_BOOT_INFO* pxs_info) {
 
     // PMM Test
     void* page = pmm_alloc_page();
-    if (page) {
-        pmm_free_page(page);
-    } else {
-        panic("PMM Test: Allocation failed\n");
-    }
+    if (!page) panic("PMM failed to allocate page");
+    pmm_free_page(page);
 
     // Check if BootInfo and Framebuffer are valid
     if (pxs_info->Framebuffer.BaseAddress) {

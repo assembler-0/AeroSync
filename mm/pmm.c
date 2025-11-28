@@ -61,13 +61,46 @@ void pmm_init(PXS_BOOT_INFO *boot_info) {
 
     // 3. Find a place for the bitmap (First large enough Conventional Memory block)
     int bitmap_found = 0;
+    uint64_t kernel_start = boot_info->KernelPhysicalBase;
+    uint64_t kernel_end = kernel_start + boot_info->KernelFileSize;
+    uint64_t initrd_start = boot_info->InitrdAddress;
+    uint64_t initrd_end = initrd_start + boot_info->InitrdSize;
+    
+    // Protect Boot Info Struct
+    uint64_t info_start = (uint64_t)boot_info;
+    uint64_t info_end = info_start + sizeof(PXS_BOOT_INFO);
+
+    // Protect Memory Map
+    uint64_t map_start = (uint64_t)map;
+    uint64_t map_end = map_start + boot_info->MemoryMapSize;
+
     for (uint64_t i = 0; i < map_entries; i++) {
         EFI_MEMORY_DESCRIPTOR *desc = (EFI_MEMORY_DESCRIPTOR *)((uint8_t *)map + (i * descriptor_size));
         
         if (desc->Type == EfiConventionalMemory) {
-            uint64_t size = desc->NumberOfPages * PAGE_SIZE;
-            if (size >= bitmap_size) {
-                bitmap = (uint8_t *)desc->PhysicalStart;
+            uint64_t block_start = desc->PhysicalStart;
+            uint64_t block_end = block_start + (desc->NumberOfPages * PAGE_SIZE);
+            uint64_t candidate = block_start;
+
+            // Helper macro to advance candidate if it overlaps with a range
+            #define AVOID_RANGE(start, end) \
+                if (candidate < (end) && (candidate + bitmap_size) > (start)) { \
+                    candidate = ((end) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1); \
+                }
+
+            AVOID_RANGE(kernel_start, kernel_end);
+            
+            if (boot_info->InitrdSize > 0) {
+                AVOID_RANGE(initrd_start, initrd_end);
+            }
+
+            AVOID_RANGE(info_start, info_end);
+            AVOID_RANGE(map_start, map_end);
+
+            #undef AVOID_RANGE
+
+            if (candidate < block_end && (candidate + bitmap_size) <= block_end) {
+                bitmap = (uint8_t *)candidate;
                 bitmap_found = 1;
                 break;
             }
