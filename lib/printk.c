@@ -208,8 +208,25 @@ static int do_printf(output_func_t output, const char *fmt, va_list args) {
     return count;
 }
 
+static const char *parse_level_prefix(const char *fmt, int *level_io) {
+    if (!fmt) return fmt;
+    // Preferred: $n$
+    if (fmt[0] == '$' && fmt[1] >= '0' && fmt[1] <= '7' && fmt[2] == '$') {
+        if (level_io) *level_io = (fmt[1] - '0');
+        return fmt + 3;
+    }
+    // Legacy: <n>
+    if (fmt[0] == '<' && fmt[1] >= '0' && fmt[1] <= '7' && fmt[2] == '>') {
+        if (level_io) *level_io = (fmt[1] - '0');
+        return fmt + 3;
+    }
+    return fmt;
+}
+
 static int printk_vroute(int level, const char *fmt, va_list args) {
     // Format into buffer then send to log subsystem
+    // Allow optional level prefix in fmt to override selected level
+    fmt = parse_level_prefix(fmt, &level);
     printk_buf_ptr = printk_buf;
     printk_buf_rem = (int)sizeof(printk_buf);
     int cnt = do_printf(buf_putc, fmt, args);
