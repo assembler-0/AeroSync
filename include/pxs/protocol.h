@@ -79,6 +79,7 @@ typedef struct {
     // Kernel Info
     uint64_t                KernelPhysicalBase;
     uint64_t                KernelFileSize;
+    uint64_t                KernelVirtualBase;
 
     // Modules (Initrd/Ramdisk)
     uint64_t                InitrdAddress;
@@ -90,3 +91,7 @@ typedef struct {
     // Security Verification
     uint64_t                SecurityCanary;
 } PXS_BOOT_INFO;
+
+typedef struct {
+    bool verbose;
+} VOIDFRAMEX_CMDLINE_CONFIG;

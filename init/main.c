@@ -6,6 +6,7 @@
 #include <arch/x64/cpu.h>
 #include <arch/x64/gdt.h>
 #include <lib/printk.h>
+#include <kernel/cmdline.h>
 
 #define VOIDFRAMEX_VERSION "0.0.1"
 #define VOIDFRAMEX_BUILD_DATE __DATE__ " " __TIME__
@@ -20,6 +21,8 @@ start_kernel(PXS_BOOT_INFO* pxs_info) {
             serial_init_port(COM3) != 0 ||
             serial_init_port(COM4) != 0
         ) panic_early();
+
+    parse_cmdline(pxs_info->CommandLine);
 
     printk_init();
 

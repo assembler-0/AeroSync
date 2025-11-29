@@ -12,6 +12,7 @@ set(INIT_SOURCES
 
 set(KERNEL_SOURCES
     kernel/panic.c
+    kernel/cmdline.c
 )
 
 set(DRIVER_SOURCES

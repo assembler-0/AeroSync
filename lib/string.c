@@ -1,5 +1,55 @@
 #include <lib/string.h>
 
+bool is_word_boundary(char c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\0';
+}
+
+bool find(const char* buff, const char* pattern) {
+    if (buff == NULL || pattern == NULL || *pattern == '\0') {
+        return false;
+    }
+
+    const size_t pattern_len = strlen(pattern);
+    const char* ptr = buff;
+
+    while ((ptr = strstr(ptr, pattern)) != NULL) {
+        bool at_start = (ptr == buff) || is_word_boundary(*(ptr - 1));
+        bool at_end = is_word_boundary(*(ptr + pattern_len));
+
+        if (at_start && at_end) {
+            return true;
+        }
+
+        ptr++;
+    }
+
+    return false;
+}
+
+char *strstr(const char *haystack, const char *needle) {
+    if (*needle == '\0') {
+        return (char *)haystack;
+    }
+
+    for (const char *h_ptr = haystack; *h_ptr != '\0'; h_ptr++) {
+        if (*h_ptr == *needle) {
+            const char *n_ptr = needle;
+            const char *current_h = h_ptr;
+
+            while (*n_ptr != '\0' && *current_h != '\0' && *current_h == *n_ptr) {
+                current_h++;
+                n_ptr++;
+            }
+
+            if (*n_ptr == '\0') {
+                return (char *)h_ptr;
+            }
+        }
+    }
+
+    return NULL;
+}
+
 int strncmp(const char *a, const char *b, size_t n) {
     for (size_t i = 0; i < n; ++i) {
         if (a[i] != b[i])

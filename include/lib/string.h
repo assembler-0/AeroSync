@@ -15,6 +15,9 @@ void htoa(uint64_t n, char *buffer);
 size_t strspn(const char *s, const char *accept);
 char *strpbrk(const char *cs, const char *ct);
 char *strsep(char **s, const char *ct);
+char *strstr(const char *haystack, const char *needle);
+bool find(const char* buff, const char* pattern);
+bool is_word_boundary(char c);
 
 void *memcpy(void *dest, const void *src, size_t n);
 void *memmove(void *dest, const void *src, size_t n);
