@@ -28,11 +28,11 @@ include(flags)
 if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
     message(STATUS "Detected Linux host system: ${CMAKE_HOST_SYSTEM_NAME}")
 elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
-    message(FATAL_ERROR "Windows detected. Install WSL or use a cross-compiler.")
+    message(WARNING "Windows detected. Install WSL or use a cross-compiler.")
 elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
     message(WARNING "macOS detected. Please make sure you have compatible tools.")
 else()
-    message(FATAL_ERROR "Unsupported host system: ${CMAKE_HOST_SYSTEM_NAME}")
+    message(WARNING "Unsupported host system: ${CMAKE_HOST_SYSTEM_NAME}")
 endif()
 
 if(NOT CMAKE_TOOLCHAIN_FILE)
@@ -55,7 +55,7 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
     message(STATUS "CMake Target Architecture: ${CMAKE_SYSTEM_PROCESSOR}")
     set(Rust_CARGO_TARGET "x86_64-unknown-none")
 else()
-    message(FATAL_ERROR "Unsupported target architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+    message(WARNING "Unsupported target architecture: ${CMAKE_SYSTEM_PROCESSOR}")
 endif()
 
 message(STATUS "CMake Generator: ${CMAKE_GENERATOR}")
@@ -95,24 +95,31 @@ target_link_options(voidframex.krnl PRIVATE
     -nostdlib
     -static
     -Wl,-melf_x86_64
+    -Wl,-z,max-page-size=0x1000
 )
 
 # ============================================================================
-# Boot directory Creation
+# Boot Directory Setup
 # ============================================================================
 add_custom_command(
-    OUTPUT bootd
-    COMMAND ${CMAKE_COMMAND} -E touch bootd
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir/EFI/BOOT
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/arch/x64/BOOTX64.EFI
-            ${CMAKE_CURRENT_BINARY_DIR}/bootdir/EFI/BOOT/BOOTX64.EFI
-    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:voidframex.krnl> ${CMAKE_CURRENT_BINARY_DIR}/bootdir/voidframex.krnl
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/pxs.cfg ${CMAKE_CURRENT_BINARY_DIR}/bootdir/pxs.cfg
-    DEPENDS voidframex.krnl
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    COMMENT "Making boot directory"
-    VERBATIM
+        OUTPUT bootd
+        COMMAND ${CMAKE_COMMAND} -E touch bootd
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir/kernel
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir/boot/
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir/EFI/BOOT
+        # Copy Limine UEFI bootloader
+        COMMAND ${CMAKE_COMMAND} -E copy /usr/share/limine/BOOTX64.EFI
+        ${CMAKE_CURRENT_BINARY_DIR}/bootdir/EFI/BOOT/BOOTX64.EFI
+        # Copy kernel
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:voidframex.krnl>
+        ${CMAKE_CURRENT_BINARY_DIR}/bootdir/kernel/voidframex.krnl
+        # Copy Limine config
+        COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/limine.conf
+        ${CMAKE_CURRENT_BINARY_DIR}/bootdir/limine.conf
+        DEPENDS voidframex.krnl
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Setting up boot directory with Limine"
+        VERBATIM
 )
 
 add_custom_target(bootdir ALL DEPENDS bootd)
@@ -130,7 +137,9 @@ add_custom_target(run
         -debugcon file:bootstrap.log
         -serial stdio
         -drive format=raw,file=fat:rw:bootdir
-        DEPENDS bootdir img extra-img
+        DEPENDS bootdir
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Running voidframex kernel in QEMU (dev mode)"
 )
 
 add_custom_target(img

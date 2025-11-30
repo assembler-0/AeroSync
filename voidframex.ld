@@ -6,12 +6,28 @@ ENTRY(start_kernel)
 
 /* Define constants */
 PAGE_SIZE = 4K;
-KERNEL_BASE = 0x100000;
+KERNEL_BASE = 0xFFFFFFFF80000000;
+
+PHDRS
+{
+    text    PT_LOAD    FLAGS((1 << 0) | (1 << 2)) ; /* Execute + Read */
+    rodata  PT_LOAD    FLAGS((1 << 2)) ;            /* Read only */
+    data    PT_LOAD    FLAGS((1 << 1) | (1 << 2)) ; /* Write + Read */
+}
 
 SECTIONS
 {
     . = KERNEL_BASE;
     _kernel_phys_start = .;
+
+    .limine ALIGN(PAGE_SIZE) :
+    {
+        _limine_start = .;
+        KEEP(*(.limine_header))
+        KEEP(*(.limine_requests))
+        . = ALIGN(PAGE_SIZE);
+        _limine_end = .;
+    }
 
     .init ALIGN(PAGE_SIZE) :
     {
@@ -26,7 +42,6 @@ SECTIONS
     .text ALIGN(PAGE_SIZE) :
     {
         _text_start = .;
-        *(.text.boot)     /* Boot code first */
         *(.text.hot)      /* Hot/frequently used code */
         *(.text)          /* Regular code */
         *(.text.*)        /* Other text sections */
