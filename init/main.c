@@ -9,6 +9,10 @@
 #define VOIDFRAMEX_VERSION "0.0.1"
 #define VOIDFRAMEX_BUILD_DATE __DATE__ " " __TIME__
 
+// Set Limine Base Revision to 2
+__attribute__((used, section(".limine_requests")))
+static volatile uint64_t limine_base_revision[3] = LIMINE_BASE_REVISION(3);
+
 // Request framebuffer
 __attribute__((used, section(".limine_requests")))
 static volatile struct limine_framebuffer_request framebuffer_request = {
@@ -45,19 +49,34 @@ static volatile struct limine_smbios_request smbios_request = {
 
 void __init __noreturn __noinline __sysv_abi
 start_kernel(void) {
+
     // Ensure we got a framebuffer
     if (framebuffer_request.response == NULL
      || framebuffer_request.response->framebuffer_count < 1) {
-        panic_early();
+        // panic_early(); // Framebuffer is optional for serial debug
      }
 
-    // Get the framebuffer
-    struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
+    // Serial Initialization
+    if (serial_init() != 0)
+        if (serial_init_port(COM2) != 0 ||
+            serial_init_port(COM3) != 0 ||
+            serial_init_port(COM4) != 0
+        ) panic_early();
+    
+    printk_init();
+    
+    printk("VoidFrameX (R) v%s\n", VOIDFRAMEX_VERSION);
+    printk("copyright (C) 2025 assembler-0\n");
+    printk("build: %s\n", VOIDFRAMEX_BUILD_DATE);
 
-    // Example: Draw something
-    for (size_t i = 0; i < 100; i++) {
-        uint32_t *fb_ptr = framebuffer->address;
-        fb_ptr[i * (framebuffer->pitch / 4) + i] = 0xFFFFFF;
+    // Get the framebuffer
+    if (framebuffer_request.response && framebuffer_request.response->framebuffer_count > 0) {
+        struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
+        // Example: Draw something
+        for (size_t i = 0; i < 100; i++) {
+            uint32_t *fb_ptr = framebuffer->address;
+            fb_ptr[i * (framebuffer->pitch / 4) + i] = 0xFFFFFF;
+        }
     }
 
     system_hlt();

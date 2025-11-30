@@ -10,9 +10,10 @@ KERNEL_BASE = 0xFFFFFFFF80000000;
 
 PHDRS
 {
-    text    PT_LOAD    FLAGS((1 << 0) | (1 << 2)) ; /* Execute + Read */
-    rodata  PT_LOAD    FLAGS((1 << 2)) ;            /* Read only */
-    data    PT_LOAD    FLAGS((1 << 1) | (1 << 2)) ; /* Write + Read */
+    requests PT_LOAD    FLAGS(6); /* R(4) | W(2) = 6 */
+    text     PT_LOAD    FLAGS(5); /* R(4) | E(1) = 5 */
+    rodata   PT_LOAD    FLAGS(4); /* R(4) */
+    data     PT_LOAD    FLAGS(6); /* R(4) | W(2) = 6 */
 }
 
 SECTIONS
@@ -27,7 +28,7 @@ SECTIONS
         KEEP(*(.limine_requests))
         . = ALIGN(PAGE_SIZE);
         _limine_end = .;
-    }
+    } :requests
 
     .init ALIGN(PAGE_SIZE) :
     {
@@ -36,7 +37,7 @@ SECTIONS
         *(.init.data)
         . = ALIGN(PAGE_SIZE);
         _init_end = .;
-    }
+    } :text
 
     /* Executable code - read-only, executable */
     .text ALIGN(PAGE_SIZE) :
@@ -47,7 +48,7 @@ SECTIONS
         *(.text.*)        /* Other text sections */
         . = ALIGN(PAGE_SIZE);
         _text_end = .;
-    }
+    } :text
 
     /* Read-only data - read-only, non-executable */
     .rodata ALIGN(PAGE_SIZE) :
@@ -58,7 +59,7 @@ SECTIONS
         *(.rodata.*)
         . = ALIGN(PAGE_SIZE);
         _rodata_end = .;
-    }
+    } :rodata
 
     /* Initialized data - read-write */
     .data ALIGN(PAGE_SIZE) :
@@ -68,7 +69,7 @@ SECTIONS
         *(.data.*)
         . = ALIGN(PAGE_SIZE);
         _data_end = .;
-    }
+    } :data
 
     /* Uninitialized data - read-write, zero-initialized */
     .bss ALIGN(PAGE_SIZE) :
@@ -79,7 +80,7 @@ SECTIONS
         *(COMMON)         /* Common symbols */
         . = ALIGN(PAGE_SIZE);
         _bss_end = .;
-    }
+    } :data
 
     /* Kernel end marker */
     . = ALIGN(PAGE_SIZE);
