@@ -1,5 +1,6 @@
 #include <arch/x64/cpu.h>
-#include <arch/x64/gdt.h>
+#include <arch/x64/gdt/gdt.h>
+#include <arch/x64/idt/idt.h>
 #include <arch/x64/smp.h>
 #include <compiler.h>
 #include <drivers/uart/serial.h>
@@ -67,10 +68,11 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     printk(KERN_CLASS "VoidFrameX (R) v%s - %s\n", VOIDFRAMEX_VERSION, VOIDFRAMEX_COMPILER_VERSION);
     printk(KERN_CLASS "copyright (C) 2025 assembler-0\n");
     printk(KERN_CLASS "build: %s\n", VOIDFRAMEX_BUILD_DATE);
-    
-    gdt_init();
 
+    gdt_init();
+    idt_install();
     smp_init();
+    
     // Initialize Physical Memory Manager
     if (!memmap_request.response || !hhdm_request.response) {
         panic(KERN_CLASS "Memory map or HHDM not available");

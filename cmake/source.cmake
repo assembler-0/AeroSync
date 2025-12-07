@@ -7,8 +7,13 @@ set(ASM_SOURCES
 
 set(ARCH_SOURCES
     arch/x64/cpu.c
-    arch/x64/gdt.c
+    arch/x64/gdt/gdt.c
+    arch/x64/idt/idt.c
+    arch/x64/idt/isr.asm
+    arch/x64/idt/load_idt.asm
     arch/x64/smp.c
+    arch/x64/irq/irq.c
+    arch/x64/exception.c
 )
 
 set(INIT_SOURCES

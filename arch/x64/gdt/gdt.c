@@ -1,5 +1,5 @@
 #include <arch/x64/cpu.h>
-#include <arch/x64/gdt.h>
+#include <arch/x64/gdt/gdt.h>
 #include <compiler.h>
 #include <kernel/classes.h>
 #include <kernel/spinlock.h>
