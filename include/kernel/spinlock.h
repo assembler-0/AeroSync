@@ -36,7 +36,7 @@ static inline void spinlock_lock(volatile int* lock) {
             backoff_delay(MAX_BACKOFF_CYCLES);
             start = rdtsc();
             attempts = 0;
-            printk(KERN_ALERT SPINLOCK_CLASS "Deadlock detected, retrying...");
+            printk(KERN_WARNING SPINLOCK_CLASS "Deadlock detected, retrying...\n");
             continue;
         }
 

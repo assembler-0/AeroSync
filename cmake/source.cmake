@@ -26,6 +26,7 @@ set(KERNEL_SOURCES
 
 set(DRIVER_SOURCES
     drivers/uart/serial.c
+    drivers/apic/apic.c
 )
 
 set(LIB_SOURCES
@@ -38,6 +39,7 @@ set(LIB_SOURCES
 
 set(MM_SOURCES
     mm/pmm.c
+    mm/vmm.c
 )
 
 set(CRYPTO_SOURCES
