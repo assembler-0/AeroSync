@@ -20,36 +20,31 @@ __attribute__((used, section(".limine_requests"))) static volatile uint64_t
     limine_base_revision[3] = LIMINE_BASE_REVISION(3);
 
 // Request framebuffer
-__attribute__((
-    used,
-    section(
-        ".limine_requests"))) static volatile struct limine_framebuffer_request
-    framebuffer_request = {.id = LIMINE_FRAMEBUFFER_REQUEST_ID, .revision = 0};
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_framebuffer_request framebuffer_request =
+        {.id = LIMINE_FRAMEBUFFER_REQUEST_ID, .revision = 0};
 
 // Request memory map
-__attribute__((
-    used,
-    section(".limine_requests"))) static volatile struct limine_memmap_request
-    memmap_request = {.id = LIMINE_MEMMAP_REQUEST_ID, .revision = 0};
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_memmap_request memmap_request =
+        {.id = LIMINE_MEMMAP_REQUEST_ID, .revision = 0};
 
 // Request HHDM (Higher Half Direct Map)
-__attribute__((
-    used,
-    section(".limine_requests"))) static volatile struct limine_hhdm_request
-    hhdm_request = {.id = LIMINE_HHDM_REQUEST_ID, .revision = 0};
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_hhdm_request hhdm_request =
+        {.id = LIMINE_HHDM_REQUEST_ID, .revision = 0};
 
 // Request RSDP (for ACPI)
-__attribute__((
-    used,
-    section(".limine_requests"))) static volatile struct limine_rsdp_request
-    rsdp_request = {.id = LIMINE_RSDP_REQUEST_ID, .revision = 0};
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_rsdp_request rsdp_request =
+        {.id = LIMINE_RSDP_REQUEST_ID, .revision = 0};
 
-__attribute__((
-    used,
-    section(".limine_requests"))) static volatile struct limine_smbios_request
-    smbios_request = {.id = LIMINE_SMBIOS_REQUEST_ID, .revision = 0};
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_smbios_request smbios_request =
+        {.id = LIMINE_SMBIOS_REQUEST_ID, .revision = 0};
 
-void __init __noreturn __noinline __sysv_abi start_kernel(void) {
+void __init __noreturn __noinline __sysv_abi 
+start_kernel(void) {
 
     // Ensure we got a framebuffer
     if (framebuffer_request.response == NULL ||
@@ -72,7 +67,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     gdt_init();
     idt_install();
     smp_init();
-    
+
     // Initialize Physical Memory Manager
     if (!memmap_request.response || !hhdm_request.response) {
         panic(KERN_CLASS "Memory map or HHDM not available");
