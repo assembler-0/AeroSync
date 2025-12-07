@@ -35,6 +35,12 @@ set(MM_SOURCES
     mm/pmm.c
 )
 
+set(CRYPTO_SOURCES
+    crypto/crc32.c
+    crypto/rng.c
+    crypto/sha/sha256.c
+)
+
 # ============================================================================
 # Build Include Directories
 # ============================================================================
@@ -54,4 +60,5 @@ set(C_SOURCES
         ${DRIVER_SOURCES}
         ${MM_SOURCES}
         ${ARCH_SOURCES}
+        ${CRYPTO_SOURCES}
 )

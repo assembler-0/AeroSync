@@ -5,7 +5,8 @@
  * Parses Limine memory map and provides page allocation services.
  */
 
-#include "arch/x64/cpu.h"
+#include <compiler.h>
+#include <arch/x64/cpu.h>
 #include <drivers/uart/serial.h>
 #include <kernel/classes.h>
 #include <kernel/spinlock.h>
@@ -30,7 +31,7 @@ uint64_t g_hhdm_offset = 0;
 static uint8_t pmm_bitmap[BITMAP_SIZE_BYTES];
 
 // PMM state
-static volatile pmm_stats_t pmm_stats __attribute__((aligned(16)));
+static volatile pmm_stats_t pmm_stats __aligned(16);
 static spinlock_t pmm_lock = 0;
 static bool pmm_initialized = false;
 

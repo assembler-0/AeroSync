@@ -1,5 +1,6 @@
 #include <arch/x64/cpu.h>
 #include <arch/x64/gdt.h>
+#include <compiler.h>
 #include <kernel/classes.h>
 #include <kernel/spinlock.h>
 #include <kernel/types.h>
@@ -7,9 +8,9 @@
 
 // GDT with 7 entries: null, kcode, kdata, ucode, udata, tss_low, tss_high
 // CRITICAL: GDT must be properly aligned for x86-64
-static struct gdt_entry gdt[7] __attribute__((aligned(16)));
-static struct gdt_ptr gdt_ptr __attribute__((aligned(16)));
-static struct tss_entry tss __attribute__((aligned(16)));
+static struct gdt_entry gdt[7] __aligned(16);
+static struct gdt_ptr gdt_ptr __aligned(16);
+static struct tss_entry tss __aligned(16);
 
 extern void gdt_flush(const struct gdt_ptr *gdt_ptr_addr);
 extern void tss_flush(void);

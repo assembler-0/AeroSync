@@ -31,6 +31,11 @@
 #define ATOMIC_CLASS    "[SYS::ATOMIC] "   // Atomic operations
 #define SPINLOCK_CLASS  "[SYS::SPINLOCK] "   // Spinlock operations
 
+///@section Crypto
+#define RNG_CLASS       "[CRPT::RNG] "   // Random Number Generator
+#define CRC_CLASS       "[CRPT::CRC] "   // CRC32
+#define SHA_CLASS       "[CRPT::SHA] "   // SHA*
+
 /* =========================================================================
  *  MEMORY MANAGEMENT
  * ========================================================================= */

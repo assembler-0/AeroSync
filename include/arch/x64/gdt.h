@@ -1,6 +1,7 @@
 #pragma once
 
 #include <kernel/types.h>
+#include <compiler.h>
 
 #define GDT_ACCESS_CODE_PL0 0x9A // Present, Ring 0, Executable, Read/Write
 #define GDT_ACCESS_DATA_PL0 0x92 // Present, Ring 0, Read/Write
@@ -33,13 +34,13 @@ struct gdt_entry {
   uint8_t access;
   uint8_t granularity;
   uint8_t base_high;
-} __attribute__((packed));
+} __packed;
 
 // GDT pointer structure
 struct gdt_ptr {
   uint16_t limit;
   uint64_t base;
-} __attribute__((packed));
+} __packed;
 
 // TSS structure (simplified for 64-bit)
 struct tss_entry {
