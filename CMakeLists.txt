@@ -133,7 +133,7 @@ add_custom_target(run
         -cpu max
         -no-reboot -no-shutdown
         -m 1G
-#        -smp 4
+        -smp 4
         -bios /usr/share/edk2/x64/OVMF.4m.fd
         -debugcon file:bootstrap.log
         -serial stdio

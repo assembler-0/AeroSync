@@ -1,5 +1,7 @@
 #pragma once
 
+#include <kernel/classes.h>
+#include <lib/printk.h>
 #include <kernel/types.h>
 #include <arch/x64/cpu.h>
 
@@ -34,6 +36,7 @@ static inline void spinlock_lock(volatile int* lock) {
             backoff_delay(MAX_BACKOFF_CYCLES);
             start = rdtsc();
             attempts = 0;
+            printk(KERN_ALERT SPINLOCK_CLASS "Deadlock detected, retrying...");
             continue;
         }
 

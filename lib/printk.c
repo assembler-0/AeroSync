@@ -1,7 +1,7 @@
 #include <drivers/uart/serial.h>
-#include <lib/printk.h>
 #include <kernel/types.h>
 #include <lib/log.h>
+#include <lib/printk.h>
 
 // Buffering formatter that writes to the logging subsystem
 typedef void (*output_func_t)(char c);
@@ -12,271 +12,291 @@ static char *printk_buf_ptr;
 static int printk_buf_rem;
 
 static void buf_putc(char c) {
-    if (printk_buf_rem > 1) {
-        *printk_buf_ptr++ = c;
-        printk_buf_rem--;
-    }
+  if (printk_buf_rem > 1) {
+    *printk_buf_ptr++ = c;
+    printk_buf_rem--;
+  }
 }
 
 // Simple printf implementation
 static int do_printf(output_func_t output, const char *fmt, va_list args) {
-    if (!output || !fmt)
-        return -1;
+  if (!output || !fmt)
+    return -1;
 
-    int count = 0;
+  int count = 0;
 
-    while (*fmt) {
-        if (*fmt == '%' && *(fmt + 1)) {
-            fmt++;
-            switch (*fmt) {
-            case 'u': {
-                unsigned int val = va_arg(args, unsigned int);
-                char buf[12];
-                int i = 0;
-                if (val == 0) {
-                    buf[i++] = '0';
-                } else {
-                    while (val > 0) {
-                        buf[i++] = '0' + (val % 10);
-                        val /= 10;
-                    }
-                }
-                while (i > 0) {
-                    output(buf[--i]);
-                    count++;
-                }
-                break;
-            }
-
-            case 'd': {
-                int val = va_arg(args, int);
-                if (val < 0) {
-                    output('-');
-                    count++;
-                    val = -val;
-                }
-                char buf[12];
-                int i = 0;
-                if (val == 0) {
-                    buf[i++] = '0';
-                } else {
-                    while (val > 0) {
-                        buf[i++] = '0' + (val % 10);
-                        val /= 10;
-                    }
-                }
-                while (i > 0) {
-                    output(buf[--i]);
-                    count++;
-                }
-                break;
-            }
-
-            case 'l': {
-                if (*(fmt + 1) == 'l' && *(fmt + 2) == 'u') {
-                    fmt += 2;
-                    uint64_t val = va_arg(args, uint64_t);
-                    char buf[24];
-                    int i = 0;
-                    if (val == 0) {
-                        buf[i++] = '0';
-                    } else {
-                        while (val > 0) {
-                            buf[i++] = '0' + (val % 10);
-                            val /= 10;
-                        }
-                    }
-                    while (i > 0) {
-                        output(buf[--i]);
-                        count++;
-                    }
-                } else if (*(fmt + 1) == 'l' && *(fmt + 2) == 'd') {
-                    fmt += 2;
-                    int64_t val = va_arg(args, int64_t);
-                    if (val < 0) {
-                        output('-');
-                        count++;
-                        val = -val;
-                    }
-                    char buf[24];
-                    int i = 0;
-                    if (val == 0) {
-                        buf[i++] = '0';
-                    } else {
-                        while (val > 0) {
-                            buf[i++] = '0' + (val % 10);
-                            val /= 10;
-                        }
-                    }
-                    while (i > 0) {
-                        output(buf[--i]);
-                        count++;
-                    }
-                }
-                break;
-            }
-
-            case 'x': {
-                unsigned int val = va_arg(args, unsigned int);
-                char buf[9];
-                int i = 0;
-
-                if (val == 0) {
-                    buf[i++] = '0';
-                } else {
-                    while (val > 0) {
-                        int digit = val & 0xF;
-                        buf[i++] =
-                            (digit < 10) ? '0' + digit : 'a' + digit - 10;
-                        val >>= 4;
-                    }
-                }
-
-                while (i > 0) {
-                    output(buf[--i]);
-                    count++;
-                }
-                break;
-            }
-
-            case 'p': {
-                void *ptr = va_arg(args, void *);
-                uint64_t val = (uint64_t)ptr;
-
-                output('0');
-                output('x');
-                count += 2;
-
-                char buf[17];
-                int i = 0;
-
-                if (val == 0) {
-                    buf[i++] = '0';
-                } else {
-                    while (val > 0) {
-                        int digit = val & 0xF;
-                        buf[i++] =
-                            (digit < 10) ? '0' + digit : 'a' + digit - 10;
-                        val >>= 4;
-                    }
-                }
-
-                while (i > 0) {
-                    output(buf[--i]);
-                    count++;
-                }
-                break;
-            }
-
-            case 's': {
-                const char *str = va_arg(args, const char *);
-                if (!str)
-                    str = "(null)";
-
-                while (*str) {
-                    output(*str++);
-                    count++;
-                }
-                break;
-            }
-
-            case 'c': {
-                char c = (char)va_arg(args, int);
-                output(c);
-                count++;
-                break;
-            }
-
-            case '%':
-                output('%');
-                count++;
-                break;
-
-            default:
-                output('%');
-                output(*fmt);
-                count += 2;
-                break;
-            }
+  while (*fmt) {
+    if (*fmt == '%' && *(fmt + 1)) {
+      fmt++;
+      switch (*fmt) {
+      case 'u': {
+        unsigned int val = va_arg(args, unsigned int);
+        char buf[12];
+        int i = 0;
+        if (val == 0) {
+          buf[i++] = '0';
         } else {
-            output(*fmt);
-            count++;
+          while (val > 0) {
+            buf[i++] = '0' + (val % 10);
+            val /= 10;
+          }
         }
-        fmt++;
-    }
+        while (i > 0) {
+          output(buf[--i]);
+          count++;
+        }
+        break;
+      }
 
-    return count;
+      case 'd': {
+        int val = va_arg(args, int);
+        if (val < 0) {
+          output('-');
+          count++;
+          val = -val;
+        }
+        char buf[12];
+        int i = 0;
+        if (val == 0) {
+          buf[i++] = '0';
+        } else {
+          while (val > 0) {
+            buf[i++] = '0' + (val % 10);
+            val /= 10;
+          }
+        }
+        while (i > 0) {
+          output(buf[--i]);
+          count++;
+        }
+        break;
+      }
+
+      case 'l': {
+        if (*(fmt + 1) == 'l' && *(fmt + 2) == 'u') {
+          fmt += 2;
+          uint64_t val = va_arg(args, uint64_t);
+          char buf[24];
+          int i = 0;
+          if (val == 0) {
+            buf[i++] = '0';
+          } else {
+            while (val > 0) {
+              buf[i++] = '0' + (val % 10);
+              val /= 10;
+            }
+          }
+          while (i > 0) {
+            output(buf[--i]);
+            count++;
+          }
+        } else if (*(fmt + 1) == 'l' && *(fmt + 2) == 'd') {
+          fmt += 2;
+          int64_t val = va_arg(args, int64_t);
+          if (val < 0) {
+            output('-');
+            count++;
+            val = -val;
+          }
+          char buf[24];
+          int i = 0;
+          if (val == 0) {
+            buf[i++] = '0';
+          } else {
+            while (val > 0) {
+              buf[i++] = '0' + (val % 10);
+              val /= 10;
+            }
+          }
+          while (i > 0) {
+            output(buf[--i]);
+            count++;
+          }
+        } else if (*(fmt + 1) == 'l' && *(fmt + 2) == 'x') {
+          // 64-bit hex
+          fmt += 2;
+          uint64_t val = va_arg(args, uint64_t);
+          char buf[17];
+          int i = 0;
+          if (val == 0) {
+            buf[i++] = '0';
+          } else {
+            while (val > 0) {
+              int digit = val & 0xF;
+              buf[i++] = (digit < 10) ? '0' + digit : 'a' + digit - 10;
+              val >>= 4;
+            }
+          }
+          while (i > 0) {
+            output(buf[--i]);
+            count++;
+          }
+        }
+        break;
+      }
+
+      case 'x': {
+        unsigned int val = va_arg(args, unsigned int);
+        char buf[9];
+        int i = 0;
+
+        if (val == 0) {
+          buf[i++] = '0';
+        } else {
+          while (val > 0) {
+            int digit = val & 0xF;
+            buf[i++] = (digit < 10) ? '0' + digit : 'a' + digit - 10;
+            val >>= 4;
+          }
+        }
+
+        while (i > 0) {
+          output(buf[--i]);
+          count++;
+        }
+        break;
+      }
+
+      case 'p': {
+        void *ptr = va_arg(args, void *);
+        uint64_t val = (uint64_t)ptr;
+
+        output('0');
+        output('x');
+        count += 2;
+
+        char buf[17];
+        int i = 0;
+
+        if (val == 0) {
+          buf[i++] = '0';
+        } else {
+          while (val > 0) {
+            int digit = val & 0xF;
+            buf[i++] = (digit < 10) ? '0' + digit : 'a' + digit - 10;
+            val >>= 4;
+          }
+        }
+
+        while (i > 0) {
+          output(buf[--i]);
+          count++;
+        }
+        break;
+      }
+
+      case 's': {
+        const char *str = va_arg(args, const char *);
+        if (!str)
+          str = "(null)";
+
+        while (*str) {
+          output(*str++);
+          count++;
+        }
+        break;
+      }
+
+      case 'c': {
+        char c = (char)va_arg(args, int);
+        output(c);
+        count++;
+        break;
+      }
+
+      case '%':
+        output('%');
+        count++;
+        break;
+
+      default:
+        output('%');
+        output(*fmt);
+        count += 2;
+        break;
+      }
+    } else {
+      output(*fmt);
+      count++;
+    }
+    fmt++;
+  }
+
+  return count;
 }
 
 static const char *parse_level_prefix(const char *fmt, int *level_io) {
-    if (!fmt) return fmt;
-    // Preferred: $n$
-    if (fmt[0] == '$' && fmt[1] >= '0' && fmt[1] <= '7' && fmt[2] == '$') {
-        if (level_io) *level_io = (fmt[1] - '0');
-        return fmt + 3;
-    }
-    // Legacy: <n>
-    if (fmt[0] == '<' && fmt[1] >= '0' && fmt[1] <= '7' && fmt[2] == '>') {
-        if (level_io) *level_io = (fmt[1] - '0');
-        return fmt + 3;
-    }
+  if (!fmt)
     return fmt;
+  // Preferred: $n$
+  if (fmt[0] == '$' && fmt[1] >= '0' && fmt[1] <= '7' && fmt[2] == '$') {
+    if (level_io)
+      *level_io = (fmt[1] - '0');
+    return fmt + 3;
+  }
+  // Legacy: <n>
+  if (fmt[0] == '<' && fmt[1] >= '0' && fmt[1] <= '7' && fmt[2] == '>') {
+    if (level_io)
+      *level_io = (fmt[1] - '0');
+    return fmt + 3;
+  }
+  return fmt;
 }
 
 static int printk_vroute(int level, const char *fmt, va_list args) {
-    // Format into buffer then send to log subsystem
-    // Allow optional level prefix in fmt to override selected level
-    fmt = parse_level_prefix(fmt, &level);
-    printk_buf_ptr = printk_buf;
-    printk_buf_rem = (int)sizeof(printk_buf);
-    int cnt = do_printf(buf_putc, fmt, args);
-    // NUL terminate
-    *printk_buf_ptr = '\0';
-    log_write_str(level, printk_buf);
-    return cnt;
+  // Format into buffer then send to log subsystem
+  // Allow optional level prefix in fmt to override selected level
+  fmt = parse_level_prefix(fmt, &level);
+  printk_buf_ptr = printk_buf;
+  printk_buf_rem = (int)sizeof(printk_buf);
+  int cnt = do_printf(buf_putc, fmt, args);
+  // NUL terminate
+  *printk_buf_ptr = '\0';
+  log_write_str(level, printk_buf);
+  return cnt;
 }
 
 int vfprintk(int fd, const char *fmt, va_list args) {
-    if (!fmt)
-        return -1;
+  if (!fmt)
+    return -1;
 
-    int level = (fd == STDERR_FD) ? KLOG_ERR : KLOG_INFO;
-    return printk_vroute(level, fmt, args);
+  int level = (fd == STDERR_FD) ? KLOG_ERR : KLOG_INFO;
+  return printk_vroute(level, fmt, args);
 }
 
 int vprintk(const char *fmt, va_list args) {
-    return vfprintk(STDOUT_FD, fmt, args);
+  return vfprintk(STDOUT_FD, fmt, args);
 }
 
 int fprintk(int fd, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    int ret = vfprintk(fd, fmt, args);
-    va_end(args);
-    return ret;
+  va_list args;
+  va_start(args, fmt);
+  int ret = vfprintk(fd, fmt, args);
+  va_end(args);
+  return ret;
 }
 
 // Non-variadic version for testing
 int printk_simple(const char *fmt) {
-    if (!fmt)
-        return -1;
+  if (!fmt)
+    return -1;
 
-    while (*fmt) {
-        serial_write_char(*fmt++);
-    }
-    return 0;
+  while (*fmt) {
+    serial_write_char(*fmt++);
+  }
+  return 0;
 }
 
 int printk(const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    int ret = vprintk(fmt, args);
-    va_end(args);
-    return ret;
+  va_list args;
+  va_start(args, fmt);
+  int ret = vprintk(fmt, args);
+  va_end(args);
+  return ret;
 }
 
 void printk_init(void) {
-    // Initialize logging subsystem
-    log_init();
-    // Console sink defaults to serial; can be changed later
+  // Initialize logging subsystem
+  log_init();
+  // Console sink defaults to serial; can be changed later
 }
