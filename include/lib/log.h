@@ -1,8 +1,4 @@
-#ifndef ARCLINE_LOG_H
-#define ARCLINE_LOG_H
-
-#include <stddef.h>
-#include <stdint.h>
+#pragma once
 
 // Log levels (modeled after Linux)
 #define KLOG_EMERG   0
@@ -14,14 +10,13 @@
 #define KLOG_INFO    6
 #define KLOG_DEBUG   7
 
-void log_init(void);
-
 // Set the minimum level stored in the ring buffer (inclusive)
 void log_set_level(int level);
 int  log_get_level(void);
 
 // Console sink management
 typedef void (*log_sink_putc_t)(char c);
+void log_init(log_sink_putc_t backend);
 void log_set_console_sink(log_sink_putc_t sink);
 void log_set_console_level(int level);
 int  log_get_console_level(void);
@@ -33,5 +28,3 @@ int log_write_str(int level, const char *msg);
 // Read next record as a string. Returns length copied or 0 if none available.
 // If out_level != NULL, stores the record level.
 int log_read(char *out_buf, int out_buf_len, int *out_level);
-
-#endif // ARCLINE_LOG_H

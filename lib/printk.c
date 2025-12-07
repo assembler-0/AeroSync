@@ -1,7 +1,7 @@
 #include <drivers/uart/serial.h>
 #include <kernel/types.h>
-#include <lib/log.h>
 #include <lib/printk.h>
+#include <linearfb/linearfb.h>
 
 // Buffering formatter that writes to the logging subsystem
 typedef void (*output_func_t)(char c);
@@ -16,6 +16,37 @@ static void buf_putc(char c) {
     *printk_buf_ptr++ = c;
     printk_buf_rem--;
   }
+}
+
+static printk_backend_t fb_backend = {
+  .name = "linearfb",
+  .priority = 100,
+  .putc = linearfb_console_putc,
+};
+
+static printk_backend_t serial_backend = {
+  .name = "serial",
+  .priority = 50,
+  .putc = serial_write_char,
+};
+
+static printk_backend_t *printk_backends[] = {
+  &fb_backend,
+  &serial_backend,
+};
+
+static int num_backends = sizeof(printk_backends) / sizeof(printk_backends[0]);
+
+void printk_init_auto(void) {
+  printk_backend_t target = {0};
+  int last_priority = -1;
+  for (int i = 0; i < num_backends; i++) {
+    if (printk_backends[i]->priority > last_priority && printk_backends[i]) {
+      target = *printk_backends[i];
+      last_priority = printk_backends[i]->priority;
+    }
+  }
+  printk_init(target.putc);
 }
 
 // Simple printf implementation
@@ -261,17 +292,6 @@ int vprintk(const char *fmt, va_list args) {
   return count;
 }
 
-// Non-variadic version for testing
-int printk_simple(const char *fmt) {
-  if (!fmt)
-    return -1;
-
-  while (*fmt) {
-    serial_write_char(*fmt++);
-  }
-  return 0;
-}
-
 int printk(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
@@ -280,8 +300,6 @@ int printk(const char *fmt, ...) {
   return ret;
 }
 
-void printk_init(void) {
-  // Initialize logging subsystem
-  log_init();
-  // Console sink defaults to serial; can be changed later
+void printk_init(const log_sink_putc_t backend) {
+  log_init(backend);
 }

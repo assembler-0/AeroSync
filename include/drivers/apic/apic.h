@@ -13,6 +13,8 @@
 // Main initialization function to detect and set up both Local APIC and I/O
 // APIC. Returns true on success, false on failure (e.g., no APIC found).
 bool apic_init(void);
+bool setup_lapic(void);
+bool setup_ioapic(void);
 
 // Replaces PIC_enable_irq. Unmasks an interrupt line in the I/O APIC.
 void apic_enable_irq(uint8_t irq_line);

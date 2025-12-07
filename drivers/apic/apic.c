@@ -51,8 +51,6 @@ static void ioapic_write(uint8_t reg, uint32_t value);
 static uint32_t ioapic_read(uint8_t reg);
 static void ioapic_set_entry(uint8_t index, uint64_t data);
 static bool detect_apic(void);
-static bool setup_lapic(void);
-static bool setup_ioapic(void);
 
 #define PIC1_COMMAND 0x20
 #define PIC1_DATA 0x21
@@ -132,10 +130,6 @@ bool apic_init(void) {
     return false;
   }
 
-  // Enable interrupts now that APIC is ready?
-  // Usually we wait until the scheduler or init process is ready.
-  // __asm__ volatile("sti");
-
   return true;
 }
 
@@ -174,8 +168,6 @@ void apic_mask_all(void) {
 }
 
 // --- APIC Timer Management ---
-
-void apic_timer_set_frequency(uint32_t frequency_hz);
 
 void apic_timer_init(uint32_t frequency_hz) {
   // Calibrate and set the initial count
@@ -222,9 +214,14 @@ void apic_timer_set_frequency(uint32_t frequency_hz) {
   uint32_t ticks_per_target = (ticks_in_10ms * 100) / frequency_hz;
 
   // 8. Start Timer: Periodic, Interrupt Vector 32, Unmasked
-  lapic_write(LAPIC_LVT_TIMER, 32 | (1 << 17)); // Periodic mode
-  lapic_write(LAPIC_TIMER_DIV, 0x3);            // Divide by 16
+  // Bit 17 = 1 for Periodic mode, Bit 16 = 0 for Unmasked
+  uint32_t lvt_timer = 32 | (1 << 17); // Vector 32, Periodic mode, Unmasked
+  lapic_write(LAPIC_LVT_TIMER, lvt_timer);
+  lapic_write(LAPIC_TIMER_DIV, 0x3); // Divide by 16
   lapic_write(LAPIC_TIMER_INIT_COUNT, ticks_per_target);
+
+  printk(APIC_CLASS "Timer configured: LVT=0x%x, Ticks=%u\n", lvt_timer,
+         ticks_per_target);
 }
 
 // --- Private Setup Functions ---
@@ -237,7 +234,7 @@ static bool detect_apic(void) {
 }
 
 // Initialize the Local APIC
-static bool setup_lapic(void) {
+bool setup_lapic(void) {
   // Get LAPIC physical base address from MSR
   uint64_t lapic_base_msr = rdmsr(APIC_BASE_MSR);
   uint64_t lapic_phys_base = lapic_base_msr & 0xFFFFFFFFFFFFF000ULL;
@@ -268,7 +265,7 @@ static bool setup_lapic(void) {
 }
 
 // Initialize the I/O APIC
-static bool setup_ioapic(void) {
+bool setup_ioapic(void) {
   // Map the I/O APIC into virtual memory.
   // Note: In a real ACPI system, we should parse the MADT to find the actual
   // I/O APIC address. For now we assume the standard default.

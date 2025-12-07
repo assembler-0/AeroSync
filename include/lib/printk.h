@@ -1,6 +1,13 @@
 #pragma once
 
 #include <kernel/types.h>
+#include <lib/log.h>
+
+typedef struct printk_backend {
+  const char *name;
+  int priority;              // bigger = preferred
+  log_sink_putc_t putc;
+} printk_backend_t;
 
 #define KERN_EMERG "$0$"
 #define KERN_ALERT "$1$"
@@ -16,7 +23,8 @@ int printk(const char *fmt, ...);
 int vprintk(const char *fmt, va_list args);
 
 // Initialize printing subsystem
-void printk_init(void);
+void printk_init(log_sink_putc_t backend);
+void printk_init_auto(void);
 
 #define pr_emerg(fmt, ...) printk(KERN_EMERG fmt, ##__VA_ARGS__)
 #define pr_alert(fmt, ...) printk(KERN_ALERT fmt, ##__VA_ARGS__)

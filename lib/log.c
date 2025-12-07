@@ -3,6 +3,7 @@
 #include <kernel/spinlock.h>
 #include <lib/log.h>
 #include <lib/string.h>
+
 // Simple global ring buffer for log messages, Linux-like but minimal
 
 #ifndef KLOG_RING_SIZE
@@ -14,14 +15,12 @@ typedef struct {
   uint16_t len;  // payload length (bytes)
 } __packed klog_hdr_t;
 
-void serial_putc(char c) { serial_write_char(c); }
-
 static char klog_ring[KLOG_RING_SIZE];
 static uint32_t klog_head; // write position
 static uint32_t klog_tail; // read position
 static int klog_level = KLOG_INFO;
 static int klog_console_level = KLOG_INFO;
-static log_sink_putc_t klog_console_sink = serial_putc; // default to serial
+static log_sink_putc_t klog_console_sink = serial_write_char; // default to serial
 static spinlock_t klog_lock = 0;
 static int klog_inited = 0;
 
@@ -29,8 +28,7 @@ static inline uint32_t rb_space(void) {
   // one byte left unused rule to distinguish full/empty
   if (klog_head >= klog_tail)
     return (KLOG_RING_SIZE - (klog_head - klog_tail) - 1);
-  else
-    return (klog_tail - klog_head - 1);
+  return (klog_tail - klog_head - 1);
 }
 
 static void rb_advance(uint32_t *p, uint32_t n) {
@@ -57,11 +55,11 @@ static void rb_drop_oldest(uint32_t need) {
   }
 }
 
-void log_init(void) {
+void log_init(const log_sink_putc_t backend) {
   klog_head = klog_tail = 0;
   klog_level = KLOG_INFO;
   klog_console_level = KLOG_INFO;
-  klog_console_sink = serial_putc;
+  klog_console_sink = backend;
   klog_inited = 1;
 }
 

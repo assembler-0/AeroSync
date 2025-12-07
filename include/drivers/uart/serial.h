@@ -18,7 +18,7 @@ int serial_transmit_empty(void);
 int serial_data_available(void);
 
 // Character I/O
-int serial_write_char(char c);
+void serial_write_char(char c);
 int serial_read_char(void);
 
 // String I/O

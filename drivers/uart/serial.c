@@ -96,8 +96,8 @@ int serial_data_available(void) {
     return inb(serial_port + SERIAL_LSR_REG) & SERIAL_LSR_DATA_READY;
 }
 
-int serial_write_char(const char a) {
-    if (!serial_initialized) return -1;
+void serial_write_char(const char a) {
+    if (!serial_initialized) return;
 
     // Timeout counter to prevent infinite loops
     int timeout = 65536;
@@ -105,16 +105,15 @@ int serial_write_char(const char a) {
     // If newline, emit CR first, then LF
     if (a == '\n') {
         while (!serial_transmit_empty() && --timeout > 0);
-        if (timeout <= 0) return -1;
+        if (timeout <= 0) return;
         outb(serial_port + SERIAL_DATA_REG, '\r');
         timeout = 65536; // Reset timeout
     }
 
     while (!serial_transmit_empty() && --timeout > 0);
-    if (timeout <= 0) return -1;
+    if (timeout <= 0) return;
 
     outb(serial_port + SERIAL_DATA_REG, a);
-    return 0;
 }
 
 int serial_read_char(void) {
@@ -131,9 +130,7 @@ int serial_write(const char* str) {
     if (!str || !serial_initialized) return -1;
 
     for (int i = 0; str[i] != '\0'; i++) {
-        if (serial_write_char(str[i]) < 0) {
-            return -1;
-        }
+        serial_write_char(str[i]);
     }
     return 0;
 }
