@@ -81,6 +81,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # ============================================================================
 add_executable(voidframex.krnl
     ${C_SOURCES}
+    ${ASM_SOURCES}
 )
 
 # Configure the linker to use ld.lld with proper arguments
@@ -132,7 +133,7 @@ add_custom_target(run
         -cpu max
         -no-reboot -no-shutdown
         -m 1G
-        -smp 4
+#        -smp 4
         -bios /usr/share/edk2/x64/OVMF.4m.fd
         -debugcon file:bootstrap.log
         -serial stdio

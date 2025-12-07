@@ -1,9 +1,14 @@
 # ============================================================================
 # Sources Organization
 # ============================================================================
+set(ASM_SOURCES
+    arch/x64/gdt_tss.asm
+)
+
 set(ARCH_SOURCES
     arch/x64/cpu.c
     arch/x64/gdt.c
+    arch/x64/smp.c
 )
 
 set(INIT_SOURCES
@@ -22,6 +27,8 @@ set(LIB_SOURCES
     lib/string.c
     lib/printk.c
     lib/log.c
+    lib/vsprintf.c
+    lib/ctype.c
 )
 
 set(MM_SOURCES

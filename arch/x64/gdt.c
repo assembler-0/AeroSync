@@ -1,108 +1,77 @@
+#include <arch/x64/cpu.h>
 #include <arch/x64/gdt.h>
-#include <compiler.h>
+#include <kernel/classes.h>
+#include <kernel/spinlock.h>
 #include <kernel/types.h>
+#include <lib/printk.h>
 
-// GDT entry (legacy format). In x86_64, base/limit largely ignored for flat segments.
-typedef struct __packed {
-    uint16_t limit_low;
-    uint16_t base_low;
-    uint8_t  base_mid;
-    uint8_t  access;     // type | S | DPL | P
-    uint8_t  gran;       // limit_high | AVL | L | D | G
-    uint8_t  base_high;
-} gdt_entry_t;
+// GDT with 7 entries: null, kcode, kdata, ucode, udata, tss_low, tss_high
+// CRITICAL: GDT must be properly aligned for x86-64
+static struct gdt_entry gdt[7] __attribute__((aligned(16)));
+static struct gdt_ptr gdt_ptr __attribute__((aligned(16)));
+static struct tss_entry tss __attribute__((aligned(16)));
 
-typedef struct __packed {
-    uint16_t limit;
-    uint64_t base;
-} gdtr_t;
+extern void gdt_flush(const struct gdt_ptr *gdt_ptr_addr);
+extern void tss_flush(void);
 
-// We keep it flexible: small static GDT that can be extended later if needed.
-static gdt_entry_t gdt[6];
-static gdtr_t gdtr;
+static volatile int gdt_lock = 0;
 
-// Helper to encode a descriptor.
-static void set_seg_descriptor(gdt_entry_t* e, uint32_t base, uint32_t limit,
-                               uint8_t access, uint8_t flags)
-{
-    e->limit_low = (uint16_t)(limit & 0xFFFF);
-    e->base_low  = (uint16_t)(base & 0xFFFF);
-    e->base_mid  = (uint8_t)((base >> 16) & 0xFF);
-    e->access    = access;
-    e->gran      = (uint8_t)(((limit >> 16) & 0x0F) | (flags & 0xF0));
-    e->base_high = (uint8_t)((base >> 24) & 0xFF);
+static void set_gdt_gate(int num, uint32_t base, uint32_t limit, uint8_t access,
+                         uint8_t gran) {
+  irq_flags_t flags = spinlock_lock_irqsave(&gdt_lock);
+  gdt[num].base_low = (base & 0xFFFF);
+  gdt[num].base_middle = (base >> 16) & 0xFF;
+  gdt[num].base_high = (base >> 24) & 0xFF;
+
+  gdt[num].limit_low = (limit & 0xFFFF);
+  gdt[num].granularity = (limit >> 16) & 0x0F;
+  gdt[num].granularity |= gran & 0xF0;
+  gdt[num].access = access;
+  spinlock_unlock_irqrestore(&gdt_lock, flags);
 }
 
-// Access byte bits
-#define ACC_P  0x80
-#define ACC_DPL(n) ((n) << 5)
-#define ACC_S  0x10
-#define ACC_TYPE_CODE 0x08
-#define ACC_TYPE_DATA 0x00
-#define ACC_TYPE_RW   0x02
-#define ACC_TYPE_EXEC 0x08
+// A cleaner way to set up the 64-bit TSS descriptor
+static void set_tss_gate(int num, uint64_t base, uint64_t limit) {
+  irq_flags_t flags = spinlock_lock_irqsave(&gdt_lock);
+  gdt[num].limit_low = (limit & 0xFFFF);
+  gdt[num].base_low = (base & 0xFFFF);
+  gdt[num].base_middle = (base >> 16) & 0xFF;
+  gdt[num].access = GDT_ACCESS_TSS; // Access byte for 64-bit TSS
+  gdt[num].granularity =
+      (limit >> 16) & 0x0F; // No granularity bits (G=0, AVL=0)
+  gdt[num].base_high = (base >> 24) & 0xFF;
 
-// Flags
-#define FLG_G  0x80  // granularity 4K
-#define FLG_D  0x40  // default operand size (0 for 64-bit code)
-#define FLG_L  0x20  // 64-bit code segment
-#define FLG_AVL 0x10
+  uint32_t *base_high_ptr = (uint32_t *)&gdt[num + 1];
+  *base_high_ptr = (base >> 32);
 
-// Load segment selectors. CS requires a far jump, use assembly sequence.
-static inline void load_segments(uint16_t cs, uint16_t ds)
-{
-    // Load data segments first
-    __asm__ volatile (
-        "mov %0, %%ds\n\t"
-        "mov %0, %%es\n\t"
-        "mov %0, %%ss\n\t"
-        : : "r"(ds) : "memory");
-
-    // Far return / jump to reload CS
-    // We use pushq cs; pushq rip; lretq trick
-    uint64_t rip;
-    // label trick inside asm is more robust
-    __asm__ volatile (
-        "lea 1f(%%rip), %%rax\n\t"
-        "pushq %0\n\t"
-        "pushq %%rax\n\t"
-        "lretq\n\t"
-        "1:\n\t"
-        : : "r"((uint64_t)cs) : "rax", "memory");
-    (void)rip;
+  *((uint32_t *)base_high_ptr + 1) = 0;
+  spinlock_unlock_irqrestore(&gdt_lock, flags);
 }
 
-void gdt_init(void)
-{
-    // Null descriptor
-    set_seg_descriptor(&gdt[GDT_NULL_INDEX], 0, 0, 0, 0);
+void gdt_init(void) {
+  printk(GDT_CLASS "Initializing GDT\n");
+  gdt_ptr.limit = (sizeof(struct gdt_entry) * 7) - 1;
+  gdt_ptr.base = (uint64_t)&gdt;
 
-    // Flat Kernel Code: Present, DPL=0, Code|RW, Long mode (L=1), G=1, D=0
-    set_seg_descriptor(&gdt[GDT_KERNEL_CODE_INDEX], 0, 0x000FFFFF,
-                       ACC_P | ACC_DPL(0) | ACC_S | ACC_TYPE_EXEC | ACC_TYPE_RW,
-                       FLG_G | FLG_L);
+  set_gdt_gate(0, 0, 0, 0, 0); // 0x00: Null segment
+  set_gdt_gate(1, 0, 0xFFFFFFFF, GDT_ACCESS_CODE_PL0,
+               GDT_GRAN_CODE); // 0x08: Kernel Code
+  set_gdt_gate(2, 0, 0xFFFFFFFF, GDT_ACCESS_DATA_PL0,
+               GDT_GRAN_DATA); // 0x10: Kernel Data
+  set_gdt_gate(3, 0, 0xFFFFFFFF, GDT_ACCESS_CODE_PL3,
+               GDT_GRAN_CODE); // 0x18: User Code
+  set_gdt_gate(4, 0, 0xFFFFFFFF, GDT_ACCESS_DATA_PL3,
+               GDT_GRAN_DATA); // 0x20: User Data
 
-    // Flat Kernel Data: Present, DPL=0, Data|RW, L=0, G=1, D=1 (data/legacy)
-    set_seg_descriptor(&gdt[GDT_KERNEL_DATA_INDEX], 0, 0x000FFFFF,
-                       ACC_P | ACC_DPL(0) | ACC_S | ACC_TYPE_DATA | ACC_TYPE_RW,
-                       FLG_G | FLG_D);
+  uint64_t tss_base = (uint64_t)&tss;
+  uint64_t tss_limit = sizeof(struct tss_entry) - 1;
+  set_tss_gate(5, tss_base, tss_limit);
 
-    // Flat User Code: Present, DPL=3, Code|RW, Long mode
-    set_seg_descriptor(&gdt[GDT_USER_CODE_INDEX], 0, 0x000FFFFF,
-                       ACC_P | ACC_DPL(3) | ACC_S | ACC_TYPE_EXEC | ACC_TYPE_RW,
-                       FLG_G | FLG_L);
+  tss.iomap_base = sizeof(struct tss_entry);
 
-    // Flat User Data: Present, DPL=3, Data|RW
-    set_seg_descriptor(&gdt[GDT_USER_DATA_INDEX], 0, 0x000FFFFF,
-                       ACC_P | ACC_DPL(3) | ACC_S | ACC_TYPE_DATA | ACC_TYPE_RW,
-                       FLG_G | FLG_D);
-
-    gdtr.limit = (uint16_t)(sizeof(gdt) - 1);
-    gdtr.base  = (uint64_t)&gdt[0];
-
-    // Load GDT
-    __asm__ volatile ("lgdt %0" : : "m"(gdtr));
-
-    // Reload segments (CS via far return, data via moves)
-    load_segments(GDT_KERNEL_CODE_SEL, GDT_KERNEL_DATA_SEL);
+  gdt_flush(&gdt_ptr);
+  tss_flush();
+  printk(GDT_CLASS "GDT initialized\n");
 }
+
+void set_tss_rsp0(uint64_t rsp0) { tss.rsp0 = rsp0; }
