@@ -67,7 +67,7 @@ static void pic_write_mask(void) {
   outb(PIC2_DATA, (s_irq_mask >> 8) & 0xFF);
 }
 
-void PICMaskAll(void) {
+void pic_mask_all(void) {
   s_irq_mask = 0xFFFF;
   pic_write_mask();
 }
@@ -114,13 +114,13 @@ static void ioapic_set_entry(uint8_t index, uint64_t data) {
 // --- Core APIC Functions ---
 
 // Main entry point to initialize the APIC system
-bool ApicInstall(void) {
+bool apic_init(void) {
   if (!detect_apic()) {
     printk(KERN_ERR APIC_CLASS "No local APIC found or supported.\n");
     return false;
   }
 
-  PICMaskAll();
+  pic_mask_all();
 
   if (!setup_lapic()) {
     printk(KERN_ERR APIC_CLASS "Failed to setup Local APIC.\n");
@@ -132,14 +132,18 @@ bool ApicInstall(void) {
     return false;
   }
 
+  // Enable interrupts now that APIC is ready?
+  // Usually we wait until the scheduler or init process is ready.
+  // __asm__ volatile("sti");
+
   return true;
 }
 
-void ApicSendEoi(void) { lapic_write(LAPIC_EOI, 0); }
+void apic_send_eoi(void) { lapic_write(LAPIC_EOI, 0); }
 
 // --- I/O APIC Interrupt Management ---
 
-void ApicEnableIrq(uint8_t irq_line) {
+void apic_enable_irq(uint8_t irq_line) {
   // IRQ line -> Vector 32 + IRQ
   // Route to the current CPU's LAPIC ID (BSP)
   uint8_t dest_apic_id = lapic_get_id();
@@ -156,30 +160,30 @@ void ApicEnableIrq(uint8_t irq_line) {
   ioapic_set_entry(irq_line, redirect_entry);
 }
 
-void ApicDisableIrq(uint8_t irq_line) {
+void apic_disable_irq(uint8_t irq_line) {
   // To disable, we set the mask bit (bit 16)
   uint64_t redirect_entry = (1 << 16);
   ioapic_set_entry(irq_line, redirect_entry);
 }
 
-void ApicMaskAll(void) {
+void apic_mask_all(void) {
   // Mask all 24 redirection entries in the I/O APIC
   for (int i = 0; i < 24; i++) {
-    ApicDisableIrq(i);
+    apic_disable_irq(i);
   }
 }
 
 // --- APIC Timer Management ---
 
-void ApicTimerSetFrequency(uint32_t frequency_hz);
+void apic_timer_set_frequency(uint32_t frequency_hz);
 
-void ApicTimerInstall(uint32_t frequency_hz) {
+void apic_timer_init(uint32_t frequency_hz) {
   // Calibrate and set the initial count
-  ApicTimerSetFrequency(frequency_hz);
+  apic_timer_set_frequency(frequency_hz);
   printk(APIC_CLASS "Timer installed at %d Hz.\n", frequency_hz);
 }
 
-void ApicTimerSetFrequency(uint32_t frequency_hz) {
+void apic_timer_set_frequency(uint32_t frequency_hz) {
   if (frequency_hz == 0)
     return;
 
@@ -283,7 +287,7 @@ static bool setup_ioapic(void) {
   printk(APIC_CLASS "IOAPIC Version: 0x%x\n", version_reg);
 
   // Mask all interrupts initially
-  ApicMaskAll();
+  apic_mask_all();
 
   return true;
 }

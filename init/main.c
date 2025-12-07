@@ -104,7 +104,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   crc32_init();
 
-  ApicInstall();
+  if (!apic_init()) panic(APIC_CLASS "Failed to initialize APIC");
 
   printk(KERN_CLASS "VoidFrameX initialization complete... starting init...\n");
 
@@ -117,6 +117,8 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
       fb_ptr[i * (framebuffer->pitch / 4) + i] = 0xFFFFFF;
     }
   }
+
+  cpu_cli();
 
   system_hlt();
   __unreachable();
