@@ -234,46 +234,31 @@ static const char *parse_level_prefix(const char *fmt, int *level_io) {
       *level_io = (fmt[1] - '0');
     return fmt + 3;
   }
-  // Legacy: <n>
-  if (fmt[0] == '<' && fmt[1] >= '0' && fmt[1] <= '7' && fmt[2] == '>') {
-    if (level_io)
-      *level_io = (fmt[1] - '0');
-    return fmt + 3;
-  }
   return fmt;
 }
 
-static int printk_vroute(int level, const char *fmt, va_list args) {
-  // Format into buffer then send to log subsystem
-  // Allow optional level prefix in fmt to override selected level
-  fmt = parse_level_prefix(fmt, &level);
-  printk_buf_ptr = printk_buf;
-  printk_buf_rem = (int)sizeof(printk_buf);
-  int cnt = do_printf(buf_putc, fmt, args);
-  // NUL terminate
-  *printk_buf_ptr = '\0';
-  log_write_str(level, printk_buf);
-  return cnt;
-}
-
-int vfprintk(int fd, const char *fmt, va_list args) {
+int vprintk(const char *fmt, va_list args) {
   if (!fmt)
     return -1;
 
-  int level = (fd == STDERR_FD) ? KLOG_ERR : KLOG_INFO;
-  return printk_vroute(level, fmt, args);
-}
+  int level = KLOG_INFO;
+  // Parse optional level prefix (e.g. "$3$")
+  const char *real_fmt = parse_level_prefix(fmt, &level);
 
-int vprintk(const char *fmt, va_list args) {
-  return vfprintk(STDOUT_FD, fmt, args);
-}
+  // Prepare buffer
+  printk_buf_ptr = printk_buf;
+  printk_buf_rem = (int)sizeof(printk_buf);
 
-int fprintk(int fd, const char *fmt, ...) {
-  va_list args;
-  va_start(args, fmt);
-  int ret = vfprintk(fd, fmt, args);
-  va_end(args);
-  return ret;
+  // Format message
+  int count = do_printf(buf_putc, real_fmt, args);
+
+  // NUL terminate
+  *printk_buf_ptr = '\0';
+
+  // Write to log subsystem
+  log_write_str(level, printk_buf);
+
+  return count;
 }
 
 // Non-variadic version for testing
