@@ -339,11 +339,6 @@ void pmm_free_pages(uint64_t phys_addr, size_t count) {
   spinlock_unlock_irqrestore(&pmm_lock, flags);
 }
 
-void pmm_get_stats(pmm_stats_t *stats) {
-  if (!stats)
-    return;
-
-  irq_flags_t flags = spinlock_lock_irqsave(&pmm_lock);
-  *stats = pmm_stats;
-  spinlock_unlock_irqrestore(&pmm_lock, flags);
+pmm_stats_t * pmm_get_stats() {
+  return (pmm_stats_t*)(&pmm_stats);
 }

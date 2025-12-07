@@ -81,9 +81,9 @@ void pmm_free_pages(uint64_t phys_addr, size_t count);
 /**
  * Get current PMM statistics.
  *
- * @param stats Pointer to stats structure to fill
+ * @return Pointer to stats structure
  */
-void pmm_get_stats(pmm_stats_t *stats);
+pmm_stats_t * pmm_get_stats(void);
 
 /**
  * Convert physical address to virtual address using HHDM.

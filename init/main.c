@@ -66,7 +66,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   printk(KERN_CLASS "copyright (C) 2025 assembler-0\n");
   printk(KERN_CLASS "build: %s\n", VOIDFRAMEX_BUILD_DATE);
   printk(KERN_CLASS "start_kernel @ %p\n", (void *)start_kernel);
-  panic(KERN_CLASS "test!");
+
   gdt_init();
 
   smp_init();
@@ -88,11 +88,10 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     pmm_free_pages(pages4, 4);
     printk(TEST_CLASS "Freed pages\n");
     
-    // // Get stats
-    // pmm_stats_t stats;
-    // pmm_get_stats(&stats);
-    // printk(TEST_CLASS "After free: %llu pages free, %llu pages used\n",
-    //         stats.free_pages, stats.used_pages);
+    // Get stats
+    pmm_stats_t *stats = pmm_get_stats();
+    printk(TEST_CLASS "After free: %llu pages free, %llu pages used\n",
+            stats->free_pages, stats->used_pages);
   } else {
     panic(KERN_CLASS "Memory map or HHDM not available");
   }
