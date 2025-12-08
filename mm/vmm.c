@@ -5,7 +5,7 @@
 #include <kernel/spinlock.h>
 #include <lib/printk.h>
 #include <lib/string.h>
-#include <mm/pmm.h>
+#include <arch/x64/mm/pmm.h>
 
 // Global kernel PML4 (physical address)
 uint64_t g_kernel_pml4 = 0;

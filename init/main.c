@@ -13,7 +13,7 @@
 #include <limine/limine.h>
 #include <linearfb/font.h>
 #include <linearfb/linearfb.h>
-#include <mm/pmm.h>
+#include <arch/x64/mm/pmm.h>
 
 #define VOIDFRAMEX_VERSION "0.0.1"
 #define VOIDFRAMEX_BUILD_DATE __DATE__ " " __TIME__

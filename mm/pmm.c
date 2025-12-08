@@ -13,7 +13,7 @@
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <limine/limine.h>
-#include <mm/pmm.h>
+#include <arch/x64/mm/pmm.h>
 
 // Maximum physical memory we support (16 GB - increase if needed)
 // 16GB with 4KB pages = 4M pages = 512KB bitmap

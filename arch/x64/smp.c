@@ -3,6 +3,8 @@
 #include <limine/limine.h>
 #include <lib/printk.h>
 #include <arch/x64/cpu.h>
+#include <arch/x64/idt/idt.h>
+#include <drivers/apic/apic.h>
 
 // SMP Request
 __attribute__((used, section(".limine_requests"))) 
@@ -14,19 +16,27 @@ static volatile struct limine_mp_request mp_request = {
 static uint64_t cpu_count = 0;
 static volatile int cpus_online = 0;
 volatile int smp_lock = 0;
+static volatile int smp_start_barrier = 0; // BSP releases APs to start interrupts
 
 // The entry point for Application Processors (APs)
 static void smp_ap_entry(struct limine_mp_info *info) {
+    // Basic per-CPU init for APs
     printk(SMP_CLASS "CPU LAPIC ID %u starting up...\n", info->lapic_id);
 
-    // Increment online count atomically
+    // Load IDT for this CPU
+    idt_install();
+
+    // Mark this AP as online
     __atomic_fetch_add(&cpus_online, 1, __ATOMIC_RELEASE);
 
-    // Signal that we are online (debug)
-    // Note: printk is not strictly thread-safe without locks, be careful.
-    // We'll skip printk here to avoid race conditions on the serial port/buffer for now.
+    // Wait until BSP releases start barrier before enabling interrupts
+    while (!__atomic_load_n(&smp_start_barrier, __ATOMIC_ACQUIRE)) {
+        cpu_relax();
+    }
 
-    // Loop forever
+    printk(SMP_CLASS "CPU LAPIC ID %u online.\n", info->lapic_id);
+
+    // Idle loop for now
     while (1) {
         cpu_hlt();
     }
@@ -61,11 +71,14 @@ void smp_init(void) {
         __atomic_store_n(&cpu->goto_address, smp_ap_entry, __ATOMIC_RELEASE);
     }
 
-    // Wait a bit for APs to come online (simple spin)
-    // In a real kernel, you'd sync more robustly
-    uint64_t start_wait = 0; // rdtsc(); // If we had a calibrated timer...
-    // Just a simple loop for demo
-    for(volatile int k=0; k<10000000; k++);
+    // Wait until all APs have reported online
+    int expected_aps = (int)(cpu_count > 0 ? (cpu_count - 1) : 0);
+    while (__atomic_load_n(&cpus_online, __ATOMIC_ACQUIRE) < expected_aps) {
+        cpu_relax();
+    }
+
+    // Release APs to enable interrupts and proceed
+    __atomic_store_n(&smp_start_barrier, 1, __ATOMIC_RELEASE);
 
     printk(SMP_CLASS "%d APs online.\n", cpus_online);
 }
@@ -75,8 +88,6 @@ uint64_t smp_get_cpu_count(void) {
 }
 
 uint64_t smp_get_id(void) {
-    // This is tricky without per-cpu data set up.
-    // We would need to read the Local APIC ID register.
-    // For now, return 0 (BSP) as a placeholder or implement LAPIC read.
-    return 0; 
+    // Use Local APIC ID when available
+    return (uint64_t)lapic_get_id();
 }
