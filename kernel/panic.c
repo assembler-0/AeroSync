@@ -4,13 +4,15 @@
 #include <kernel/classes.h>
 #include <lib/printk.h>
 
+#define PANIC KERN_EMERG PANIC_CLASS
+
 void __exit __noinline __noreturn __sysv_abi panic_early() {
     system_hlt();
     __unreachable();
 }
 
 void __exit __noinline __noreturn __sysv_abi panic(const char *msg) {
-    printk(KERN_EMERG PANIC_CLASS "panic - not syncing: %s", msg);
+    printk(PANIC"panic - not syncing: %s", msg);
     system_hlt();
     __unreachable();
 }
@@ -19,37 +21,36 @@ void __exit __noinline __noreturn __sysv_abi panic_exception(cpu_regs *regs) {
     char exception[256];
     get_exception_as_str(exception, regs->interrupt_number);
 
-    printk("\n" KERN_EMERG "-----------------------------------------------------"
+    printk(PANIC"-----------------------------------------------------"
                             "---------------------------\n");
-    printk(KERN_EMERG PANIC_CLASS
-            "EXCEPTION DETECTED: %s (Vector: 0x%lx, Error: 0x%lx)\n",
+    printk(PANIC
+            "panic - not syncing - exception: %s (V: 0x%llx EC: 0x%llx)\n",
             exception, regs->interrupt_number, regs->error_code);
-    printk(KERN_EMERG PANIC_CLASS "CPU Halting due to fatal exception.\n");
-    printk(KERN_EMERG "----------------------------------------------------------"
+    printk(PANIC"----------------------------------------------------------"
                     "----------------------\n");
 
     // Dump Execution State
-    printk(KERN_EMERG "Context:\n");
-    printk(KERN_EMERG "  RIP: %016llx  CS: %04llx  RFLAGS: %016llx\n", regs->rip,
+    printk(PANIC"Context:\n");
+    printk(PANIC"  RIP: %llx  CS: %llx  RFLAGS: %llx\n", regs->rip,
             regs->cs, regs->rflags);
-    printk(KERN_EMERG "  RSP: %016llx  SS: %04llx\n", regs->rsp, regs->ss);
+    printk(PANIC"  RSP: %llx  SS: %llx\n", regs->rsp, regs->ss);
 
     // Dump General Purpose Registers
-    printk(KERN_EMERG "\nGeneral Purpose Registers:\n");
-    printk(KERN_EMERG "  RAX: %016llx  RBX: %016llx  RCX: %016llx\n", regs->rax,
+    printk(PANIC"General Purpose Registers:\n");
+    printk(PANIC"  RAX: %llx  RBX: %llx  RCX: %llx\n", regs->rax,
             regs->rbx, regs->rcx);
-    printk(KERN_EMERG "  RDX: %016llx  RSI: %016llx  RDI: %016llx\n", regs->rdx,
+    printk(PANIC"  RDX: %llx  RSI: %llx  RDI: %llx\n", regs->rdx,
             regs->rsi, regs->rdi);
-    printk(KERN_EMERG "  RBP: %016llx  R8 : %016llx  R9 : %016llx\n", regs->rbp,
+    printk(PANIC"  RBP: %llx  R8 : %llx  R9 : %llx\n", regs->rbp,
             regs->r8, regs->r9);
-    printk(KERN_EMERG "  R10: %016llx  R11: %016llx  R12: %016llx\n", regs->r10,
+    printk(PANIC"  R10: %llx  R11: %llx  R12: %llx\n", regs->r10,
             regs->r11, regs->r12);
-    printk(KERN_EMERG "  R13: %016llx  R14: %016llx  R15: %016llx\n", regs->r13,
+    printk(PANIC"  R13: %llx  R14: %llx  R15: %llx\n", regs->r13,
             regs->r14, regs->r15);
 
     // Dump Segments
-    printk(KERN_EMERG "\nSegment Registers:\n");
-    printk(KERN_EMERG "  DS: %04llx  ES: %04llx  FS: %04llx  GS: %04llx\n",
+    printk(PANIC"Segment Registers:\n");
+    printk(PANIC"  DS: %llx  ES: %llx  FS: %llx  GS: %llx\n",
             regs->ds, regs->es, regs->fs, regs->gs);
 
     // Dump Control Registers
@@ -59,11 +60,11 @@ void __exit __noinline __noreturn __sysv_abi panic_exception(cpu_regs *regs) {
     __asm__ volatile("mov %%cr3, %0" : "=r"(cr3));
     __asm__ volatile("mov %%cr4, %0" : "=r"(cr4));
 
-    printk(KERN_EMERG "\nControl Registers:\n");
-    printk(KERN_EMERG "  CR0: %016llx  CR2: %016llx\n", cr0, cr2);
-    printk(KERN_EMERG "  CR3: %016llx  CR4: %016llx\n", cr3, cr4);
+    printk(PANIC"Control Registers:\n");
+    printk(PANIC"  CR0: %llx  CR2: %llx\n", cr0, cr2);
+    printk(PANIC"  CR3: %llx  CR4: %llx\n", cr3, cr4);
 
-    printk(KERN_EMERG "----------------------------------------------------------"
+    printk(PANIC"----------------------------------------------------------"
                     "----------------------\n");
 
     system_hlt();
