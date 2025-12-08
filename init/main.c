@@ -61,9 +61,10 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     panic_early();
   const int serial_ret = serial_init();
   if (serial_ret != 0)
-    if (serial_init_port(COM2) != 0 || serial_init_port(COM3) != 0 ||
-        serial_init_port(COM4) != 0)
-      panic_early();
+    if (serial_init_port(COM2) != 0 ||
+        serial_init_port(COM3) != 0 ||
+        serial_init_port(COM4) != 0
+      ) panic_early();
 
   linearfb_font_t font = {
     .width = 8, .height = 16, .data = (uint8_t *)console_font

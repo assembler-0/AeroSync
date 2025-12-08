@@ -23,6 +23,8 @@ static int klog_console_level = KLOG_INFO;
 static log_sink_putc_t klog_console_sink = serial_write_char; // default to serial
 static spinlock_t klog_lock = 0;
 static int klog_inited = 0;
+// Serialize immediate console output across CPUs to prevent mangled lines
+static spinlock_t klog_console_lock = 0;
 
 static inline uint32_t rb_space(void) {
   // one byte left unused rule to distinguish full/empty
@@ -93,10 +95,12 @@ int log_write_str(int level, const char *msg) {
 
   // Console output (immediate) respecting console level
   if (klog_console_sink && level <= klog_console_level) {
+    irq_flags_t f = spinlock_lock_irqsave(&klog_console_lock);
     console_emit_prefix(level);
     const char *p = msg;
     while (*p)
       klog_console_sink(*p++);
+    spinlock_unlock_irqrestore(&klog_console_lock, f);
   }
 
   if (!klog_inited)

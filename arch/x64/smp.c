@@ -17,9 +17,7 @@ volatile int smp_lock = 0;
 
 // The entry point for Application Processors (APs)
 static void smp_ap_entry(struct limine_mp_info *info) {
-
-    // TODO: Initialize per-CPU structures here (GDT, IDT, stacks, etc.)
-    // For now, we just mark the CPU as online.
+    printk(SMP_CLASS "CPU LAPIC ID %u starting up...\n", info->lapic_id);
 
     // Increment online count atomically
     __atomic_fetch_add(&cpus_online, 1, __ATOMIC_RELEASE);

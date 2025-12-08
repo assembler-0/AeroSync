@@ -10,9 +10,6 @@ void irq_common_stub(cpu_regs *regs) {
     panic_exception(regs);
   }
 
-  // Hardware IRQs (32+)
-  printk(IRQ_CLASS "IRQ %d fired\n", regs->interrupt_number - 32);
-
   // CRITICAL: Send EOI to APIC to acknowledge the interrupt
   apic_send_eoi();
 }

@@ -4,18 +4,19 @@
 #include <linearfb/linearfb.h>
 
 // Buffering formatter that writes to the logging subsystem
-typedef void (*output_func_t)(char c);
+typedef void (*output_func_t)(char c, void *ctx);
 
-// Temporary per-call buffer for formatting
-static char printk_buf[512];
-static char *printk_buf_ptr;
-static int printk_buf_rem;
+typedef struct {
+  char *ptr;
+  int rem;
+} buf_ctx_t;
 
-static void buf_putc(char c) {
-  if (printk_buf_rem > 1) {
-    *printk_buf_ptr++ = c;
-    printk_buf_rem--;
-  }
+static void buf_putc(char c, void *ctx) {
+  buf_ctx_t *b = (buf_ctx_t *)ctx;
+  if (!b || b->rem <= 1)
+    return;
+  *b->ptr++ = c;
+  b->rem--;
 }
 
 static printk_backend_t fb_backend = {
@@ -55,7 +56,7 @@ void printk_init_auto(void) {
 }
 
 // Simple printf implementation
-static int do_printf(output_func_t output, const char *fmt, va_list args) {
+static int do_printf(output_func_t output, void *out_ctx, const char *fmt, va_list args) {
   if (!output || !fmt)
     return -1;
 
@@ -78,7 +79,7 @@ static int do_printf(output_func_t output, const char *fmt, va_list args) {
           }
         }
         while (i > 0) {
-          output(buf[--i]);
+          output(buf[--i], out_ctx);
           count++;
         }
         break;
@@ -87,7 +88,7 @@ static int do_printf(output_func_t output, const char *fmt, va_list args) {
       case 'd': {
         int val = va_arg(args, int);
         if (val < 0) {
-          output('-');
+          output('-', out_ctx);
           count++;
           val = -val;
         }
@@ -102,7 +103,7 @@ static int do_printf(output_func_t output, const char *fmt, va_list args) {
           }
         }
         while (i > 0) {
-          output(buf[--i]);
+          output(buf[--i], out_ctx);
           count++;
         }
         break;
@@ -121,55 +122,55 @@ static int do_printf(output_func_t output, const char *fmt, va_list args) {
               buf[i++] = '0' + (val % 10);
               val /= 10;
             }
-          }
-          while (i > 0) {
-            output(buf[--i]);
-            count++;
-          }
-        } else if (*(fmt + 1) == 'l' && *(fmt + 2) == 'd') {
-          fmt += 2;
-          int64_t val = va_arg(args, int64_t);
-          if (val < 0) {
-            output('-');
-            count++;
-            val = -val;
-          }
-          char buf[24];
-          int i = 0;
-          if (val == 0) {
-            buf[i++] = '0';
-          } else {
-            while (val > 0) {
-              buf[i++] = '0' + (val % 10);
-              val /= 10;
+            }
+            while (i > 0) {
+              output(buf[--i], out_ctx);
+              count++;
+            }
+          } else if (*(fmt + 1) == 'l' && *(fmt + 2) == 'd') {
+            fmt += 2;
+            int64_t val = va_arg(args, int64_t);
+            if (val < 0) {
+              output('-', out_ctx);
+              count++;
+              val = -val;
+            }
+            char buf[24];
+            int i = 0;
+            if (val == 0) {
+              buf[i++] = '0';
+            } else {
+              while (val > 0) {
+                buf[i++] = '0' + (val % 10);
+                val /= 10;
+              }
+            }
+            while (i > 0) {
+              output(buf[--i], out_ctx);
+              count++;
+            }
+          } else if (*(fmt + 1) == 'l' && *(fmt + 2) == 'x') {
+            // 64-bit hex
+            fmt += 2;
+            uint64_t val = va_arg(args, uint64_t);
+            char buf[17];
+            int i = 0;
+            if (val == 0) {
+              buf[i++] = '0';
+            } else {
+              while (val > 0) {
+                int digit = val & 0xF;
+                buf[i++] = (digit < 10) ? '0' + digit : 'a' + digit - 10;
+                val >>= 4;
+              }
+            }
+            while (i > 0) {
+              output(buf[--i], out_ctx);
+              count++;
             }
           }
-          while (i > 0) {
-            output(buf[--i]);
-            count++;
-          }
-        } else if (*(fmt + 1) == 'l' && *(fmt + 2) == 'x') {
-          // 64-bit hex
-          fmt += 2;
-          uint64_t val = va_arg(args, uint64_t);
-          char buf[17];
-          int i = 0;
-          if (val == 0) {
-            buf[i++] = '0';
-          } else {
-            while (val > 0) {
-              int digit = val & 0xF;
-              buf[i++] = (digit < 10) ? '0' + digit : 'a' + digit - 10;
-              val >>= 4;
-            }
-          }
-          while (i > 0) {
-            output(buf[--i]);
-            count++;
-          }
+          break;
         }
-        break;
-      }
 
       case 'x': {
         unsigned int val = va_arg(args, unsigned int);
@@ -187,7 +188,7 @@ static int do_printf(output_func_t output, const char *fmt, va_list args) {
         }
 
         while (i > 0) {
-          output(buf[--i]);
+          output(buf[--i], out_ctx);
           count++;
         }
         break;
@@ -197,8 +198,8 @@ static int do_printf(output_func_t output, const char *fmt, va_list args) {
         void *ptr = va_arg(args, void *);
         uint64_t val = (uint64_t)ptr;
 
-        output('0');
-        output('x');
+        output('0', out_ctx);
+        output('x', out_ctx);
         count += 2;
 
         char buf[17];
@@ -215,7 +216,7 @@ static int do_printf(output_func_t output, const char *fmt, va_list args) {
         }
 
         while (i > 0) {
-          output(buf[--i]);
+          output(buf[--i], out_ctx);
           count++;
         }
         break;
@@ -227,7 +228,7 @@ static int do_printf(output_func_t output, const char *fmt, va_list args) {
           str = "(null)";
 
         while (*str) {
-          output(*str++);
+          output(*str++, out_ctx);
           count++;
         }
         break;
@@ -235,24 +236,24 @@ static int do_printf(output_func_t output, const char *fmt, va_list args) {
 
       case 'c': {
         char c = (char)va_arg(args, int);
-        output(c);
+        output(c, out_ctx);
         count++;
         break;
       }
 
       case '%':
-        output('%');
+        output('%', out_ctx);
         count++;
         break;
 
       default:
-        output('%');
-        output(*fmt);
+        output('%', out_ctx);
+        output(*fmt, out_ctx);
         count += 2;
         break;
       }
     } else {
-      output(*fmt);
+      output(*fmt, out_ctx);
       count++;
     }
     fmt++;
@@ -281,18 +282,18 @@ int vprintk(const char *fmt, va_list args) {
   // Parse optional level prefix (e.g. "$3$")
   const char *real_fmt = parse_level_prefix(fmt, &level);
 
-  // Prepare buffer
-  printk_buf_ptr = printk_buf;
-  printk_buf_rem = (int)sizeof(printk_buf);
+  // Prepare buffer (stack-local to avoid SMP races)
+  char local_buf[512];
+  buf_ctx_t bctx = {.ptr = local_buf, .rem = (int)sizeof(local_buf)};
 
   // Format message
-  int count = do_printf(buf_putc, real_fmt, args);
+  int count = do_printf(buf_putc, &bctx, real_fmt, args);
 
   // NUL terminate
-  *printk_buf_ptr = '\0';
+  *bctx.ptr = '\0';
 
   // Write to log subsystem
-  log_write_str(level, printk_buf);
+  log_write_str(level, local_buf);
 
   return count;
 }
