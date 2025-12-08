@@ -3,10 +3,13 @@
 #include <kernel/types.h>
 #include <lib/log.h>
 
+typedef int (*printk_backend_probe)(void);
+
 typedef struct printk_backend {
   const char *name;
   int priority;              // bigger = preferred
   log_sink_putc_t putc;
+  printk_backend_probe probe;
 } printk_backend_t;
 
 #define KERN_EMERG "$0$"

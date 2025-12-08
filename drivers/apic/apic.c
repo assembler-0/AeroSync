@@ -2,7 +2,7 @@
 #include <arch/x64/mm/vmm.h>
 #include <arch/x64/smp.h>
 #include <drivers/apic/apic.h>
-#include <drivers/io.h>
+#include <arch/x64/io.h>
 #include <kernel/classes.h>
 #include <lib/printk.h>
 

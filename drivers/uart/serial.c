@@ -1,4 +1,4 @@
-#include <drivers/io.h>
+#include <arch/x64/io.h>
 #include <drivers/uart/serial.h>
 
 // Serial port register offsets
@@ -36,6 +36,10 @@
 
 static uint16_t serial_port = COM1;
 static int serial_initialized = 0;
+
+int serial_probe(void) {
+    return serial_initialized;
+}
 
 int serial_init(void) {
     int result = serial_init_port(COM1);

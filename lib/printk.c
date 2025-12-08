@@ -22,12 +22,14 @@ static printk_backend_t fb_backend = {
   .name = "linearfb",
   .priority = 100,
   .putc = linearfb_console_putc,
+  .probe = linearfb_probe,
 };
 
 static printk_backend_t serial_backend = {
   .name = "serial",
   .priority = 50,
   .putc = serial_write_char,
+  .probe = serial_probe,
 };
 
 static printk_backend_t *printk_backends[] = {
@@ -41,7 +43,10 @@ void printk_init_auto(void) {
   printk_backend_t target = {0};
   int last_priority = -1;
   for (int i = 0; i < num_backends; i++) {
-    if (printk_backends[i]->priority > last_priority && printk_backends[i]) {
+    if (printk_backends[i] &&
+       printk_backends[i]->priority > last_priority &&
+       printk_backends[i]->probe()
+      ) {
       target = *printk_backends[i];
       last_priority = printk_backends[i]->priority;
     }

@@ -13,6 +13,9 @@ int serial_init(void);
 // Initialize specific serial port
 int serial_init_port(uint16_t port);
 
+// probing
+int serial_probe();
+
 // Status functions
 int serial_transmit_empty(void);
 int serial_data_available(void);

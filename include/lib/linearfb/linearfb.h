@@ -25,6 +25,9 @@ int linearfb_init(struct limine_framebuffer_request *fb_req);
 // Set mode (console/graphics)
 void linearfb_set_mode(linearfb_mode_t mode);
 
+// probing
+int linearfb_probe(void);
+
 // Load font (bitmap, width, height, glyph count)
 int linearfb_load_font(const linearfb_font_t* font, uint32_t count);
 

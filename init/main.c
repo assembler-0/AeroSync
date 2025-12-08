@@ -11,24 +11,23 @@
 #include <kernel/panic.h>
 #include <lib/printk.h>
 #include <limine/limine.h>
+#include <linearfb/font.h>
 #include <linearfb/linearfb.h>
 #include <mm/pmm.h>
-#include <linearfb/font.h>
 
 #define VOIDFRAMEX_VERSION "0.0.1"
 #define VOIDFRAMEX_BUILD_DATE __DATE__ " " __TIME__
 #define VOIDFRAMEX_COMPILER_VERSION __VERSION__
 
 // Set Limine Base Revision to 3
-__attribute__((
-  used,
-  section(".limine_requests"))) static volatile uint64_t
+__attribute__((used, section(".limine_requests"))) static volatile uint64_t
     limine_base_revision[3] = LIMINE_BASE_REVISION(3);
 
 // Request framebuffer
 __attribute__((
     used,
-    section(".limine_requests"))) static volatile struct limine_framebuffer_request
+    section(
+        ".limine_requests"))) static volatile struct limine_framebuffer_request
     framebuffer_request = {.id = LIMINE_FRAMEBUFFER_REQUEST_ID, .revision = 0};
 
 // Request memory map
@@ -56,7 +55,8 @@ __attribute__((
 
 void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
-  const int linear_ret = linearfb_init((struct limine_framebuffer_request*)&framebuffer_request);
+  const int linear_ret =
+      linearfb_init((struct limine_framebuffer_request *)&framebuffer_request);
   if (linear_ret != 0)
     panic_early();
   const int serial_ret = serial_init();
@@ -66,9 +66,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
       panic_early();
 
   linearfb_font_t font = {
-    .width = 8,
-    .height = 16,
-    .data = (uint8_t*)console_font
+    .width = 8, .height = 16, .data = (uint8_t *)console_font
   };
   linearfb_load_font(&font, 256);
   linearfb_set_mode(FB_MODE_CONSOLE);
@@ -97,18 +95,14 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   if (!apic_init())
     panic(APIC_CLASS "Failed to initialize APIC");
-
-  apic_timer_init(250);
-  printk(APIC_CLASS "APIC Timer initialized\n");
-
-  apic_enable_irq(0);
+  apic_timer_init(100);
 
   printk(KERN_CLASS "Enabling interrupts\n");
 
-
   cpu_sti();
 
-  system_hlt();
+  while (1)
+    cpu_hlt();
 
   __unreachable();
 }
