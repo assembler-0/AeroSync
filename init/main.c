@@ -14,6 +14,7 @@
 #include <linearfb/font.h>
 #include <linearfb/linearfb.h>
 #include <arch/x64/mm/pmm.h>
+#include <arch/x64/features/features.h>
 
 #define VOIDFRAMEX_VERSION "0.0.1"
 #define VOIDFRAMEX_BUILD_DATE __DATE__ " " __TIME__
@@ -91,6 +92,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   gdt_init();
   idt_install();
+  cpu_features_init();
   smp_init();
   crc32_init();
 

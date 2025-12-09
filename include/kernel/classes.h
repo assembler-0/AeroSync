@@ -38,6 +38,15 @@
 #define SHA_CLASS "[CRPT::SHA] " // SHA*
 
 /* =========================================================================
+ *  SANITIZER
+ * ========================================================================= */
+#define UBSAN_CLASS "[SAN::UBSAN] " // Undefined Behavior Sanitizer
+#define ASAN_CLASS "[SAN::ASAN] "   // Address Sanitizer
+#define TSAN_CLASS "[SAN::TSAN] "   // Thread Sanitizer
+#define MSAN_CLASS "[SAN::MSAN] "   // Memory Sanitizer
+#define LSAN_CLASS "[SAN::LSAN] "   // Leak Sanitizer
+
+/* =========================================================================
  *  MEMORY MANAGEMENT
  * ========================================================================= */
 ///@section Physical & Virtual Memory
@@ -50,6 +59,9 @@
 #define DYN_CLASS "[MM::DYN] "   // Kernel Heap (kmalloc/kfree) generic
 #define SLAB_CLASS "[MM::SLAB] " // Slab allocator specific
 #define SHM_CLASS "[MM::SHM] "   // Shared Memory (IPC)
+
+///@section Stack protection
+#define STACK_CLASS "[MM::STACK] " // Stack overflow protection
 
 /* =========================================================================
  *  PROCESS MANAGEMENT & SCHEDULING

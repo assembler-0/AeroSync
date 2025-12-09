@@ -14,6 +14,7 @@ set(ARCH_SOURCES
     arch/x64/smp.c
     arch/x64/irq/irq.c
     arch/x64/exception.c
+    arch/x64/features/features.c
 )
 
 set(INIT_SOURCES
@@ -40,6 +41,8 @@ set(LIB_SOURCES
 set(MM_SOURCES
     mm/pmm.c
     mm/vmm.c
+    mm/stack.c
+    mm/san/ubsan.c
 )
 
 set(CRYPTO_SOURCES
