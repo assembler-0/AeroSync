@@ -11,6 +11,11 @@
 // A spinlock is a simple integer flag stored inline; pass its address to APIs
 typedef volatile int spinlock_t;
 
+// Initialize a spinlock
+static inline void spinlock_init(spinlock_t *lock) {
+    *lock = 0;
+}
+
 // Exponential backoff delay
 static inline void backoff_delay(uint64_t cycles) {
     uint64_t start = rdtsc();

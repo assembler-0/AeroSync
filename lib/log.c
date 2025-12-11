@@ -3,6 +3,7 @@
 #include <kernel/spinlock.h>
 #include <lib/log.h>
 #include <lib/string.h>
+#include <lib/ringbuf.h>
 
 // Simple global ring buffer for log messages, Linux-like but minimal
 
@@ -15,9 +16,8 @@ typedef struct {
   uint16_t len;  // payload length (bytes)
 } __packed klog_hdr_t;
 
-static char klog_ring[KLOG_RING_SIZE];
-static uint32_t klog_head; // write position
-static uint32_t klog_tail; // read position
+static char klog_ring_data[KLOG_RING_SIZE];
+static ringbuf_t klog_ring;
 static int klog_level = KLOG_INFO;
 static int klog_console_level = KLOG_INFO;
 static log_sink_putc_t klog_console_sink = serial_write_char; // default to serial
@@ -26,39 +26,18 @@ static int klog_inited = 0;
 // Serialize immediate console output across CPUs to prevent mangled lines
 static spinlock_t klog_console_lock = 0;
 
-static inline uint32_t rb_space(void) {
-  // one byte left unused rule to distinguish full/empty
-  if (klog_head >= klog_tail)
-    return (KLOG_RING_SIZE - (klog_head - klog_tail) - 1);
-  return (klog_tail - klog_head - 1);
-}
-
-static void rb_advance(uint32_t *p, uint32_t n) {
-  *p = (*p + n) % KLOG_RING_SIZE;
-}
-
 static void rb_drop_oldest(uint32_t need) {
-  // Drop oldest records until 'need' bytes available
-  while (rb_space() < need) {
-    // Read header at tail
+  while (ringbuf_space(&klog_ring) < need) {
     klog_hdr_t hdr;
-    if (KLOG_RING_SIZE - klog_tail >= sizeof(hdr)) {
-      memcpy(&hdr, &klog_ring[klog_tail], sizeof(hdr));
-    } else {
-      // header wraps
-      char tmp[sizeof(hdr)];
-      uint32_t first = KLOG_RING_SIZE - klog_tail;
-      memcpy(tmp, &klog_ring[klog_tail], first);
-      memcpy(tmp + first, &klog_ring[0], sizeof(hdr) - first);
-      memcpy(&hdr, tmp, sizeof(hdr));
-    }
+    if (ringbuf_peek(&klog_ring, &hdr, sizeof(hdr)) < sizeof(hdr))
+      break;
     uint32_t drop = sizeof(hdr) + hdr.len;
-    rb_advance(&klog_tail, drop);
+    ringbuf_skip(&klog_ring, drop);
   }
 }
 
 void log_init(const log_sink_putc_t backend) {
-  klog_head = klog_tail = 0;
+  ringbuf_init(&klog_ring, klog_ring_data, KLOG_RING_SIZE);
   klog_level = KLOG_INFO;
   klog_console_level = KLOG_INFO;
   klog_console_sink = backend;
@@ -129,41 +108,13 @@ int log_write_str(int level, const char *msg) {
   uint64_t flags = spinlock_lock_irqsave(&klog_lock);
 
   uint32_t need = sizeof(klog_hdr_t) + (uint32_t)len;
-  if (rb_space() < need)
+  if (ringbuf_space(&klog_ring) < need)
     rb_drop_oldest(need);
 
-  // Write header (possibly wrapping)
+  // Write header and payload
   klog_hdr_t hdr = {.level = (uint8_t)level, .len = (uint16_t)len};
-  if (KLOG_RING_SIZE - klog_head >= sizeof(hdr)) {
-    memcpy(&klog_ring[klog_head], &hdr, sizeof(hdr));
-    rb_advance(&klog_head, sizeof(hdr));
-  } else {
-    uint32_t first = KLOG_RING_SIZE - klog_head;
-    memcpy(&klog_ring[klog_head], &hdr, first);
-    memcpy(&klog_ring[0], ((char *)&hdr) + first, sizeof(hdr) - first);
-    rb_advance(&klog_head, sizeof(hdr));
-  }
-
-  // Write payload - use volatile to prevent over-aggressive optimization
-  volatile char *ring_ptr = (volatile char *)&klog_ring[klog_head];
-  volatile const char *msg_ptr = (volatile const char *)msg;
-
-  if (KLOG_RING_SIZE - klog_head >= (uint32_t)len) {
-    for (int i = 0; i < len; i++) {
-      ring_ptr[i] = msg_ptr[i];
-    }
-    rb_advance(&klog_head, (uint32_t)len);
-  } else {
-    uint32_t first = KLOG_RING_SIZE - klog_head;
-    for (uint32_t i = 0; i < first; i++) {
-      ring_ptr[i] = msg_ptr[i];
-    }
-    volatile char *ring_start = (volatile char *)&klog_ring[0];
-    for (uint32_t i = 0; i < (uint32_t)len - first; i++) {
-      ring_start[i] = msg_ptr[first + i];
-    }
-    rb_advance(&klog_head, (uint32_t)len);
-  }
+  ringbuf_write(&klog_ring, &hdr, sizeof(hdr));
+  ringbuf_write(&klog_ring, msg, len);
 
   spinlock_unlock_irqrestore(&klog_lock, flags);
   return len;
@@ -177,46 +128,31 @@ int log_read(char *out_buf, int out_buf_len, int *out_level) {
 
   uint64_t flags = spinlock_lock_irqsave(&klog_lock);
 
-  if (klog_head == klog_tail) {
+  if (ringbuf_empty(&klog_ring)) {
     spinlock_unlock_irqrestore(&klog_lock, flags);
     return 0; // empty
   }
 
   klog_hdr_t hdr;
-  if (KLOG_RING_SIZE - klog_tail >= sizeof(hdr)) {
-    memcpy(&hdr, &klog_ring[klog_tail], sizeof(hdr));
-    rb_advance(&klog_tail, sizeof(hdr));
-  } else {
-    char tmp[sizeof(hdr)];
-    uint32_t first = KLOG_RING_SIZE - klog_tail;
-    memcpy(tmp, &klog_ring[klog_tail], first);
-    memcpy(tmp + first, &klog_ring[0], sizeof(hdr) - first);
-    memcpy(&hdr, tmp, sizeof(hdr));
-    rb_advance(&klog_tail, sizeof(hdr));
+  if (ringbuf_read(&klog_ring, &hdr, sizeof(hdr)) < sizeof(hdr)) {
+    spinlock_unlock_irqrestore(&klog_lock, flags);
+    return 0;
   }
 
   int to_copy = hdr.len;
   if (to_copy > out_buf_len - 1)
     to_copy = out_buf_len - 1; // reserve NUL
 
-  if (KLOG_RING_SIZE - klog_tail >= (uint32_t)to_copy) {
-    memcpy(out_buf, &klog_ring[klog_tail], (uint32_t)to_copy);
-    rb_advance(&klog_tail, hdr.len);
-  } else {
-    uint32_t first = KLOG_RING_SIZE - klog_tail;
-    if (first > (uint32_t)to_copy)
-      first = (uint32_t)to_copy;
-    memcpy(out_buf, &klog_ring[klog_tail], first);
-    if ((uint32_t)to_copy > first) {
-      memcpy(out_buf + first, &klog_ring[0], (uint32_t)to_copy - first);
-    }
-    rb_advance(&klog_tail, hdr.len);
+  int actual = ringbuf_read(&klog_ring, out_buf, to_copy);
+  if (actual < to_copy && hdr.len > to_copy) {
+    // Skip remaining data we couldn't fit
+    ringbuf_skip(&klog_ring, hdr.len - to_copy);
   }
 
-  out_buf[to_copy] = '\0';
+  out_buf[actual] = '\0';
   if (out_level)
     *out_level = hdr.level;
 
   spinlock_unlock_irqrestore(&klog_lock, flags);
-  return to_copy;
+  return actual;
 }

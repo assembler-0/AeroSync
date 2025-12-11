@@ -56,7 +56,6 @@
 #define SWAP_CLASS "[MM::SWAP] " // Swap space / Paging to disk
 
 ///@section Heaps & Allocators
-#define DYN_CLASS "[MM::DYN] "   // Kernel Heap (kmalloc/kfree) generic
 #define SLAB_CLASS "[MM::SLAB] " // Slab allocator specific
 #define SHM_CLASS "[MM::SHM] "   // Shared Memory (IPC)
 

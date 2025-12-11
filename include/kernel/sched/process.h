@@ -17,6 +17,7 @@ void kthread_run(struct task_struct *k);
 
 pid_t sys_fork(void);
 void sys_exit(int error_code);
+void free_task(struct task_struct *task);
 
 /* Internal helpers */
 struct task_struct *copy_process(unsigned long clone_flags,
@@ -25,3 +26,7 @@ struct task_struct *copy_process(unsigned long clone_flags,
                                  struct task_struct *p);
 
 void wake_up_new_task(struct task_struct *p);
+
+/* Task memory management */
+struct task_struct *alloc_task_struct(void);
+void free_task_struct(struct task_struct *task);

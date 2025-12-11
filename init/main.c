@@ -17,6 +17,7 @@
 #include <limine/limine.h>
 #include <linearfb/font.h>
 #include <linearfb/linearfb.h>
+#include <mm/slab.h>
 
 #define VOIDFRAMEX_VERSION "0.0.1"
 #define VOIDFRAMEX_BUILD_DATE __DATE__ " " __TIME__
@@ -68,6 +69,13 @@ __attribute__((section(".text"))) int test_thread_func(void *data) {
   return 0;
 }
 
+int kthread_idle(void *data) {
+  while (1) {
+    cpu_hlt();
+  }
+  return 0;
+}
+
 void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   const int linear_ret =
@@ -101,6 +109,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   pmm_init(memmap_request.response, hhdm_request.response->offset);
   vmm_init();
+  slab_init();
 
   gdt_init();
   idt_install();
@@ -115,10 +124,11 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     panic(APIC_CLASS "Failed to initialize APIC");
   apic_timer_init(100);
 
-  printk(KERN_CLASS "Enabling interrupts\n");
+  kthread_run(kthread_create(kthread_idle, NULL, "kthread/idle"));
 
-  kthread_run(kthread_create(test_thread_func, "A", "A_kthread"));
-  kthread_run(kthread_create(test_thread_func, "B", "B_kthread"));
+  printk(KERN_CLASS "Kernel initialization complete, starting init...");
+  // TODO: start init process (way longer)
+
   cpu_sti();
 
   while (1) {

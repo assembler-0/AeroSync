@@ -90,6 +90,7 @@ void sched_init(void);
 void sched_init_task(struct task_struct *initial_task);
 void scheduler_tick(void);
 void check_preempt(void);
+void sched_dump_memory_stats(void);
 
 /* Helper to get current task */
 extern struct task_struct *get_current(void);

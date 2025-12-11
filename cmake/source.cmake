@@ -41,12 +41,15 @@ set(LIB_SOURCES
     lib/vsprintf.c
     lib/ctype.c
     lib/rbtree.c
+    lib/ringbuf.c
+    lib/bitmap.c
 )
 
 set(MM_SOURCES
     mm/pmm.c
     mm/vmm.c
     mm/stack.c
+    mm/slab.c
     mm/san/ubsan.c
 )
 

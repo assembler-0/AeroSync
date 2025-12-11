@@ -3,6 +3,7 @@
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>
 #include <lib/printk.h>
+#include <mm/slab.h>
 
 /*
  * Scheduler Core Implementation
@@ -50,13 +51,12 @@ void sched_init(void) {
 
   printk(SCHED_CLASS "Scheduler initialized for %d logical CPUs slots.\n",
          MAX_CPUS);
+  printk(SCHED_CLASS "Using slab allocator for task management\n");
 }
 
 /*
  * External function to pick the next task (CFS)
- * Implemented in fair.c or simple for now.
- * We'll implement a simple one here and move to fair.c if needed,
- * but the plan said fair.c
+ * Implemented in fair.c
  */
 extern struct task_struct *pick_next_task_fair(struct rq *rq);
 extern void task_tick_fair(struct rq *rq, struct task_struct *curr);
@@ -143,4 +143,13 @@ void sched_init_task(struct task_struct *initial_task) {
   rq->curr = initial_task;
   rq->idle = initial_task;
   set_current(initial_task);
+  
+  printk(SCHED_CLASS "Initial task initialized with slab-managed memory\n");
+}
+
+/*
+ * Scheduler memory statistics
+ */
+void sched_dump_memory_stats(void) {
+  slab_dump_stats();
 }

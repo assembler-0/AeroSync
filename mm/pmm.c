@@ -12,6 +12,7 @@
 #include <kernel/spinlock.h>
 #include <lib/printk.h>
 #include <lib/string.h>
+#include <lib/bitmap.h>
 #include <limine/limine.h>
 #include <arch/x64/mm/pmm.h>
 
@@ -20,15 +21,15 @@
 #define PMM_MAX_MEMORY (16ULL * 1024 * 1024 * 1024)
 #define PMM_MAX_PAGES (PMM_MAX_MEMORY / PAGE_SIZE)
 
-// Bitmap: 1 bit per page, 8 pages per byte
-#define BITMAP_SIZE_BYTES (PMM_MAX_PAGES / 8)
+// Bitmap: 1 bit per page
+#define BITMAP_SIZE_WORDS ((PMM_MAX_PAGES + BITS_PER_LONG - 1) / BITS_PER_LONG)
 
 // Global HHDM offset
 uint64_t g_hhdm_offset = 0;
 
-// Bitmap stored in BSS - 8MB for 256GB support
+// Bitmap stored in BSS - using generic bitmap
 // Bit set = page used, Bit clear = page free
-static uint8_t pmm_bitmap[BITMAP_SIZE_BYTES];
+static unsigned long pmm_bitmap[BITMAP_SIZE_WORDS];
 
 // PMM state
 static volatile pmm_stats_t pmm_stats __aligned(16);
@@ -38,25 +39,25 @@ static bool pmm_initialized = false;
 // First free page hint for faster allocation
 static uint64_t pmm_first_free_page = 0;
 
-// Helper: Set a bit in the bitmap (mark page as used)
-static inline void bitmap_set(uint64_t page) {
+// Helper: Mark page as used
+static inline void pmm_mark_used(uint64_t page) {
   if (page < PMM_MAX_PAGES) {
-    pmm_bitmap[page / 8] |= (1 << (page % 8));
+    set_bit(page, pmm_bitmap);
   }
 }
 
-// Helper: Clear a bit in the bitmap (mark page as free)
-static inline void bitmap_clear(uint64_t page) {
+// Helper: Mark page as free
+static inline void pmm_mark_free(uint64_t page) {
   if (page < PMM_MAX_PAGES) {
-    pmm_bitmap[page / 8] &= ~(1 << (page % 8));
+    clear_bit(page, pmm_bitmap);
   }
 }
 
-// Helper: Test if a bit is set (page is used)
-static inline bool bitmap_test(uint64_t page) {
+// Helper: Test if page is used
+static inline bool pmm_is_used(uint64_t page) {
   if (page >= PMM_MAX_PAGES)
     return true; // Out of range = used
-  return (pmm_bitmap[page / 8] & (1 << (page % 8))) != 0;
+  return test_bit(page, pmm_bitmap);
 }
 
 // Convert Limine memory type to our type
@@ -98,12 +99,11 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
 
   printk(PMM_CLASS "Initializing with HHDM offset: 0x%llx\n", hhdm_offset);
   printk(PMM_CLASS "Memory map has %llu entries\n", memmap->entry_count);
-  printk(PMM_CLASS "Bitmap at %p, size %u bytes\n", pmm_bitmap,
-         (unsigned int)BITMAP_SIZE_BYTES);
+  printk(PMM_CLASS "Bitmap at %p, size %zu words\n", pmm_bitmap, BITMAP_SIZE_WORDS);
 
   // First pass: Mark ALL pages as used
   printk(PMM_CLASS "Initializing bitmap...\n");
-  memset(pmm_bitmap, 0xFF, BITMAP_SIZE_BYTES);
+  memset(pmm_bitmap, 0xFF, sizeof(pmm_bitmap));
   printk(PMM_CLASS "Bitmap initialized.\n");
 
   // Initialize stats
@@ -147,9 +147,9 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
 
         uint64_t num_pages = end_page - start_page;
 
-        // Simple loop to avoid optimization bugs
+        // Mark pages as free using generic bitmap
         for (uint64_t p = start_page; p < end_page; p++) {
-          bitmap_clear(p);
+          pmm_mark_free(p);
         }
 
         pmm_stats.free_pages += num_pages;
@@ -191,44 +191,28 @@ uint64_t pmm_alloc_page(void) {
   // Start search from hint
   uint64_t start = pmm_first_free_page;
 
-  // Search for a free page
-  for (uint64_t page = start; page < PMM_MAX_PAGES; page++) {
-    if (!bitmap_test(page)) {
-      // Found free page
-      bitmap_set(page);
-      pmm_stats.free_pages--;
-      pmm_stats.used_pages++;
-
-      // Update hint
-      if (page == pmm_first_free_page) {
-        pmm_first_free_page = page + 1;
-      }
-
-      spinlock_unlock_irqrestore(&pmm_lock, flags);
-
-      // Zero the page before returning (security measure)
-      void *virt = pmm_phys_to_virt(PFN_TO_PHYS(page));
-      memset(virt, 0, PAGE_SIZE);
-
-      return PFN_TO_PHYS(page);
-    }
+  // Use generic bitmap to find first free page
+  int page = find_next_zero_bit(pmm_bitmap, PMM_MAX_PAGES, start);
+  if (page >= PMM_MAX_PAGES) {
+    // Wrap around
+    page = find_first_zero_bit(pmm_bitmap, start);
   }
-
-  // Wrap around and search from beginning
-  for (uint64_t page = 0; page < start; page++) {
-    if (!bitmap_test(page)) {
-      bitmap_set(page);
-      pmm_stats.free_pages--;
-      pmm_stats.used_pages++;
-      pmm_first_free_page = page + 1;
-
-      spinlock_unlock_irqrestore(&pmm_lock, flags);
-
-      void *virt = pmm_phys_to_virt(PFN_TO_PHYS(page));
-      memset(virt, 0, PAGE_SIZE);
-
-      return PFN_TO_PHYS(page);
-    }
+  
+  if (page < PMM_MAX_PAGES) {
+    pmm_mark_used(page);
+    pmm_stats.free_pages--;
+    pmm_stats.used_pages++;
+    
+    // Update hint
+    pmm_first_free_page = page + 1;
+    
+    spinlock_unlock_irqrestore(&pmm_lock, flags);
+    
+    // Zero the page before returning
+    void *virt = pmm_phys_to_virt(PFN_TO_PHYS(page));
+    memset(virt, 0, PAGE_SIZE);
+    
+    return PFN_TO_PHYS(page);
   }
 
   spinlock_unlock_irqrestore(&pmm_lock, flags);
@@ -255,7 +239,7 @@ uint64_t pmm_alloc_pages(size_t count) {
 
     // Check if 'count' contiguous pages are free
     for (size_t i = 0; i < count; i++) {
-      if (bitmap_test(page + i)) {
+      if (pmm_is_used(page + i)) {
         found = false;
         page += i; // Skip to after this used page
         break;
@@ -265,7 +249,7 @@ uint64_t pmm_alloc_pages(size_t count) {
     if (found) {
       // Mark all pages as used
       for (size_t i = 0; i < count; i++) {
-        bitmap_set(page + i);
+        pmm_mark_used(page + i);
       }
 
       pmm_stats.free_pages -= count;
@@ -321,13 +305,13 @@ void pmm_free_pages(uint64_t phys_addr, size_t count) {
   for (size_t i = 0; i < count; i++) {
     uint64_t page = start_page + i;
 
-    if (!bitmap_test(page)) {
+    if (!pmm_is_used(page)) {
       printk(KERN_ERR PMM_CLASS "Warning: Double-free of page 0x%llx\n",
              PFN_TO_PHYS(page));
       continue;
     }
 
-    bitmap_clear(page);
+    pmm_mark_free(page);
     pmm_stats.free_pages++;
     pmm_stats.used_pages--;
 

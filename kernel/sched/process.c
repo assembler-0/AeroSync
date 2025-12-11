@@ -2,6 +2,7 @@
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>
 #include <lib/string.h>
+#include <mm/slab.h>
 
 /*
  * Process/Thread Management
@@ -38,30 +39,19 @@ void kthread_entry_stub(int (*threadfn)(void *data), void *data) {
 
 struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
                                    const char *namefmt, ...) {
-  // Allocate task_struct
-  // For now, valid memory check?
-  // We need a slab allocator ideally, but let's use pmm/vmm or a simple malloc
-  // if available. Since we don't have kmalloc yet, we might have to use
-  // pmm_alloc_page and cast? That's wasteful (4KB for a task struct), but
-  // works.
-
-  uint64_t page_phys = pmm_alloc_pages(1); // 1 page
-  if (!page_phys)
+  // Allocate task_struct using slab allocator
+  struct task_struct *ts = alloc_task_struct();
+  if (!ts)
     return NULL;
-
-  struct task_struct *ts = (struct task_struct *)pmm_phys_to_virt(
-      page_phys); // We need access to it.
 
   memset(ts, 0, sizeof(*ts));
 
-  // Allocate Stack
+  // Allocate Stack - use PMM for large stacks (8KB > slab max 4KB)
   uint64_t stack_phys = pmm_alloc_pages(2); // 8KB stack
   if (!stack_phys) {
-    // free ts
-    pmm_free_pages(page_phys, 1); // Free the task_struct page
+    free_task_struct(ts);
     return NULL;
   }
-
   void *stack = pmm_phys_to_virt(stack_phys);
 
   ts->stack = stack;
@@ -76,8 +66,8 @@ struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
   INIT_LIST_HEAD(&ts->sibling);
   INIT_LIST_HEAD(&ts->children);
 
-  // Setup Thread Context
-  uint64_t *sp = (uint64_t *)(stack + 4096 * 2);
+  // Setup Thread Context - stack grows down from end
+  uint64_t *sp = (uint64_t *)((uint8_t *)stack + 8192);
 
   // Simulate the stack frame for __switch_to
   /*
@@ -116,7 +106,7 @@ struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
   // function.
 
   // Update the stack:
-  sp = (uint64_t *)(stack + 4096 * 2);
+  sp = (uint64_t *)((uint8_t *)stack + 8192);
   *(--sp) = (uint64_t)ret_from_kernel_thread;
 
   *(--sp) = 0;                  // rbx
@@ -143,10 +133,39 @@ void kthread_run(struct task_struct *k) {
   spinlock_unlock_irqrestore((volatile int *)&rq->lock, flags);
 }
 
+struct task_struct *alloc_task_struct(void) {
+  return kmalloc(sizeof(struct task_struct));
+}
+
+void free_task_struct(struct task_struct *task) {
+  if (task) {
+    kfree(task);
+  }
+}
+
+void free_task(struct task_struct *task) {
+  if (!task) return;
+  
+  if (task->stack) {
+    uint64_t stack_phys = pmm_virt_to_phys(task->stack);
+    pmm_free_pages(stack_phys, 2);
+    task->stack = NULL;
+  }
+  
+  free_task_struct(task);
+}
+
 void sys_exit(int error_code) {
   // Very basic exit
   struct task_struct *curr = get_current();
   curr->state = TASK_ZOMBIE;
+
+  // Free task resources
+  if (curr->stack) {
+    uint64_t stack_phys = pmm_virt_to_phys(curr->stack);
+    pmm_free_pages(stack_phys, 2);
+    curr->stack = NULL;
+  }
 
   // Deschedule
   schedule();
