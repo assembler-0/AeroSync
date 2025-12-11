@@ -59,21 +59,10 @@ __attribute__((
 
 static struct task_struct bsp_task;
 
-__attribute__((section(".text"))) int test_thread_func(void *data) {
-  while (1) {
-    printk("Thread %s says hello!\n", (const char *)data);
-    for (volatile int i = 0; i < 10000000; i++)
-      ; // simple delay
-        // schedule(); // cooperative test
-  }
-  return 0;
-}
-
 int kthread_idle(void *data) {
   while (1) {
     cpu_hlt();
   }
-  return 0;
 }
 
 void __init __noreturn __noinline __sysv_abi start_kernel(void) {
