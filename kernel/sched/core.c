@@ -51,7 +51,6 @@ void sched_init(void) {
 
   printk(SCHED_CLASS "Scheduler initialized for %d logical CPUs slots.\n",
          MAX_CPUS);
-  printk(SCHED_CLASS "Using slab allocator for task management\n");
 }
 
 /*
@@ -143,8 +142,6 @@ void sched_init_task(struct task_struct *initial_task) {
   rq->curr = initial_task;
   rq->idle = initial_task;
   set_current(initial_task);
-  
-  printk(SCHED_CLASS "Initial task initialized with slab-managed memory\n");
 }
 
 /*

@@ -129,7 +129,7 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 		}
 
 		/* Parse length modifier */
-		int is_long = 0, is_longlong = 0;
+		int is_long = 0, is_longlong = 0, is_size_t = 0, is_ptrdiff = 0;
 		if (*fmt == 'l') {
 			++fmt;
 			is_long = 1;
@@ -138,6 +138,12 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 				is_longlong = 1;
 				is_long = 0;
 			}
+		} else if (*fmt == 'z') {
+			++fmt;
+			is_size_t = 1;
+		} else if (*fmt == 't') {
+			++fmt;
+			is_ptrdiff = 1;
 		} else if (*fmt == 'h' || *fmt == 'L') {
 			++fmt;
 		}
@@ -161,6 +167,8 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 			long long snum;
 			if (is_longlong) snum = va_arg(args, long long);
 			else if (is_long) snum = va_arg(args, long);
+			else if (is_size_t) snum = va_arg(args, ssize_t);
+			else if (is_ptrdiff) snum = va_arg(args, ptrdiff_t);
 			else snum = va_arg(args, int);
 
 			if (snum < 0 && pos < (int)size - 1) {
@@ -175,6 +183,8 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 			unsigned long long unum;
 			if (is_longlong) unum = va_arg(args, unsigned long long);
 			else if (is_long) unum = va_arg(args, unsigned long);
+			else if (is_size_t) unum = va_arg(args, size_t);
+			else if (is_ptrdiff) unum = va_arg(args, ptrdiff_t);
 			else unum = va_arg(args, unsigned int);
 			number_to_str(buf, size, &pos, unum, 10, 0);
 			break;
@@ -186,6 +196,8 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 			unsigned long long unum;
 			if (is_longlong) unum = va_arg(args, unsigned long long);
 			else if (is_long) unum = va_arg(args, unsigned long);
+			else if (is_size_t) unum = va_arg(args, size_t);
+			else if (is_ptrdiff) unum = va_arg(args, ptrdiff_t);
 			else unum = va_arg(args, unsigned int);
 			number_to_str(buf, size, &pos, unum, 16, flags);
 			break;
@@ -195,6 +207,8 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 			unsigned long long unum;
 			if (is_longlong) unum = va_arg(args, unsigned long long);
 			else if (is_long) unum = va_arg(args, unsigned long);
+			else if (is_size_t) unum = va_arg(args, size_t);
+			else if (is_ptrdiff) unum = va_arg(args, ptrdiff_t);
 			else unum = va_arg(args, unsigned int);
 			number_to_str(buf, size, &pos, unum, 8, 0);
 			break;
@@ -205,6 +219,25 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 			if (pos < (int)size - 1) buf[pos++] = 'x';
 			number_to_str(buf, size, &pos, (unsigned long long)va_arg(args, void *), 16, SMALL);
 			break;
+
+		case 'n': {
+			/* Store number of characters written so far */
+			int *ip = va_arg(args, int *);
+			if (ip) *ip = pos;
+			break;
+		}
+
+		case 'b': {
+			/* Binary format (non-standard but useful) */
+			unsigned long long unum;
+			if (is_longlong) unum = va_arg(args, unsigned long long);
+			else if (is_long) unum = va_arg(args, unsigned long);
+			else if (is_size_t) unum = va_arg(args, size_t);
+			else if (is_ptrdiff) unum = va_arg(args, ptrdiff_t);
+			else unum = va_arg(args, unsigned int);
+			number_to_str(buf, size, &pos, unum, 2, 0);
+			break;
+		}
 
 		case '%':
 			if (pos < (int)size - 1) buf[pos++] = '%';
