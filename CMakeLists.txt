@@ -101,7 +101,6 @@ target_link_options(voidframex.krnl PRIVATE
     -nostdlib
     -static
     -Wl,-melf_x86_64
-    -Wl,-z,max-page-size=0x1000
 )
 
 # ============================================================================

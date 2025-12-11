@@ -28,7 +28,7 @@ static printk_backend_t fb_backend = {
 
 static printk_backend_t serial_backend = {
   .name = "serial",
-  .priority = 50,
+  .priority = 150,
   .putc = serial_write_char,
   .probe = serial_probe,
 };

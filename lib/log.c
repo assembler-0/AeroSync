@@ -73,9 +73,14 @@ void log_set_console_level(int level) { klog_console_level = level; }
 int log_get_console_level(void) { return klog_console_level; }
 
 static const char *const klog_prefixes[] = {
-    [KLOG_EMERG] = "[0] ", [KLOG_ALERT] = "[1] ",   [KLOG_CRIT] = "[2] ",
-    [KLOG_ERR] = "[3] ",   [KLOG_WARNING] = "[4] ", [KLOG_NOTICE] = "[5] ",
-    [KLOG_INFO] = "[6] ",  [KLOG_DEBUG] = "[7] ",
+    [KLOG_EMERG] = "[0] ", 
+    [KLOG_ALERT] = "[1] ", 
+    [KLOG_CRIT] = "[2] ",
+    [KLOG_ERR] = "[3] ", 
+    [KLOG_WARNING] = "[4] ", 
+    [KLOG_NOTICE] = "[5] ",
+    [KLOG_INFO] = "[6] ", 
+    [KLOG_DEBUG] = "[7] ",
 };
 
 static void console_emit_prefix(int level) {

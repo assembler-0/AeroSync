@@ -1,6 +1,8 @@
 #include <arch/x64/cpu.h>
+#include <arch/x64/features/features.h>
 #include <arch/x64/gdt/gdt.h>
 #include <arch/x64/idt/idt.h>
+#include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/vmm.h>
 #include <arch/x64/smp.h>
 #include <compiler.h>
@@ -9,12 +11,12 @@
 #include <drivers/uart/serial.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>
+#include <kernel/sched/process.h>
+#include <kernel/sched/sched.h>
 #include <lib/printk.h>
 #include <limine/limine.h>
 #include <linearfb/font.h>
 #include <linearfb/linearfb.h>
-#include <arch/x64/mm/pmm.h>
-#include <arch/x64/features/features.h>
 
 #define VOIDFRAMEX_VERSION "0.0.1"
 #define VOIDFRAMEX_BUILD_DATE __DATE__ " " __TIME__
@@ -54,6 +56,18 @@ __attribute__((
     section(".limine_requests"))) static volatile struct limine_smbios_request
     smbios_request = {.id = LIMINE_SMBIOS_REQUEST_ID, .revision = 0};
 
+static struct task_struct bsp_task;
+
+__attribute__((section(".text"))) int test_thread_func(void *data) {
+  while (1) {
+    printk("Thread %s says hello!\n", (const char *)data);
+    for (volatile int i = 0; i < 10000000; i++)
+      ; // simple delay
+        // schedule(); // cooperative test
+  }
+  return 0;
+}
+
 void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   const int linear_ret =
@@ -62,14 +76,12 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     panic_early();
   const int serial_ret = serial_init();
   if (serial_ret != 0)
-    if (serial_init_port(COM2) != 0 ||
-        serial_init_port(COM3) != 0 ||
-        serial_init_port(COM4) != 0
-      ) panic_early();
+    if (serial_init_port(COM2) != 0 || serial_init_port(COM3) != 0 ||
+        serial_init_port(COM4) != 0)
+      panic_early();
 
   linearfb_font_t font = {
-    .width = 8, .height = 16, .data = (uint8_t *)console_font
-  };
+      .width = 8, .height = 16, .data = (uint8_t *)console_font};
   linearfb_load_font(&font, 256);
   linearfb_set_mode(FB_MODE_CONSOLE);
   linearfb_console_clear(0x00000000);
@@ -96,16 +108,23 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   smp_init();
   crc32_init();
 
+  sched_init();
+  sched_init_task(&bsp_task);
+
   if (!apic_init())
     panic(APIC_CLASS "Failed to initialize APIC");
   apic_timer_init(100);
 
   printk(KERN_CLASS "Enabling interrupts\n");
 
+  kthread_run(kthread_create(test_thread_func, "A", "A_kthread"));
+  kthread_run(kthread_create(test_thread_func, "B", "B_kthread"));
   cpu_sti();
 
-  while (1)
+  while (1) {
+    check_preempt();
     cpu_hlt();
+  }
 
   __unreachable();
 }

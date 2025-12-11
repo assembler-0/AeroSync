@@ -3,6 +3,7 @@
 # ============================================================================
 set(ASM_SOURCES
     arch/x64/gdt_tss.asm
+    kernel/sched/switch.asm
 )
 
 set(ARCH_SOURCES
@@ -23,6 +24,9 @@ set(INIT_SOURCES
 
 set(KERNEL_SOURCES
     kernel/panic.c
+    kernel/sched/core.c
+    kernel/sched/fair.c
+    kernel/sched/process.c
 )
 
 set(DRIVER_SOURCES
@@ -36,6 +40,7 @@ set(LIB_SOURCES
     lib/log.c
     lib/vsprintf.c
     lib/ctype.c
+    lib/rbtree.c
 )
 
 set(MM_SOURCES

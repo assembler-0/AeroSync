@@ -2,6 +2,7 @@
 #include <drivers/apic/apic.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>
+#include <kernel/sched/sched.h>
 #include <lib/printk.h>
 
 void irq_common_stub(cpu_regs *regs) {
@@ -10,6 +11,12 @@ void irq_common_stub(cpu_regs *regs) {
     panic_exception(regs);
   }
 
-  // CRITICAL: Send EOI to APIC to acknowledge the interrupt
   apic_send_eoi();
+
+  if (regs->interrupt_number == 32) {
+    scheduler_tick();
+    // Trigger scheduling immediately on timer tick so that preemption works
+    // even when running non-cooperative threads.
+    check_preempt();
+  }
 }
