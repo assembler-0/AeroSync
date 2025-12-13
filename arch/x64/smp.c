@@ -26,7 +26,7 @@ static void smp_ap_entry(struct limine_mp_info *info) {
 
     // Load IDT for this CPU
     idt_install();
-    gdt_init();
+
     // Mark this AP as online
     __atomic_fetch_add(&cpus_online, 1, __ATOMIC_RELEASE);
 

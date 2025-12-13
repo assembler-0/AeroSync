@@ -6,14 +6,12 @@
 #include <drivers/apic/pic.h>
 
 static interrupt_controller_t current_controller = INTC_PIC;
-static int apic_available = 0;
 static uint32_t timer_frequency_hz = 100; // default - can be changed at runtime
 
 interrupt_controller_t ic_install(void) {
     printk(IC_CLASS "Initializing interrupt controller...\n");
 
     if (apic_init()) {
-        apic_available = 1;
         apic_timer_init(timer_frequency_hz);
         current_controller = INTC_APIC;
         printk(IC_CLASS "APIC detected and initialized\n");
@@ -57,6 +55,7 @@ void ic_send_eoi(uint64_t interrupt_number) {
             apic_send_eoi();
             break;
         case INTC_PIC:
+        default:
             pic_send_eoi(interrupt_number);
             break;
     }
@@ -83,12 +82,12 @@ void ic_set_timer(const uint32_t frequency_hz) {
             break;
         case INTC_PIC:
         default:
-            pit_set_frequency(frequency_hz);
+            pit_set_frequency(frequency_hz > 65535 ? 65535 : frequency_hz);
             break;
     }
     timer_frequency_hz = frequency_hz;
 }
 
-int ic_get_frequency(void) {
+uint32_t ic_get_frequency(void) {
     return timer_frequency_hz;
 }
