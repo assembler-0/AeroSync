@@ -6,6 +6,7 @@
 #include <kernel/spinlock.h>
 #include <lib/printk.h>
 #include <lib/string.h>
+#include <mm/mmio.h>
 
 // Global kernel PML4 (physical address)
 uint64_t g_kernel_pml4 = 0;
@@ -263,55 +264,6 @@ void vmm_switch_pml4(uint64_t pml4_phys) {
   __asm__ volatile("mov %0, %%cr3" ::"r"(pml4_phys) : "memory");
 }
 
-// Simple bump allocator for MMIO virtual space
-// Starts at 0xFFFF900000000000 (Arbitrary gap between HHDM and Kernel)
-#define MMIO_VIRT_BASE 0xFFFF900000000000
-static uint64_t g_next_mmio_virt = MMIO_VIRT_BASE;
-
-void *vmm_map_mmio(uint64_t phys_addr, size_t size) {
-  irq_flags_t irq = spinlock_lock_irqsave(&vmm_lock);
-
-  // Align start/end to page boundaries
-  uint64_t phys_start = PAGE_ALIGN_DOWN(phys_addr);
-  uint64_t phys_end = PAGE_ALIGN_UP(phys_addr + size);
-  uint64_t aligned_size = phys_end - phys_start;
-  uint64_t offset_in_page = phys_addr - phys_start;
-
-  // Allocate virtual range
-  uint64_t virt_start = g_next_mmio_virt;
-  g_next_mmio_virt += aligned_size;
-
-  // Map each page
-  for (uint64_t i = 0; i < aligned_size; i += PAGE_SIZE) {
-    // Use NO_CACHE (PCD) + RW + PRESENT for MMIO
-    uint64_t flags = PTE_PRESENT | PTE_RW | PTE_PCD;
-    vmm_map_page_locked(g_kernel_pml4, virt_start + i, phys_start + i, flags);
-  }
-
-  spinlock_unlock_irqrestore(&vmm_lock, irq);
-
-  // Return virtual address with original offset applied
-  return (void *)(virt_start + offset_in_page);
-}
-
-void vmm_unmap_mmio(void *virt_addr, size_t size) {
-  // Note: We don't reclaim virtual space in this simple bump allocator
-  // This is fine for permanent MMIO mappings (APIC, HPET, etc.)
-  // A proper allocator (buddy/slab/bitmap) is needed for dynamic
-  // mapped/unmapped driver buffers.
-
-  irq_flags_t irq = spinlock_lock_irqsave(&vmm_lock);
-
-  uint64_t virt_start = PAGE_ALIGN_DOWN((uint64_t)virt_addr);
-  uint64_t virt_end = PAGE_ALIGN_UP((uint64_t)virt_addr + size);
-
-  for (uint64_t v = virt_start; v < virt_end; v += PAGE_SIZE) {
-    vmm_unmap_page_locked(g_kernel_pml4, v);
-  }
-
-  spinlock_unlock_irqrestore(&vmm_lock, irq);
-}
-
 void vmm_init(void) {
   printk(VMM_CLASS "Initializing VMM...\n");
 
@@ -348,56 +300,7 @@ void vmm_init(void) {
   // Reload CR3
   vmm_switch_pml4(g_kernel_pml4);
 
-  // FIX: Remap kernel sections with precise permissions (4KB granularity)
-  // This overrides any large pages Limine might have set that cause NX issues.
-
-  // 1. Text (RX)
-  uint64_t text_start = (uint64_t)_text_start;
-  uint64_t text_end = (uint64_t)_text_end;
-  for (uint64_t v = text_start; v < text_end; v += PAGE_SIZE) {
-    uint64_t p =
-        vmm_virt_to_phys_huge(g_kernel_pml4, v); // Use huge-aware walker
-    if (p) {
-      vmm_map_page(g_kernel_pml4, v, p,
-                   PTE_PRESENT); // No NX, No RW == RX (if WP enabled)
-                                 // Note: In some setups, R/O requires WP bit in
-                                 // CR0. Assuming standard x64 behavior:
-                                 // Present=1, RW=0, NX=0 => Read/Exec
-    }
-  }
-
-  // 2. ROData (R + NX)
-  uint64_t rod_start = (uint64_t)_rodata_start;
-  uint64_t rod_end = (uint64_t)_rodata_end;
-  for (uint64_t v = rod_start; v < rod_end; v += PAGE_SIZE) {
-    uint64_t p = vmm_virt_to_phys_huge(g_kernel_pml4, v);
-    if (p) {
-      vmm_map_page(g_kernel_pml4, v, p, PTE_PRESENT | PTE_NX);
-    }
-  }
-
-  // 3. Data + BSS (RW + NX)
-  uint64_t data_start = (uint64_t)_data_start;
-  // Note: We remap everything after data start up to a safe limit or just
-  // _kernel_phys_end? Let's rely on _data_end which usually includes BSS if
-  // linker script orders it right. Check linker script: .data then .bss.
-  // _bss_end is the true end. But wait, I don't have _bss_end externed here.
-  // Let's assume _data_end covers .data. BSS might need separate handling if
-  // symbols differ. Linker script: _data_end is after .data. _bss_end is after
-  // .bss. We need to map BSS too. Let's just map from _data_start to a
-  // reasonable end or import _bss_end. For now, let's just map _data_start ->
-  // _data_end. BSS is usually allocated by Limine too? Actually, VMM copy loop
-  // covered everything. We just need to fix permissions for TEXT. The rest
-  // (Data/BSS) being RWX (if huge page) is "unsafe" but won't crash. The
-  // CRITICAL part is TEXT being NX if it shared a page with data that was
-  // marked NX? Or maybe Limine mapped it RW and we want RX.
-
-  // Let's specifically fix .text to be executable.
-
-  // Also, we must ensure we don't accidentally unmap something critical.
-
-  printk(VMM_CLASS
-         "Remapped kernel text to 4KB pages with EXEC permissions.\n");
+  mmio_allocator_init();
 
   printk(VMM_CLASS "VMM Initialized and switched to new Page Table.\n");
 }

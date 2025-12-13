@@ -22,8 +22,8 @@
 #define PIC_CLASS "[SYS::PIC] "   // Legacy PIC configuration
 #define PIT_CLASS "[SYS::PIT] "   // Programmable Interval Timer
 #define IC_CLASS "[SYS::IC] "     // Interrupt Controller (APIC/PIC switching)
-#define SMP_CLASS                                                              \
-  "[SYS::SMP] " // Symmetric Multi-Processing (Multicore startup)
+#define SMP_CLASS "[SYS::SMP] " // Symmetric Multi-Processing (Multicore startup)
+#define TSC_CLASS "[SYS::TSC] " // Time Stamp Counter / CPU timing
 #define CPU_CLASS "[SYS::CPU] " // CPU features, MSRs, CPUID
 #define FPU_CLASS "[SYS::FPU] " // Floating Point / SSE / AVX contexts
 
@@ -57,6 +57,7 @@
 #define VMM_CLASS "[MM::VMM] "   // Virtual Memory Manager (Paging, PDE/PTE)
 #define PAGE_CLASS "[MM::PAGE] " // Page Fault Handler
 #define SWAP_CLASS "[MM::SWAP] " // Swap space / Paging to disk
+#define MMIO_CLASS "[MM::MMIO] " // MMIO Virtual Address Allocator
 
 ///@section Heaps & Allocators
 #define SLAB_CLASS "[MM::SLAB] " // Slab allocator specific

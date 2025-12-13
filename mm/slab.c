@@ -4,6 +4,7 @@
 #include <lib/string.h>
 #include <lib/printk.h>
 #include <kernel/panic.h>
+#include <kernel/classes.h>
 
 // Virtual memory region for slab allocator
 #define SLAB_VIRT_BASE 0xFFFF800000000000UL

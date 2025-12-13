@@ -36,6 +36,8 @@ typedef struct {
   uint64_t reserved_pages;  // Reserved (unusable) pages
   uint64_t total_bytes;     // Total usable memory in bytes
   uint64_t highest_address; // Highest usable physical address
+  uint64_t bitmap_pages;    // Pages used by bitmap itself
+  uint64_t bitmap_size;     // Size of bitmap in bytes
 } pmm_stats_t;
 
 /**

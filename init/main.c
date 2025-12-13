@@ -104,6 +104,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   idt_install();
   cpu_features_init();
   if (ic_install() == INTC_APIC) smp_init();
+  calibrate_tsc();
   crc32_init();
 
   sched_init();

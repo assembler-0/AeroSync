@@ -76,6 +76,7 @@ static inline void __list_del(struct list_head *prev, struct list_head *next) {
  * list_del - deletes entry from list.
  * @entry: the element to delete from the list.
  */
+
 static inline void list_del(struct list_head *entry) {
   __list_del(entry->prev, entry->next);
   entry->next = NULL; // LIST_POISON1

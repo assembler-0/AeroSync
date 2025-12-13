@@ -78,22 +78,4 @@ uint64_t vmm_virt_to_phys(uint64_t pml4_phys, uint64_t virt);
  */
 void vmm_switch_pml4(uint64_t pml4_phys);
 
-/**
- * Map a physical MMI region to a virtual address.
- * Automatically allocates a virtual range in the MMIO window.
- *
- * @param phys_addr Physical address of the MMIO region
- * @param size      Size of the region in bytes
- * @return Virtual address pointer to the mapped region
- */
-void *vmm_map_mmio(uint64_t phys_addr, size_t size);
-
-/**
- * Unmap a previously mapped MMIO region.
- *
- * @param virt_addr Virtual address returned by vmm_map_mmio
- * @param size      Size of the region
- */
-void vmm_unmap_mmio(void *virt_addr, size_t size);
-
-extern uint64_t g_kernel_pml4; // Physical address of the kernel PML4
+extern uint64_t g_kernel_pml4;
