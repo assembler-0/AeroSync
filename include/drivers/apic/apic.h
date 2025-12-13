@@ -2,19 +2,15 @@
 
 #include <kernel/types.h>
 
-// PC Speaker ports
-#define PC_SPEAKER_PORT 0x61
-#define PIT_CHANNEL_2 0x42
-#define PIT_COMMAND 0x43
 
-// PIT command for channel 2 (PC Speaker)
-#define PIT_CMD_CHANNEL_2 0xB6
+// Probe for APIC availability (CPUID feature bit). Returns non-zero if present.
+int apic_probe(void);
 
 // Main initialization function to detect and set up both Local APIC and I/O
-// APIC. Returns true on success, false on failure (e.g., no APIC found).
-bool apic_init(void);
-bool setup_lapic(void);
-bool setup_ioapic(void);
+// APIC. Returns non-zero on success, 0 on failure.
+int apic_init(void);
+int setup_lapic(void);
+int setup_ioapic(void);
 
 // Replaces PIC_enable_irq. Unmasks an interrupt line in the I/O APIC.
 void apic_enable_irq(uint8_t irq_line);
@@ -26,7 +22,7 @@ void apic_disable_irq(uint8_t irq_line);
 void apic_mask_all(void);
 
 // Replaces PICSendEOI. Sends End-of-Interrupt signal to the Local APIC.
-void apic_send_eoi(void);
+void apic_send_eoi(uint32_t irn); // irn arg for compatibility
 
 // Replaces PitInstall and PitSetFrequency.
 // Initializes and starts the Local APIC timer at the specified frequency.

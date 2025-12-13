@@ -51,7 +51,7 @@ static uint32_t lapic_read(uint32_t reg);
 static void ioapic_write(uint8_t reg, uint32_t value);
 static uint32_t ioapic_read(uint8_t reg);
 static void ioapic_set_entry(uint8_t index, uint64_t data);
-static bool detect_apic(void);
+static int detect_apic(void);
 
 #define PIC1_COMMAND 0x20
 #define PIC1_DATA 0x21
@@ -113,12 +113,7 @@ static void ioapic_set_entry(uint8_t index, uint64_t data) {
 // --- Core APIC Functions ---
 
 // Main entry point to initialize the APIC system
-bool apic_init(void) {
-  if (!detect_apic()) {
-    printk(KERN_ERR APIC_CLASS "No local APIC found or supported.\n");
-    return false;
-  }
-
+int apic_init(void) {
   pic_mask_all();
 
   if (!setup_lapic()) {
@@ -134,7 +129,15 @@ bool apic_init(void) {
   return true;
 }
 
-void apic_send_eoi(void) { lapic_write(LAPIC_EOI, 0); }
+// Public probe used by the IC framework
+int apic_probe(void) {
+  return detect_apic();
+}
+
+void apic_send_eoi(const uint32_t irn) { // arg for compatibility
+  (void)irn;
+  lapic_write(LAPIC_EOI, 0);
+}
 
 // --- I/O APIC Interrupt Management ---
 
@@ -228,14 +231,14 @@ void apic_timer_set_frequency(uint32_t frequency_hz) {
 // --- Private Setup Functions ---
 
 // Check for APIC presence via CPUID
-static bool detect_apic(void) {
+static int detect_apic(void) {
   uint32_t eax, ebx, ecx, edx;
   cpuid(1, &eax, &ebx, &ecx, &edx);
   return (edx & (1 << 9)) != 0; // Check for APIC feature bit
 }
 
 // Initialize the Local APIC
-bool setup_lapic(void) {
+int setup_lapic(void) {
   // Get LAPIC physical base address from MSR
   uint64_t lapic_base_msr = rdmsr(APIC_BASE_MSR);
   uint64_t lapic_phys_base = lapic_base_msr & 0xFFFFFFFFFFFFF000ULL;
@@ -266,7 +269,7 @@ bool setup_lapic(void) {
 }
 
 // Initialize the I/O APIC
-bool setup_ioapic(void) {
+int setup_ioapic(void) {
   // Map the I/O APIC into virtual memory.
   // Note: In a real ACPI system, we should parse the MADT to find the actual
   // I/O APIC address. For now we assume the standard default.
