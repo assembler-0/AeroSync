@@ -3,6 +3,7 @@
 #include <limine/limine.h>
 #include <lib/printk.h>
 #include <arch/x64/cpu.h>
+#include <arch/x64/gdt/gdt.h>
 #include <arch/x64/idt/idt.h>
 #include <drivers/apic/apic.h>
 

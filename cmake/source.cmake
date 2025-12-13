@@ -32,6 +32,8 @@ set(KERNEL_SOURCES
 set(DRIVER_SOURCES
     drivers/uart/serial.c
     drivers/apic/apic.c
+    drivers/apic/pic.c
+    drivers/apic/ic.c
 )
 
 set(LIB_SOURCES

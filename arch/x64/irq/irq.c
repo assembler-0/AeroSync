@@ -1,9 +1,7 @@
 #include <arch/x64/cpu.h>
-#include <drivers/apic/apic.h>
-#include <kernel/classes.h>
+#include <drivers/apic/ic.h>
 #include <kernel/panic.h>
 #include <kernel/sched/sched.h>
-#include <lib/printk.h>
 
 void irq_common_stub(cpu_regs *regs) {
   // CPU exceptions are vectors 0-31 (inclusive)
@@ -11,7 +9,7 @@ void irq_common_stub(cpu_regs *regs) {
     panic_exception(regs);
   }
 
-  apic_send_eoi();
+  ic_send_eoi(regs->interrupt_number);
 
   if (regs->interrupt_number == 32) {
     scheduler_tick();
