@@ -1,3 +1,5 @@
+#pragma once
+
 #include <kernel/types.h>
 
 uint64_t rdtsc();

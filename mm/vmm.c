@@ -348,56 +348,5 @@ void vmm_init(void) {
   // Reload CR3
   vmm_switch_pml4(g_kernel_pml4);
 
-  // FIX: Remap kernel sections with precise permissions (4KB granularity)
-  // This overrides any large pages Limine might have set that cause NX issues.
-
-  // 1. Text (RX)
-  uint64_t text_start = (uint64_t)_text_start;
-  uint64_t text_end = (uint64_t)_text_end;
-  for (uint64_t v = text_start; v < text_end; v += PAGE_SIZE) {
-    uint64_t p =
-        vmm_virt_to_phys_huge(g_kernel_pml4, v); // Use huge-aware walker
-    if (p) {
-      vmm_map_page(g_kernel_pml4, v, p,
-                   PTE_PRESENT); // No NX, No RW == RX (if WP enabled)
-                                 // Note: In some setups, R/O requires WP bit in
-                                 // CR0. Assuming standard x64 behavior:
-                                 // Present=1, RW=0, NX=0 => Read/Exec
-    }
-  }
-
-  // 2. ROData (R + NX)
-  uint64_t rod_start = (uint64_t)_rodata_start;
-  uint64_t rod_end = (uint64_t)_rodata_end;
-  for (uint64_t v = rod_start; v < rod_end; v += PAGE_SIZE) {
-    uint64_t p = vmm_virt_to_phys_huge(g_kernel_pml4, v);
-    if (p) {
-      vmm_map_page(g_kernel_pml4, v, p, PTE_PRESENT | PTE_NX);
-    }
-  }
-
-  // 3. Data + BSS (RW + NX)
-  uint64_t data_start = (uint64_t)_data_start;
-  // Note: We remap everything after data start up to a safe limit or just
-  // _kernel_phys_end? Let's rely on _data_end which usually includes BSS if
-  // linker script orders it right. Check linker script: .data then .bss.
-  // _bss_end is the true end. But wait, I don't have _bss_end externed here.
-  // Let's assume _data_end covers .data. BSS might need separate handling if
-  // symbols differ. Linker script: _data_end is after .data. _bss_end is after
-  // .bss. We need to map BSS too. Let's just map from _data_start to a
-  // reasonable end or import _bss_end. For now, let's just map _data_start ->
-  // _data_end. BSS is usually allocated by Limine too? Actually, VMM copy loop
-  // covered everything. We just need to fix permissions for TEXT. The rest
-  // (Data/BSS) being RWX (if huge page) is "unsafe" but won't crash. The
-  // CRITICAL part is TEXT being NX if it shared a page with data that was
-  // marked NX? Or maybe Limine mapped it RW and we want RX.
-
-  // Let's specifically fix .text to be executable.
-
-  // Also, we must ensure we don't accidentally unmap something critical.
-
-  printk(VMM_CLASS
-         "Remapped kernel text to 4KB pages with EXEC permissions.\n");
-
   printk(VMM_CLASS "VMM Initialized and switched to new Page Table.\n");
 }
