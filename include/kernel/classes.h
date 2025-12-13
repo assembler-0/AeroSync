@@ -57,6 +57,7 @@
 #define VMM_CLASS "[MM::VMM] "   // Virtual Memory Manager (Paging, PDE/PTE)
 #define PAGE_CLASS "[MM::PAGE] " // Page Fault Handler
 #define SWAP_CLASS "[MM::SWAP] " // Swap space / Paging to disk
+#define MMIO_CLASS "[MM::MMIO] " // MMIO Virtual Address Allocator
 
 ///@section Heaps & Allocators
 #define SLAB_CLASS "[MM::SLAB] " // Slab allocator specific
