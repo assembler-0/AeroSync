@@ -7,7 +7,7 @@
 #include <arch/x64/smp.h>
 #include <compiler.h>
 #include <crypto/crc32.h>
-#include <drivers/apic/apic.h>
+#include <drivers/apic/ic.h>
 #include <drivers/uart/serial.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>
@@ -103,15 +103,11 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   gdt_init();
   idt_install();
   cpu_features_init();
-  smp_init();
+  if (ic_install() == INTC_APIC) smp_init();
   crc32_init();
 
   sched_init();
   sched_init_task(&bsp_task);
-
-  if (!apic_init())
-    panic(APIC_CLASS "Failed to initialize APIC");
-  apic_timer_init(100);
 
   kthread_run(kthread_create(kthread_idle, NULL, "kthread/idle"));
 

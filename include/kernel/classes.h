@@ -19,6 +19,9 @@
 #define ISR_CLASS "[SYS::ISR] "   // Interrupt Service Routines
 #define IRQ_CLASS "[SYS::IRQ] "   // Hardware Interrupt Requests
 #define APIC_CLASS "[SYS::APIC] " // IOAPIC / LAPIC configuration
+#define PIC_CLASS "[SYS::PIC] "   // Legacy PIC configuration
+#define PIT_CLASS "[SYS::PIT] "   // Programmable Interval Timer
+#define IC_CLASS "[SYS::IC] "     // Interrupt Controller (APIC/PIC switching)
 #define SMP_CLASS                                                              \
   "[SYS::SMP] " // Symmetric Multi-Processing (Multicore startup)
 #define CPU_CLASS "[SYS::CPU] " // CPU features, MSRs, CPUID
