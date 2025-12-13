@@ -1,7 +1,6 @@
 #pragma once
 
-#include <kernel/classes.h>
-#include <lib/printk.h>
+#include <arch/x64/tsc.h>
 #include <kernel/types.h>
 #include <arch/x64/cpu.h>
 

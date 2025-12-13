@@ -35,14 +35,3 @@ void restore_irq_flags(irq_flags_t flags) {
     __asm__ volatile("pushq %0\n\tpopfq" : : "r"(flags));
 }
 
-uint64_t rdtsc(void) {
-    uint32_t lo, hi;
-    __asm__ volatile ("rdtsc" : "=a"(lo), "=d"(hi));
-    return ((uint64_t)hi << 32) | lo;
-}
-
-uint64_t rdtscp(void) {
-    uint32_t lo, hi;
-    __asm__ volatile ("rdtscp" : "=a"(lo), "=d"(hi) :: "rcx");
-    return ((uint64_t)hi << 32) | lo;
-}

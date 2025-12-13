@@ -26,9 +26,6 @@
     cpu_hlt();                                                                 \
   } while (1)
 
-uint64_t rdtsc();
-uint64_t rdtscp();
-
 typedef uint64_t irq_flags_t;
 
 irq_flags_t save_irq_flags(void);

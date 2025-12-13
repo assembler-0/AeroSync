@@ -13,6 +13,7 @@ set(ARCH_SOURCES
     arch/x64/idt/isr.asm
     arch/x64/idt/load_idt.asm
     arch/x64/smp.c
+    arch/x64/tsc.c
     arch/x64/irq/irq.c
     arch/x64/exception.c
     arch/x64/features/features.c
