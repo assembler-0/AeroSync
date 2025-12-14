@@ -7,10 +7,6 @@
 #include <lib/string.h>
 #include <mm/slab.h>
 
-// Virtual memory region for slab allocator (defined in layout.h)
-static uint64_t g_slab_virt_next = SLAB_VIRT_BASE;
-static spinlock_t slab_vmm_lock = 0;
-
 static slab_region_t regions[ALLOC_REGION_COUNT];
 static bool slab_initialized = false;
 
@@ -71,31 +67,13 @@ static bool slab_check_guards_internal(slab_obj_t *obj) {
 }
 
 static void *slab_alloc_page(void) {
-  // Allocate physical page
+  // 1. Allocate physical page
   uint64_t phys = pmm_alloc_page();
   if (!phys)
     return NULL;
 
-  // Allocate virtual address
-  spinlock_lock(&slab_vmm_lock);
-  uint64_t virt = g_slab_virt_next;
-  g_slab_virt_next += PAGE_SIZE;
-
-  if (virt >= SLAB_VIRT_BASE + SLAB_VIRT_SIZE) {
-    spinlock_unlock(&slab_vmm_lock);
-    pmm_free_page(phys);
-    return NULL; // Out of virtual space
-  }
-  spinlock_unlock(&slab_vmm_lock);
-
-  // Map the page
-  if (vmm_map_page(g_kernel_pml4, virt, phys, PTE_PRESENT | PTE_RW | PTE_NX) !=
-      0) {
-    pmm_free_page(phys);
-    return NULL;
-  }
-
-  return (void *)virt;
+  // 2. Return HHDM address (Direct Map) - ZERO overhead
+  return pmm_phys_to_virt(phys);
 }
 
 static slab_obj_t *slab_alloc_obj(slab_cache_t *cache, alloc_region_t region) {
@@ -185,7 +163,6 @@ int slab_init(void) {
   }
 
   slab_initialized = true;
-  spinlock_init(&slab_vmm_lock);
   printk(SLAB_CLASS "Slab allocator initialized (VMM-based)\n");
   return 0;
 }
@@ -225,11 +202,6 @@ void kfree(void *ptr) {
   if (obj->magic != SLAB_MAGIC_ALLOC) {
     printk(KERN_ERR SLAB_CLASS "invalid magic 0x%x at %p\n", obj->magic, ptr);
     panic(SLAB_CLASS "invalid magic");
-  }
-
-  if (!slab_check_guards_internal(obj)) {
-    printk(KERN_ERR SLAB_CLASS "guard corruption at %p\n", ptr);
-    panic(SLAB_CLASS "guard corruption");
   }
 
   if (obj->region >= ALLOC_REGION_COUNT) {

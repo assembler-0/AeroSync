@@ -9,293 +9,763 @@
 #include <mm/slab.h>
 #include <mm/vma.h>
 
-#define BOOTSTRAP_VMA_COUNT 128
-static struct vm_area_struct bootstrap_vmas[BOOTSTRAP_VMA_COUNT];
-static bool
-    bootstrap_in_use[BOOTSTRAP_VMA_COUNT]; // all false (0) by default in BSS
-static spinlock_t bootstrap_lock = 0;
+/* ========================================================================
+ * VMA Cache - Fast allocation using SLAB
+ * ======================================================================== */
 
-void mm_init(struct mm_struct *mm) {
-  mm->mm_rb = RB_ROOT;
-  INIT_LIST_HEAD(&mm->mmap_list);
-  mm->map_count = 0;
-  spinlock_init(&mm->page_table_lock);
-  spinlock_init(&mm->mmap_lock);
-  // pml4 should be set by the caller (e.g., fork or init)
+struct vm_area_struct *vma_cache_alloc(void) {
+    return kmalloc(sizeof(struct vm_area_struct));
 }
 
-struct vm_area_struct *vma_create(uint64_t start, uint64_t end,
-                                  uint64_t flags) {
-  struct vm_area_struct *vma = NULL;
+void vma_cache_free(struct vm_area_struct *vma) {
+    kfree(vma);
+}
 
-  /* Try kmalloc first if widely available */
-  /* Note: We rely on kmalloc returning NULL if not initialized */
-  vma = (struct vm_area_struct *)kmalloc(sizeof(struct vm_area_struct));
+/* ========================================================================
+ * Bootstrap Allocator - Used before SLAB is ready
+ * ======================================================================== */
 
-  if (!vma) {
-    // Fallback to bootstrap allocator
-    spinlock_lock(&bootstrap_lock);
-    for (int i = 0; i < BOOTSTRAP_VMA_COUNT; i++) {
-      if (!bootstrap_in_use[i]) {
-        bootstrap_in_use[i] = true;
-        vma = &bootstrap_vmas[i];
-        break;
-      }
+#define BOOTSTRAP_VMA_COUNT 256
+#define BOOTSTRAP_MM_COUNT 16
+
+static struct vm_area_struct bootstrap_vmas[BOOTSTRAP_VMA_COUNT];
+static bool bootstrap_vma_in_use[BOOTSTRAP_VMA_COUNT];
+static spinlock_t bootstrap_vma_lock = 0;
+
+static struct mm_struct bootstrap_mms[BOOTSTRAP_MM_COUNT];
+static bool bootstrap_mm_in_use[BOOTSTRAP_MM_COUNT];
+static spinlock_t bootstrap_mm_lock = 0;
+
+static inline bool is_bootstrap_vma(struct vm_area_struct *vma) {
+    return (vma >= bootstrap_vmas && vma < bootstrap_vmas + BOOTSTRAP_VMA_COUNT);
+}
+
+static inline bool is_bootstrap_mm(struct mm_struct *mm) {
+    return (mm >= bootstrap_mms && mm < bootstrap_mms + BOOTSTRAP_MM_COUNT);
+}
+
+/* ========================================================================
+ * MM Struct Management
+ * ======================================================================== */
+
+void mm_init(struct mm_struct *mm) {
+    if (!mm) return;
+
+    memset(mm, 0, sizeof(struct mm_struct));
+    mm->mm_rb = RB_ROOT;
+    INIT_LIST_HEAD(&mm->mmap_list);
+    mm->map_count = 0;
+    mm->pml4 = NULL;
+    spinlock_init(&mm->page_table_lock);
+    spinlock_init(&mm->mmap_lock);
+
+    /* Initialize memory layout fields */
+    mm->start_code = 0;
+    mm->end_code = 0;
+    mm->start_data = 0;
+    mm->end_data = 0;
+    mm->start_brk = 0;
+    mm->brk = 0;
+    mm->start_stack = 0;
+}
+
+struct mm_struct *mm_alloc(void) {
+    struct mm_struct *mm = NULL;
+
+    mm = kmalloc(sizeof(struct mm_struct));
+
+    if (!mm) {
+        spinlock_lock(&bootstrap_mm_lock);
+        for (int i = 0; i < BOOTSTRAP_MM_COUNT; i++) {
+            if (!bootstrap_mm_in_use[i]) {
+                bootstrap_mm_in_use[i] = true;
+                mm = &bootstrap_mms[i];
+                break;
+            }
+        }
+        spinlock_unlock(&bootstrap_mm_lock);
     }
-    spinlock_unlock(&bootstrap_lock);
-  }
 
-  if (!vma) {
-    // Critical failure if we can't allocate even from bootstrap
-    return NULL;
-  }
+    if (mm) {
+        mm_init(mm);
+    }
 
-  memset(vma, 0, sizeof(struct vm_area_struct));
-  vma->vm_start = start;
-  vma->vm_end = end;
-  vma->vm_flags = flags;
-  vma->vm_rb = (struct rb_node){0};
-  INIT_LIST_HEAD(&vma->vm_list);
+    return mm;
+}
 
-  return vma;
+void mm_free(struct mm_struct *mm) {
+    if (!mm) return;
+
+    mm_destroy(mm);
+
+    if (is_bootstrap_mm(mm)) {
+        uint64_t index = mm - bootstrap_mms;
+        spinlock_lock(&bootstrap_mm_lock);
+        bootstrap_mm_in_use[index] = false;
+        spinlock_unlock(&bootstrap_mm_lock);
+        return;
+    }
+
+    kfree(mm);
+}
+
+void mm_destroy(struct mm_struct *mm) {
+    if (!mm) return;
+
+    spinlock_lock(&mm->mmap_lock);
+
+    struct vm_area_struct *vma, *tmp;
+    for_each_vma_safe(mm, vma, tmp) {
+        vma_remove(mm, vma);
+        vma_free(vma);
+    }
+    spinlock_unlock(&mm->mmap_lock);
+}
+
+/* ========================================================================
+ * VMA Allocation
+ * ======================================================================== */
+
+struct vm_area_struct *vma_alloc(void) {
+    struct vm_area_struct *vma = NULL;
+
+    vma = vma_cache_alloc();
+
+    if (!vma) {
+        spinlock_lock(&bootstrap_vma_lock);
+        for (int i = 0; i < BOOTSTRAP_VMA_COUNT; i++) {
+            if (!bootstrap_vma_in_use[i]) {
+                bootstrap_vma_in_use[i] = true;
+                vma = &bootstrap_vmas[i];
+                break;
+            }
+        }
+        spinlock_unlock(&bootstrap_vma_lock);
+    }
+
+    if (vma) {
+        memset(vma, 0, sizeof(struct vm_area_struct));
+    }
+
+    return vma;
 }
 
 void vma_free(struct vm_area_struct *vma) {
-  if (!vma)
-    return;
+    if (!vma) return;
 
-  // Check if it's a bootstrap VMA
-  bool is_bootstrap =
-      (vma >= bootstrap_vmas && vma < bootstrap_vmas + BOOTSTRAP_VMA_COUNT);
-
-  if (is_bootstrap) {
-    // Calculate index and mark as free
-    uint64_t index = vma - bootstrap_vmas;
-    spinlock_lock(&bootstrap_lock);
-    bootstrap_in_use[index] = false;
-    spinlock_unlock(&bootstrap_lock);
-    return;
-  }
-
-  kfree(vma);
-}
-
-struct vm_area_struct *vma_find(struct mm_struct *mm, uint64_t addr) {
-  struct rb_node *node = mm->mm_rb.rb_node;
-  struct vm_area_struct *vma;
-
-  while (node) {
-    vma = rb_entry(node, struct vm_area_struct, vm_rb);
-
-    if (addr < vma->vm_start) {
-      node = node->rb_left;
-    } else if (addr >= vma->vm_end) {
-      node = node->rb_right;
-    } else {
-      return vma; // Match
+    if (is_bootstrap_vma(vma)) {
+        uint64_t index = vma - bootstrap_vmas;
+        spinlock_lock(&bootstrap_vma_lock);
+        bootstrap_vma_in_use[index] = false;
+        spinlock_unlock(&bootstrap_vma_lock);
+        return;
     }
-  }
-  return NULL;
+
+    vma_cache_free(vma);
 }
 
-/*
- * Helper: Insert VMA into the sorted linked list
- */
+struct vm_area_struct *vma_create(uint64_t start, uint64_t end, uint64_t flags) {
+    if (start >= end || (start & (PAGE_SIZE - 1)) || (end & (PAGE_SIZE - 1)))
+        return NULL;
+
+    struct vm_area_struct *vma = vma_alloc();
+    if (!vma) return NULL;
+
+    vma->vm_start = start;
+    vma->vm_end = end;
+    vma->vm_flags = flags;
+    vma->vm_mm = NULL;
+    RB_CLEAR_NODE(&vma->vm_rb);
+    INIT_LIST_HEAD(&vma->vm_list);
+
+    return vma;
+}
+
+/* ========================================================================
+ * VMA Tree and List Management
+ * ======================================================================== */
+
 static void __vma_link_list(struct mm_struct *mm, struct vm_area_struct *vma) {
     struct vm_area_struct *curr;
 
-    // Iterate to find the insertion point
-    list_for_each_entry(curr, &mm->mmap_list, vm_list) {
+    if (list_empty(&mm->mmap_list)) {
+        list_add(&vma->vm_list, &mm->mmap_list);
+        return;
+    }
+
+    for_each_vma(mm, curr) {
         if (curr->vm_start > vma->vm_start) {
-            // Insert before curr
             list_add_tail(&vma->vm_list, &curr->vm_list);
             return;
         }
     }
 
-    // If list is empty or vma is the last element
     list_add_tail(&vma->vm_list, &mm->mmap_list);
 }
 
-/*
- * Helper: Unlink VMA from the sorted linked list
- */
-static void __vma_unlink_list(struct mm_struct *mm, struct vm_area_struct *vma) {
-    (void)mm; // unused
+static void __vma_unlink_list(struct vm_area_struct *vma) {
     list_del(&vma->vm_list);
 }
 
-int vma_insert(struct mm_struct *mm, struct vm_area_struct *vma) {
-  struct rb_node **new = &mm->mm_rb.rb_node;
-  struct rb_node *parent = NULL;
-  struct vm_area_struct *this_vma;
-
-  /* 1. Insert into RB-Tree (O(log N)) */
-  while (*new) {
-    this_vma = rb_entry(*new, struct vm_area_struct, vm_rb);
-    parent = *new;
-
-    // Check for overlap
-    if (vma->vm_end > this_vma->vm_start && vma->vm_start < this_vma->vm_end) {
-      return -1; // Overlap
-    }
-
-    if (vma->vm_start < this_vma->vm_start)
-      new = &((*new)->rb_left);
-    else if (vma->vm_start >= this_vma->vm_end)
-      new = &((*new)->rb_right);
-    else
-      return -1; // Should be impossible due to overlap check
-  }
-
-  vma->vm_mm = mm;
-  rb_link_node(&vma->vm_rb, parent, new);
-  rb_insert_color(&vma->vm_rb, &mm->mm_rb);
-
-  /* 2. Insert into Sorted Linked List (O(N)) */
-  __vma_link_list(mm, vma);
-
-  mm->map_count++;
-  return 0;
+static inline bool vma_can_merge(struct vm_area_struct *prev,
+                                 struct vm_area_struct *next) {
+    if (!prev || !next) return false;
+    if (prev->vm_end != next->vm_start) return false;
+    if (prev->vm_flags != next->vm_flags) return false;
+    return true;
 }
 
-/*
- * Remove a VMA from the mm_struct (RB-Tree and List), but do NOT free it.
- * Caller is responsible for freeing.
- */
+/* ========================================================================
+ * VMA Lookup Operations
+ * ======================================================================== */
+
+struct vm_area_struct *vma_find(struct mm_struct *mm, uint64_t addr) {
+    struct rb_node *node;
+    struct vm_area_struct *vma;
+
+    if (!mm) return NULL;
+
+    node = mm->mm_rb.rb_node;
+
+    while (node) {
+        vma = rb_entry(node, struct vm_area_struct, vm_rb);
+
+        if (addr < vma->vm_start) {
+            node = node->rb_left;
+        } else if (addr >= vma->vm_end) {
+            node = node->rb_right;
+        } else {
+            return vma;
+        }
+    }
+
+    return NULL;
+}
+
+struct vm_area_struct *vma_find_exact(struct mm_struct *mm,
+                                     uint64_t start, uint64_t end) {
+    struct vm_area_struct *vma = vma_find(mm, start);
+
+    if (vma && vma->vm_start == start && vma->vm_end == end)
+        return vma;
+
+    return NULL;
+}
+
+struct vm_area_struct *vma_find_intersection(struct mm_struct *mm,
+                                            uint64_t start, uint64_t end) {
+    if (!mm) return NULL;
+    struct rb_node *node = mm->mm_rb.rb_node;
+
+    while (node) {
+        struct vm_area_struct *vma = rb_entry(node, struct vm_area_struct, vm_rb);
+
+        if (end <= vma->vm_start) {
+            node = node->rb_left;
+        } else if (start >= vma->vm_end) {
+            node = node->rb_right;
+        } else {
+            return vma; /* Overlap found */
+        }
+    }
+
+    return NULL;
+}
+
+/* ========================================================================
+ * VMA Insertion and Removal
+ * ======================================================================== */
+
+int vma_insert(struct mm_struct *mm, struct vm_area_struct *vma) {
+    struct rb_node **new, *parent = NULL;
+    struct vm_area_struct *tmp;
+
+    if (!mm || !vma) return -1;
+    if (vma->vm_start >= vma->vm_end) return -1;
+
+    /* Check for overlap */
+    if (vma_find_intersection(mm, vma->vm_start, vma->vm_end))
+        return -1;
+
+    /* Insert into RB-tree */
+    new = &mm->mm_rb.rb_node;
+    while (*new) {
+        tmp = rb_entry(*new, struct vm_area_struct, vm_rb);
+        parent = *new;
+
+        if (vma->vm_start < tmp->vm_start)
+            new = &((*new)->rb_left);
+        else if (vma->vm_start >= tmp->vm_end)
+            new = &((*new)->rb_right);
+        else
+            return -1;
+    }
+
+    vma->vm_mm = mm;
+    rb_link_node(&vma->vm_rb, parent, new);
+    rb_insert_color(&vma->vm_rb, &mm->mm_rb);
+
+    /* Insert into sorted list */
+    __vma_link_list(mm, vma);
+
+    mm->map_count++;
+
+    return 0;
+}
+
 void vma_remove(struct mm_struct *mm, struct vm_area_struct *vma) {
     if (!mm || !vma) return;
 
-    // 1. Remove from RB-Tree
+    /* Remove from RB-tree */
     rb_erase(&vma->vm_rb, &mm->mm_rb);
+    RB_CLEAR_NODE(&vma->vm_rb);
 
-    // 2. Remove from Linked List
-    __vma_unlink_list(mm, vma);
+    /* Remove from list */
+    __vma_unlink_list(vma);
 
     mm->map_count--;
+
     vma->vm_mm = NULL;
 }
 
-/*
- * Destroys all VMAs in the MM.
- */
-void mm_destroy(struct mm_struct *mm) {
-  if (!mm) return;
+/* ========================================================================
+ * VMA Splitting and Merging
+ * ======================================================================== */
 
-  spinlock_lock(&mm->mmap_lock);
+int vma_split(struct mm_struct *mm, struct vm_area_struct *vma, uint64_t addr) {
+    struct vm_area_struct *new_vma;
 
-  struct vm_area_struct *vma, *tmp;
+    if (!mm || !vma) return -1;
+    if (addr <= vma->vm_start || addr >= vma->vm_end) return -1;
+    if (addr & (PAGE_SIZE - 1)) return -1;
 
-  list_for_each_entry_safe(vma, tmp, &mm->mmap_list, vm_list) {
-    // Optional: Paranoia check
-    if (vma->vm_mm != mm) {
-        printk(KERN_WARNING "VMA %p does not belong to MM %p!\n", vma, mm);
+    new_vma = vma_create(addr, vma->vm_end, vma->vm_flags);
+    if (!new_vma) return -1;
+
+    /* Adjust original VMA */
+    vma->vm_end = addr;
+
+    /* Insert new VMA */
+    if (vma_insert(mm, new_vma) != 0) {
+        vma->vm_end = new_vma->vm_end; /* Restore */
+        vma_free(new_vma);
+        return -1;
     }
-    vma_free(vma);
-  }
 
-  INIT_LIST_HEAD(&mm->mmap_list);
-  mm->mm_rb = RB_ROOT;
-  mm->map_count = 0;
+    return 0;
+}
 
-  spinlock_unlock(&mm->mmap_lock);
+int vma_merge(struct mm_struct *mm, struct vm_area_struct *vma) {
+    struct vm_area_struct *prev, *next;
+    int merged = 0;
+
+    if (!mm || !vma) return -1;
+
+    /* Try to merge with previous */
+    if (!list_is_first(&vma->vm_list, &mm->mmap_list)) {
+        prev = list_entry(vma->vm_list.prev, struct vm_area_struct, vm_list);
+        if (vma_can_merge(prev, vma)) {
+            prev->vm_end = vma->vm_end;
+            vma_remove(mm, vma);
+            vma_free(vma);
+            vma = prev;
+            merged |= VMA_MERGE_PREV;
+        }
+    }
+
+    /* Try to merge with next */
+    if (!list_is_last(&vma->vm_list, &mm->mmap_list)) {
+        next = list_entry(vma->vm_list.next, struct vm_area_struct, vm_list);
+        if (vma_can_merge(vma, next)) {
+            vma->vm_end = next->vm_end;
+            vma_remove(mm, next);
+            vma_free(next);
+            merged |= VMA_MERGE_NEXT;
+        }
+    }
+
+    return merged;
+}
+
+int vma_expand(struct mm_struct *mm, struct vm_area_struct *vma,
+               uint64_t new_start, uint64_t new_end) {
+    if (!mm || !vma) return -1;
+    if (new_start > vma->vm_start || new_end < vma->vm_end) return -1;
+    if (new_start >= new_end) return -1;
+
+    /* Check for conflicts */
+    if (new_start < vma->vm_start) {
+        if (vma_find_intersection(mm, new_start, vma->vm_start))
+            return -1;
+    }
+    if (new_end > vma->vm_end) {
+        if (vma_find_intersection(mm, vma->vm_end, new_end))
+            return -1;
+    }
+
+    bool start_changed = (new_start != vma->vm_start);
+
+    if (start_changed) {
+        vma_remove(mm, vma);
+    }
+
+    vma->vm_start = new_start;
+    vma->vm_end = new_end;
+
+    if (start_changed) {
+        return vma_insert(mm, vma);
+    }
+
+    return 0;
+}
+
+int vma_shrink(struct mm_struct *mm, struct vm_area_struct *vma,
+               uint64_t new_start, uint64_t new_end) {
+    if (!mm || !vma) return -1;
+    if (new_start < vma->vm_start || new_end > vma->vm_end) return -1;
+    if (new_start >= new_end) return -1;
+
+    bool start_changed = (new_start != vma->vm_start);
+
+    if (start_changed) {
+        vma_remove(mm, vma);
+    }
+
+    vma->vm_start = new_start;
+    vma->vm_end = new_end;
+
+    if (start_changed) {
+        return vma_insert(mm, vma);
+    }
+
+    return 0;
+}
+
+/* ========================================================================
+ * VMA Iteration
+ * ======================================================================== */
+
+struct vm_area_struct *vma_next(struct vm_area_struct *vma) {
+    if (!vma || !vma->vm_mm) return NULL;
+    if (list_is_last(&vma->vm_list, &vma->vm_mm->mmap_list))
+        return NULL;
+    return list_entry(vma->vm_list.next, struct vm_area_struct, vm_list);
+}
+
+struct vm_area_struct *vma_prev(struct vm_area_struct *vma) {
+    if (!vma || !vma->vm_mm) return NULL;
+    if (list_is_first(&vma->vm_list, &vma->vm_mm->mmap_list))
+        return NULL;
+    return list_entry(vma->vm_list.prev, struct vm_area_struct, vm_list);
+}
+
+/* ========================================================================
+ * High-level VMA Operations
+ * ======================================================================== */
+
+int vma_map_range(struct mm_struct *mm, uint64_t start, uint64_t end,
+                  uint64_t flags) {
+    struct vm_area_struct *vma;
+
+    if (!mm) return -1;
+    if (start >= end) return -1;
+
+    /* Align to page boundaries */
+    start &= ~(PAGE_SIZE - 1);
+    end = (end + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+
+    spinlock_lock(&mm->mmap_lock);
+
+    vma = vma_create(start, end, flags);
+    if (!vma) {
+        spinlock_unlock(&mm->mmap_lock);
+        return -1;
+    }
+
+    if (vma_insert(mm, vma) != 0) {
+        vma_free(vma);
+        spinlock_unlock(&mm->mmap_lock);
+        return -1;
+    }
+
+    /* Try to merge with adjacent VMAs */
+    vma_merge(mm, vma);
+
+    spinlock_unlock(&mm->mmap_lock);
+    return 0;
+}
+
+int vma_unmap_range(struct mm_struct *mm, uint64_t start, uint64_t end) {
+    struct vm_area_struct *vma, *tmp;
+
+    if (!mm) return -1;
+    if (start >= end) return -1;
+
+    spinlock_lock(&mm->mmap_lock);
+
+    for_each_vma_safe(mm, vma, tmp) {
+        if (vma->vm_end <= start) continue;
+        if (vma->vm_start >= end) break;
+
+        /* Complete overlap */
+        if (start <= vma->vm_start && end >= vma->vm_end) {
+            vma_remove(mm, vma);
+            vma_free(vma);
+            continue;
+        }
+
+        /* Partial overlap - split if needed */
+        if (start > vma->vm_start && end < vma->vm_end) {
+            /* Split into two VMAs */
+            vma_split(mm, vma, end);
+            vma_shrink(mm, vma, vma->vm_start, start);
+        } else if (start <= vma->vm_start) {
+            /* Trim from start */
+            vma_shrink(mm, vma, end, vma->vm_end);
+        } else {
+            /* Trim from end */
+            vma_shrink(mm, vma, vma->vm_start, start);
+        }
+    }
+
+    spinlock_unlock(&mm->mmap_lock);
+    return 0;
+}
+
+int vma_protect(struct mm_struct *mm, uint64_t start, uint64_t end,
+                uint64_t new_flags) {
+    struct vm_area_struct *vma;
+
+    if (!mm) return -1;
+    if (start >= end) return -1;
+
+    spinlock_lock(&mm->mmap_lock);
+
+    for_each_vma(mm, vma) {
+        if (vma->vm_end <= start) continue;
+        if (vma->vm_start >= end) break;
+
+        /* Handle partial overlaps by splitting */
+        if (start > vma->vm_start)
+            vma_split(mm, vma, start);
+
+        if (end < vma->vm_end)
+            vma_split(mm, vma, end);
+
+        vma->vm_flags = new_flags;
+    }
+
+    spinlock_unlock(&mm->mmap_lock);
+    return 0;
+}
+
+/* ========================================================================
+ * Free Region Finding
+ * ======================================================================== */
+
+uint64_t vma_find_free_region(struct mm_struct *mm, size_t size,
+                              uint64_t range_start, uint64_t range_end) {
+    return vma_find_free_region_aligned(mm, size, PAGE_SIZE,
+                                       range_start, range_end);
+}
+
+uint64_t vma_find_free_region_aligned(struct mm_struct *mm, size_t size,
+                                     uint64_t alignment,
+                                     uint64_t range_start, uint64_t range_end) {
+    struct vm_area_struct *vma;
+    uint64_t current_addr, aligned_addr;
+
+    if (!mm || size == 0) return 0;
+    if (range_start >= range_end) return 0;
+
+    /* Align size and addresses */
+    size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+    range_start = (range_start + alignment - 1) & ~(alignment - 1);
+
+    if (range_end - range_start < size) return 0;
+
+    current_addr = range_start;
+
+    if (list_empty(&mm->mmap_list)) {
+        if (range_end - current_addr >= size)
+            return current_addr;
+        return 0;
+    }
+
+    for_each_vma(mm, vma) {
+        if (vma->vm_end <= range_start) continue;
+        if (vma->vm_start >= range_end) break;
+
+        aligned_addr = (current_addr + alignment - 1) & ~(alignment - 1);
+
+        if (vma->vm_start > aligned_addr) {
+            uint64_t gap = vma->vm_start - aligned_addr;
+            if (gap >= size && aligned_addr + size <= range_end)
+                return aligned_addr;
+        }
+
+        current_addr = vma->vm_end;
+    }
+
+    /* Check tail gap */
+    aligned_addr = (current_addr + alignment - 1) & ~(alignment - 1);
+    if (aligned_addr < range_end && range_end - aligned_addr >= size)
+        return aligned_addr;
+
+    return 0;
+}
+
+/* ========================================================================
+ * Statistics and Debugging
+ * ======================================================================== */
+
+size_t mm_total_size(struct mm_struct *mm) {
+    struct vm_area_struct *vma;
+    size_t total = 0;
+
+    if (!mm) return 0;
+
+    for_each_vma(mm, vma) {
+        total += vma_size(vma);
+    }
+
+    return total;
+}
+
+size_t mm_map_count(struct mm_struct *mm) {
+    return mm ? mm->map_count : 0;
+}
+
+void vma_dump_single(struct vm_area_struct *vma) {
+    if (!vma) return;
+
+    printk(VMA_CLASS "  VMA [%016llx - %016llx] size: %8llu KB, flags: %08llx (",
+           vma->vm_start, vma->vm_end,
+           vma_size(vma) / 1024, vma->vm_flags);
+
+    if (vma->vm_flags & VM_READ)   printk("r");
+    if (vma->vm_flags & VM_WRITE)  printk("w");
+    if (vma->vm_flags & VM_EXEC)   printk("x");
+    if (vma->vm_flags & VM_SHARED) printk("s");
+    if (vma->vm_flags & VM_LOCKED) printk("l");
+    printk(")\n");
 }
 
 void vma_dump(struct mm_struct *mm) {
-  struct vm_area_struct *vma;
+    struct vm_area_struct *vma;
 
-  printk(VMA_CLASS "VMA dump for mm: %p\n", mm);
-  // Iterate list
-  list_for_each_entry(vma, &mm->mmap_list, vm_list) {
-    printk(VMA_CLASS "  [%llx - %llx] flags: %llx\n", vma->vm_start,
-           vma->vm_end,
-           vma->vm_flags);
-  }
+    if (!mm) return;
+
+    printk(VMA_CLASS "=== VMA Dump for MM: %p ===\n", mm);
+    printk(VMA_CLASS "Total VMAs: %d, Total VM: %llu KB\n",
+           mm->map_count, mm_total_size(mm) / 1024);
+    printk(VMA_CLASS "Code: [%llx - %llx], Data: [%llx - %llx]\n",
+           mm->start_code, mm->end_code, mm->start_data, mm->end_data);
+    printk(VMA_CLASS "Brk: [%llx - %llx], Stack: %llx\n",
+           mm->start_brk, mm->brk, mm->start_stack);
+
+    for_each_vma(mm, vma) {
+        vma_dump_single(vma);
+    }
+
+    printk(VMA_CLASS "=== End VMA Dump ===\n");
 }
 
-/* Find a free region of given size between start and end address */
-uint64_t vma_find_free_region(struct mm_struct *mm, size_t size,
-                              uint64_t range_start, uint64_t range_end) {
-  if (!mm || size == 0)
+/* ========================================================================
+ * Validation and Testing
+ * ======================================================================== */
+
+int vma_verify_tree(struct mm_struct *mm) {
+    /* Could implement RB-tree property verification here */
     return 0;
-
-  /* Align size to page boundary */
-  size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-
-  uint64_t current_addr = range_start;
-  struct vm_area_struct *vma;
-  
-  // Optimistic check: if list is empty
-  if (list_empty(&mm->mmap_list)) {
-      if (range_end > range_start && range_end - range_start >= size)
-          return range_start;
-      return 0;
-  }
-
-  list_for_each_entry(vma, &mm->mmap_list, vm_list) {
-      // If VMA ends before our range, just move on (but update current_addr if needed? 
-      // Actually if vma->vm_end < range_start, it's irrelevant, but current_addr is range_start)
-      if (vma->vm_end <= range_start) continue;
-
-      // Now vma->vm_end > range_start. 
-      // If vma->vm_start is also < range_start, then this VMA covers the start.
-      // current_addr must be moved to vma->vm_end.
-      
-      // Check gap between current_addr and vma->vm_start
-      if (vma->vm_start > current_addr) {
-          uint64_t gap = vma->vm_start - current_addr;
-          if (gap >= size) {
-              if (current_addr + size <= range_end) return current_addr;
-              return 0; // Exceeded max range
-          }
-      }
-
-      current_addr = vma->vm_end;
-      // Align
-      current_addr = (current_addr + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-
-      if (current_addr >= range_end) return 0;
-  }
-
-  // Check tail gap
-  if (range_end > current_addr) {
-      if (range_end - current_addr >= size) return current_addr;
-  }
-
-  return 0; // No space found
 }
 
-/* Global kernel mm_struct */
+int vma_verify_list(struct mm_struct *mm) {
+    struct vm_area_struct *vma, *prev = NULL;
+
+    for_each_vma(mm, vma) {
+        if (prev && prev->vm_start >= vma->vm_start) {
+            printk(VMA_CLASS "ERROR: List not sorted!\n");
+            return -1;
+        }
+        if (prev && prev->vm_end > vma->vm_start) {
+            printk(VMA_CLASS "ERROR: Overlapping VMAs in list!\n");
+            return -1;
+        }
+        prev = vma;
+    }
+
+    return 0;
+}
+
+/* ========================================================================
+ * Global Kernel MM
+ * ======================================================================== */
+
 struct mm_struct init_mm;
 
+/* ========================================================================
+ * Test Suite
+ * ======================================================================== */
+
 void vma_test(void) {
+    struct mm_struct *test_mm = mm_alloc();
+    if (!test_mm) panic(VMA_CLASS "Failed to allocate test MM");
 
-  struct mm_struct test_mm;
-  mm_init(&test_mm);
+    /* Test 1: Basic insertion */
+    struct vm_area_struct *v1 = vma_create(0x1000, 0x2000, VM_READ | VM_WRITE);
+    if (!v1 || vma_insert(test_mm, v1) != 0)
+        panic(VMA_CLASS "Test 1 failed: Insert v1");
 
-  // Test 1: Insert non-overlapping
-  struct vm_area_struct *v1 = vma_create(0x1000, 0x2000, VM_READ);
-  if (!v1 || vma_insert(&test_mm, v1) != 0)
-    panic(VMA_CLASS "VMA Test 1 Failed: Insert v1");
+    struct vm_area_struct *v2 = vma_create(0x3000, 0x4000, VM_READ);
+    if (!v2 || vma_insert(test_mm, v2) != 0)
+        panic(VMA_CLASS "Test 1 failed: Insert v2");
 
-  struct vm_area_struct *v2 = vma_create(0x3000, 0x4000, VM_READ);
-  if (!v2 || vma_insert(&test_mm, v2) != 0)
-    panic(VMA_CLASS "VMA Test 1 Failed: Insert v2");
+    /* Test 2: Lookup */
+    if (vma_find(test_mm, 0x1500) != v1)
+        panic(VMA_CLASS "Test 2 failed: Find v1");
+    if (vma_find(test_mm, 0x3500) != v2)
+        panic(VMA_CLASS "Test 2 failed: Find v2");
+    if (vma_find(test_mm, 0x2500) != NULL)
+        panic(VMA_CLASS "Test 2 failed: Find gap");
 
-  // Test 2: Find
-  if (vma_find(&test_mm, 0x1100) != v1)
-    panic(VMA_CLASS "VMA Test 2 Failed: Find v1");
-  if (vma_find(&test_mm, 0x3500) != v2)
-    panic(VMA_CLASS "VMA Test 2 Failed: Find v2");
-  if (vma_find(&test_mm, 0x2500) != NULL)
-    panic(VMA_CLASS "VMA Test 2 Failed: Find gap");
+    /* Test 3: Overlap detection (use page-aligned addresses) */
+    /* 0x1000-0x3000 overlaps with v1 (0x1000-0x2000) */
+    struct vm_area_struct *v3 = vma_create(0x1000, 0x3000, VM_READ);
+    if (!v3 || vma_insert(test_mm, v3) == 0) {
+        if (v3) vma_free(v3);
+        panic(VMA_CLASS "Test 3 failed: Overlap allowed");
+    }
+    vma_free(v3);
 
-  // Test 3: Overlap
-  struct vm_area_struct *v3 = vma_create(0x1500, 0x2500, VM_READ);
-  if (!v3 || vma_insert(&test_mm, v3) == 0)
-    panic(VMA_CLASS "VMA Test 3 Failed: Overlap allowed");
-  vma_free(v3); // Succeeded alloc, failed insert
+    /* Test 4: Free region finding */
+    uint64_t free_addr = vma_find_free_region(test_mm, 0x1000, 0, 0x10000);
+    if (free_addr != 0x2000 && free_addr != 0x4000 && free_addr != 0)
+        panic(VMA_CLASS "Test 4 failed: Free region");
 
-  // Cleanup using proper destroy function
-  mm_destroy(&test_mm);
+    /* Test 5: VMA splitting */
+    struct vm_area_struct *v4 = vma_create(0x10000, 0x14000, VM_READ | VM_WRITE);
+    if (!v4 || vma_insert(test_mm, v4) != 0)
+        panic(VMA_CLASS "Test 5 failed: Insert v4");
+
+    if (vma_split(test_mm, v4, 0x12000) != 0)
+        panic(VMA_CLASS "Test 5 failed: Split");
+
+    if (test_mm->map_count != 4)
+        panic(VMA_CLASS "Test 5 failed: Map count after split");
+
+    /* Test 6: High-level map/unmap */
+    if (vma_map_range(test_mm, 0x20000, 0x24000, VM_READ) != 0)
+        panic(VMA_CLASS "Test 6 failed: Map range");
+
+    if (vma_unmap_range(test_mm, 0x21000, 0x23000) != 0)
+        panic(VMA_CLASS "Test 6 failed: Unmap range");
+
+    /* Test 7: List verification */
+    if (vma_verify_list(test_mm) != 0)
+        panic(VMA_CLASS "Test 7 failed: List verification");
+
+    vma_dump(test_mm);
+
+    mm_free(test_mm);
 }

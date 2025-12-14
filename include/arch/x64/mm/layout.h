@@ -5,47 +5,61 @@
 /*
  * VoidFrameX Memory Map (x86_64)
  *
- * Virtual Address Space Layout:
+ * Virtual Address Space Layout (Canonical Higher Half):
  *
  * +----------------------+ 0xFFFFFFFFFFFFFFFF
  * |                      |
- * |    Kernel Text/Data  | (2GB, defined by linker script)
+ * |    Kernel Text/Data  | (~2GB, fixed at compile time)
  * |  0xFFFFFFFF80000000  |
  * +----------------------+
  * |                      |
- * |        Unused        |
+ * |        Unused        | (Gap)
  * |                      |
  * +----------------------+ 0xFFFF901000000000
  * |                      |
- * |       Vmalloc        | (64GB)
+ * |       Vmalloc        | (64GB - For vmalloc/viomap)
  * |  0xFFFF900000000000  |
  * +----------------------+ 0xFFFF900000000000
  * |                      |
- * |         Slab         | (1GB)
+ * |         HHDM         | (Direct Map of Physical RAM)
+ * |  (Slab lives here)   | (Max 16TB supported range)
  * |  0xFFFF800000000000  |
  * +----------------------+ 0xFFFF800000000000
- * |                      |
- * |        HHDM          | (HHDM_OFFSET, usually 0xFFFF800000000000 approx)
- * |  (Dynamic Base)      |
- * +----------------------+
  */
 
-/* Kernel Image Base (Typical for x86_64 higher half) */
-#define KERNEL_VIRT_BASE 0xFFFFFFFF80000000UL
-#define KERNEL_VIRT_SIZE (2UL * 1024 * 1024 * 1024)
+/*
+ * 1. Kernel Image
+ * Located in the top 2GB of address space.
+ */
+#define KERNEL_VIRT_BASE 0xFFFFFFFF80000000ULL
+#define KERNEL_VIRT_END  0xFFFFFFFFFFFFFFFFULL
+#define KERNEL_VIRT_SIZE (KERNEL_VIRT_END - KERNEL_VIRT_BASE + 1ULL)
 
-/* Slab Allocator Region */
-#define SLAB_VIRT_BASE 0xFFFFC00000000000UL
-#define SLAB_VIRT_SIZE (1UL << 30) // 1GB
-#define SLAB_VIRT_END (SLAB_VIRT_BASE + SLAB_VIRT_SIZE)
+/*
+ * 2. HHDM (Higher Half Direct Map) & Slab
+ * This is where Limine maps all physical memory.
+ * The Slab allocator (kmalloc) returns addresses in this range.
+ * Range: 0xFFFF800000000000 -> 0xFFFF900000000000 (16 TB space)
+ */
+#define HHDM_VIRT_BASE   0xFFFF800000000000ULL
+#define HHDM_VIRT_LIMIT  0xFFFF900000000000ULL /* Soft limit for safety */
+#define HHDM_VIRT_SIZE   (HHDM_VIRT_LIMIT - HHDM_VIRT_BASE)
 
-/* Vmalloc Allocator Region */
-/* Note: kept separate from Slab to ensure easier debugging/isolation */
-#define VMALLOC_VIRT_BASE 0xFFFFD00000000000UL
-#define VMALLOC_VIRT_SIZE (64UL * 1024 * 1024 * 1024) // 64GB
-#define VMALLOC_VIRT_END (VMALLOC_VIRT_BASE + VMALLOC_VIRT_SIZE)
+#define SLAB_VIRT_BASE   HHDM_VIRT_BASE
+#define SLAB_VIRT_END    HHDM_VIRT_LIMIT
+#define SLAB_VIRT_SIZE   HHDM_VIRT_SIZE
+
+/*
+ * 3. Vmalloc Allocator Region
+ * Used by vmalloc() and viomap() for non-contiguous or IO mappings.
+ * Starts at 16TB offset, ensuring it never overlaps HHDM.
+ * Size: 64GB
+ */
+#define VMALLOC_VIRT_BASE 0xFFFF900000000000ULL
+#define VMALLOC_VIRT_SIZE (64ULL * 1024 * 1024 * 1024)
+#define VMALLOC_VIRT_END  (VMALLOC_VIRT_BASE + VMALLOC_VIRT_SIZE)
 
 /* Helper to check if address is in kernel high memory */
 static inline bool is_kernel_addr(uint64_t addr) {
-  return addr >= 0xFFFF000000000000UL;
+  return addr >= HHDM_VIRT_BASE;
 }

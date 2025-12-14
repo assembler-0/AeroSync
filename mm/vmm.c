@@ -6,7 +6,6 @@
 #include <kernel/spinlock.h>
 #include <lib/printk.h>
 #include <lib/string.h>
-#include <mm/mmio.h>
 #include <mm/vma.h>
 
 // Global kernel PML4 (physical address)
@@ -159,37 +158,8 @@ int vmm_unmap_page(uint64_t pml4_phys, uint64_t virt) {
   return ret;
 }
 
-uint64_t vmm_virt_to_phys(uint64_t pml4_phys, uint64_t virt) {
-  // Read-only, lock-free walk is usually safe if we assume page tables aren't
-  // freed under our feet. For strict correctness, we can lock.
-
-  uint64_t *pml4 = (uint64_t *)phys_to_virt(pml4_phys);
-
-  uint64_t *pdpt = get_next_level(pml4, PML4_INDEX(virt), false, 4);
-  if (!pdpt)
-    return 0;
-
-  uint64_t *pd = get_next_level(pdpt, PDPT_INDEX(virt), false, 3);
-  if (!pd)
-    return 0;
-
-  uint64_t *pt = get_next_level(pd, PD_INDEX(virt), false, 2);
-  if (!pt)
-    return 0;
-
-  uint64_t entry = pt[PT_INDEX(virt)];
-  if (!(entry & PTE_PRESENT)) {
-    // Check if it was a huge page earlier?
-    // Wait, get_next_level returns NULL for huge page.
-    // We need a proper walker here.
-    return 0;
-  }
-
-  return PTE_GET_ADDR(entry) + (virt & (PAGE_SIZE - 1));
-}
-
 // Improved virt_to_phys that handles Huge Pages
-uint64_t vmm_virt_to_phys_huge(uint64_t pml4_phys, uint64_t virt) {
+uint64_t vmm_virt_to_phys(uint64_t pml4_phys, uint64_t virt) {
   uint64_t *pml4 = (uint64_t *)phys_to_virt(pml4_phys);
   uint64_t idx;
   uint64_t entry;
@@ -292,15 +262,6 @@ void vmm_init(void) {
 
   // Reload CR3
   vmm_switch_pml4(g_kernel_pml4);
-
-  mmio_allocator_init();
-
-  // Initialize the kernel's virtual memory address space manager
-  mm_init(&init_mm);
-  init_mm.pml4 = (uint64_t *)phys_to_virt(g_kernel_pml4);
-
-  // Verify VMA Implementation
-  vma_test();
 
   printk(VMM_CLASS "VMM Initialized and switched to new Page Table.\n");
 }

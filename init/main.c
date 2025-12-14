@@ -7,6 +7,7 @@
 #include <arch/x64/mm/vmm.h>
 #include <arch/x64/smp.h>
 #include <compiler.h>
+#include <string.h>
 #include <crypto/crc32.h>
 #include <drivers/apic/ic.h>
 #include <drivers/uart/serial.h>
@@ -20,6 +21,7 @@
 #include <linearfb/font.h>
 #include <linearfb/linearfb.h>
 #include <mm/slab.h>
+#include <mm/vma.h>
 #include <mm/vmalloc.h>
 
 #define VOIDFRAMEX_VERSION "0.0.1"
@@ -33,8 +35,7 @@ __attribute__((used, section(".limine_requests"))) static volatile uint64_t
 // Request framebuffer
 __attribute__((
     used,
-    section(
-        ".limine_requests"))) static volatile struct limine_framebuffer_request
+    section(".limine_requests"))) static volatile struct limine_framebuffer_request
     framebuffer_request = {.id = LIMINE_FRAMEBUFFER_REQUEST_ID, .revision = 0};
 
 // Request memory map
@@ -69,9 +70,7 @@ __attribute__((
 static struct task_struct bsp_task;
 
 int kthread_idle(void *data) {
-  while (1) {
-    cpu_hlt();
-  }
+  system_hlt();
 }
 
 void __init __noreturn __noinline __sysv_abi start_kernel(void) {
@@ -111,8 +110,17 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   idt_install();
 
   pmm_init(memmap_request.response, hhdm_request.response->offset);
+
   vmm_init();
+
   slab_init();
+
+  // Initialize the kernel's virtual memory address space manager
+  mm_init(&init_mm);
+  init_mm.pml4 = (uint64_t *)pmm_phys_to_virt(g_kernel_pml4);
+
+  // Verify VMA Implementation
+  vma_test();
 
   cpu_features_init();
   if (ic_install() == INTC_APIC)
@@ -122,12 +130,12 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   // Check for initrd module and mount it
   if (module_request.response && module_request.response->module_count > 0) {
-      // Assuming the first module is our initrd for simplicity
-      struct limine_file *initrd_module = module_request.response->modules[0];
-      printk(INITRD_CLASS "Found module '%s' at %p, size %lu\n",
-             initrd_module->path, initrd_module->address, initrd_module->size);
+    // Assuming the first module is our initrd for simplicity
+    struct limine_file *initrd_module = module_request.response->modules[0];
+    printk(INITRD_CLASS "Found module '%s' at %p, size %lu\n",
+           initrd_module->path, initrd_module->address, initrd_module->size);
   } else {
-      printk(INITRD_CLASS "No initrd module found.\n");
+    printk(INITRD_CLASS "No initrd module found.\n");
   }
 
   sched_init();
