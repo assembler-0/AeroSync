@@ -86,6 +86,14 @@ SECTIONS
     . = ALIGN(PAGE_SIZE);
     _kernel_phys_end = .;
     _kernel_size = _kernel_phys_end - _kernel_phys_start;
+
+    /DISCARD/ :
+    {
+        *(.eh_frame)
+        *(.eh_frame_hdr)
+        *(.note*)
+        *(.comment)
+    }
 }
 
 /* Sanity checks */

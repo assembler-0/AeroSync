@@ -104,15 +104,17 @@ target_link_options(voidframex.krnl PRIVATE
 )
 
 # ============================================================================
-# Boot Directory Setup
+# ISO Generation with Limine Bootloader
 # ============================================================================
+set(LIMINE_RESOURCE_DIR "/usr/share/limine")
+
 add_custom_command(
         OUTPUT bootd
         COMMAND ${CMAKE_COMMAND} -E touch bootd
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir/kernel
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir/EFI/BOOT
         # Copy Limine UEFI bootloader
-        COMMAND ${CMAKE_COMMAND} -E copy /usr/share/limine/BOOTX64.EFI
+        COMMAND ${CMAKE_COMMAND} -E copy ${LIMINE_RESOURCE_DIR}/BOOTX64.EFI
         ${CMAKE_CURRENT_BINARY_DIR}/bootdir/EFI/BOOT/BOOTX64.EFI
         # Copy kernel
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:voidframex.krnl>
@@ -127,6 +129,31 @@ add_custom_command(
 )
 add_custom_target(bootdir ALL DEPENDS bootd)
 
+add_custom_command(
+        OUTPUT voidframex.iso
+        # 1. Copy the specific binary required for UEFI ISO booting
+        COMMAND ${CMAKE_COMMAND} -E copy
+        ${LIMINE_RESOURCE_DIR}/limine-uefi-cd.bin
+        ${CMAKE_CURRENT_BINARY_DIR}/bootdir/limine-uefi-cd.bin
+
+        # 2. Run xorriso to build the ISO (UEFI-only per Limine docs)
+        COMMAND ${XORRISO} -as mkisofs
+        -e limine-uefi-cd.bin           # Use Limine's EFI System Partition image
+        -no-emul-boot                   # UEFI El Torito image
+        -efi-boot-part                  # Create hidden EFI partition for compatibility
+        --efi-boot-image                # Mark as EFI boot image
+        --protective-msdos-label        # GPT protective MBR
+        -o ${CMAKE_CURRENT_BINARY_DIR}/voidframex.iso
+        ${CMAKE_CURRENT_BINARY_DIR}/bootdir
+
+        DEPENDS bootd ${LIMINE_RESOURCE_DIR}/limine-uefi-cd.bin
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Generating UEFI ISO (voidframex.iso) using xorriso..."
+        VERBATIM
+)
+
+add_custom_target(iso ALL DEPENDS voidframex.iso)
+
 # ============================================================================
 # Run Targets
 # ============================================================================
@@ -139,8 +166,9 @@ add_custom_target(run
         -bios /usr/share/edk2/x64/OVMF.4m.fd
         -debugcon file:bootstrap.log
         -serial stdio
-        -drive format=raw,file=fat:rw:bootdir
-        DEPENDS bootdir
+        -boot d
+        -cdrom ${CMAKE_CURRENT_BINARY_DIR}/voidframex.iso
+        DEPENDS iso
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         COMMENT "Running voidframex kernel in QEMU (dev mode)"
 )
