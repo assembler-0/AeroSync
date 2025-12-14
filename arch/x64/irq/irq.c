@@ -3,7 +3,7 @@
 #include <kernel/panic.h>
 #include <kernel/sched/sched.h>
 
-void irq_common_stub(cpu_regs *regs) {
+void __used __hot irq_common_stub(cpu_regs *regs) {
   // CPU exceptions are vectors 0-31 (inclusive)
   if (regs->interrupt_number <= 31) {
     panic_exception(regs);

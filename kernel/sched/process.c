@@ -30,7 +30,7 @@ void switch_to(struct task_struct *prev, struct task_struct *next) {
 }
 
 // Entry point for new kernel threads
-void kthread_entry_stub(int (*threadfn)(void *data), void *data) {
+void __used kthread_entry_stub(int (*threadfn)(void *data), void *data) {
   cpu_sti();
 
   threadfn(data);
