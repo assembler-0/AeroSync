@@ -1,26 +1,39 @@
+#include <arch/x64/io.h>
 #include <drivers/uart/serial.h>
 #include <kernel/types.h>
 #include <lib/printk.h>
 #include <lib/vsprintf.h>
 #include <linearfb/linearfb.h>
 
+static void debugcon_putc(char c) { outb(0xE9, c); }
+
+static int debugcon_probe(void) { return 1; }
+
+static printk_backend_t debugcon_backend = {
+    .name = "debugcon",
+    .priority = 70,
+    .putc = debugcon_putc,
+    .probe = debugcon_probe,
+};
+
 static printk_backend_t fb_backend = {
-  .name = "linearfb",
-  .priority = 100,
-  .putc = linearfb_console_putc,
-  .probe = linearfb_probe,
+    .name = "linearfb",
+    .priority = 100,
+    .putc = linearfb_console_putc,
+    .probe = linearfb_probe,
 };
 
 static printk_backend_t serial_backend = {
-  .name = "serial",
-  .priority = 50,
-  .putc = serial_write_char,
-  .probe = serial_probe,
+    .name = "serial",
+    .priority = 50,
+    .putc = serial_write_char,
+    .probe = serial_probe,
 };
 
 static printk_backend_t *printk_backends[] = {
-  &fb_backend,
-  &serial_backend,
+    &fb_backend,
+    &serial_backend,
+    &debugcon_backend,
 };
 
 static int num_backends = sizeof(printk_backends) / sizeof(printk_backends[0]);
@@ -29,10 +42,8 @@ void printk_init_auto(void) {
   printk_backend_t target = {0};
   int last_priority = -1;
   for (int i = 0; i < num_backends; i++) {
-    if (printk_backends[i] &&
-       printk_backends[i]->priority > last_priority &&
-       printk_backends[i]->probe()
-      ) {
+    if (printk_backends[i] && printk_backends[i]->priority > last_priority &&
+        printk_backends[i]->probe()) {
       target = *printk_backends[i];
       last_priority = printk_backends[i]->priority;
     }
@@ -77,6 +88,4 @@ int printk(const char *fmt, ...) {
   return ret;
 }
 
-void printk_init(const log_sink_putc_t backend) {
-  log_init(backend);
-}
+void printk_init(const log_sink_putc_t backend) { log_init(backend); }
