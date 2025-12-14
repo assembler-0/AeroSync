@@ -55,6 +55,7 @@ set(MM_SOURCES
     mm/slab.c
     mm/san/ubsan.c
     mm/mmio.c
+    mm/vma.c
 )
 
 set(CRYPTO_SOURCES

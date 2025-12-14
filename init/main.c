@@ -1,3 +1,4 @@
+#include "kernel/types.h"
 #include <arch/x64/cpu.h>
 #include <arch/x64/features/features.h>
 #include <arch/x64/gdt/gdt.h>
