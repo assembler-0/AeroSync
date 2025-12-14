@@ -3,8 +3,8 @@
 #include <compiler.h>
 #include <kernel/spinlock.h>
 #include <kernel/types.h>
-#include <../linux/list.h>
-#include <../linux/rbtree.h>
+#include <linux/list.h>
+#include <linux/rbtree.h>
 
 /* VMA Flags */
 #define VM_READ 0x00000001
@@ -26,8 +26,7 @@ struct __aligned(sizeof(long)) vm_area_struct {
   uint64_t vm_end;   /* The first byte after our end address within vm_mm */
 
   /* Linked list of VMAs sorted by address */
-  struct vm_area_struct *vm_next;
-  struct vm_area_struct *vm_prev;
+  struct list_head vm_list;
 
   uint64_t vm_flags; /* Flags as listed above */
 
@@ -40,7 +39,7 @@ struct __aligned(sizeof(long)) vm_area_struct {
  */
 struct mm_struct {
   struct rb_root mm_rb;        /* Root of the VMA Red-Black Tree */
-  struct vm_area_struct *mmap; /* List of VMAs */
+  struct list_head mmap_list; /* List of VMAs */
 
   uint64_t *pml4; /* Physical address of the top-level page table */
 

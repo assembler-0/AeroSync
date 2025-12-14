@@ -2,9 +2,10 @@
 #include <kernel/classes.h>
 #include <kernel/panic.h>
 #include <lib/printk.h>
-#include <../include/linux/rbtree.h>
+#include <linux/rbtree.h>
+#include <linux/list.h>
 #include <lib/string.h>
-#include <mm/mmio.h>
+#include <linux/container_of.h>
 #include <mm/slab.h>
 #include <mm/vma.h>
 
@@ -16,39 +17,11 @@ static spinlock_t bootstrap_lock = 0;
 
 void mm_init(struct mm_struct *mm) {
   mm->mm_rb = RB_ROOT;
-  mm->mmap = NULL;
+  INIT_LIST_HEAD(&mm->mmap_list);
   mm->map_count = 0;
   spinlock_init(&mm->page_table_lock);
   spinlock_init(&mm->mmap_lock);
   // pml4 should be set by the caller (e.g., fork or init)
-}
-
-void mm_destroy(struct mm_struct *mm) {
-  if (!mm)
-    return;
-
-  spinlock_lock(&mm->mmap_lock);
-  struct vm_area_struct *vma = mm->mmap;
-
-  // Iterate and free all VMAs
-  while (vma) {
-    struct vm_area_struct *next = vma->vm_next;
-    // rb_erase not strictly needed if we are destroying the whole tree,
-    // but removing from tree keeps state consistent if we crash halfway.
-    // For destruction, just freeing the struct is faster/sufficient if no
-    // concurrent access.
-    vma_free(vma);
-    vma = next;
-  }
-
-  mm->mmap = NULL;
-  mm->mm_rb = RB_ROOT;
-  mm->map_count = 0;
-
-  spinlock_unlock(&mm->mmap_lock);
-
-  // Note: We do not free the mm struct itself here, as it might be static
-  // (init_mm) or embedded in task_struct. Caller handles container.
 }
 
 struct vm_area_struct *vma_create(uint64_t start, uint64_t end,
@@ -82,6 +55,7 @@ struct vm_area_struct *vma_create(uint64_t start, uint64_t end,
   vma->vm_end = end;
   vma->vm_flags = flags;
   vma->vm_rb = (struct rb_node){0};
+  INIT_LIST_HEAD(&vma->vm_list);
 
   return vma;
 }
@@ -124,20 +98,46 @@ struct vm_area_struct *vma_find(struct mm_struct *mm, uint64_t addr) {
   return NULL;
 }
 
+/*
+ * Helper: Insert VMA into the sorted linked list
+ */
+static void __vma_link_list(struct mm_struct *mm, struct vm_area_struct *vma) {
+    struct vm_area_struct *curr;
+
+    // Iterate to find the insertion point
+    list_for_each_entry(curr, &mm->mmap_list, vm_list) {
+        if (curr->vm_start > vma->vm_start) {
+            // Insert before curr
+            list_add_tail(&vma->vm_list, &curr->vm_list);
+            return;
+        }
+    }
+
+    // If list is empty or vma is the last element
+    list_add_tail(&vma->vm_list, &mm->mmap_list);
+}
+
+/*
+ * Helper: Unlink VMA from the sorted linked list
+ */
+static void __vma_unlink_list(struct mm_struct *mm, struct vm_area_struct *vma) {
+    (void)mm; // unused
+    list_del(&vma->vm_list);
+}
+
 int vma_insert(struct mm_struct *mm, struct vm_area_struct *vma) {
   struct rb_node **new = &mm->mm_rb.rb_node;
   struct rb_node *parent = NULL;
   struct vm_area_struct *this_vma;
 
-  /* Figure out where to put new node */
+  /* 1. Insert into RB-Tree (O(log N)) */
   while (*new) {
     this_vma = rb_entry(*new, struct vm_area_struct, vm_rb);
     parent = *new;
 
     // Check for overlap
     if (vma->vm_end > this_vma->vm_start && vma->vm_start < this_vma->vm_end) {
-      // Overlap detected!
-      return -1;
+      return -1; // Overlap
     }
 
     if (vma->vm_start < this_vma->vm_start)
@@ -145,38 +145,71 @@ int vma_insert(struct mm_struct *mm, struct vm_area_struct *vma) {
     else if (vma->vm_start >= this_vma->vm_end)
       new = &((*new)->rb_right);
     else
-      return -1; // Should be caught by overlap check, but sanity check
+      return -1; // Should be impossible due to overlap check
   }
 
-  /* Add new node and rebalance tree */
   vma->vm_mm = mm;
   rb_link_node(&vma->vm_rb, parent, new);
   rb_insert_color(&vma->vm_rb, &mm->mm_rb);
 
+  /* 2. Insert into Sorted Linked List (O(N)) */
+  __vma_link_list(mm, vma);
+
   mm->map_count++;
-
-  // Add to linked list (simplified sorted insertion or just add to head)
-  // For now, let's just prepend to mmap list for simplicity,
-  // real implementations keep it sorted.
-  vma->vm_next = mm->mmap;
-  vma->vm_prev = NULL;
-  if (mm->mmap)
-    mm->mmap->vm_prev = vma;
-  mm->mmap = vma;
-
   return 0;
 }
 
+/*
+ * Remove a VMA from the mm_struct (RB-Tree and List), but do NOT free it.
+ * Caller is responsible for freeing.
+ */
+void vma_remove(struct mm_struct *mm, struct vm_area_struct *vma) {
+    if (!mm || !vma) return;
+
+    // 1. Remove from RB-Tree
+    rb_erase(&vma->vm_rb, &mm->mm_rb);
+
+    // 2. Remove from Linked List
+    __vma_unlink_list(mm, vma);
+
+    mm->map_count--;
+    vma->vm_mm = NULL;
+}
+
+/*
+ * Destroys all VMAs in the MM.
+ */
+void mm_destroy(struct mm_struct *mm) {
+  if (!mm) return;
+
+  spinlock_lock(&mm->mmap_lock);
+
+  struct vm_area_struct *vma, *tmp;
+
+  list_for_each_entry_safe(vma, tmp, &mm->mmap_list, vm_list) {
+    // Optional: Paranoia check
+    if (vma->vm_mm != mm) {
+        printk(KERN_WARNING "VMA %p does not belong to MM %p!\n", vma, mm);
+    }
+    vma_free(vma);
+  }
+
+  INIT_LIST_HEAD(&mm->mmap_list);
+  mm->mm_rb = RB_ROOT;
+  mm->map_count = 0;
+
+  spinlock_unlock(&mm->mmap_lock);
+}
+
 void vma_dump(struct mm_struct *mm) {
-  struct rb_node *node;
   struct vm_area_struct *vma;
 
   printk(VMA_CLASS "VMA dump for mm: %p\n", mm);
-  // Iterate in-order
-  for (node = rb_first(&mm->mm_rb); node; node = rb_next(node)) {
-    vma = rb_entry(node, struct vm_area_struct, vm_rb);
+  // Iterate list
+  list_for_each_entry(vma, &mm->mmap_list, vm_list) {
     printk(VMA_CLASS "  [%llx - %llx] flags: %llx\n", vma->vm_start,
-           vma->vm_end, vma->vm_flags);
+           vma->vm_end,
+           vma->vm_flags);
   }
 }
 
@@ -190,45 +223,43 @@ uint64_t vma_find_free_region(struct mm_struct *mm, size_t size,
   size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
 
   uint64_t current_addr = range_start;
-  struct vm_area_struct *vma = mm->mmap; // Sorted linked list of VMAs
-
-  /* Fast forward to the start of our search range */
-  while (vma && vma->vm_end <= range_start) {
-    vma = vma->vm_next;
-  }
-
-  while (vma) {
-    // Check gap between current_addr and vma->vm_start
-    if (vma->vm_start > current_addr) {
-      uint64_t gap_size = vma->vm_start - current_addr;
-      if (gap_size >= size) {
-        // Found a hole! Check if it fits within range_end
-        if (current_addr + size <= range_end) {
-          return current_addr;
-        } else {
-          return 0; // Exceeded range
-        }
-      }
-    }
-
-    // Move current_addr to end of this VMA
-    current_addr = vma->vm_end;
-
-    // Optimize: Align current_addr to page boundary just in case (VMAs should
-    // be aligned though)
-    current_addr = (current_addr + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-
-    if (current_addr >= range_end)
+  struct vm_area_struct *vma;
+  
+  // Optimistic check: if list is empty
+  if (list_empty(&mm->mmap_list)) {
+      if (range_end > range_start && range_end - range_start >= size)
+          return range_start;
       return 0;
-
-    vma = vma->vm_next;
   }
 
-  // Check gap after last VMA
+  list_for_each_entry(vma, &mm->mmap_list, vm_list) {
+      // If VMA ends before our range, just move on (but update current_addr if needed? 
+      // Actually if vma->vm_end < range_start, it's irrelevant, but current_addr is range_start)
+      if (vma->vm_end <= range_start) continue;
+
+      // Now vma->vm_end > range_start. 
+      // If vma->vm_start is also < range_start, then this VMA covers the start.
+      // current_addr must be moved to vma->vm_end.
+      
+      // Check gap between current_addr and vma->vm_start
+      if (vma->vm_start > current_addr) {
+          uint64_t gap = vma->vm_start - current_addr;
+          if (gap >= size) {
+              if (current_addr + size <= range_end) return current_addr;
+              return 0; // Exceeded max range
+          }
+      }
+
+      current_addr = vma->vm_end;
+      // Align
+      current_addr = (current_addr + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+
+      if (current_addr >= range_end) return 0;
+  }
+
+  // Check tail gap
   if (range_end > current_addr) {
-    if (range_end - current_addr >= size) {
-      return current_addr;
-    }
+      if (range_end - current_addr >= size) return current_addr;
   }
 
   return 0; // No space found

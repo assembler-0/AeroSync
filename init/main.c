@@ -20,6 +20,7 @@
 #include <linearfb/font.h>
 #include <linearfb/linearfb.h>
 #include <mm/slab.h>
+#include <mm/vmalloc.h>
 
 #define VOIDFRAMEX_VERSION "0.0.1"
 #define VOIDFRAMEX_BUILD_DATE __DATE__ " " __TIME__
@@ -128,7 +129,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   } else {
       printk(INITRD_CLASS "No initrd module found.\n");
   }
-
 
   sched_init();
   sched_init_task(&bsp_task);

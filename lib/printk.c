@@ -11,7 +11,7 @@ static int debugcon_probe(void) { return 1; }
 
 static printk_backend_t debugcon_backend = {
     .name = "debugcon",
-    .priority = 70,
+    .priority = 30,
     .putc = debugcon_putc,
     .probe = debugcon_probe,
 };
@@ -25,7 +25,7 @@ static printk_backend_t fb_backend = {
 
 static printk_backend_t serial_backend = {
     .name = "serial",
-    .priority = 50,
+    .priority = 150,
     .putc = serial_write_char,
     .probe = serial_probe,
 };

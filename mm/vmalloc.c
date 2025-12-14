@@ -105,19 +105,7 @@ void vfree(void *ptr) {
     }
   }
 
-  // Remove VMA (TODO: implement vma_remove properly in vma.c to unlink rb_node)
-  // currently we only have insert/find/free.
-  // We need `vma_remove` or `rb_erase` call here.
-  // Assuming vma_remove logic:
-  rb_erase(&vma->vm_rb, &init_mm.mm_rb);
-
-  // Unlink from list
-  if (vma->vm_prev)
-    vma->vm_prev->vm_next = vma->vm_next;
-  if (vma->vm_next)
-    vma->vm_next->vm_prev = vma->vm_prev;
-  if (init_mm.mmap == vma)
-    init_mm.mmap = vma->vm_next;
-
+  // Remove VMA and free it
+  vma_remove(&init_mm, vma);
   vma_free(vma);
 }

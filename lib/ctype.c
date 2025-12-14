@@ -5,9 +5,16 @@
  *  Copyright (C) 1991, 1992  Linus Torvalds
  */
 
-#include <kernel/ctype.h>
 
-char _ctmp;
+#define _U	0x01	/* upper */
+#define _L	0x02	/* lower */
+#define _D	0x04	/* digit */
+#define _C	0x08	/* cntrl */
+#define _P	0x10	/* punct */
+#define _S	0x20	/* white space (space/lf/tab) */
+#define _X	0x40	/* hex digit */
+#define _SP	0x80	/* hard space (0x20) */
+
 unsigned char _ctype[] = {0x00,			/* EOF */
 _C,_C,_C,_C,_C,_C,_C,_C,			/* 0-7 */
 _C,_C|_S,_C|_S,_C|_S,_C|_S,_C|_S,_C,_C,		/* 8-15 */

@@ -1,5 +1,10 @@
-#ifndef _LINUX_CTYPE_H
-#define _LINUX_CTYPE_H
+/* SPDX-License-Identifier: GPL-2.0 */
+#pragma once
+
+/*
+ * NOTE! This ctype does not handle EOF like the standard C
+ * library is required to.
+ */
 
 #define _U	0x01	/* upper */
 #define _L	0x02	/* lower */
@@ -10,30 +15,54 @@
 #define _X	0x40	/* hex digit */
 #define _SP	0x80	/* hard space (0x20) */
 
-extern unsigned char _ctype[];
+extern const unsigned char _ctype[];
 
-#define isalnum(c)  ((_ctype+1)[(unsigned char)(c)] & (_U|_L|_D))
-#define isalpha(c)  ((_ctype+1)[(unsigned char)(c)] & (_U|_L))
-#define iscntrl(c)  ((_ctype+1)[(unsigned char)(c)] & (_C))
-#define isdigit(c)  ((_ctype+1)[(unsigned char)(c)] & (_D))
-#define isgraph(c)  ((_ctype+1)[(unsigned char)(c)] & (_P|_U|_L|_D))
-#define islower(c)  ((_ctype+1)[(unsigned char)(c)] & (_L))
-#define isprint(c)  ((_ctype+1)[(unsigned char)(c)] & (_P|_U|_L|_D|_SP))
-#define ispunct(c)  ((_ctype+1)[(unsigned char)(c)] & (_P))
-#define isspace(c)  ((_ctype+1)[(unsigned char)(c)] & (_S))
-#define isupper(c)  ((_ctype+1)[(unsigned char)(c)] & (_U))
-#define isxdigit(c) ((_ctype+1)[(unsigned char)(c)] & (_D|_X))
+#define __ismask(x) (_ctype[(int)(unsigned char)(x)])
 
-#define isascii(c) (((unsigned) c)<=0x7f)
-#define toascii(c) (((unsigned) c)&0x7f)
+#define isalnum(c)	((__ismask(c)&(_U|_L|_D)) != 0)
+#define isalpha(c)	((__ismask(c)&(_U|_L)) != 0)
+#define iscntrl(c)	((__ismask(c)&(_C)) != 0)
+#define isgraph(c)	((__ismask(c)&(_P|_U|_L|_D)) != 0)
+#define islower(c)	((__ismask(c)&(_L)) != 0)
+#define isprint(c)	((__ismask(c)&(_P|_U|_L|_D|_SP)) != 0)
+#define ispunct(c)	((__ismask(c)&(_P)) != 0)
+/* Note: isspace() must return false for %NUL-terminator */
+#define isspace(c)	((__ismask(c)&(_S)) != 0)
+#define isupper(c)	((__ismask(c)&(_U)) != 0)
+#define isxdigit(c)	((__ismask(c)&(_D|_X)) != 0)
 
-static inline int __attribute__((always_inline)) tolower(int c) {
-    int ch = (unsigned char)c;
-    return isupper(ch) ? ch - ('A' - 'a') : ch;
+#define isascii(c) (((unsigned char)(c))<=0x7f)
+#define toascii(c) (((unsigned char)(c))&0x7f)
+
+#if __has_builtin(__builtin_isdigit)
+#define  isdigit(c) __builtin_isdigit(c)
+#else
+static inline int isdigit(int c)
+{
+  return '0' <= c && c <= '9';
 }
-static inline int __attribute__((always_inline)) toupper(int c) {
-    int ch = (unsigned char)c;
-    return islower(ch) ? ch - ('a' - 'A') : ch;
-}
-
 #endif
+
+static inline unsigned char __tolower(unsigned char c)
+{
+  if (isupper(c))
+    c -= 'A'-'a';
+  return c;
+}
+
+static inline unsigned char __toupper(unsigned char c)
+{
+  if (islower(c))
+    c -= 'a'-'A';
+  return c;
+}
+
+#define tolower(c) __tolower(c)
+#define toupper(c) __toupper(c)
+
+
+/* Fast check for octal digit */
+static inline int isodigit(const char c)
+{
+  return c >= '0' && c <= '7';
+}

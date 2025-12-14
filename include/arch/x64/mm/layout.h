@@ -35,13 +35,13 @@
 #define KERNEL_VIRT_SIZE (2UL * 1024 * 1024 * 1024)
 
 /* Slab Allocator Region */
-#define SLAB_VIRT_BASE 0xFFFF800000000000UL
+#define SLAB_VIRT_BASE 0xFFFFC00000000000UL
 #define SLAB_VIRT_SIZE (1UL << 30) // 1GB
 #define SLAB_VIRT_END (SLAB_VIRT_BASE + SLAB_VIRT_SIZE)
 
 /* Vmalloc Allocator Region */
 /* Note: kept separate from Slab to ensure easier debugging/isolation */
-#define VMALLOC_VIRT_BASE 0xFFFF900000000000UL
+#define VMALLOC_VIRT_BASE 0xFFFFD00000000000UL
 #define VMALLOC_VIRT_SIZE (64UL * 1024 * 1024 * 1024) // 64GB
 #define VMALLOC_VIRT_END (VMALLOC_VIRT_BASE + VMALLOC_VIRT_SIZE)
 

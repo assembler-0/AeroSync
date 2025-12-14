@@ -16,6 +16,9 @@ struct vm_area_struct *vma_find(struct mm_struct *mm, uint64_t addr);
 /* Insert a new VMA into the mm structure */
 int vma_insert(struct mm_struct *mm, struct vm_area_struct *vma);
 
+/* Removes an VMA from the mm struct*/
+void vma_remove(struct mm_struct *mm, struct vm_area_struct *vma);
+
 /* Allocate a new VMA structure (does not insert it) */
 struct vm_area_struct *vma_create(uint64_t start, uint64_t end, uint64_t flags);
 
