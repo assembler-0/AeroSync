@@ -1,3 +1,4 @@
+#include "kernel/types.h"
 #include <arch/x64/cpu.h>
 #include <arch/x64/features/features.h>
 #include <arch/x64/gdt/gdt.h>
@@ -17,6 +18,7 @@
 #include <limine/limine.h>
 #include <linearfb/font.h>
 #include <linearfb/linearfb.h>
+#include <mm/kheap.h>
 #include <mm/slab.h>
 
 #define VOIDFRAMEX_VERSION "0.0.1"
@@ -104,7 +106,8 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   slab_init();
 
   cpu_features_init();
-  if (ic_install() == INTC_APIC) smp_init();
+  if (ic_install() == INTC_APIC)
+    smp_init();
   calibrate_tsc();
   crc32_init();
 

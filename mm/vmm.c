@@ -7,6 +7,7 @@
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <mm/mmio.h>
+#include <mm/vma.h>
 
 // Global kernel PML4 (physical address)
 uint64_t g_kernel_pml4 = 0;
@@ -293,6 +294,13 @@ void vmm_init(void) {
   vmm_switch_pml4(g_kernel_pml4);
 
   mmio_allocator_init();
+
+  // Initialize the kernel's virtual memory address space manager
+  mm_init(&init_mm);
+  init_mm.pml4 = (uint64_t *)phys_to_virt(g_kernel_pml4);
+
+  // Verify VMA Implementation
+  vma_test();
 
   printk(VMM_CLASS "VMM Initialized and switched to new Page Table.\n");
 }

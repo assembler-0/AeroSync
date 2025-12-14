@@ -3,6 +3,7 @@
 #include <kernel/sched/sched.h>
 #include <lib/string.h>
 #include <mm/slab.h>
+#include <mm/kheap.h>
 
 /*
  * Process/Thread Management
@@ -47,12 +48,11 @@ struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
   memset(ts, 0, sizeof(*ts));
 
   // Allocate Stack - use PMM for large stacks (8KB > slab max 4KB)
-  uint64_t stack_phys = pmm_alloc_pages(2); // 8KB stack
-  if (!stack_phys) {
+  void *stack = vmalloc(PAGE_SIZE * 2); // 8KB stack
+  if (!stack) {
     free_task_struct(ts);
     return NULL;
   }
-  void *stack = pmm_phys_to_virt(stack_phys);
 
   ts->stack = stack;
   ts->flags = PF_KTHREAD;
@@ -147,8 +147,7 @@ void free_task(struct task_struct *task) {
   if (!task) return;
   
   if (task->stack) {
-    uint64_t stack_phys = pmm_virt_to_phys(task->stack);
-    pmm_free_pages(stack_phys, 2);
+    vfree(task->stack);
     task->stack = NULL;
   }
   
@@ -162,8 +161,7 @@ void sys_exit(int error_code) {
 
   // Free task resources
   if (curr->stack) {
-    uint64_t stack_phys = pmm_virt_to_phys(curr->stack);
-    pmm_free_pages(stack_phys, 2);
+    vfree(curr->stack);
     curr->stack = NULL;
   }
 

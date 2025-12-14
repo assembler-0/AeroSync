@@ -58,6 +58,7 @@
 #define PAGE_CLASS "[MM::PAGE] " // Page Fault Handler
 #define SWAP_CLASS "[MM::SWAP] " // Swap space / Paging to disk
 #define MMIO_CLASS "[MM::MMIO] " // MMIO Virtual Address Allocator
+#define VMA_CLASS "[MM::VMA] " // Virtual Memory Area
 
 ///@section Heaps & Allocators
 #define SLAB_CLASS "[MM::SLAB] " // Slab allocator specific
