@@ -56,6 +56,7 @@ set(MM_SOURCES
     mm/san/ubsan.c
     mm/mmio.c
     mm/vma.c
+    mm/vmalloc.c
 )
 
 set(CRYPTO_SOURCES

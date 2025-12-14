@@ -1,5 +1,6 @@
 #pragma once
 
+#include <compiler.h>
 #include <kernel/spinlock.h>
 #include <kernel/types.h>
 #include <lib/list.h>
@@ -16,7 +17,7 @@
  * Represents a contiguous range of virtual memory with consistent permissions.
  * Managed effectively by a Red-Black Tree.
  */
-struct vm_area_struct {
+struct __aligned(sizeof(long)) vm_area_struct {
   struct rb_node vm_rb; /* Tree node for mm->mm_rb */
 
   struct mm_struct *vm_mm; /* The address space we belong to */

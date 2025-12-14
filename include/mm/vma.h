@@ -22,6 +22,10 @@ struct vm_area_struct *vma_create(uint64_t start, uint64_t end, uint64_t flags);
 /* Free a VMA structure */
 void vma_free(struct vm_area_struct *vma);
 
+/* Find a free region of given size within range */
+uint64_t vma_find_free_region(struct mm_struct *mm, size_t size,
+                              uint64_t range_start, uint64_t range_end);
+
 /* Global kernel mm_struct */
 extern struct mm_struct init_mm;
 

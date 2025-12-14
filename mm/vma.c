@@ -1,3 +1,4 @@
+#include <arch/x64/mm/pmm.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>
 #include <lib/printk.h>
@@ -9,7 +10,8 @@
 
 #define BOOTSTRAP_VMA_COUNT 128
 static struct vm_area_struct bootstrap_vmas[BOOTSTRAP_VMA_COUNT];
-static int bootstrap_vma_used = 0;
+static bool
+    bootstrap_in_use[BOOTSTRAP_VMA_COUNT]; // all false (0) by default in BSS
 static spinlock_t bootstrap_lock = 0;
 
 void mm_init(struct mm_struct *mm) {
@@ -19,6 +21,34 @@ void mm_init(struct mm_struct *mm) {
   spinlock_init(&mm->page_table_lock);
   spinlock_init(&mm->mmap_lock);
   // pml4 should be set by the caller (e.g., fork or init)
+}
+
+void mm_destroy(struct mm_struct *mm) {
+  if (!mm)
+    return;
+
+  spinlock_lock(&mm->mmap_lock);
+  struct vm_area_struct *vma = mm->mmap;
+
+  // Iterate and free all VMAs
+  while (vma) {
+    struct vm_area_struct *next = vma->vm_next;
+    // rb_erase not strictly needed if we are destroying the whole tree,
+    // but removing from tree keeps state consistent if we crash halfway.
+    // For destruction, just freeing the struct is faster/sufficient if no
+    // concurrent access.
+    vma_free(vma);
+    vma = next;
+  }
+
+  mm->mmap = NULL;
+  mm->mm_rb = RB_ROOT;
+  mm->map_count = 0;
+
+  spinlock_unlock(&mm->mmap_lock);
+
+  // Note: We do not free the mm struct itself here, as it might be static
+  // (init_mm) or embedded in task_struct. Caller handles container.
 }
 
 struct vm_area_struct *vma_create(uint64_t start, uint64_t end,
@@ -32,8 +62,12 @@ struct vm_area_struct *vma_create(uint64_t start, uint64_t end,
   if (!vma) {
     // Fallback to bootstrap allocator
     spinlock_lock(&bootstrap_lock);
-    if (bootstrap_vma_used < BOOTSTRAP_VMA_COUNT) {
-      vma = &bootstrap_vmas[bootstrap_vma_used++];
+    for (int i = 0; i < BOOTSTRAP_VMA_COUNT; i++) {
+      if (!bootstrap_in_use[i]) {
+        bootstrap_in_use[i] = true;
+        vma = &bootstrap_vmas[i];
+        break;
+      }
     }
     spinlock_unlock(&bootstrap_lock);
   }
@@ -61,10 +95,11 @@ void vma_free(struct vm_area_struct *vma) {
       (vma >= bootstrap_vmas && vma < bootstrap_vmas + BOOTSTRAP_VMA_COUNT);
 
   if (is_bootstrap) {
-    // We generally don't free bootstrap VMAs as they are compact
-    // and used for the kernel core. Leaking them is 'fine' for now
-    // or we mark them as free in a bitmap if we wanted to be fancy.
-    // For now, no-op.
+    // Calculate index and mark as free
+    uint64_t index = vma - bootstrap_vmas;
+    spinlock_lock(&bootstrap_lock);
+    bootstrap_in_use[index] = false;
+    spinlock_unlock(&bootstrap_lock);
     return;
   }
 
@@ -140,9 +175,63 @@ void vma_dump(struct mm_struct *mm) {
   // Iterate in-order
   for (node = rb_first(&mm->mm_rb); node; node = rb_next(node)) {
     vma = rb_entry(node, struct vm_area_struct, vm_rb);
-    printk(VMA_CLASS "  [%llx - %llx] flags: %llx\n", vma->vm_start, vma->vm_end,
-           vma->vm_flags);
+    printk(VMA_CLASS "  [%llx - %llx] flags: %llx\n", vma->vm_start,
+           vma->vm_end, vma->vm_flags);
   }
+}
+
+/* Find a free region of given size between start and end address */
+uint64_t vma_find_free_region(struct mm_struct *mm, size_t size,
+                              uint64_t range_start, uint64_t range_end) {
+  if (!mm || size == 0)
+    return 0;
+
+  /* Align size to page boundary */
+  size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+
+  uint64_t current_addr = range_start;
+  struct vm_area_struct *vma = mm->mmap; // Sorted linked list of VMAs
+
+  /* Fast forward to the start of our search range */
+  while (vma && vma->vm_end <= range_start) {
+    vma = vma->vm_next;
+  }
+
+  while (vma) {
+    // Check gap between current_addr and vma->vm_start
+    if (vma->vm_start > current_addr) {
+      uint64_t gap_size = vma->vm_start - current_addr;
+      if (gap_size >= size) {
+        // Found a hole! Check if it fits within range_end
+        if (current_addr + size <= range_end) {
+          return current_addr;
+        } else {
+          return 0; // Exceeded range
+        }
+      }
+    }
+
+    // Move current_addr to end of this VMA
+    current_addr = vma->vm_end;
+
+    // Optimize: Align current_addr to page boundary just in case (VMAs should
+    // be aligned though)
+    current_addr = (current_addr + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+
+    if (current_addr >= range_end)
+      return 0;
+
+    vma = vma->vm_next;
+  }
+
+  // Check gap after last VMA
+  if (range_end > current_addr) {
+    if (range_end - current_addr >= size) {
+      return current_addr;
+    }
+  }
+
+  return 0; // No space found
 }
 
 /* Global kernel mm_struct */
@@ -175,4 +264,7 @@ void vma_test(void) {
   if (!v3 || vma_insert(&test_mm, v3) == 0)
     panic(VMA_CLASS "VMA Test 3 Failed: Overlap allowed");
   vma_free(v3); // Succeeded alloc, failed insert
+
+  // Cleanup using proper destroy function
+  mm_destroy(&test_mm);
 }

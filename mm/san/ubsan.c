@@ -147,7 +147,7 @@ UBSAN_HANDLER(__ubsan_handle_out_of_bounds)(struct OutOfBoundsData *data,
   panic(UBSAN_CLASS "out_of_bounds");
 }
 
-static const char *type_check_kinds[] = {"load of",
+static const char * const type_check_kinds[] = {"load of",
                                          "store to",
                                          "reference binding to",
                                          "member access within",
@@ -184,9 +184,22 @@ UBSAN_HANDLER(__ubsan_handle_type_mismatch)(struct TypeMismatchData *data,
   panic(UBSAN_CLASS "type_mismatch");
 }
 
-UBSAN_HANDLER(__ubsan_handle_type_mismatch_v1)(struct TypeMismatchData *data,
+struct TypeMismatchDataV1 {
+  struct SourceLocation location;
+  struct TypeDescriptor *type;
+  unsigned char log_alignment;
+  unsigned char type_check_kind;
+};
+
+UBSAN_HANDLER(__ubsan_handle_type_mismatch_v1)(struct TypeMismatchDataV1 *data,
                                                uintptr_t ptr) {
-  __ubsan_handle_type_mismatch(data, ptr);
+  struct TypeMismatchData converted = {
+    .location = data->location,
+    .type = data->type,
+    .alignment = 1UL << data->log_alignment,
+    .type_check_kind = data->type_check_kind
+  };
+  __ubsan_handle_type_mismatch(&converted, ptr);
 }
 
 UBSAN_HANDLER(__ubsan_handle_load_invalid_value)(struct InvalidValueData *data,
