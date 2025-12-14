@@ -31,7 +31,7 @@ static const interrupt_controller_interface_t pic_interface = {
     .priority = 50,
 };
 
-static const interrupt_controller_interface_t* controllers[] = {
+static const interrupt_controller_interface_t* const controllers[] = {
     &apic_interface,
     &pic_interface,
 };
@@ -40,16 +40,16 @@ static const size_t ic_num_controllers =
     sizeof(controllers) / sizeof(controllers[0]);
 
 interrupt_controller_t ic_install(void) {
-    interrupt_controller_interface_t* selected = NULL;
-    interrupt_controller_interface_t* fallback = NULL;
+    const interrupt_controller_interface_t* selected = NULL;
+    const interrupt_controller_interface_t* fallback = NULL;
 
     for (size_t i = 0; i < ic_num_controllers; i++) {
         if (controllers[i]->probe()) {
             if (!selected || controllers[i]->priority > selected->priority) {
                 fallback = selected;
-                selected = (interrupt_controller_interface_t*)controllers[i];
+                selected = controllers[i];
             } else if (!fallback || controllers[i]->priority > fallback->priority) {
-                fallback = (interrupt_controller_interface_t*)controllers[i];
+                fallback = controllers[i];
             }
         }
     }
@@ -74,35 +74,40 @@ interrupt_controller_t ic_install(void) {
 
     // Set current controller type
     if (selected == &apic_interface) {
-        current_controller = selected;
+        current_controller = (interrupt_controller_interface_t*)selected;
         printk(KERN_INFO APIC_CLASS "APIC initialized successfully\n");
     } else {
-        current_controller = selected;
+        current_controller = (interrupt_controller_interface_t*)selected;
         printk(KERN_INFO PIC_CLASS "PIC initialized successfully\n");
     }
     return current_controller->type;
 }
 
 void ic_enable_irq(uint8_t irq_line) {
-    if (!current_controller->enable_irq) panic(IC_CLASS "No controller installed");
+    if (!current_controller) panic(IC_CLASS "IC not initialized");
+    if (!current_controller->enable_irq) panic(IC_CLASS "enable_irq not supported");
     current_controller->enable_irq(irq_line);
 }
 
 void ic_disable_irq(uint8_t irq_line) {
-    if (!current_controller->disable_irq) panic(IC_CLASS "No controller installed");
+    if (!current_controller) panic(IC_CLASS "IC not initialized");
+    if (!current_controller->disable_irq) panic(IC_CLASS "disable_irq not supported");
     current_controller->disable_irq(irq_line);
 }
 
 void ic_send_eoi(uint32_t interrupt_number) {
-    if (!current_controller->send_eoi) panic(IC_CLASS "No controller installed");
+    if (!current_controller) panic(IC_CLASS "IC not initialized");
+    if (!current_controller->send_eoi) panic(IC_CLASS "send_eoi not supported");
     current_controller->send_eoi(interrupt_number);
 }
 
 interrupt_controller_t ic_get_controller_type(void) {
+    if (!current_controller) panic(IC_CLASS "IC not initialized");
     return current_controller->type;
 }
 
 const char* ic_get_controller_name(void) {
+    if (!current_controller) panic(IC_CLASS "IC not initialized");
     switch (current_controller->type) {
         case INTC_APIC:
             return "APIC";
@@ -113,7 +118,8 @@ const char* ic_get_controller_name(void) {
 }
 
 void ic_set_timer(const uint32_t frequency_hz) {
-    if (!current_controller->timer_set) panic(IC_CLASS "No controller installed");
+    if (!current_controller) panic(IC_CLASS "IC not initialized");
+    if (!current_controller->timer_set) panic(IC_CLASS "timer_set not supported");
     current_controller->timer_set(frequency_hz);
     timer_frequency_hz = frequency_hz;
 }
