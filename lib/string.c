@@ -277,6 +277,16 @@ char *strsep(char **s, const char *ct) {
   return sbegin;
 }
 
+const char *strrchr(const char *s, int c) {
+  const char *last_occurrence = NULL;
+  do {
+    if ((unsigned char)*s == (unsigned char)c) {
+      last_occurrence = s;
+    }
+  } while (*s++);
+  return (char *)last_occurrence;
+}
+
 void *memset(void *restrict s, const int c, const size_t n) {
   volatile unsigned char *p = (volatile unsigned char *)s;
   const unsigned char byte = (unsigned char)c;

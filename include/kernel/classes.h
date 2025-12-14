@@ -116,6 +116,10 @@
 #define EXT_CLASS "[FS::EXT] "   // EXT2/3/4 Driver
 #define ISO_CLASS "[FS::ISO] "   // ISO9660 (CD-ROM)
 #define DEVFS_CLASS "[FS::DEV] " // /dev filesystem
+#define TMPFS_CLASS "[FS::TMP] "
+#define NTFS_CLASS "[FS::NTFS] "
+#define USTAR_CLASS "[FS::USTAR] "
+#define INITRD_CLASS "[FS::INITRD] "
 
 /* =========================================================================
  *  NETWORKING STACK

@@ -3,7 +3,7 @@
 #include <kernel/sched/sched.h>
 #include <lib/string.h>
 #include <mm/slab.h>
-#include <mm/kheap.h>
+#include <mm/vmalloc.h>
 
 /*
  * Process/Thread Management

@@ -7,6 +7,7 @@ int strcmp(const char *a, const char *b);
 int strlen(const char *str);
 int strnlen(const char *str, size_t max);
 const char *strchr(const char *str, int c);
+const char *strrchr(const char *str, int c);
 void strncpy(char *dest, const char *src, size_t max_len);
 void strcpy(char *dest, const char *src);
 void strcat(char *dest, const char *src);

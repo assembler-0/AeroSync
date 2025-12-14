@@ -10,6 +10,7 @@
 #include <crypto/crc32.h>
 #include <drivers/apic/ic.h>
 #include <drivers/uart/serial.h>
+#include <fs/vfs.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>
 #include <kernel/sched/process.h>
@@ -18,7 +19,6 @@
 #include <limine/limine.h>
 #include <linearfb/font.h>
 #include <linearfb/linearfb.h>
-#include <mm/kheap.h>
 #include <mm/slab.h>
 
 #define VOIDFRAMEX_VERSION "0.0.1"
@@ -58,6 +58,12 @@ __attribute__((
     used,
     section(".limine_requests"))) static volatile struct limine_smbios_request
     smbios_request = {.id = LIMINE_SMBIOS_REQUEST_ID, .revision = 0};
+
+// Request modules (initrd)
+__attribute__((
+    used,
+    section(".limine_requests"))) static volatile struct limine_module_request
+    module_request = {.id = LIMINE_MODULE_REQUEST_ID, .revision = 0}; // New module request
 
 static struct task_struct bsp_task;
 
@@ -111,6 +117,18 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   if (ic_install() == INTC_APIC)
     smp_init();
   crc32_init();
+  vfs_init();
+
+  // Check for initrd module and mount it
+  if (module_request.response && module_request.response->module_count > 0) {
+      // Assuming the first module is our initrd for simplicity
+      struct limine_file *initrd_module = module_request.response->modules[0];
+      printk(INITRD_CLASS "Found module '%s' at %p, size %lu\n",
+             initrd_module->path, initrd_module->address, initrd_module->size);
+  } else {
+      printk(INITRD_CLASS "No initrd module found.\n");
+  }
+
 
   sched_init();
   sched_init_task(&bsp_task);

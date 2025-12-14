@@ -4,9 +4,7 @@
 #include <kernel/classes.h>
 #include <kernel/panic.h>
 #include <lib/printk.h>
-#include <lib/string.h>
-#include <mm/kheap.h>
-#include <mm/slab.h>
+#include <mm/vmalloc.h>
 #include <mm/vma.h>
 
 /*

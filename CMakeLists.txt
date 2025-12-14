@@ -110,7 +110,6 @@ add_custom_command(
         OUTPUT bootd
         COMMAND ${CMAKE_COMMAND} -E touch bootd
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir/kernel
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir/boot/
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir/EFI/BOOT
         # Copy Limine UEFI bootloader
         COMMAND ${CMAKE_COMMAND} -E copy /usr/share/limine/BOOTX64.EFI
@@ -121,12 +120,11 @@ add_custom_command(
         # Copy Limine config
         COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/limine.conf
         ${CMAKE_CURRENT_BINARY_DIR}/bootdir/limine.conf
-        DEPENDS voidframex.krnl
+        DEPENDS voidframex.krnl ${CMAKE_CURRENT_SOURCE_DIR}/limine.conf
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         COMMENT "Setting up boot directory with Limine"
         VERBATIM
 )
-
 add_custom_target(bootdir ALL DEPENDS bootd)
 
 # ============================================================================

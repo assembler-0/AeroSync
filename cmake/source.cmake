@@ -9,6 +9,7 @@ file(GLOB_RECURSE DRIVER_SOURCES "drivers/*.c")
 file(GLOB_RECURSE LIB_SOURCES "lib/*.c")
 file(GLOB_RECURSE MM_SOURCES "mm/*.c")
 file(GLOB_RECURSE CRYPTO_SOURCES "crypto/*.c")
+file(GLOB_RECURSE FS_SOURCES "fs/*.c")
 
 # ============================================================================
 # Build Include Directories
@@ -30,4 +31,5 @@ set(C_SOURCES
         ${MM_SOURCES}
         ${ARCH_SOURCES}
         ${CRYPTO_SOURCES}
+        ${FS_SOURCES}
 )
