@@ -1,11 +1,11 @@
 #include <arch/x64/cpu.h>
-#include <mm/mmio.h>
 #include <arch/x64/smp.h>
 #include <drivers/apic/apic.h>
 #include <arch/x64/io.h>
 #include <arch/x64/mm/pmm.h>
 #include <kernel/classes.h>
 #include <lib/printk.h>
+#include <mm/vmalloc.h>
 
 // --- Register Definitions ---
 
@@ -247,7 +247,7 @@ int setup_lapic(void) {
 
   // Map the LAPIC into virtual memory using the VMM MMIO allocator
   // It will return a higher-half address (e.g. 0xFFFF9000...)
-  g_lapic_base = (volatile uint32_t *)vmm_map_mmio_kernel(lapic_phys_base, PAGE_SIZE);
+  g_lapic_base = (volatile uint32_t *)viomap(lapic_phys_base, PAGE_SIZE);
 
   if (!g_lapic_base) {
     printk(KERN_ERR APIC_CLASS "Failed to map LAPIC MMIO.\n");
@@ -274,7 +274,7 @@ int setup_ioapic(void) {
   // Note: In a real ACPI system, we should parse the MADT to find the actual
   // I/O APIC address. For now we assume the standard default.
   g_ioapic_base =
-      (volatile uint32_t *)vmm_map_mmio_kernel(IOAPIC_DEFAULT_PHYS_ADDR, PAGE_SIZE);
+      (volatile uint32_t *)viomap(IOAPIC_DEFAULT_PHYS_ADDR, PAGE_SIZE);
 
   if (!g_ioapic_base) {
     printk(KERN_ERR APIC_CLASS "Failed to map I/O APIC MMIO.\n");

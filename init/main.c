@@ -7,6 +7,7 @@
 #include <arch/x64/mm/vmm.h>
 #include <arch/x64/smp.h>
 #include <compiler.h>
+#include <string.h>
 #include <crypto/crc32.h>
 #include <drivers/apic/ic.h>
 #include <drivers/uart/serial.h>
@@ -20,6 +21,7 @@
 #include <linearfb/font.h>
 #include <linearfb/linearfb.h>
 #include <mm/slab.h>
+#include <mm/vma.h>
 #include <mm/vmalloc.h>
 
 #define VOIDFRAMEX_VERSION "0.0.1"
@@ -111,8 +113,17 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   idt_install();
 
   pmm_init(memmap_request.response, hhdm_request.response->offset);
+
   vmm_init();
+
   slab_init();
+
+  // Initialize the kernel's virtual memory address space manager
+  mm_init(&init_mm);
+  init_mm.pml4 = (uint64_t *)pmm_phys_to_virt(g_kernel_pml4);
+
+  // Verify VMA Implementation
+  vma_test();
 
   cpu_features_init();
   if (ic_install() == INTC_APIC)
