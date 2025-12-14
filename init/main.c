@@ -93,6 +93,8 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   printk(KERN_CLASS "copyright (C) 2025 assembler-0\n");
   printk(KERN_CLASS "build: %s\n", VOIDFRAMEX_BUILD_DATE);
 
+  calibrate_tsc();
+
   // Initialize Physical Memory Manager
   if (!memmap_request.response || !hhdm_request.response) {
     panic(KERN_CLASS "Memory map or HHDM not available");
@@ -108,7 +110,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   cpu_features_init();
   if (ic_install() == INTC_APIC)
     smp_init();
-  calibrate_tsc();
   crc32_init();
 
   sched_init();
@@ -116,8 +117,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   kthread_run(kthread_create(kthread_idle, NULL, "kthread/idle"));
 
-  printk(KERN_CLASS "Kernel initialization complete, starting init...");
-  // TODO: start init process (way longer)
+  printk(KERN_CLASS "Kernel initialization complete, starting init...\n");
 
   cpu_sti();
 

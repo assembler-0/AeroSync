@@ -30,12 +30,7 @@ set(KERNEL_SOURCES
     kernel/sched/process.c
 )
 
-set(DRIVER_SOURCES
-    drivers/uart/serial.c
-    drivers/apic/apic.c
-    drivers/apic/pic.c
-    drivers/apic/ic.c
-)
+file(GLOB_RECURSE DRIVER_SOURCES "drivers/*.c")
 
 set(LIB_SOURCES
     lib/string.c

@@ -1,9 +1,11 @@
+#include <arch/x64/tsc.h>
 #include <compiler.h>
 #include <drivers/uart/serial.h>
 #include <kernel/spinlock.h>
 #include <lib/log.h>
-#include <lib/string.h>
 #include <lib/ringbuf.h>
+#include <lib/string.h>
+#include <lib/vsprintf.h>
 
 // Simple global ring buffer for log messages, Linux-like but minimal
 
@@ -20,7 +22,8 @@ static char klog_ring_data[KLOG_RING_SIZE];
 static ringbuf_t klog_ring;
 static int klog_level = KLOG_INFO;
 static int klog_console_level = KLOG_INFO;
-static log_sink_putc_t klog_console_sink = serial_write_char; // default to serial
+static log_sink_putc_t klog_console_sink =
+    serial_write_char; // default to serial
 static spinlock_t klog_lock = 0;
 static int klog_inited = 0;
 // Serialize immediate console output across CPUs to prevent mangled lines
@@ -52,14 +55,9 @@ void log_set_console_level(int level) { klog_console_level = level; }
 int log_get_console_level(void) { return klog_console_level; }
 
 static const char *const klog_prefixes[] = {
-    [KLOG_EMERG] = "[0] ", 
-    [KLOG_ALERT] = "[1] ", 
-    [KLOG_CRIT] = "[2] ",
-    [KLOG_ERR] = "[3] ", 
-    [KLOG_WARNING] = "[4] ", 
-    [KLOG_NOTICE] = "[5] ",
-    [KLOG_INFO] = "[6] ", 
-    [KLOG_DEBUG] = "[7] ",
+    [KLOG_EMERG] = "[0] ", [KLOG_ALERT] = "[1] ",   [KLOG_CRIT] = "[2] ",
+    [KLOG_ERR] = "[3] ",   [KLOG_WARNING] = "[4] ", [KLOG_NOTICE] = "[5] ",
+    [KLOG_INFO] = "[6] ",  [KLOG_DEBUG] = "[7] ",
 };
 
 static void console_emit_prefix(int level) {
@@ -71,6 +69,22 @@ static void console_emit_prefix(int level) {
 
   while (*pfx)
     klog_console_sink(*pfx++);
+
+  // Add Timestamp [    0.000000]
+  if (get_tsc_freq() > 0) { // Check if calibrated
+    uint64_t ns = get_time_ns();
+    uint64_t s = ns / 1000000000ULL;
+    uint64_t us = (ns % 1000000000ULL) / 1000ULL;
+
+    char ts_buf[32];
+    snprintf(ts_buf, sizeof(ts_buf), "[%5llu.%06llu] ", s, us);
+    // It's safe to use snprintf inside log system as long as it doesn't
+    // recursively call printk and vsnprintf is safe.
+
+    char *t = ts_buf;
+    while (*t)
+      klog_console_sink(*t++);
+  }
 }
 
 int log_write_str(int level, const char *msg) {
