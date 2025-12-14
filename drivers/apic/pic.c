@@ -14,7 +14,7 @@
 uint16_t PIT_FREQUENCY_HZ = 250;
 static uint16_t s_irq_mask = 0xFFFF; // All masked initially
 
-void pit_install(void) {
+static void pit_install(void) {
     const uint16_t divisor = 1193180 / PIT_FREQUENCY_HZ;
 
     outb(0x43, 0x36);  // Command byte: channel 0, lobyte/hibyte, rate generator

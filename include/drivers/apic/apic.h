@@ -21,7 +21,7 @@ void apic_disable_irq(uint8_t irq_line);
 // Replaces PICMaskAll. Masks all interrupts at the I/O APIC level.
 void apic_mask_all(void);
 
-// Replaces PICSendEOI. Sends End-of-Interrupt signal to the Local APIC.
+// Sends End-of-Interrupt signal to the Local APIC.
 void apic_send_eoi(uint32_t irn); // irn arg for compatibility
 
 // Replaces PitInstall and PitSetFrequency.
