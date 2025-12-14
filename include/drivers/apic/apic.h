@@ -23,6 +23,15 @@ void apic_mask_all(void);
 
 // Sends End-of-Interrupt signal to the Local APIC.
 void apic_send_eoi(uint32_t irn); // irn arg for compatibility
+void apic_send_ipi(uint8_t dest_apic_id, uint8_t vector, uint32_t delivery_mode);
+
+// APIC IPI Delivery Modes
+#define APIC_DELIVERY_MODE_FIXED        (0b000 << 8)
+#define APIC_DELIVERY_MODE_LOWEST_PRIO  (0b001 << 8)
+#define APIC_DELIVERY_MODE_SMI          (0b010 << 8)
+#define APIC_DELIVERY_MODE_NMI          (0b011 << 8)
+#define APIC_DELIVERY_MODE_INIT         (0b100 << 8)
+#define APIC_DELIVERY_MODE_STARTUP      (0b101 << 8)
 
 // Replaces PitInstall and PitSetFrequency.
 // Initializes and starts the Local APIC timer at the specified frequency.
@@ -30,8 +39,5 @@ void apic_timer_init(uint32_t frequency_hz);
 
 // Changes the APIC timer's frequency on the fly.
 void apic_timer_set_frequency(uint32_t frequency_hz);
-
-void pic_mask_all(void);
-
 // Get the current CPU's LAPIC ID
 uint8_t lapic_get_id(void);

@@ -23,6 +23,11 @@ static void pic_write_mask() {
   outb(PIC2_DATA, (s_irq_mask >> 8) & 0xFF);
 }
 
+void pic_mask_all(void) {
+  s_irq_mask = 0xFFFF;
+  pic_write_mask();
+}
+
 void pic_enable_irq(uint8_t irq_line) {
   if (irq_line > 15)
     return;
@@ -63,8 +68,7 @@ int pic_install(void) {
 
   outb(PIC2_DATA, ICW4_8086);
 
-  s_irq_mask = 0xFFFF;
-  pic_write_mask();
+
   // Indicate success
   return 1;
 }

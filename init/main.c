@@ -70,7 +70,9 @@ __attribute__((
 static struct task_struct bsp_task;
 
 int kthread_idle(void *data) {
-  system_hlt();
+  while (1) {
+    cpu_hlt();
+  }
 }
 
 void __init __noreturn __noinline __sysv_abi start_kernel(void) {
@@ -93,14 +95,12 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   linearfb_console_set_cursor(0, 0);
 
   printk_init_auto();
+  calibrate_tsc();
 
   printk(KERN_CLASS "VoidFrameX (R) v%s - %s\n", VOIDFRAMEX_VERSION,
          VOIDFRAMEX_COMPILER_VERSION);
   printk(KERN_CLASS "copyright (C) 2025 assembler-0\n");
   printk(KERN_CLASS "build: %s\n", VOIDFRAMEX_BUILD_DATE);
-
-  calibrate_tsc();
-
   // Initialize Physical Memory Manager
   if (!memmap_request.response || !hhdm_request.response) {
     panic(KERN_CLASS "Memory map or HHDM not available");
@@ -141,8 +141,9 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   sched_init();
   sched_init_task(&bsp_task);
 
-  kthread_run(kthread_create(kthread_idle, NULL, "kthread/idle"));
-  kthread_run(kthread_create(kthread_idle, NULL, "kthread/idle"));
+  printk_init_async();
+
+  kthread_run(kthread_create(kthread_idle, NULL, 5, "kthread/idle"));
 
   printk(KERN_CLASS "Kernel initialization complete, starting init...\n");
 

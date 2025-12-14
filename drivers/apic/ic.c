@@ -17,6 +17,7 @@ static const interrupt_controller_interface_t apic_interface = {
     .enable_irq = apic_enable_irq,
     .disable_irq = apic_disable_irq,
     .send_eoi = apic_send_eoi,
+    .mask_all = apic_mask_all,
     .priority = 100,
 };
 
@@ -28,6 +29,7 @@ static const interrupt_controller_interface_t pic_interface = {
     .enable_irq = pic_enable_irq,
     .disable_irq = pic_disable_irq,
     .send_eoi = pic_send_eoi,
+    .mask_all = pic_mask_all,
     .priority = 50,
 };
 
@@ -70,6 +72,7 @@ interrupt_controller_t ic_install(void) {
 
     printk(KERN_INFO IC_CLASS "Configuring timer to %u Hz...\n", timer_frequency_hz);
     selected->timer_set(timer_frequency_hz);
+    selected->mask_all();
     printk(KERN_INFO IC_CLASS "Timer configured.\n");
 
     // Set current controller type
@@ -122,6 +125,18 @@ void ic_set_timer(const uint32_t frequency_hz) {
     if (!current_controller->timer_set) panic(IC_CLASS "timer_set not supported");
     current_controller->timer_set(frequency_hz);
     timer_frequency_hz = frequency_hz;
+}
+
+void ic_send_ipi(uint8_t dest_apic_id, uint8_t vector, uint32_t delivery_mode) {
+    if (!current_controller) panic(IC_CLASS "IC not initialized");
+    if (current_controller->type != INTC_APIC) {
+        panic(IC_CLASS "IPIs only supported on APIC controllers");
+    }
+    apic_send_ipi(dest_apic_id, vector, delivery_mode);
+}
+
+void ic_mask_all() {
+
 }
 
 uint32_t ic_get_frequency(void) {

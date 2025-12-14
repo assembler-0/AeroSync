@@ -17,6 +17,9 @@ int  log_get_level(void);
 // Console sink management
 typedef void (*log_sink_putc_t)(char c);
 void log_init(log_sink_putc_t backend);
+// Start asynchronous logging consumer (klogd). Safe to call once after
+// scheduler is up. Subsequent calls are no-ops.
+void log_init_async(void);
 void log_set_console_sink(log_sink_putc_t sink);
 void log_set_console_level(int level);
 int  log_get_console_level(void);

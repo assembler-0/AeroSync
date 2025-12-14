@@ -28,6 +28,8 @@ int vprintk(const char *fmt, va_list args);
 // Initialize printing subsystem
 void printk_init(log_sink_putc_t backend);
 void printk_init_auto(void);
+// Enable asynchronous printk logging (spawns background consumer thread).
+void printk_init_async(void);
 
 #define pr_emerg(fmt, ...) printk(KERN_EMERG fmt, ##__VA_ARGS__)
 #define pr_alert(fmt, ...) printk(KERN_ALERT fmt, ##__VA_ARGS__)

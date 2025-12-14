@@ -13,3 +13,4 @@ void pit_set_frequency(uint32_t hz); // with internal clamping
 void pic_enable_irq(uint8_t irq_line);
 void pic_disable_irq(uint8_t irq_line);
 void pic_send_eoi(uint32_t interrupt_number);
+void pic_mask_all(void);

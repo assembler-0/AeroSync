@@ -51,6 +51,8 @@ void printk_init_auto(void) {
   printk_init(target.putc);
 }
 
+void printk_init_async(void) { log_init_async(); }
+
 static const char *parse_level_prefix(const char *fmt, int *level_io) {
   if (!fmt)
     return fmt;

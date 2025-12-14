@@ -1,7 +1,7 @@
 #include <lib/string.h>
 
 void get_exception_as_str(char* buff, uint32_t num) {
-    if (!buff || num > 31 || num < 0) return;
+    if (!buff || num > 31) return;
     switch (num) {
         case 0: 
             strcpy(buff, "Divide by Zero");
