@@ -14,7 +14,7 @@
 uint16_t PIT_FREQUENCY_HZ = 250;
 static uint16_t s_irq_mask = 0xFFFF; // All masked initially
 
-void pit_install() {
+static void pit_install(void) {
     const uint16_t divisor = 1193180 / PIT_FREQUENCY_HZ;
 
     outb(0x43, 0x36);  // Command byte: channel 0, lobyte/hibyte, rate generator
@@ -22,9 +22,11 @@ void pit_install() {
     outb(0x40, (divisor >> 8) & 0xFF); // High byte
 }
 
-void pit_set_frequency(uint16_t hz) {
+void pit_set_frequency(uint32_t freq) {
     // Save current interrupt state
     irq_flags_t flags = save_irq_flags();
+
+    uint16_t hz = freq > 65535 ? 65535 : freq;
 
     PIT_FREQUENCY_HZ = hz;
     // Safer divisor calculation
@@ -57,12 +59,12 @@ void pic_disable_irq(uint8_t irq_line) {
     pic_write_mask();
 }
 
-void pic_send_eoi(uint64_t interrupt_number) {
+void pic_send_eoi(uint32_t interrupt_number) {
     if (interrupt_number >= 40) outb(PIC2_COMMAND, 0x20);
     outb(PIC1_COMMAND, 0x20);
 }
 
-void pic_install() {
+int pic_install(void) {
     // Standard initialization sequence
     outb(PIC1_COMMAND, ICW1_INIT | ICW1_ICW4);
     outb(PIC2_COMMAND, ICW1_INIT | ICW1_ICW4);
@@ -86,4 +88,11 @@ void pic_install() {
 
     s_irq_mask = 0xFFFF;
     pic_write_mask();
+    pit_install();
+    // Indicate success
+    return 1;
+}
+
+int pic_probe(void) {
+  return 1; // Assume PIC is always present
 }

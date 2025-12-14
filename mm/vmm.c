@@ -286,15 +286,7 @@ void vmm_init(void) {
   uint64_t *boot_pml4 = (uint64_t *)phys_to_virt(boot_pml4_phys);
   uint64_t *kernel_pml4 = (uint64_t *)phys_to_virt(g_kernel_pml4);
 
-  // Copy the higher half (entries 256-511)
-  // This includes the kernel (0xffffffff80000000 range) and HHDM
-  // (0xffff8000...)
-  // Copy the higher half (entries 256-511)
-  // This includes the kernel (0xffffffff80000000 range) and HHDM
-  // (0xffff8000...)
-  // Copy the higher half (entries 256-511)
-  // This includes the kernel (0xffffffff80000000 range) and HHDM
-  // (0xffff8000...)
+  // Copy higher half (entries 256-511)
   memcpy(kernel_pml4 + 256, boot_pml4 + 256, 256 * sizeof(uint64_t));
 
   // Reload CR3

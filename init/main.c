@@ -96,12 +96,13 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     panic(KERN_CLASS "Memory map or HHDM not available");
   }
 
+  gdt_init();
+  idt_install();
+
   pmm_init(memmap_request.response, hhdm_request.response->offset);
   vmm_init();
   slab_init();
 
-  gdt_init();
-  idt_install();
   cpu_features_init();
   if (ic_install() == INTC_APIC) smp_init();
   calibrate_tsc();
