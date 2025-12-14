@@ -73,7 +73,6 @@ static void *slab_alloc_page(void) {
     return NULL;
 
   // 2. Return HHDM address (Direct Map) - ZERO overhead
-  // Ensure you include your PMM header where pmm_phys_to_virt is defined
   return pmm_phys_to_virt(phys);
 }
 

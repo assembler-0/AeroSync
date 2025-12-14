@@ -68,8 +68,8 @@ struct vm_area_struct *vma_prev(struct vm_area_struct *vma);
 /* Statistics and Debugging */
 void vma_dump(struct mm_struct *mm);
 void vma_dump_single(struct vm_area_struct *vma);
-size_t vma_total_size(struct mm_struct *mm);
-size_t vma_count(struct mm_struct *mm);
+size_t mm_total_size(struct mm_struct *mm);
+size_t mm_map_count(struct mm_struct *mm);
 
 /* Validation */
 int vma_verify_tree(struct mm_struct *mm);

@@ -5,7 +5,7 @@
 #include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/vmm.h>
 #include <kernel/spinlock.h>
-#include <string.h> 
+#include <string.h>
 
 /*
  * Internal helper to map physical pages to a VMA.
@@ -19,17 +19,24 @@ static int vmalloc_map_pages(struct vm_area_struct *vma, uint64_t vmm_flags) {
     for (; virt < end; virt += PAGE_SIZE) {
         uint64_t phys = pmm_alloc_page();
         if (!phys) {
-            // OOM panic or rollback handled by caller
-            return -1;
+            goto rollback;
         }
 
         // Map the page in the kernel PML4
         if (vmm_map_page(g_kernel_pml4, virt, phys, vmm_flags) < 0) {
             pmm_free_page(phys);
-            return -1;
+            goto rollback;
         }
     }
     return 0;
+
+rollback:
+    for (uint64_t v = vma->vm_start; v < virt; v += PAGE_SIZE) {
+        uint64_t p = vmm_virt_to_phys(g_kernel_pml4, v);
+        vmm_unmap_page(g_kernel_pml4, v);
+        if (p) pmm_free_page(p);
+    }
+    return -1;
 }
 
 /*
@@ -194,7 +201,11 @@ void *viomap(uint64_t phys_addr, size_t size) {
         return NULL;
     }
 
-    vma_insert(&init_mm, vma);
+    if (vma_insert(&init_mm, vma) < 0) {
+        vma_free(vma);
+        spinlock_unlock(&init_mm.mmap_lock);
+        return NULL;
+    }
     spinlock_unlock(&init_mm.mmap_lock);
 
     // 3. Map the specific physical range

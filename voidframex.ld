@@ -81,7 +81,7 @@ SECTIONS
         *(COMMON)         /* Common symbols */
         . = ALIGN(PAGE_SIZE);
         _bss_end = .;
-    } :data
+    } :bss
 
     /* Kernel end marker */
     . = ALIGN(PAGE_SIZE);

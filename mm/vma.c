@@ -129,7 +129,7 @@ void mm_destroy(struct mm_struct *mm) {
 struct vm_area_struct *vma_alloc(void) {
     struct vm_area_struct *vma = NULL;
 
-    vma = kmalloc(sizeof(struct vm_area_struct));
+    vma = vma_cache_alloc();
 
     if (!vma) {
         spinlock_lock(&bootstrap_vma_lock);
@@ -254,6 +254,7 @@ struct vm_area_struct *vma_find_exact(struct mm_struct *mm,
 
 struct vm_area_struct *vma_find_intersection(struct mm_struct *mm,
                                             uint64_t start, uint64_t end) {
+    if (!mm) return NULL;
     struct rb_node *node = mm->mm_rb.rb_node;
 
     while (node) {
@@ -402,9 +403,18 @@ int vma_expand(struct mm_struct *mm, struct vm_area_struct *vma,
             return -1;
     }
 
-    /* Update VMA */
+    bool start_changed = (new_start != vma->vm_start);
+
+    if (start_changed) {
+        vma_remove(mm, vma);
+    }
+
     vma->vm_start = new_start;
     vma->vm_end = new_end;
+
+    if (start_changed) {
+        return vma_insert(mm, vma);
+    }
 
     return 0;
 }
@@ -415,9 +425,18 @@ int vma_shrink(struct mm_struct *mm, struct vm_area_struct *vma,
     if (new_start < vma->vm_start || new_end > vma->vm_end) return -1;
     if (new_start >= new_end) return -1;
 
-    /* Update VMA */
+    bool start_changed = (new_start != vma->vm_start);
+
+    if (start_changed) {
+        vma_remove(mm, vma);
+    }
+
     vma->vm_start = new_start;
     vma->vm_end = new_end;
+
+    if (start_changed) {
+        return vma_insert(mm, vma);
+    }
 
     return 0;
 }

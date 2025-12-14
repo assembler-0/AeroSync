@@ -35,8 +35,7 @@ __attribute__((used, section(".limine_requests"))) static volatile uint64_t
 // Request framebuffer
 __attribute__((
     used,
-    section(
-        ".limine_requests"))) static volatile struct limine_framebuffer_request
+    section(".limine_requests"))) static volatile struct limine_framebuffer_request
     framebuffer_request = {.id = LIMINE_FRAMEBUFFER_REQUEST_ID, .revision = 0};
 
 // Request memory map
@@ -71,9 +70,7 @@ __attribute__((
 static struct task_struct bsp_task;
 
 int kthread_idle(void *data) {
-  while (1) {
-    cpu_hlt();
-  }
+  system_hlt();
 }
 
 void __init __noreturn __noinline __sysv_abi start_kernel(void) {
@@ -133,12 +130,12 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   // Check for initrd module and mount it
   if (module_request.response && module_request.response->module_count > 0) {
-      // Assuming the first module is our initrd for simplicity
-      struct limine_file *initrd_module = module_request.response->modules[0];
-      printk(INITRD_CLASS "Found module '%s' at %p, size %lu\n",
-             initrd_module->path, initrd_module->address, initrd_module->size);
+    // Assuming the first module is our initrd for simplicity
+    struct limine_file *initrd_module = module_request.response->modules[0];
+    printk(INITRD_CLASS "Found module '%s' at %p, size %lu\n",
+           initrd_module->path, initrd_module->address, initrd_module->size);
   } else {
-      printk(INITRD_CLASS "No initrd module found.\n");
+    printk(INITRD_CLASS "No initrd module found.\n");
   }
 
   sched_init();
