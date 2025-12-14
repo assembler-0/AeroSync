@@ -103,6 +103,13 @@ target_link_options(voidframex.krnl PRIVATE
     -Wl,-melf_x86_64
 )
 
+if (LTO)
+    target_link_options(voidframex.krnl PRIVATE
+        -flto
+        -Wl,--gc-sections
+    )
+endif()
+
 # ============================================================================
 # ISO Generation with Limine Bootloader
 # ============================================================================

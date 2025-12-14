@@ -7,6 +7,10 @@ if(STACK_PROTECTION)
     string(APPEND C_FLAGS " -fstack-protector-all -D_FORTIFY_SOURCE=2")
 endif()
 
+if (LTO)
+    string(APPEND C_FLAGS " -flto")
+endif()
+
 if(SANITIZER)
     string(APPEND C_FLAGS " -fsanitize=undefined,bounds,null,return,vla-bound")
 endif()
