@@ -4,6 +4,7 @@
 #include <kernel/sched/sched.h>
 #include <lib/printk.h>
 #include <mm/slab.h>
+#include <kernel/classes.h>
 
 /*
  * Scheduler Core Implementation

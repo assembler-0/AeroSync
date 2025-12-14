@@ -134,6 +134,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   sched_init_task(&bsp_task);
 
   kthread_run(kthread_create(kthread_idle, NULL, "kthread/idle"));
+  kthread_run(kthread_create(kthread_idle, NULL, "kthread/idle"));
 
   printk(KERN_CLASS "Kernel initialization complete, starting init...\n");
 

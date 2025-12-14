@@ -14,7 +14,6 @@
     __sync_synchronize();                                                      \
   }
 
-#define barrier() __asm__ __volatile__("" ::: "memory")
 #define cpu_relax() __asm__ __volatile__("pause" ::: "memory")
 #define cpu_isync() __asm__ __volatile__("sfence" ::: "memory")
 #define cpu_hlt() __asm__ __volatile__("hlt" ::: "memory")

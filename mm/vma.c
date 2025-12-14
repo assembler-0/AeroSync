@@ -2,7 +2,7 @@
 #include <kernel/classes.h>
 #include <kernel/panic.h>
 #include <lib/printk.h>
-#include <lib/rbtree.h>
+#include <../include/linux/rbtree.h>
 #include <lib/string.h>
 #include <mm/mmio.h>
 #include <mm/slab.h>

@@ -3,7 +3,7 @@
 
 #include <kernel/types.h>
 #include <kernel/spinlock.h>
-#include <lib/list.h> // For linked lists within VFS structures
+#include <../linux/list.h>
 
 // Forward declarations for VFS structures
 struct super_block;

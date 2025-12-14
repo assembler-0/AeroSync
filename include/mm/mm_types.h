@@ -3,8 +3,8 @@
 #include <compiler.h>
 #include <kernel/spinlock.h>
 #include <kernel/types.h>
-#include <lib/list.h>
-#include <lib/rbtree.h>
+#include <../linux/list.h>
+#include <../linux/rbtree.h>
 
 /* VMA Flags */
 #define VM_READ 0x00000001

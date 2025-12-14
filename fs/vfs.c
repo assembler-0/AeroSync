@@ -1,9 +1,9 @@
 #include <fs/vfs.h>
-#include <lib/list.h>
-#include <lib/log.h> // Assuming printk is here
+#include <../include/linux/list.h>
 #include <kernel/types.h> // For size_t, etc.
 #include <kernel/spinlock.h> // For spinlock_t
 #include <lib/printk.h> // Explicitly include printk
+#include <kernel/classes.h>
 
 // Global lists for VFS objects
 LIST_HEAD(super_blocks);  // List of all mounted superblocks

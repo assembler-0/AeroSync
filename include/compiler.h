@@ -17,6 +17,7 @@
 
 #define __noreturn      __attribute__((noreturn))
 #define __noinline      __attribute__((noinline))
+#define __always_inline __attribute__((always_inline))
 #define __flatten       __attribute__((flatten))
 #define __hot           __attribute__((hot))
 #define __cold          __attribute__((cold))
@@ -69,6 +70,48 @@
 #define __likely(x)     __builtin_expect(!!(x), 1)
 #define __unlikely(x)   __builtin_expect(!!(x), 0)
 
-/* ========================
- * BARRIERS
- * ======================== */
+/*
+ * Branch Prediction Hints
+ * Tell the compiler which path is the "Hot Path" so it can optimize assembly layout.
+ * likely(x):   We expect x to be TRUE (1)
+ * unlikely(x): We expect x to be FALSE (0)
+ */
+#define likely(x)      __builtin_expect(!!(x), 1)
+#define unlikely(x)    __builtin_expect(!!(x), 0)
+
+/*
+ * Memory Barriers
+ * barrier(): Prevents the compiler from reordering instructions across this point.
+ *            It does NOT prevent the CPU from reordering.
+ */
+#define barrier()      asm volatile("" ::: "memory")
+
+/*
+ * READ_ONCE / WRITE_ONCE
+ *
+ * These prevent the compiler from:
+ * 1. Merging accesses (store tearing/fusing)
+ * 2. Reloading the value from memory multiple times (cache in register)
+ * 3. Reordering the access relative to other code
+ *
+ * This is done by casting to 'volatile'.
+ */
+
+// Force a read from memory (bypass register cache)
+#define READ_ONCE(x) (*(const volatile typeof(x) *)&(x))
+
+// Force a write to memory (bypass register cache/deferral)
+#define WRITE_ONCE(x, val) \
+do { \
+*(volatile typeof(x) *)&(x) = (val); \
+} while (0)
+
+/*
+ * If you are porting rbtree, you might run into these too.
+ * For x86_64 (TSO - Total Store Order), simple barriers are usually enough
+ * for a hobby kernel, but technically you need proper fencing instructions
+ * for SMP.
+ */
+#define smp_mb()    asm volatile("lock; addl $0, -4(%%rsp)" ::: "memory", "cc")
+#define smp_rmb()   barrier() // x86 loads are ordered
+#define smp_wmb()   barrier() // x86 stores are ordered

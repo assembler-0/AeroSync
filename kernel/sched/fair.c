@@ -1,7 +1,7 @@
 #include <kernel/classes.h>
 #include <kernel/sched/sched.h>
 #include <lib/printk.h>
-#include <lib/rbtree.h>
+#include <../../include/linux/rbtree.h>
 
 /*
  * Completely Fair Scheduler (Simplified)

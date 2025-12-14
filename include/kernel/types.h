@@ -9,5 +9,6 @@ typedef int pid_t;
 typedef long ssize_t;
 typedef long ptrdiff_t;
 
-#define container_of(ptr, type, member) \
-    ((type *)((char *)(ptr) - offsetof(type, member)))
+#define container_of(ptr, type, member) ({               \
+  const typeof( ((type *)0)->member ) *__mptr = (ptr);    \
+  (type *)( (char *)__mptr - offsetof(type,member) );})

@@ -1,10 +1,9 @@
 #pragma once
 
-#include <arch/x64/cpu.h>
 #include <kernel/spinlock.h>
 #include <kernel/types.h>
-#include <lib/list.h>
-#include <lib/rbtree.h>
+#include <linux/list.h>
+#include <linux/rbtree.h>
 
 /* Task States */
 #define TASK_RUNNING 0
