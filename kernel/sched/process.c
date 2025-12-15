@@ -52,7 +52,6 @@ struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
 
   memset(ts, 0, sizeof(*ts));
 
-  // Allocate Stack - use PMM for large stacks (8KB > slab max 4KB)
   void *stack = vmalloc(PAGE_SIZE * 2); // 8KB stack
   if (!stack) {
     free_task_struct(ts);
