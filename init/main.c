@@ -67,6 +67,16 @@ __attribute__((
     section(".limine_requests"))) static volatile struct limine_module_request
     module_request = {.id = LIMINE_MODULE_REQUEST_ID, .revision = 0}; // New module request
 
+__attribute__((
+    used,
+    section(".limine_reuests"))) static volatile struct limine_bootloader_info_request
+    bootloader_info_request = {.id = LIMINE_BOOTLOADER_INFO_REQUEST_ID, .revision = 0};
+
+__attribute__((
+    used,
+    section(".limine_reuests"))) static volatile struct limine_bootloader_performance_request
+    bootloader_performance_request = {.id = LIMINE_BOOTLOADER_PERFORMANCE_REQUEST_ID, .revision = 0};
+
 static struct task_struct bsp_task;
 
 int kthread_idle(void *data) {
@@ -76,7 +86,6 @@ int kthread_idle(void *data) {
 }
 
 void __init __noreturn __noinline __sysv_abi start_kernel(void) {
-
   const int linear_ret =
       linearfb_init((struct limine_framebuffer_request *)&framebuffer_request);
   if (linear_ret != 0)
@@ -101,6 +110,16 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
          VOIDFRAMEX_COMPILER_VERSION);
   printk(KERN_CLASS "copyright (C) 2025 assembler-0\n");
   printk(KERN_CLASS "build: %s\n", VOIDFRAMEX_BUILD_DATE);
+
+  if (bootloader_info_request.response && bootloader_performance_request.response) {
+    printk(KERN_CLASS "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
+      bootloader_info_request.response->name ? bootloader_info_request.response->name : "(null)",
+      bootloader_info_request.response->version ? bootloader_info_request.response->version : "(null-version)",
+      bootloader_performance_request.response->exec_usec,
+      bootloader_performance_request.response->init_usec
+    );
+  }
+
   // Initialize Physical Memory Manager
   if (!memmap_request.response || !hhdm_request.response) {
     panic(KERN_CLASS "Memory map or HHDM not available");
@@ -128,7 +147,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   crc32_init();
   vfs_init();
 
-  // Check for initrd module and mount it
   if (module_request.response && module_request.response->module_count > 0) {
     // Assuming the first module is our initrd for simplicity
     struct limine_file *initrd_module = module_request.response->modules[0];

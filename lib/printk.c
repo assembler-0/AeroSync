@@ -1,5 +1,6 @@
 #include <arch/x64/io.h>
 #include <drivers/uart/serial.h>
+#include <kernel/classes.h>
 #include <kernel/types.h>
 #include <lib/printk.h>
 #include <lib/vsprintf.h>
@@ -51,7 +52,10 @@ void printk_init_auto(void) {
   printk_init(target.putc);
 }
 
-void printk_init_async(void) { log_init_async(); }
+void printk_init_async(void) {
+  printk(KERN_CLASS "Enabling asynchronous printk...\n");
+  log_init_async();
+}
 
 static const char *parse_level_prefix(const char *fmt, int *level_io) {
   if (!fmt)
