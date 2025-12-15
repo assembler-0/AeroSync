@@ -32,16 +32,46 @@
 
 struct mm_struct; /* Forward declaration for memory management struct */
 
+/* Represents a task's load weight */
+struct load_weight {
+  unsigned long weight;
+  unsigned long inv_weight; // Inverse for faster division (optional, can be done with floating point or large scale integers)
+};
+
 struct sched_entity {
   struct rb_node run_node;
   struct list_head group_node;
   unsigned int on_rq;
 
-  uint64_t exec_start;
+  uint64_t exec_start_ns; /* When this entity started executing */
   uint64_t sum_exec_runtime;
   uint64_t vruntime;
   uint64_t prev_sum_exec_runtime;
+
+  struct load_weight load; /* For CPU bandwidth distribution */
 };
+
+
+/* Nice values range from -20 to 19 */
+#define MIN_NICE (-20)
+#define MAX_NICE 19
+#define NICE_DEFAULT 0
+#define NICE_0_LOAD 1024 /* The load weight of a task with nice 0 */
+#define NICE_TO_PRIO_OFFSET 20
+
+// IPI Vector for Scheduler Reschedule
+#define IRQ_SCHED_IPI_VECTOR 0xEF // Using 239, typically a free vector
+
+
+/*
+ * The `prio_to_weight` table is a mapping from nice values to load weights.
+ * This table is usually generated dynamically or is a constant array.
+ * For now, we'll define a simplified version for common nice values.
+ * In Linux, this is a much larger and more precise table.
+ */
+extern const unsigned int prio_to_weight[40];
+
+extern int per_cpu_apic_id[MAX_CPUS];
 
 struct task_struct {
   volatile long state;
@@ -51,6 +81,7 @@ struct task_struct {
   int static_prio;
   int normal_prio;
   unsigned int rt_priority;
+  int nice; // Nice value for CFS
 
   struct list_head tasks;
 
@@ -81,6 +112,7 @@ struct task_struct {
   struct list_head sibling;
 
   char comm[16]; // Command name
+  int cpu;       // The CPU this task is currently running on/assigned to
 };
 
 /* Global scheduler functions */
@@ -95,14 +127,25 @@ void sched_dump_memory_stats(void);
 extern struct task_struct *get_current(void);
 #define current get_current()
 
+/* Context Switch - returns the task that was switched out */
+extern struct task_struct *switch_to(struct task_struct *prev, struct task_struct *next);
+
+/* Global scheduler lock for SMP operations (e.g., task migration) */
+extern spinlock_t __rq_lock;
+
+extern int cpu_id(void); // Declared globally now
+
 /* CPU Specific runqueue */
 struct rq {
   spinlock_t lock;
   unsigned int nr_running;
   struct rb_root tasks_timeline;
+  struct rb_node *rb_leftmost; /* Cache for leftmost node */
   struct task_struct *curr;
   struct task_struct *idle;
   uint64_t clock;
+  uint64_t min_vruntime;
+  uint64_t last_tick_ns; /* Last time scheduler_tick updated in nanoseconds */
 };
 
 /* Per-CPU Runqueue Access */

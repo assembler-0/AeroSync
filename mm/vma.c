@@ -765,7 +765,5 @@ void vma_test(void) {
     if (vma_verify_list(test_mm) != 0)
         panic(VMA_CLASS "Test 7 failed: List verification");
 
-    vma_dump(test_mm);
-
     mm_free(test_mm);
 }

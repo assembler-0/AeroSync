@@ -1,5 +1,6 @@
 #include <lib/linearfb/linearfb.h>
 #include <string.h>
+#include <kernel/spinlock.h>
 
 static int fb_initialized = 0;
 static struct limine_framebuffer *fb = NULL;
@@ -11,8 +12,9 @@ static uint32_t font_glyph_w = 0, font_glyph_h = 0;
 // --- Console state ---
 static uint32_t console_col = 0, console_row = 0;
 static uint32_t console_cols = 0, console_rows = 0;
-
+static spinlock_t fb_lock = 0;
 static uint32_t console_bg = 0x00000000;
+static uint32_t console_fg = 0xFFFFFFFF;
 
 int linearfb_probe(void) {
     return fb_initialized;
@@ -46,58 +48,110 @@ void linearfb_console_clear(uint32_t color) {
     console_bg = color;
 }
 
+static void fast_rect_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
+  if (!fb) return;
+
+  if (fb->bpp != 32) {
+    // Fall back to putpixel for non-32bpp modes
+    for (uint32_t dy = 0; dy < h; ++dy) {
+      for (uint32_t dx = 0; dx < w; ++dx) {
+        putpixel(x + dx, y + dy, color);
+      }
+    }
+    return;
+  }
+
+  uint32_t *row_ptr = (uint32_t*)((uint8_t*)fb->address + y * fb->pitch + x * 4);
+
+  for (uint32_t i = 0; i < h; ++i) {
+    // Optimized: standard memset is usually optimized for 32/64-bit fills
+    // or a tight loop here is much faster than putpixel
+    for (uint32_t j = 0; j < w; ++j) {
+      row_ptr[j] = color;
+    }
+    row_ptr = (uint32_t*)((uint8_t*)row_ptr + fb->pitch);
+  }
+}
+
 static void console_scroll(void) {
     if (!fb || !fb_font.data) return;
+
     uint32_t row_bytes = fb->pitch * font_glyph_h;
+    uint32_t total_height_bytes = fb->height * fb->pitch;
+
+    // 1. Move the memory up
+    // WARNING: Reading VRAM is slow, but inevitable without a backbuffer.
+    // We optimize by moving big chunks.
     uint8_t *dst = (uint8_t*)fb->address;
     uint8_t *src = dst + row_bytes;
-    memmove(dst, src, row_bytes * (console_rows - 1));
-    // Clear last row
-    for (uint32_t y = (console_rows - 1) * font_glyph_h; y < fb->height; ++y) {
-        for (uint32_t x = 0; x < fb->width; ++x) {
-            putpixel(x, y, console_bg);
-        }
-    }
+    uint32_t copy_size = (console_rows - 1) * row_bytes;
+
+    // Safety clamp
+    if (copy_size > total_height_bytes) copy_size = total_height_bytes - row_bytes;
+
+    memmove(dst, src, copy_size);
+
+    // 2. Clear the bottom line using optimized fill
+    uint32_t clear_y = (console_rows - 1) * font_glyph_h;
+    fast_rect_fill(0, clear_y, fb->width, font_glyph_h, console_bg);
+
     console_row = console_rows - 1;
 }
 
 void linearfb_console_putc(char c) {
-    if (fb_mode != FB_MODE_CONSOLE || !fb_font.data) return;
+    // Acquire Lock
+    irq_flags_t flags = spinlock_lock_irqsave(&fb_lock);
+
+    if (fb_mode != FB_MODE_CONSOLE || !fb_font.data) {
+        spinlock_unlock_irqrestore(&fb_lock, flags);
+        return;
+    }
+
     if (c == '\n') {
         console_col = 0;
         if (++console_row >= console_rows) console_scroll();
-        return;
-    } if (c == '\r') {
-        console_col = 0;
-        return;
-    } if (c == '\b') {
-        if (console_col > 0) --console_col;
+        spinlock_unlock_irqrestore(&fb_lock, flags);
         return;
     }
-    // Draw glyph
+    if (c == '\r') {
+        console_col = 0;
+        spinlock_unlock_irqrestore(&fb_lock, flags);
+        return;
+    }
+
+    // --- Fast Glyph Rendering ---
+    // Pre-calculate destination memory address
+    uint32_t px = console_col * font_glyph_w;
+    uint32_t py = console_row * font_glyph_h;
+
     uint8_t ch = (uint8_t)c;
     if (ch >= font_glyph_count) ch = '?';
     const uint8_t *glyph = fb_font.data + ch * font_glyph_h;
-    uint32_t px = console_col * font_glyph_w;
-    uint32_t py = console_row * font_glyph_h;
-    // Draw background
+
+    // Get pointer to top-left of the character cell in VRAM
+    uint8_t *draw_ptr = (uint8_t*)fb->address + py * fb->pitch + px * 4;
+
     for (uint32_t row = 0; row < font_glyph_h; ++row) {
-        for (uint32_t col = 0; col < font_glyph_w; ++col) {
-            putpixel(px + col, py + row, console_bg);
-        }
-    }
-    // Draw glyph
-    for (uint32_t row = 0; row < font_glyph_h; ++row) {
+        uint32_t *pixel_ptr = (uint32_t*)draw_ptr;
         uint8_t bits = glyph[row];
+
+        // Unrolling inner loop slightly for speed
         for (uint32_t col = 0; col < font_glyph_w; ++col) {
-            if (bits & (1 << (7 - col)))
-                putpixel(px + col, py + row, 0xFFFFFFFF);
+            // Check bit (MSB first usually for bitmap fonts)
+            uint32_t color = (bits & (1 << (7 - col))) ? console_fg : console_bg;
+            *pixel_ptr++ = color;
         }
+
+        // Move to next line
+        draw_ptr += fb->pitch;
     }
+
     if (++console_col >= console_cols) {
         console_col = 0;
         if (++console_row >= console_rows) console_scroll();
     }
+
+    spinlock_unlock_irqrestore(&fb_lock, flags);
 }
 
 void linearfb_console_puts(const char *s) {
@@ -116,6 +170,7 @@ int linearfb_init(struct limine_framebuffer_request *fb_req) {
         console_rows = fb->height / font_glyph_h;
     }
     fb_initialized = 1;
+    spinlock_init(&fb_lock);
     return 0;
 }
 

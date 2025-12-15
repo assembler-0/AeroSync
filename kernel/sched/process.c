@@ -1,3 +1,4 @@
+#include <vsprintf.h>
 #include <arch/x64/mm/pmm.h>
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>
@@ -21,15 +22,19 @@ extern void vmm_dump_entry(uint64_t pml4_phys, uint64_t virt);
 extern uint64_t g_kernel_pml4;
 
 // Defined in switch.S
-void __switch_to(struct thread_struct *prev, struct thread_struct *next);
+struct task_struct *__switch_to(struct thread_struct *prev,
+                                 struct thread_struct *next);
 
-void switch_to(struct task_struct *prev, struct task_struct *next) {
+struct task_struct *switch_to(struct task_struct *prev,
+                              struct task_struct *next) {
   if (prev == next)
-    return;
-  __switch_to(&prev->thread, &next->thread);
+    return prev; // No switch, return current task
+
+  return __switch_to(&prev->thread, &next->thread);
 }
 
 // Entry point for new kernel threads
+// __used for LTO
 void __used kthread_entry_stub(int (*threadfn)(void *data), void *data) {
   cpu_sti();
 
@@ -39,7 +44,7 @@ void __used kthread_entry_stub(int (*threadfn)(void *data), void *data) {
 }
 
 struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
-                                   const char *namefmt, ...) {
+                                   int nice_value, const char *namefmt, ...) {
   // Allocate task_struct using slab allocator
   struct task_struct *ts = alloc_task_struct();
   if (!ts)
@@ -47,7 +52,6 @@ struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
 
   memset(ts, 0, sizeof(*ts));
 
-  // Allocate Stack - use PMM for large stacks (8KB > slab max 4KB)
   void *stack = vmalloc(PAGE_SIZE * 2); // 8KB stack
   if (!stack) {
     free_task_struct(ts);
@@ -57,8 +61,20 @@ struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
   ts->stack = stack;
   ts->flags = PF_KTHREAD;
   ts->state = TASK_RUNNING;
-  ts->prio = DEFAULT_PRIO;
+  
+  ts->nice = nice_value; 
+  // Clamp nice value to valid range
+  if (ts->nice < MIN_NICE) ts->nice = MIN_NICE;
+  if (ts->nice > MAX_NICE) ts->nice = MAX_NICE;
+
+  // Calculate load weight based on nice value
+  ts->se.load.weight = prio_to_weight[ts->nice + 20]; // +20 to map -20..19 to 0..39
   ts->se.vruntime = 0; // Should inherit or be set fairly
+
+  va_list ap;
+  va_start(ap, namefmt);
+  vsnprintf(ts->comm, sizeof(ts->comm), namefmt, ap);
+  va_end(ap);
 
   // Initialize list heads
   INIT_LIST_HEAD(&ts->run_list);
@@ -159,11 +175,8 @@ void sys_exit(int error_code) {
   struct task_struct *curr = get_current();
   curr->state = TASK_ZOMBIE;
 
-  // Free task resources
-  if (curr->stack) {
-    vfree(curr->stack);
-    curr->stack = NULL;
-  }
+  // We cannot free the stack here because we are running on it!
+  // The scheduler (finish_task_switch) will handle the cleanup.
 
   // Deschedule
   schedule();

@@ -6,6 +6,7 @@
 #include <kernel/classes.h>
 #include <lib/printk.h>
 #include <mm/vmalloc.h>
+#include <drivers/apic/pic.h>
 
 // --- Register Definitions ---
 
@@ -58,18 +59,6 @@ static int detect_apic(void);
 #define PIC2_COMMAND 0xA0
 #define PIC2_DATA 0xA1
 
-static uint16_t s_irq_mask = 0xFFFF; // All masked initially
-
-// Helper to write the cached mask to the PICs
-static void pic_write_mask(void) {
-  outb(PIC1_DATA, s_irq_mask & 0xFF);
-  outb(PIC2_DATA, (s_irq_mask >> 8) & 0xFF);
-}
-
-void pic_mask_all(void) {
-  s_irq_mask = 0xFFFF;
-  pic_write_mask();
-}
 
 // --- MMIO Helper Functions ---
 
@@ -137,6 +126,25 @@ int apic_probe(void) {
 void apic_send_eoi(const uint32_t irn) { // arg for compatibility
   (void)irn;
   lapic_write(LAPIC_EOI, 0);
+}
+
+// Sends an Inter-Processor Interrupt (IPI)
+void apic_send_ipi(uint8_t dest_apic_id, uint8_t vector, uint32_t delivery_mode) {
+  // Clear delivery status
+  lapic_read(LAPIC_ICR_LOW); // Read to clear pending status from previous IPI (spec behavior)
+  // Write Destination APIC ID to ICR_HIGH
+  lapic_write(LAPIC_ICR_HIGH, (uint32_t)dest_apic_id << 24);
+  // Write Vector, Delivery Mode, Destination Mode (Physical), Level (Assert), Trigger Mode (Edge) to ICR_LOW
+  uint32_t icr_low = (uint32_t)vector | delivery_mode | (1 << 14) /* Assert Level */ | (0 << 15) /* Edge Trigger */;
+  lapic_write(LAPIC_ICR_LOW, icr_low);
+  // Wait for IPI to be delivered (Delivery Status bit 12 to be 0)
+  uint32_t timeout = 1000000; // ~1 second timeout
+  while (lapic_read(LAPIC_ICR_LOW) & (1 << 12)) {
+    if (--timeout == 0) {
+      printk(KERN_ERR APIC_CLASS "IPI delivery timeout to APIC ID %u\n", dest_apic_id);
+      return;
+    }
+  }
 }
 
 // --- I/O APIC Interrupt Management ---
@@ -286,9 +294,6 @@ int setup_ioapic(void) {
   // Read the I/O APIC version to verify it's working
   uint32_t version_reg = ioapic_read(IOAPIC_REG_VER);
   printk(APIC_CLASS "IOAPIC Version: 0x%x\n", version_reg);
-
-  // Mask all interrupts initially
-  apic_mask_all();
 
   return true;
 }

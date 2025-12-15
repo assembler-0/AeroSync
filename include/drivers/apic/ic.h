@@ -15,6 +15,7 @@ typedef struct {
   void (*enable_irq)(uint8_t irq_line);
   void (*disable_irq)(uint8_t irq_line);
   void (*send_eoi)(uint32_t interrupt_number);
+  void (*mask_all)(void);
   uint32_t priority;
 } interrupt_controller_interface_t;
 
@@ -25,6 +26,7 @@ void ic_disable_irq(uint8_t irq_line);
 void ic_send_eoi(uint32_t interrupt_number);
 void ic_set_timer(uint32_t frequency_hz);
 uint32_t ic_get_frequency(void);
+void ic_send_ipi(uint8_t dest_apic_id, uint8_t vector, uint32_t delivery_mode);
 
 // Query functions
 interrupt_controller_t ic_get_controller_type(void);

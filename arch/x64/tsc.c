@@ -7,7 +7,7 @@
 static uint64_t tsc_freq = 0;
 static uint64_t tsc_boot_offset = 0;
 
-uint64_t tsc_freq_get(const uint32_t timer_hz_before) {
+uint64_t tsc_freq_get() {
   // Use PIT specific calibration
   // We don't rely on timer_hz_before from argument fr APIC anymore,
   // we specificially use the PIT for calibration block.
@@ -21,8 +21,6 @@ uint64_t tsc_freq_get(const uint32_t timer_hz_before) {
     // freq = delta * (1000 / 50) = delta * 20
     tsc_freq = (end - start) * 20;
     tsc_boot_offset = end; // Use 'end' as the zero point (roughly)
-    printk(TSC_CLASS "Calibration done. Delta: %llu, Freq: %llu\n", end - start,
-           tsc_freq);
   }
 
   return tsc_freq;
@@ -30,7 +28,7 @@ uint64_t tsc_freq_get(const uint32_t timer_hz_before) {
 
 uint64_t get_tsc_freq(void) { return tsc_freq; }
 
-uint64_t calibrate_tsc(void) { return tsc_freq_get(ic_get_frequency()); }
+uint64_t calibrate_tsc(void) { return tsc_freq_get(); }
 
 uint64_t get_time_ns() {
   uint64_t now = rdtsc();

@@ -322,14 +322,18 @@ static inline double tanh(double x) {
     return (e2 - 1) / (e2 + 1);
 }
 
-/* Min/Max using branchless comparison */
-static inline double fmin(double x, double y) {
-    return (x < y) ? x : y;
-}
+#define min(a, b) ({        \
+  __auto_type _a = (a);     \
+  __auto_type _b = (b);     \
+  _a < _b ? _a : _b;        \
+})
 
-static inline double fmax(double x, double y) {
-    return (x > y) ? x : y;
-}
+#define max(c, d) ({        \
+  __auto_type _c = (c);     \
+  __auto_type _d = (d);     \
+  _c > _d ? _c : _d;        \
+})
+
 
 /* Fast reciprocal approximation */
 static inline float fast_recipf(float x) {
@@ -443,10 +447,7 @@ static inline vec3f vec3f_normalize(vec3f v) {
     return (vec3f){ v.x * invlen, v.y * invlen, v.z * invlen };
 }
 
-/* Clamp and lerp utilities */
-static inline double clamp(double x, double min, double max) {
-    return fmax(min, fmin(max, x));
-}
+#define clamp(val, lo, hi) min(max(val, lo), hi)
 
 static inline double lerp(double a, double b, double t) {
     return a + (b - a) * t;

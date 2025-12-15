@@ -21,6 +21,9 @@ __switch_to:
     ; Save current Stack Pointer to prev->rsp
     mov [rdi], rsp
     
+    ; Return 'prev' (the one being switched out) in RAX
+    mov rax, rdi
+    
     ; Load next Stack Pointer from next->rsp
     mov rsp, [rsi]
     
