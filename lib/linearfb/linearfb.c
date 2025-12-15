@@ -51,8 +51,16 @@ void linearfb_console_clear(uint32_t color) {
 static void fast_rect_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
   if (!fb) return;
 
-  // Assume 32bpp for optimization (standard for Limine)
-  // If you support 24bpp, you need a check here.
+  if (fb->bpp != 32) {
+    // Fall back to putpixel for non-32bpp modes
+    for (uint32_t dy = 0; dy < h; ++dy) {
+      for (uint32_t dx = 0; dx < w; ++dx) {
+        putpixel(x + dx, y + dy, color);
+      }
+    }
+    return;
+  }
+
   uint32_t *row_ptr = (uint32_t*)((uint8_t*)fb->address + y * fb->pitch + x * 4);
 
   for (uint32_t i = 0; i < h; ++i) {

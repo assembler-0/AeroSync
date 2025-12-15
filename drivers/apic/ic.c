@@ -136,7 +136,9 @@ void ic_send_ipi(uint8_t dest_apic_id, uint8_t vector, uint32_t delivery_mode) {
 }
 
 void ic_mask_all() {
-
+    if (!current_controller) panic(IC_CLASS "IC not initialized");
+    if (!current_controller->mask_all) panic(IC_CLASS "mask_all not supported");
+    current_controller->mask_all();
 }
 
 uint32_t ic_get_frequency(void) {

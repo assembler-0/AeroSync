@@ -221,11 +221,11 @@ static int klogd_thread(void *data) {
       if (!(flags_local & KLOGF_SYNC_EMITTED) && klog_console_sink && lvl <= klog_console_level) {
         // In klogd context, avoid disabling IRQs while emitting to slow sinks
         // to reduce system-wide latency. Console lock still protects output order.
-        spinlock_lock(&klog_console_lock);
+        irq_flags_t cf = spinlock_lock_irqsave(&klog_console_lock);
         console_emit_prefix_ts(lvl, ts);
         for (int j = 0; j < n; ++j)
           klog_console_sink(out_buf[j]);
-        spinlock_unlock(&klog_console_lock);
+        spinlock_unlock_irqrestore(&klog_console_lock, cf);
       }
       drained_any = 1;
       records++;

@@ -10,16 +10,17 @@
  * prio_to_weight[0] corresponds to nice -20 (highest priority).
  * prio_to_weight[39] corresponds to nice 19 (lowest priority).
  */
-const unsigned int prio_to_weight[40] = {
-    /* -20 */     82000, 78600, 75500, 72500, 69600, /* (approx) */
-    /* -15 */     66800, 64200, 61700, 59300, 57000,
-    /* -10 */     54800, 52700, 50700, 48800, 47000,
-    /*  -5 */     45300, 43700, 42100, 40600, 39200,
-    /*   0 */     37900, 36600, 35400, 34200, 33100, /* NICE_0_LOAD is approx 37900 */
-    /*   5 */     32000, 30900, 29900, 28900, 28000,
-    /*  10 */     27100, 26200, 25400, 24600, 23800,
-    /*  15 */     23100, 22400, 21700, 21000, 20400, /* lowest weight */
+const uint32_t prio_to_weight[40] = {
+    /* -20 */     88761,     71755,     56483,     46273,     36291,
+    /* -15 */     29154,     23254,     18705,     14949,     11916,
+    /* -10 */      9548,      7620,      6100,      4904,      3906,
+    /*  -5 */      3121,      2501,      1991,      1586,      1277,
+    /*   0 */      1024,       820,       655,       526,       423,
+    /*   5 */       335,       272,       215,       172,       137,
+    /*  10 */       110,        87,        70,        56,        45,
+    /*  15 */        36,        29,        23,        18,        15,
 };
+
 
 /*
  * Completely Fair Scheduler (CFS)
@@ -71,15 +72,12 @@ static void update_min_vruntime(struct rq *rq) {
  * advance slower, thus getting more CPU time.
  */
 static uint64_t __calc_delta(uint64_t delta_exec_ns, unsigned long weight) {
-  uint64_t vruntime_delta = (delta_exec_ns * NICE_0_LOAD);
-  if (weight != 0) {
-    vruntime_delta /= weight;
-  } else {
-    // Should not happen for runnable tasks, but guard against division by zero
-    vruntime_delta = delta_exec_ns;
-  }
-  return vruntime_delta;
+  if (weight == 0)
+    return delta_exec_ns;
+  unsigned __int128 prod = (unsigned __int128)delta_exec_ns * (unsigned __int128)NICE_0_LOAD;
+  return (uint64_t)(prod / (unsigned __int128)weight);
 }
+
 
 /*
  * Enqueue a task into the rb-tree and update rb_leftmost cache

@@ -132,17 +132,19 @@ void apic_send_eoi(const uint32_t irn) { // arg for compatibility
 void apic_send_ipi(uint8_t dest_apic_id, uint8_t vector, uint32_t delivery_mode) {
   // Clear delivery status
   lapic_read(LAPIC_ICR_LOW); // Read to clear pending status from previous IPI (spec behavior)
-
   // Write Destination APIC ID to ICR_HIGH
   lapic_write(LAPIC_ICR_HIGH, (uint32_t)dest_apic_id << 24);
-
   // Write Vector, Delivery Mode, Destination Mode (Physical), Level (Assert), Trigger Mode (Edge) to ICR_LOW
   uint32_t icr_low = (uint32_t)vector | delivery_mode | (1 << 14) /* Assert Level */ | (0 << 15) /* Edge Trigger */;
   lapic_write(LAPIC_ICR_LOW, icr_low);
-
   // Wait for IPI to be delivered (Delivery Status bit 12 to be 0)
-  while (lapic_read(LAPIC_ICR_LOW) & (1 << 12))
-    ;
+  uint32_t timeout = 1000000; // ~1 second timeout
+  while (lapic_read(LAPIC_ICR_LOW) & (1 << 12)) {
+    if (--timeout == 0) {
+      printk(KERN_ERR APIC_CLASS "IPI delivery timeout to APIC ID %u\n", dest_apic_id);
+      return;
+    }
+  }
 }
 
 // --- I/O APIC Interrupt Management ---

@@ -3,6 +3,8 @@
 #include <compiler.h>
 #include <kernel/types.h>
 
+#define MAX_CPUS 32
+
 #define _full_mem_prot_start()                                                 \
   {                                                                            \
     __sync_synchronize();                                                      \

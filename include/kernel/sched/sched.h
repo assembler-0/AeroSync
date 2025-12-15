@@ -57,8 +57,8 @@ struct sched_entity {
 #define MAX_NICE 19
 #define NICE_DEFAULT 0
 #define NICE_0_LOAD 1024 /* The load weight of a task with nice 0 */
+#define NICE_TO_PRIO_OFFSET 20
 
-#define MAX_CPUS 32 // Maximum number of CPUs supported by the scheduler
 // IPI Vector for Scheduler Reschedule
 #define IRQ_SCHED_IPI_VECTOR 0xEF // Using 239, typically a free vector
 

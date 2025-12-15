@@ -1,3 +1,4 @@
+#include <vsprintf.h>
 #include <arch/x64/mm/pmm.h>
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>
@@ -70,6 +71,11 @@ struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
   // Calculate load weight based on nice value
   ts->se.load.weight = prio_to_weight[ts->nice + 20]; // +20 to map -20..19 to 0..39
   ts->se.vruntime = 0; // Should inherit or be set fairly
+
+  va_list ap;
+  va_start(ap, namefmt);
+  vsnprintf(ts->comm, sizeof(ts->comm), namefmt, ap);
+  va_end(ap);
 
   // Initialize list heads
   INIT_LIST_HEAD(&ts->run_list);

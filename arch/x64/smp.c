@@ -20,9 +20,6 @@ volatile int smp_lock = 0;
 static volatile int smp_start_barrier = 0; // BSP releases APs to start interrupts
 
 // Global array to map logical CPU ID to physical APIC ID
-// MAX_CPUS should be defined elsewhere (e.g., in sched.h) and needs to be visible here.
-// For now, hardcode MAX_CPUS.
-#define MAX_CPUS 32 // TODO: Get from sched.h or a global config
 int per_cpu_apic_id[MAX_CPUS];
 
 // The entry point for Application Processors (APs)
@@ -64,7 +61,12 @@ void smp_init(void) {
     printk(SMP_CLASS "Detected %llu CPUs. BSP LAPIC ID: %u\n", cpu_count, (uint32_t)bsp_lapic_id);
 
     // Initialize per_cpu_apic_id array
-    for (uint64_t i = 0; i < cpu_count; i++) {
+  uint64_t max_init = cpu_count < MAX_CPUS ? cpu_count : MAX_CPUS;
+    if (cpu_count > MAX_CPUS) {
+        printk(SMP_CLASS "Warning: CPU count %llu exceeds MAX_CPUS %d, limiting to %d\n",
+               cpu_count, MAX_CPUS, MAX_CPUS);
+    }
+    for (uint64_t i = 0; i < max_init; i++) {
         struct limine_mp_info *cpu = mp_response->cpus[i];
         per_cpu_apic_id[i] = cpu->lapic_id;
     }
