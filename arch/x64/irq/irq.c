@@ -1,3 +1,4 @@
+#include <printk.h>
 #include <arch/x64/cpu.h>
 #include <drivers/apic/ic.h>
 #include <kernel/panic.h>

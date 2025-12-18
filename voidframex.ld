@@ -113,10 +113,10 @@ SECTIONS
     	*(.llvm*)
     	*(.debug*)
     	*(.gnu*)
-        *(.eh_frame)
-        *(.eh_frame_hdr)
+        *(.eh_frame*)
         *(.note*)
-        *(.comment)
+        *(.comment*)
+        *(.gcc_except_table*)
     }
 }
 

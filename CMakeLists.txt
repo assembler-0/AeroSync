@@ -220,7 +220,7 @@ endif()
 if(QEMU_SYSTEM_X86_64)
 	add_custom_target(run
 	        COMMAND ${QEMU_SYSTEM_X86_64}
-	        -cpu max
+  	        -cpu max
 	        -no-reboot -no-shutdown
 	        -m 1G
 	        -smp 4
