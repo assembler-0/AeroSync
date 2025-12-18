@@ -25,27 +25,43 @@
 // Extern the request from init/main.c
 extern volatile struct limine_rsdp_request rsdp_request;
 
-int uacpi_kernel_init(void) {
-  // Initialize uACPI
+static volatile int s_ic_ready = 0;
+// Pending ACPI IRQ handlers before IC is ready
+typedef struct pending_irq_install {
+    uacpi_u32 irq;
+    uacpi_interrupt_handler handler;
+    uacpi_handle ctx;
+    struct pending_irq_install* next;
+} pending_irq_install_t;
+
+static pending_irq_install_t* s_pending_head = NULL;
+static pending_irq_install_t* s_pending_tail = NULL;
+
+int uacpi_kernel_init_early(void) {
   uacpi_status ret = uacpi_initialize(0);
   if (uacpi_unlikely_error(ret)) {
     printk(KERN_ERR ACPI_CLASS "uACPI initialization failed: %s\n", uacpi_status_to_string(ret));
-  } else {
-    printk(KERN_INFO ACPI_CLASS "uACPI initialized\n");
-    ret = uacpi_namespace_load();
-    if (uacpi_unlikely_error(ret)) {
-      printk(KERN_ERR ACPI_CLASS "uACPI namespace load failed: %s\n", uacpi_status_to_string(ret));
-    } else {
-      printk(KERN_INFO ACPI_CLASS "uACPI namespace loaded\n");
-      ret = uacpi_namespace_initialize();
-      if (uacpi_unlikely_error(ret)) {
-        printk(KERN_ERR ACPI_CLASS "uACPI namespace init failed: %s\n", uacpi_status_to_string(ret));
-      } else {
-        printk(ACPI_CLASS "uACPI namespace initialized\n");
-      }
-    }
+    return -1;
   }
-  return ret;
+  printk(KERN_INFO ACPI_CLASS "uACPI initialized\n");
+
+  ret = uacpi_namespace_load();
+  if (uacpi_unlikely_error(ret)) {
+    printk(KERN_ERR ACPI_CLASS "uACPI namespace load failed: %s\n", uacpi_status_to_string(ret));
+    return -1;
+  }
+  printk(KERN_INFO ACPI_CLASS "uACPI namespace loaded\n");
+  return 0;
+}
+
+int uacpi_kernel_init_late(void) {
+  uacpi_status ret = uacpi_namespace_initialize();
+  if (uacpi_unlikely_error(ret)) {
+    printk(KERN_ERR ACPI_CLASS "uACPI namespace init failed: %s\n", uacpi_status_to_string(ret));
+    return -1;
+  }
+  printk(ACPI_CLASS "uACPI namespace initialized\n");
+  return 0;
 }
 
 /*
@@ -121,12 +137,7 @@ void uacpi_kernel_log(uacpi_log_level level, const uacpi_char *str) {
 /*
  * PCI
  */
-typedef struct {
-    uint16_t segment;
-    uint8_t bus;
-    uint8_t device;
-    uint8_t function;
-} pci_handle_t;
+#include <drivers/pci/pci.h>
 
 uacpi_status uacpi_kernel_pci_device_open(uacpi_pci_address address, uacpi_handle *out_handle) {
     pci_handle_t *h = kmalloc(sizeof(pci_handle_t));
@@ -141,52 +152,6 @@ uacpi_status uacpi_kernel_pci_device_open(uacpi_pci_address address, uacpi_handl
 
 void uacpi_kernel_pci_device_close(uacpi_handle handle) {
     kfree(handle);
-}
-
-// Helper for PCI config read/write
-static uint32_t pci_read(pci_handle_t *p, uint32_t offset, uint8_t width) {
-    if (p->segment != 0) return 0xFFFFFFFF;
-
-    uint32_t address =
-        (1u << 31) |
-        ((uint32_t)p->bus     << 16) |
-        ((uint32_t)p->device  << 11) |
-        ((uint32_t)p->function<< 8)  |
-        (offset & 0xFC);
-
-    outl(0xCF8, address);
-    uint32_t val = inl(0xCFC);
-
-    uint32_t shift = (offset & 3) * 8;
-
-    if (width == 8) return (val >> shift) & 0xFF;
-    if (width == 16) return (val >> shift) & 0xFFFF;
-    return val;
-}
-
-static void pci_write(pci_handle_t *p, uint32_t offset, uint32_t val, uint8_t width) {
-    if (p->segment != 0) return;
-
-    uint32_t address =
-        (UINT32_C(1) << 31) |
-        ((uint32_t)p->bus     << 16) |
-        ((uint32_t)p->device  << 11) |
-        ((uint32_t)p->function<< 8)  |
-        ((uint32_t)offset & 0xFC);
-
-    
-    outl(0xCF8, address);
-
-    if (width != 32) {
-        uint32_t current_val = inl(0xCFC);
-        uint32_t shift = (offset & 3) * 8;
-        uint32_t mask = ((1ULL << width) - 1) << shift;
-        current_val &= ~mask;
-        current_val |= (val << shift);
-        outl(0xCFC, current_val);
-    } else {
-        outl(0xCFC, val);
-    }
 }
 
 uacpi_status uacpi_kernel_pci_read8(uacpi_handle device, uacpi_size offset, uacpi_u8 *value) {
@@ -459,10 +424,53 @@ static void acpi_irq_trampoline(cpu_regs *regs) {
     // Assuming we need to ACK.
 }
 
+void uacpi_notify_ic_ready(void) {
+  // Mark IC available and flush any pending ACPI IRQ installs
+  s_ic_ready = 1;
+
+  pending_irq_install_t* p = s_pending_head;
+  while (p) {
+    uint32_t vector = p->irq + 32;
+
+    // Create mapping node
+    irq_mapping_t *map = kmalloc(sizeof(irq_mapping_t));
+    if (map) {
+      map->handler = p->handler;
+      map->ctx = p->ctx;
+      map->vector = vector;
+      map->next = irq_map_head;
+      irq_map_head = map;
+
+      // Install trampoline and unmask
+      irq_install_handler(vector, acpi_irq_trampoline);
+      ic_enable_irq(p->irq);
+    }
+
+    pending_irq_install_t* next = p->next;
+    kfree(p);
+    p = next;
+  }
+  s_pending_head = s_pending_tail = NULL;
+}
+
 uacpi_status uacpi_kernel_install_interrupt_handler(
     uacpi_u32 irq, uacpi_interrupt_handler handler, uacpi_handle ctx,
     uacpi_handle *out_irq_handle
 ) {
+    if (!s_ic_ready) {
+        // Defer until IC is ready
+        pending_irq_install_t* node = kmalloc(sizeof(pending_irq_install_t));
+        if (!node) return UACPI_STATUS_OUT_OF_MEMORY;
+        node->irq = irq;
+        node->handler = handler;
+        node->ctx = ctx;
+        node->next = NULL;
+        if (s_pending_tail) s_pending_tail->next = node; else s_pending_head = node;
+        s_pending_tail = node;
+        if (out_irq_handle) *out_irq_handle = node; // temporary handle
+        return UACPI_STATUS_OK;
+    }
+
     uint32_t vector = irq + 32; // Map GSI to Vector (PIC offset)
 
     irq_mapping_t *map = kmalloc(sizeof(irq_mapping_t));
@@ -473,11 +481,10 @@ uacpi_status uacpi_kernel_install_interrupt_handler(
     map->vector = vector;
 
     // Add to list
-    // Lock?
     map->next = irq_map_head;
     irq_map_head = map;
 
-    *out_irq_handle = map;
+    if (out_irq_handle) *out_irq_handle = map;
 
     // Install the trampoline for this vector
     irq_install_handler(vector, acpi_irq_trampoline);

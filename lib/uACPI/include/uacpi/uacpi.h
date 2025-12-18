@@ -33,7 +33,9 @@ extern "C" {
 #endif
 
 // initializes full uacpi stack, called from start_kernel
-int uacpi_kernel_init(void);
+int uacpi_kernel_init_early(void);
+int uacpi_kernel_init_late(void);
+void uacpi_notify_ic_ready(void);
 
 /*
  * Set up early access to the table subsystem. What this means is:

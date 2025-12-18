@@ -133,7 +133,18 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   vma_test();
 
   cpu_features_init();
-  if (ic_install() == INTC_APIC)
+  // Two-phase ACPI init to break IC/APIC/uACPI circular dependency
+  uacpi_kernel_init_early();
+
+  interrupt_controller_t ic_type = ic_install();
+
+  // Notify ACPI glue that IC is ready so it can bind any deferred handlers
+  uacpi_notify_ic_ready();
+
+  // Complete ACPI initialization (will install SCI/GPE handlers now that IC is ready)
+  uacpi_kernel_init_late();
+
+  if (ic_type == INTC_APIC)
     smp_init();
   crc32_init();
   vfs_init();
@@ -146,8 +157,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   } else {
     printk(INITRD_CLASS "No initrd module found.\n");
   }
-
-  uacpi_kernel_init();
 
   sched_init();
   sched_init_task(&bsp_task);

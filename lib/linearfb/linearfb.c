@@ -1,6 +1,5 @@
 #include <lib/linearfb/linearfb.h>
 #include <string.h>
-#include <kernel/panic.h>
 #include <kernel/spinlock.h>
 #include <linearfb/font.h>
 
@@ -36,7 +35,7 @@ int linearfb_init_standard(void *data) {
 }
 
 int linearfb_probe(void) {
-    return (struct limine_framebuffer_request*)&framebuffer_request.response ? 1 : 0;
+    return framebuffer_request.response ? 1 : 0;
 }
 
 void linearfb_console_set_cursor(uint32_t col, uint32_t row) {
