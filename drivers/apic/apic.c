@@ -1,6 +1,9 @@
 #include <arch/x64/cpu.h>
 #include <arch/x64/smp.h>
 #include <drivers/apic/apic.h>
+#include <uacpi/uacpi.h>
+#include <uacpi/tables.h>
+#include <uacpi/acpi.h>
 #include <arch/x64/io.h>
 #include <arch/x64/mm/pmm.h>
 #include <kernel/classes.h>
@@ -46,6 +49,10 @@ volatile uint32_t *g_lapic_base = NULL;
 volatile uint32_t *g_ioapic_base = NULL;
 volatile uint32_t g_apic_timer_hz = 0;
 
+static uacpi_u64 g_madt_lapic_override_phys = 0;   // 0 if not provided
+static uacpi_u32 g_madt_ioapic_phys = 0;           // 0 if not provided
+static int g_madt_parsed = 0;
+
 // --- Forward Declarations ---
 static void lapic_write(uint32_t reg, uint32_t value);
 static uint32_t lapic_read(uint32_t reg);
@@ -53,6 +60,7 @@ static void ioapic_write(uint8_t reg, uint32_t value);
 static uint32_t ioapic_read(uint8_t reg);
 static void ioapic_set_entry(uint8_t index, uint64_t data);
 static int detect_apic(void);
+static void apic_parse_madt(void);
 
 #define PIC1_COMMAND 0x20
 #define PIC1_DATA 0x21
@@ -104,6 +112,9 @@ static void ioapic_set_entry(uint8_t index, uint64_t data) {
 // Main entry point to initialize the APIC system
 int apic_init(void) {
   pic_mask_all();
+
+  // Parse MADT via uACPI to obtain LAPIC/IOAPIC bases if provided
+  apic_parse_madt();
 
   if (!setup_lapic()) {
     printk(KERN_ERR APIC_CLASS "Failed to setup Local APIC.\n");
@@ -251,6 +262,12 @@ int setup_lapic(void) {
   uint64_t lapic_base_msr = rdmsr(APIC_BASE_MSR);
   uint64_t lapic_phys_base = lapic_base_msr & 0xFFFFFFFFFFFFF000ULL;
 
+  // Prefer MADT LAPIC Address Override if present
+  if (g_madt_parsed && g_madt_lapic_override_phys) {
+    lapic_phys_base = (uint64_t)g_madt_lapic_override_phys;
+    printk(APIC_CLASS "LAPIC base overridden by MADT: 0x%llx\n", lapic_phys_base);
+  }
+
   printk(APIC_CLASS "LAPIC Physical Base: 0x%llx\n", lapic_phys_base);
 
   // Map the LAPIC into virtual memory using the VMM MMIO allocator
@@ -278,11 +295,15 @@ int setup_lapic(void) {
 
 // Initialize the I/O APIC
 int setup_ioapic(void) {
-  // Map the I/O APIC into virtual memory.
-  // Note: In a real ACPI system, we should parse the MADT to find the actual
-  // I/O APIC address. For now we assume the standard default.
-  g_ioapic_base =
-      (volatile uint32_t *)viomap(IOAPIC_DEFAULT_PHYS_ADDR, PAGE_SIZE);
+  // Map the I/O APIC into virtual memory. Prefer MADT-provided address.
+  uacpi_u64 ioapic_phys = g_madt_parsed && g_madt_ioapic_phys
+                              ? (uacpi_u64)g_madt_ioapic_phys
+                              : (uacpi_u64)IOAPIC_DEFAULT_PHYS_ADDR;
+
+  if (ioapic_phys != IOAPIC_DEFAULT_PHYS_ADDR)
+    printk(APIC_CLASS "IOAPIC Physical Base from MADT: 0x%llx\n", ioapic_phys);
+
+  g_ioapic_base = (volatile uint32_t *)viomap(ioapic_phys, PAGE_SIZE);
 
   if (!g_ioapic_base) {
     printk(KERN_ERR APIC_CLASS "Failed to map I/O APIC MMIO.\n");
@@ -296,4 +317,42 @@ int setup_ioapic(void) {
   printk(APIC_CLASS "IOAPIC Version: 0x%x\n", version_reg);
 
   return true;
+}
+
+// --- MADT parsing via uACPI ---
+static uacpi_iteration_decision apic_madt_iter_cb(uacpi_handle user, struct acpi_entry_hdr* ehdr) {
+  (void)user;
+  switch (ehdr->type) {
+    case ACPI_MADT_ENTRY_TYPE_LAPIC_ADDRESS_OVERRIDE: {
+      const struct acpi_madt_lapic_address_override* ovr = (const void*)ehdr;
+      g_madt_lapic_override_phys = ovr->address;
+      break;
+    }
+    case ACPI_MADT_ENTRY_TYPE_IOAPIC: {
+      const struct acpi_madt_ioapic* io = (const void*)ehdr;
+      if (g_madt_ioapic_phys == 0) {
+        g_madt_ioapic_phys = io->address;
+      }
+      break;
+    }
+    default:
+      break;
+  }
+  return UACPI_ITERATION_DECISION_CONTINUE;
+}
+
+static void apic_parse_madt(void) {
+  if (g_madt_parsed) return;
+
+  uacpi_table tbl;
+  uacpi_status st = uacpi_table_find_by_signature(ACPI_MADT_SIGNATURE, &tbl);
+  if (uacpi_likely_success(st)) {
+    // Iterate subtables starting after struct acpi_madt header
+    uacpi_for_each_subtable(tbl.hdr, sizeof(struct acpi_madt), apic_madt_iter_cb, NULL);
+    uacpi_table_unref(&tbl);
+    g_madt_parsed = 1;
+  } else {
+    // Not fatal; fall back to defaults/MSR
+    g_madt_parsed = 1;
+  }
 }
