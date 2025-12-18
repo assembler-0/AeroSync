@@ -1,6 +1,8 @@
 #include <lib/linearfb/linearfb.h>
 #include <string.h>
+#include <kernel/panic.h>
 #include <kernel/spinlock.h>
+#include <linearfb/font.h>
 
 static int fb_initialized = 0;
 static struct limine_framebuffer *fb = NULL;
@@ -16,8 +18,25 @@ static spinlock_t fb_lock = 0;
 static uint32_t console_bg = 0x00000000;
 static uint32_t console_fg = 0xFFFFFFFF;
 
+extern volatile struct limine_framebuffer_request framebuffer_request;
+
+int linearfb_init_standard(void *data) {
+  (void)data;
+
+  linearfb_init((struct limine_framebuffer_request *)&framebuffer_request);
+
+  linearfb_font_t font = {
+    .width = 8, .height = 16, .data = (uint8_t *)console_font};
+  linearfb_load_font(&font, 256);
+  linearfb_set_mode(FB_MODE_CONSOLE);
+  linearfb_console_clear(0x00000000);
+  linearfb_console_set_cursor(0, 0);
+
+  return fb ? 0 : -1;
+}
+
 int linearfb_probe(void) {
-    return fb_initialized;
+    return (struct limine_framebuffer_request*)&framebuffer_request.response ? 1 : 0;
 }
 
 void linearfb_console_set_cursor(uint32_t col, uint32_t row) {

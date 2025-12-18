@@ -1,6 +1,5 @@
 #include <arch/x64/mm/layout.h>
 #include <arch/x64/mm/pmm.h>
-#include <arch/x64/mm/vmm.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>
 #include <lib/printk.h>
@@ -10,9 +9,9 @@
 static slab_region_t regions[ALLOC_REGION_COUNT];
 static bool slab_initialized = false;
 
-// Size mapping: 16, 32, 64, 128, 256, 512, 1024, 2048, 4096
+// Size mapping: 16, 32, 64, 128, 256, 512, 1024, 2048
 static const size_t slab_sizes[SLAB_COUNT] = {16,  32,   64,   128, 256,
-                                              512, 1024, 2048, 4096};
+                                              512, 1024, 2048};
 
 static inline size_t slab_size_to_index(size_t size) {
   if (size <= 16)
@@ -29,9 +28,7 @@ static inline size_t slab_size_to_index(size_t size) {
     return 5;
   if (size <= 1024)
     return 6;
-  if (size <= 2048)
-    return 7;
-  return 8; // 4096
+  return 7; // 2048
 }
 
 static inline size_t slab_index_to_size(size_t index) {
@@ -167,9 +164,10 @@ int slab_init(void) {
   return 0;
 }
 
+#include <mm/vmalloc.h>
+
 void *kmalloc_region(size_t size, alloc_region_t region) {
-  if (!slab_initialized || size == 0 || size > SLAB_MAX_SIZE ||
-      region >= ALLOC_REGION_COUNT)
+  if (!slab_initialized || size == 0 || region >= ALLOC_REGION_COUNT)
     return NULL;
 
   size_t index = slab_size_to_index(size);

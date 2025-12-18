@@ -1,0 +1,23 @@
+# -------------------------
+# VoidFrameX Bochs config
+# -------------------------
+
+megs: 1024
+cpu: count=1, ips=2000000, reset_on_triple_fault=1
+#cpuid: level=7, mmx=1, sse=1, sse2=1, sse3=1, ssse3=1, sse4_1=1, sse4_2=1, xsave=1
+
+# Boot ISO
+ata0-master: type=cdrom, path="@ISO_PATH@", status=inserted
+
+boot: cdrom
+
+# Display
+display_library: sdl2
+vga: extension=svga
+
+# Serial output
+com1: enabled=1, mode=file, dev=bochs-serial.log
+
+# Debugging / logging
+panic: action=ask
+log: bochs.log

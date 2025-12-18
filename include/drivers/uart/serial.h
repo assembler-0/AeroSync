@@ -7,6 +7,8 @@
 #define COM3 0x3e8   // COM3
 #define COM4 0x2e8   // COM4
 
+int serial_init_standard(void *unused);
+
 // Initialize serial port (defaults to COM1)
 int serial_init(void);
 

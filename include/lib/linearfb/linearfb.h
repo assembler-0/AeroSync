@@ -19,6 +19,8 @@ typedef struct {
     uint32_t bpp;
 } linearfb_font_t;
 
+int linearfb_init_standard(void *data);
+
 // Initialize framebuffer library with Limine framebuffer request
 int linearfb_init(struct limine_framebuffer_request *fb_req);
 

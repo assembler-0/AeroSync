@@ -71,36 +71,24 @@ void pit_wait(uint32_t ms) {
     // Actually, in Mode 0, reading the counter works. It counts down.
 
     // Wait for count to hit 0.
-    // In Mode 0, it counts down to 0.
-    // We simply poll the count.
-
+    // In Mode 0, it counts down to 0 and then wraps to 0xFFFF (or stops depending on implementation).
+    // We use the Latch Command (0x00) which is 8253 compatible and safer on emulators.
+    
     while (1) {
       // Latch Counter 0
       outb(PIT_CMD_PORT, 0x00);
       uint8_t lo = inb(PIT_CH0_PORT);
       uint8_t hi = inb(PIT_CH0_PORT);
-      uint16_t val = ((uint16_t)hi << 8) | lo;
+      uint16_t current_val = ((uint16_t)hi << 8) | lo;
 
-      // Should be decreasing.
-      // When it hits 0 undefined? In Mode 0 it wraps to FFFF or 0?
-      // 8254: "Output goes high on terminal count".
-      // Let's assume if val is large (it wrapped) or very small, we depend on
-      // time passing. Robust check: if val > count (it wrapped?) -> done?
-      // Actually, just checking if it is small is flaky.
-      // Better: use Mode 0, wait for OUT bit. If that failed, maybe I
-      // implemented it wrong. Let's TRY just looping until count is small, e.g.
-      // < 1000 ticks. But we might miss it.
-
-      // Revert back to Status Byte with correct logic.
-      // 0xE2 is Read-Back Status for Ch0.
-      outb(PIT_CMD_PORT, 0xE2);
-      uint8_t status = inb(PIT_CH0_PORT);
-      if (status & 0x80) { // OUT set
+      // Check if we reached 0 or wrapped around (current_val > count)
+      // Note: We check current_val > count because count < 65535 (chunk_ms <= 50 -> count <= ~59659)
+      // If it wraps to 0xFFFF, it will be > count.
+      if (current_val == 0 || current_val > count) {
         break;
       }
-
-      // Failsafe: if we read status as 0xFF (bus float?), we might exit early.
-      // If we loop too long?
+      
+      cpu_relax();
     }
   }
 

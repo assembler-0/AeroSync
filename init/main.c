@@ -1,4 +1,4 @@
-#include "kernel/types.h"
+#include <kernel/types.h>
 #include <arch/x64/cpu.h>
 #include <arch/x64/features/features.h>
 #include <arch/x64/gdt/gdt.h>
@@ -7,10 +7,8 @@
 #include <arch/x64/mm/vmm.h>
 #include <arch/x64/smp.h>
 #include <compiler.h>
-#include <string.h>
 #include <crypto/crc32.h>
 #include <drivers/apic/ic.h>
-#include <drivers/uart/serial.h>
 #include <fs/vfs.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>
@@ -18,24 +16,26 @@
 #include <kernel/sched/sched.h>
 #include <lib/printk.h>
 #include <limine/limine.h>
-#include <linearfb/font.h>
-#include <linearfb/linearfb.h>
 #include <mm/slab.h>
 #include <mm/vma.h>
-#include <mm/vmalloc.h>
+#include <uacpi/uacpi.h>
 
 #define VOIDFRAMEX_VERSION "0.0.1"
 #define VOIDFRAMEX_BUILD_DATE __DATE__ " " __TIME__
 #define VOIDFRAMEX_COMPILER_VERSION __VERSION__
 
+// Set Limine Request Start Marker
+__attribute__((used, section(".limine_requests_start")))
+static volatile uint64_t limine_requests_start_marker[] = LIMINE_REQUESTS_START_MARKER;
+
 // Set Limine Base Revision to 3
 __attribute__((used, section(".limine_requests"))) static volatile uint64_t
-    limine_base_revision[3] = LIMINE_BASE_REVISION(3);
+    limine_base_revision[3] = LIMINE_BASE_REVISION(4);
 
 // Request framebuffer
 __attribute__((
     used,
-    section(".limine_requests"))) static volatile struct limine_framebuffer_request
+    section(".limine_requests"))) volatile struct limine_framebuffer_request
     framebuffer_request = {.id = LIMINE_FRAMEBUFFER_REQUEST_ID, .revision = 0};
 
 // Request memory map
@@ -53,7 +53,7 @@ __attribute__((
 // Request RSDP (for ACPI)
 __attribute__((
     used,
-    section(".limine_requests"))) static volatile struct limine_rsdp_request
+    section(".limine_requests"))) volatile struct limine_rsdp_request
     rsdp_request = {.id = LIMINE_RSDP_REQUEST_ID, .revision = 0};
 
 __attribute__((
@@ -77,6 +77,10 @@ __attribute__((
     section(".limine_reuests"))) static volatile struct limine_bootloader_performance_request
     bootloader_performance_request = {.id = LIMINE_BOOTLOADER_PERFORMANCE_REQUEST_ID, .revision = 0};
 
+// Set Limine Request End Marker
+__attribute__((used, section(".limine_requests_end")))
+static volatile uint64_t limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
+
 static struct task_struct bsp_task;
 
 int kthread_idle(void *data) {
@@ -86,24 +90,11 @@ int kthread_idle(void *data) {
 }
 
 void __init __noreturn __noinline __sysv_abi start_kernel(void) {
-  const int linear_ret =
-      linearfb_init((struct limine_framebuffer_request *)&framebuffer_request);
-  if (linear_ret != 0)
+  if (LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision) == false) {
     panic_early();
-  const int serial_ret = serial_init();
-  if (serial_ret != 0)
-    if (serial_init_port(COM2) != 0 || serial_init_port(COM3) != 0 ||
-        serial_init_port(COM4) != 0)
-      panic_early();
+  }
 
-  linearfb_font_t font = {
-      .width = 8, .height = 16, .data = (uint8_t *)console_font};
-  linearfb_load_font(&font, 256);
-  linearfb_set_mode(FB_MODE_CONSOLE);
-  linearfb_console_clear(0x00000000);
-  linearfb_console_set_cursor(0, 0);
-
-  printk_init_auto();
+  printk_init_auto(NULL);
   calibrate_tsc();
 
   printk(KERN_CLASS "VoidFrameX (R) v%s - %s\n", VOIDFRAMEX_VERSION,
@@ -155,6 +146,8 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   } else {
     printk(INITRD_CLASS "No initrd module found.\n");
   }
+
+  uacpi_kernel_init();
 
   sched_init();
   sched_init_task(&bsp_task);

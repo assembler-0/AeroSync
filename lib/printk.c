@@ -5,16 +5,14 @@
 #include <lib/printk.h>
 #include <lib/vsprintf.h>
 #include <linearfb/linearfb.h>
-
-static void debugcon_putc(char c) { outb(0xE9, c); }
-
-static int debugcon_probe(void) { return 1; }
+#include <drivers/qemu/debugcon/debugcon.h>
 
 static printk_backend_t debugcon_backend = {
     .name = "debugcon",
     .priority = 30,
     .putc = debugcon_putc,
     .probe = debugcon_probe,
+    .init = generic_backend_init,
 };
 
 static printk_backend_t fb_backend = {
@@ -22,6 +20,7 @@ static printk_backend_t fb_backend = {
     .priority = 100,
     .putc = linearfb_console_putc,
     .probe = linearfb_probe,
+    .init = linearfb_init_standard,
 };
 
 static printk_backend_t serial_backend = {
@@ -29,6 +28,7 @@ static printk_backend_t serial_backend = {
     .priority = 50,
     .putc = serial_write_char,
     .probe = serial_probe,
+    .init = serial_init_standard,
 };
 
 static printk_backend_t *printk_backends[] = {
@@ -39,17 +39,35 @@ static printk_backend_t *printk_backends[] = {
 
 static int num_backends = sizeof(printk_backends) / sizeof(printk_backends[0]);
 
-void printk_init_auto(void) {
-  printk_backend_t target = {0};
-  int last_priority = -1;
-  for (int i = 0; i < num_backends; i++) {
-    if (printk_backends[i] && printk_backends[i]->priority > last_priority &&
-        printk_backends[i]->probe()) {
-      target = *printk_backends[i];
-      last_priority = printk_backends[i]->priority;
+void printk_init_auto(void *payload)
+{
+    printk_backend_t *best = NULL;
+
+    for (int i = 0; i < num_backends; i++) {
+        printk_backend_t *b = printk_backends[i];
+        if (!b)
+            continue;
+
+        if (!b->probe())
+            continue;
+
+        if (b->init(payload) != 0)
+            continue;
+
+        if (!best || b->priority > best->priority)
+            best = b;
     }
-  }
-  printk_init(target.putc);
+
+    if (!best) {
+        printk(KERN_ERR KERN_CLASS "no active printk backend\n");
+        return;
+    }
+
+    printk(KERN_INFO KERN_CLASS
+           "printk backend selected: %s (prio=%d)\n",
+           best->name, best->priority);
+
+    printk_init(best->putc);
 }
 
 void printk_init_async(void) {

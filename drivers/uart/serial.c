@@ -1,5 +1,6 @@
 #include <arch/x64/io.h>
 #include <drivers/uart/serial.h>
+#include <kernel/panic.h>
 
 // Serial port register offsets
 #define SERIAL_DATA_REG     0  // Data register (DLAB=0)
@@ -37,8 +38,59 @@
 static uint16_t serial_port = COM1;
 static int serial_initialized = 0;
 
+int serial_init_standard(void *unused) {
+  (void)unused;
+  if (serial_init() != 0)
+    if (serial_init_port(COM2) != 0 || serial_init_port(COM3) != 0 ||
+        serial_init_port(COM4) != 0) return -1;
+  serial_initialized = 1;
+  return 0;
+}
+
+static int serial_lsr_sane(uint16_t base) {
+    uint8_t lsr = inb(base + 5);
+
+    /* Bits 6–7 are reserved on real UARTs */
+    if (lsr == 0xFF || lsr == 0x00)
+        return 0;
+
+    return 1;
+}
+
+
+int serial_port_exists(uint16_t base) {
+    uint8_t old = inb(base + 7);
+
+    outb(base + 7, 0xA5);
+    if (inb(base + 7) != 0xA5)
+        goto fallback;
+
+    outb(base + 7, 0x5A);
+    if (inb(base + 7) != 0x5A)
+        goto fallback;
+
+    outb(base + 7, old);
+    return 1;
+
+fallback:
+    outb(base + 7, old);
+    return serial_lsr_sane(base);
+}
+
+/**
+ * Probe all standard COM ports and return the first available one
+ * Returns the base port address, or 0 if none found
+ */
 int serial_probe(void) {
-    return serial_initialized;
+    uint16_t ports[] = {COM1, COM2, COM3, COM4};
+    
+    for (int i = 0; i < 4; i++) {
+        if (serial_port_exists(ports[i])) {
+           return 1;
+        }
+    }
+    
+    return 0; // No serial ports found
 }
 
 int serial_init(void) {
@@ -48,12 +100,6 @@ int serial_init(void) {
 
 int serial_init_port(uint16_t port) {
     serial_port = port;
-
-    // Test if serial port exists by writing to scratch register
-    outb(port + 7, 0xAE);
-    if (inb(port + 7) != 0xAE) {
-        return -1; // Port doesn't exist
-    }
 
     // Disable all interrupts
     outb(port + SERIAL_IER_REG, 0x00);
