@@ -53,6 +53,10 @@ static uacpi_u64 g_madt_lapic_override_phys = 0;   // 0 if not provided
 static uacpi_u32 g_madt_ioapic_phys = 0;           // 0 if not provided
 static int g_madt_parsed = 0;
 
+#define MAX_IRQ_OVERRIDES 16
+static struct acpi_madt_interrupt_source_override g_irq_overrides[MAX_IRQ_OVERRIDES];
+static int g_num_irq_overrides = 0;
+
 // --- Forward Declarations ---
 static void lapic_write(uint32_t reg, uint32_t value);
 static uint32_t lapic_read(uint32_t reg);
@@ -165,22 +169,57 @@ void apic_enable_irq(uint8_t irq_line) {
   // Route to the current CPU's LAPIC ID (BSP)
   uint8_t dest_apic_id = lapic_get_id();
 
+  uint32_t gsi = irq_line;
+  uint16_t flags = 0;
+
+  for (int i = 0; i < g_num_irq_overrides; i++) {
+    if (g_irq_overrides[i].source == irq_line) {
+      gsi = g_irq_overrides[i].gsi;
+      flags = g_irq_overrides[i].flags;
+      break;
+    }
+  }
+
   uint64_t redirect_entry = (32 + irq_line); // Vector
   redirect_entry |= (0b000ull << 8);         // Delivery Mode: Fixed
   redirect_entry |= (0b0ull << 11);          // Destination Mode: Physical
-  redirect_entry |= (0b0ull << 13);          // Trigger Mode: Edge
-  redirect_entry |= (0b0ull << 15);          // Polarity: High (active high)
+
+  // Handle flags
+  uint16_t polarity = flags & ACPI_MADT_POLARITY_MASK;
+  uint16_t trigger = flags & ACPI_MADT_TRIGGERING_MASK;
+
+  if (polarity == ACPI_MADT_POLARITY_ACTIVE_LOW) {
+    redirect_entry |= (1ull << 13); // Polarity: Low
+  } else {
+    redirect_entry |= (0ull << 13); // Polarity: High
+  }
+
+  if (trigger == ACPI_MADT_TRIGGERING_LEVEL) {
+    redirect_entry |= (1ull << 15); // Trigger: Level
+  } else {
+    redirect_entry |= (0ull << 15); // Trigger: Edge
+  }
+
   // Unmask (bit 16 = 0)
   // Destination field (bits 56..63)
   redirect_entry |= ((uint64_t)dest_apic_id << 56);
 
-  ioapic_set_entry(irq_line, redirect_entry);
+  ioapic_set_entry(gsi, redirect_entry);
 }
 
 void apic_disable_irq(uint8_t irq_line) {
+  uint32_t gsi = irq_line;
+
+  for (int i = 0; i < g_num_irq_overrides; i++) {
+    if (g_irq_overrides[i].source == irq_line) {
+      gsi = g_irq_overrides[i].gsi;
+      break;
+    }
+  }
+
   // To disable, we set the mask bit (bit 16)
   uint64_t redirect_entry = (1 << 16);
-  ioapic_set_entry(irq_line, redirect_entry);
+  ioapic_set_entry(gsi, redirect_entry);
 }
 
 void apic_mask_all(void) {
@@ -332,6 +371,13 @@ static uacpi_iteration_decision apic_madt_iter_cb(uacpi_handle user, struct acpi
       const struct acpi_madt_ioapic* io = (const void*)ehdr;
       if (g_madt_ioapic_phys == 0) {
         g_madt_ioapic_phys = io->address;
+      }
+      break;
+    }
+    case ACPI_MADT_ENTRY_TYPE_INTERRUPT_SOURCE_OVERRIDE: {
+      const struct acpi_madt_interrupt_source_override* iso = (const void*)ehdr;
+      if (g_num_irq_overrides < MAX_IRQ_OVERRIDES) {
+        g_irq_overrides[g_num_irq_overrides++] = *iso;
       }
       break;
     }
