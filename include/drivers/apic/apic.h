@@ -41,3 +41,6 @@ void apic_timer_init(uint32_t frequency_hz);
 void apic_timer_set_frequency(uint32_t frequency_hz);
 // Get the current CPU's LAPIC ID
 uint8_t lapic_get_id(void);
+
+#include <drivers/apic/ic.h>
+const interrupt_controller_interface_t* apic_get_driver(void);

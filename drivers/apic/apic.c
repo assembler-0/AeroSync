@@ -421,3 +421,40 @@ static void apic_parse_madt(void) {
     g_madt_parsed = 1;
   }
 }
+
+// Shutdown the APIC system
+static void apic_shutdown(void) {
+    // 1. Mask all I/O APIC interrupts
+    apic_mask_all();
+
+    // 2. Disable Local APIC Timer
+    lapic_write(LAPIC_LVT_TIMER, (1 << 16)); // Masked
+
+    // 3. Disable Local APIC via SVR (clear bit 8)
+    uint32_t svr = lapic_read(LAPIC_SVR);
+    lapic_write(LAPIC_SVR, svr & ~(1 << 8));
+
+    // 4. Optionally disable via MSR (APIC Global Enable)
+    // Note: This effectively disconnects the LAPIC from the system.
+    uint64_t lapic_base_msr = rdmsr(APIC_BASE_MSR);
+    wrmsr(APIC_BASE_MSR, lapic_base_msr & ~APIC_BASE_MSR_ENABLE);
+
+    printk(APIC_CLASS "APIC shut down.\n");
+}
+
+static const interrupt_controller_interface_t apic_interface = {
+    .type = INTC_APIC,
+    .probe = apic_probe,
+    .install = apic_init,
+    .timer_set = apic_timer_init,
+    .enable_irq = apic_enable_irq,
+    .disable_irq = apic_disable_irq,
+    .send_eoi = apic_send_eoi,
+    .mask_all = apic_mask_all,
+    .shutdown = apic_shutdown,
+    .priority = 100,
+};
+
+const interrupt_controller_interface_t* apic_get_driver(void) {
+    return &apic_interface;
+}

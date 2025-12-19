@@ -3,63 +3,41 @@
 #include <kernel/types.h>
 #include <lib/printk.h>
 #include <drivers/apic/ic.h>
-#include <drivers/apic/pic.h>
 #include <kernel/panic.h>
 
+#define MAX_CONTROLLERS 8
+
 static interrupt_controller_interface_t *current_controller = NULL;
+static const interrupt_controller_interface_t *registered_controllers[MAX_CONTROLLERS];
+static size_t num_registered_controllers = 0;
 static uint32_t timer_frequency_hz = 100; // default - can be changed at runtime
 
-static const interrupt_controller_interface_t apic_interface = {
-    .type = INTC_APIC,
-    .probe = apic_probe,
-    .install = apic_init,
-    .timer_set = apic_timer_init,
-    .enable_irq = apic_enable_irq,
-    .disable_irq = apic_disable_irq,
-    .send_eoi = apic_send_eoi,
-    .mask_all = apic_mask_all,
-    .priority = 100,
-};
-
-static const interrupt_controller_interface_t pic_interface = {
-    .type = INTC_PIC,
-    .probe = pic_probe,
-    .install = pic_install,
-    .timer_set = pit_set_frequency,
-    .enable_irq = pic_enable_irq,
-    .disable_irq = pic_disable_irq,
-    .send_eoi = pic_send_eoi,
-    .mask_all = pic_mask_all,
-    .priority = 50,
-};
-
-static const interrupt_controller_interface_t* const controllers[] = {
-    &apic_interface,
-    &pic_interface,
-};
-
-static const size_t ic_num_controllers =
-    sizeof(controllers) / sizeof(controllers[0]);
+void ic_register_controller(const interrupt_controller_interface_t* controller) {
+    if (num_registered_controllers >= MAX_CONTROLLERS) {
+        printk(KERN_WARNING IC_CLASS "Max interrupt controllers registered, ignoring.\n");
+        return;
+    }
+    registered_controllers[num_registered_controllers++] = controller;
+}
 
 interrupt_controller_t ic_install(void) {
     const interrupt_controller_interface_t* selected = NULL;
     const interrupt_controller_interface_t* fallback = NULL;
 
-    for (size_t i = 0; i < ic_num_controllers; i++) {
-        if (controllers[i]->probe()) {
-            if (!selected || controllers[i]->priority > selected->priority) {
+    for (size_t i = 0; i < num_registered_controllers; i++) {
+        if (registered_controllers[i]->probe()) {
+            if (!selected || registered_controllers[i]->priority > selected->priority) {
                 fallback = selected;
-                selected = controllers[i];
-            } else if (!fallback || controllers[i]->priority > fallback->priority) {
-                fallback = controllers[i];
+                selected = registered_controllers[i];
+            } else if (!fallback || registered_controllers[i]->priority > fallback->priority) {
+                fallback = registered_controllers[i];
             }
         }
     }
 
     // Try selected, fall back if install fails
     if (selected && !selected->install()) {
-        printk(KERN_WARNING IC_CLASS "%s install failed, trying fallback...\n",
-               selected->type == INTC_APIC ? "APIC" : "PIC");
+        printk(KERN_WARNING IC_CLASS "Controller type %d install failed, trying fallback...\n", selected->type);
         selected = fallback;
         if (selected && !selected->install()) {
            selected = NULL;
@@ -76,14 +54,32 @@ interrupt_controller_t ic_install(void) {
     printk(KERN_INFO IC_CLASS "Timer configured.\n");
 
     // Set current controller type
-    if (selected == &apic_interface) {
-        current_controller = (interrupt_controller_interface_t*)selected;
+    current_controller = (interrupt_controller_interface_t*)selected;
+    
+    if (current_controller->type == INTC_APIC) {
         printk(KERN_INFO APIC_CLASS "APIC initialized successfully\n");
     } else {
-        current_controller = (interrupt_controller_interface_t*)selected;
         printk(KERN_INFO PIC_CLASS "PIC initialized successfully\n");
     }
     return current_controller->type;
+}
+
+void ic_shutdown_controller(void) {
+    if (!current_controller) return;
+    
+    printk(KERN_INFO IC_CLASS "Shutting down interrupt controller...\n");
+    
+    // Mask all interrupts first to ensure silence
+    if (current_controller->mask_all) {
+        current_controller->mask_all();
+    }
+    
+    // Perform specific shutdown logic if available
+    if (current_controller->shutdown) {
+        current_controller->shutdown();
+    }
+    
+    current_controller = NULL;
 }
 
 void ic_enable_irq(uint8_t irq_line) {
@@ -107,17 +103,6 @@ void ic_send_eoi(uint32_t interrupt_number) {
 interrupt_controller_t ic_get_controller_type(void) {
     if (!current_controller) panic(IC_CLASS "IC not initialized");
     return current_controller->type;
-}
-
-const char* ic_get_controller_name(void) {
-    if (!current_controller) panic(IC_CLASS "IC not initialized");
-    switch (current_controller->type) {
-        case INTC_APIC:
-            return "APIC";
-        case INTC_PIC:
-        default:
-            return "PIC";
-    }
 }
 
 void ic_set_timer(const uint32_t frequency_hz) {

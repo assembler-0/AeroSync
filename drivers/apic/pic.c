@@ -1,7 +1,9 @@
-#include <arch/x64/cpu.h>
 #include <arch/x64/io.h>
 #include <drivers/timer/pit.h>
 #include <kernel/types.h>
+#include <drivers/apic/ic.h>
+#include <lib/printk.h>
+#include <kernel/classes.h>
 
 #define PIC1_COMMAND 0x20
 #define PIC1_DATA 0x21
@@ -75,4 +77,26 @@ int pic_install(void) {
 
 int pic_probe(void) {
   return 1; // Assume PIC is always present
+}
+
+static void pic_shutdown(void) {
+    pic_mask_all();
+    printk(PIC_CLASS "PIC shut down.\n");
+}
+
+static const interrupt_controller_interface_t pic_interface = {
+    .type = INTC_PIC,
+    .probe = pic_probe,
+    .install = pic_install,
+    .timer_set = pit_set_frequency,
+    .enable_irq = pic_enable_irq,
+    .disable_irq = pic_disable_irq,
+    .send_eoi = pic_send_eoi,
+    .mask_all = pic_mask_all,
+    .shutdown = pic_shutdown,
+    .priority = 50,
+};
+
+const interrupt_controller_interface_t* pic_get_driver(void) {
+    return &pic_interface;
 }

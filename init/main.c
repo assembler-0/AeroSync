@@ -8,7 +8,9 @@
 #include <arch/x64/smp.h>
 #include <compiler.h>
 #include <crypto/crc32.h>
+#include <drivers/apic/apic.h>
 #include <drivers/apic/ic.h>
+#include <drivers/apic/pic.h>
 #include <fs/vfs.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>
@@ -141,6 +143,10 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   cpu_features_init();
   // Two-phase ACPI init to break IC/APIC/uACPI circular dependency
   uacpi_kernel_init_early();
+
+  // Register interrupt controllers
+  ic_register_controller(apic_get_driver());
+  ic_register_controller(pic_get_driver());
 
   interrupt_controller_t ic_type = ic_install();
 
