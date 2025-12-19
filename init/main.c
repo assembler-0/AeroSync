@@ -19,10 +19,7 @@
 #include <mm/slab.h>
 #include <mm/vma.h>
 #include <uacpi/uacpi.h>
-
-#define VOIDFRAMEX_VERSION "0.0.1"
-#define VOIDFRAMEX_BUILD_DATE __DATE__ " " __TIME__
-#define VOIDFRAMEX_COMPILER_VERSION __VERSION__
+#include <kernel/version.h>
 
 // Set Limine Request Start Marker
 __attribute__((used, section(".limine_requests_start")))
@@ -77,6 +74,11 @@ __attribute__((
     section(".limine_reuests"))) static volatile struct limine_bootloader_performance_request
     bootloader_performance_request = {.id = LIMINE_BOOTLOADER_PERFORMANCE_REQUEST_ID, .revision = 0};
 
+__attribute__((
+    used,
+    section(".limine_requests"))) static volatile struct limine_executable_cmdline_request
+    cmdline_request = {.id = LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID, .revision = 0};
+
 // Set Limine Request End Marker
 __attribute__((used, section(".limine_requests_end")))
 static volatile uint64_t limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
@@ -111,9 +113,13 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     );
   }
 
+  if (cmdline_request.response) {
+    printk(KERN_CLASS "cmdline: %s\n", cmdline_request.response->cmdline);
+  }
+
   // Initialize Physical Memory Manager
   if (!memmap_request.response || !hhdm_request.response) {
-    panic(KERN_CLASS "Memory map or HHDM not available");
+    panic(KERN_CLASS "memmap/HHDM not available");
   }
 
   gdt_init();

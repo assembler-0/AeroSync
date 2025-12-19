@@ -27,6 +27,9 @@ static void smp_ap_entry(struct limine_mp_info *info) {
     // Basic per-CPU init for APs
     printk(SMP_CLASS "CPU LAPIC ID %u starting up...\n", info->lapic_id);
 
+    // Initialize GDT and TSS for this AP
+    gdt_init_ap();
+
     // Load IDT for this CPU
     idt_install();
 
