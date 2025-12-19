@@ -2,6 +2,7 @@
 #include <string.h>
 #include <kernel/spinlock.h>
 #include <linearfb/font.h>
+#include <lib/printk.h>
 
 static int fb_initialized = 0;
 static struct limine_framebuffer *fb = NULL;
@@ -32,6 +33,24 @@ int linearfb_init_standard(void *data) {
   linearfb_console_set_cursor(0, 0);
 
   return fb ? 0 : -1;
+}
+
+static printk_backend_t fb_backend = {
+    .name = "linearfb",
+    .priority = 100,
+    .putc = linearfb_console_putc,
+    .probe = linearfb_probe,
+    .init = linearfb_init_standard,
+    .cleanup = linearfb_cleanup,
+};
+
+void linearfb_cleanup(void) {
+    fb_initialized = 0;
+    fb = NULL;
+}
+
+const printk_backend_t* linearfb_get_backend(void) {
+    return &fb_backend;
 }
 
 int linearfb_probe(void) {

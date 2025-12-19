@@ -7,6 +7,8 @@
 #define COM3 0x3e8   // COM3
 #define COM4 0x2e8   // COM4
 
+#include <lib/printk.h>
+
 int serial_init_standard(void *unused);
 
 // Initialize serial port (defaults to COM1)
@@ -33,3 +35,5 @@ int serial_readline(char* buffer, int max_length);
 // Number output
 void serial_write_hex(uint64_t value);
 void serial_write_dec(uint64_t value);
+
+const printk_backend_t* serial_get_backend(void);

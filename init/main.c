@@ -22,6 +22,9 @@
 #include <mm/vma.h>
 #include <uacpi/uacpi.h>
 #include <kernel/version.h>
+#include <drivers/uart/serial.h>
+#include <drivers/qemu/debugcon/debugcon.h>
+#include <lib/linearfb/linearfb.h>
 
 // Set Limine Request Start Marker
 __attribute__((used, section(".limine_requests_start")))
@@ -98,6 +101,11 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     panic_early();
   }
 
+  // Register printk backends
+  printk_register_backend(debugcon_get_backend());
+  printk_register_backend(serial_get_backend());
+  printk_register_backend(linearfb_get_backend());
+
   printk_init_auto(NULL);
   calibrate_tsc();
 
@@ -162,7 +170,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   vfs_init();
 
   if (module_request.response && module_request.response->module_count > 0) {
-    // Assuming the first module is our initrd for simplicity
     struct limine_file *initrd_module = module_request.response->modules[0];
     printk(INITRD_CLASS "Found module '%s' at %p, size %lu\n",
            initrd_module->path, initrd_module->address, initrd_module->size);

@@ -100,8 +100,6 @@ static void console_emit_prefix_ts(int level, uint64_t ts_ns) {
 
     char ts_buf[32];
     snprintf(ts_buf, sizeof(ts_buf), "[%5llu.%06llu] ", s, us);
-    // It's safe to use snprintf inside log system as long as it doesn't
-    // recursively call printk and vsnprintf is safe.
 
     char *t = ts_buf;
     while (*t)
@@ -109,16 +107,22 @@ static void console_emit_prefix_ts(int level, uint64_t ts_ns) {
   }
 }
 
-static void console_emit_prefix(int level) { console_emit_prefix_ts(level, get_time_ns()); }
-
 static int klog_sync_threshold = KLOG_ERR; // ERR and above stay synchronous
 
 int log_write_str(int level, const char *msg) {
   if (!msg)
     return 0;
 
-  if (!klog_inited)
-    return 0; // before init, console-only
+  if (!klog_inited) {
+    // Before full init, try to write to sink directly if it exists
+    if (klog_console_sink) {
+        irq_flags_t f = spinlock_lock_irqsave(&klog_console_lock);
+        const char *p = msg;
+        while (*p) klog_console_sink(*p++);
+        spinlock_unlock_irqrestore(&klog_console_lock, f);
+    }
+    return 0;
+  }
 
   if (level > klog_level) {
     // Level too low — do not store
@@ -135,11 +139,10 @@ int log_write_str(int level, const char *msg) {
   if (len > max_payload)
     len = max_payload;
 
-  // Producer timestamp captured once, used for both sync and async output
+  // Producer timestamp captured once
   uint64_t ts_ns = get_time_ns();
 
   // Console output (immediate) respecting console level
-  // If async is enabled, only emit synchronously for high-severity
   int do_sync_emit = 0;
   if (klog_console_sink && level <= klog_console_level) {
     if (!klog_async_enabled) {
@@ -160,6 +163,7 @@ int log_write_str(int level, const char *msg) {
     flags_hdr |= KLOGF_SYNC_EMITTED;
   }
 
+  // Always store in ring buffer regardless of sink presence
   uint64_t flags = spinlock_lock_irqsave(&klog_lock);
 
   uint32_t need = sizeof(klog_hdr_t) + (uint32_t)len;
@@ -173,7 +177,6 @@ int log_write_str(int level, const char *msg) {
 
   spinlock_unlock_irqrestore(&klog_lock, flags);
   
-  // Hint scheduler to run klogd sooner in process context
   if (klog_async_enabled)
     check_preempt();
   return len;

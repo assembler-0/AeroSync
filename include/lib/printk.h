@@ -12,6 +12,7 @@ typedef struct printk_backend {
   log_sink_putc_t putc;
   printk_backend_probe probe;
   printk_backend_init init;
+  void (*cleanup)(void);
 } printk_backend_t;
 
 static int generic_backend_init(void *payload) { (void)payload; return 1; }
@@ -30,8 +31,10 @@ int printk(const char *fmt, ...);
 int vprintk(const char *fmt, va_list args);
 
 // Initialize printing subsystem
-void printk_init(log_sink_putc_t backend);
+void printk_register_backend(const printk_backend_t *backend);
 void printk_init_auto(void *payload);
+int printk_set_sink(const char *backend_name);
+void printk_shutdown(void);
 // Enable asynchronous printk logging (spawns background consumer thread).
 void printk_init_async(void);
 

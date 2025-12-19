@@ -1,6 +1,7 @@
 #include <arch/x64/io.h>
 #include <drivers/uart/serial.h>
 #include <kernel/panic.h>
+#include <lib/printk.h>
 
 // Serial port register offsets
 #define SERIAL_DATA_REG     0  // Data register (DLAB=0)
@@ -45,6 +46,26 @@ int serial_init_standard(void *unused) {
         serial_init_port(COM4) != 0) return -1;
   serial_initialized = 1;
   return 0;
+}
+
+static void serial_cleanup(void) {
+    if (serial_initialized) {
+        // Disable interrupts
+        outb(serial_port + SERIAL_IER_REG, 0x00);
+    }
+}
+
+static printk_backend_t serial_backend = {
+    .name = "serial",
+    .priority = 50,
+    .putc = serial_write_char,
+    .probe = serial_probe,
+    .init = serial_init_standard,
+    .cleanup = serial_cleanup,
+};
+
+const printk_backend_t* serial_get_backend(void) {
+    return &serial_backend;
 }
 
 static int serial_lsr_sane(uint16_t base) {

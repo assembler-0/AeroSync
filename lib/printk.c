@@ -4,47 +4,29 @@
 #include <kernel/types.h>
 #include <lib/printk.h>
 #include <lib/vsprintf.h>
-#include <linearfb/linearfb.h>
-#include <drivers/qemu/debugcon/debugcon.h>
 
-static printk_backend_t debugcon_backend = {
-    .name = "debugcon",
-    .priority = 30,
-    .putc = debugcon_putc,
-    .probe = debugcon_probe,
-    .init = generic_backend_init,
-};
+#include <lib/string.h>
 
-static printk_backend_t fb_backend = {
-    .name = "linearfb",
-    .priority = 100,
-    .putc = linearfb_console_putc,
-    .probe = linearfb_probe,
-    .init = linearfb_init_standard,
-};
+#define MAX_PRINTK_BACKENDS 8
 
-static printk_backend_t serial_backend = {
-    .name = "serial",
-    .priority = 50,
-    .putc = serial_write_char,
-    .probe = serial_probe,
-    .init = serial_init_standard,
-};
+static const printk_backend_t *registered_backends[MAX_PRINTK_BACKENDS];
+static int num_registered_backends = 0;
+static const printk_backend_t *active_backend = NULL;
 
-static printk_backend_t *printk_backends[] = {
-    &fb_backend,
-    &serial_backend,
-    &debugcon_backend,
-};
-
-static int num_backends = sizeof(printk_backends) / sizeof(printk_backends[0]);
+void printk_register_backend(const printk_backend_t *backend) {
+    if (num_registered_backends >= MAX_PRINTK_BACKENDS) {
+        // Can't printk here safely maybe? or fallback to internal ring
+        return;
+    }
+    registered_backends[num_registered_backends++] = backend;
+}
 
 void printk_init_auto(void *payload)
 {
-    printk_backend_t *best = NULL;
+    const printk_backend_t *best = NULL;
 
-    for (int i = 0; i < num_backends; i++) {
-        printk_backend_t *b = printk_backends[i];
+    for (int i = 0; i < num_registered_backends; i++) {
+        const printk_backend_t *b = registered_backends[i];
         if (!b)
             continue;
 
@@ -59,7 +41,10 @@ void printk_init_auto(void *payload)
     }
 
     if (!best) {
-        printk(KERN_ERR KERN_CLASS "no active printk backend\n");
+        // Fallback to internal ringbuffer only
+        log_init(NULL);
+        printk(KERN_ERR KERN_CLASS "no active printk backend, logging to ringbuffer only\n");
+        active_backend = NULL;
         return;
     }
 
@@ -67,7 +52,8 @@ void printk_init_auto(void *payload)
            "printk backend selected: %s (prio=%d)\n",
            best->name, best->priority);
 
-    printk_init(best->putc);
+    active_backend = best;
+    log_init(best->putc);
 }
 
 void printk_init_async(void) {
@@ -75,6 +61,31 @@ void printk_init_async(void) {
   log_init_async();
 }
 
+int printk_set_sink(const char *backend_name) {
+    if (!backend_name) return -1;
+
+    for (int i = 0; i < num_registered_backends; i++) {
+        const printk_backend_t *b = registered_backends[i];
+        if (b && b->name && strcmp(b->name, backend_name) == 0) {
+            if (active_backend->cleanup) {
+                active_backend->cleanup();
+            }
+            
+            log_set_console_sink(b->putc);
+            active_backend = b;
+            return 0;
+        }
+    }
+    return -1; // Not found
+}
+
+void printk_shutdown(void) {
+    if (active_backend && active_backend->cleanup) {
+        active_backend->cleanup();
+    }
+    active_backend = NULL;
+    log_set_console_sink(NULL);
+}
 static const char *parse_level_prefix(const char *fmt, int *level_io) {
   if (!fmt)
     return fmt;
@@ -111,5 +122,3 @@ int printk(const char *fmt, ...) {
   va_end(args);
   return ret;
 }
-
-void printk_init(const log_sink_putc_t backend) { log_init(backend); }
