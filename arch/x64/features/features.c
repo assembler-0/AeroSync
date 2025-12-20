@@ -73,6 +73,38 @@ static void write_cr4(uint64_t cr4) {
   __asm__ volatile("mov %0, %%cr4" ::"r"(cr4));
 }
 
+void cpu_features_init_ap(void) {
+  // Enable SSE
+  if (g_cpu_features.sse) {
+    uint64_t cr0 = read_cr0();
+    cr0 &= ~CR0_EM;
+    cr0 |= CR0_MP;
+    write_cr0(cr0);
+
+    uint64_t cr4 = read_cr4();
+    cr4 |= CR4_OSFXSR | CR4_OSXMMEXCPT;
+    write_cr4(cr4);
+  }
+
+  // Enable AVX
+  if (g_cpu_features.avx && g_cpu_features.xsave) {
+    uint64_t cr4 = read_cr4();
+    cr4 |= CR4_OSXSAVE;
+    write_cr4(cr4);
+
+    uint64_t xcr0 = xgetbv(0);
+    xcr0 |= XCR0_SSE | XCR0_AVX;
+    xsetbv(0, xcr0);
+  }
+
+  // Enable AVX512
+  if (g_cpu_features.avx512f && g_cpu_features.osxsave) {
+    uint64_t xcr0 = xgetbv(0);
+    xcr0 |= XCR0_OPMASK | XCR0_ZMM_HI256 | XCR0_HI16_ZMM;
+    xsetbv(0, xcr0);
+  }
+}
+
 void cpu_features_init(void) {
   uint32_t eax, ebx, ecx, edx;
 

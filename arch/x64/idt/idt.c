@@ -27,8 +27,6 @@
 struct IdtEntry g_Idt[IDT_ENTRIES];
 struct IdtPtr   g_IdtPtr;
 
-extern void idt_load(struct IdtPtr* idtPtr);
-
 // Declare all ISRs from Interrupts.asm
 extern void isr0();
 extern void isr1();

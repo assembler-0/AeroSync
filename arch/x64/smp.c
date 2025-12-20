@@ -23,6 +23,7 @@
 #include <limine/limine.h>
 #include <lib/printk.h>
 #include <arch/x64/cpu.h>
+#include <arch/x64/features/features.h>
 #include <arch/x64/gdt/gdt.h>
 #include <arch/x64/idt/idt.h>
 #include <drivers/apic/apic.h>
@@ -46,6 +47,9 @@ int per_cpu_apic_id[MAX_CPUS];
 
 // The entry point for Application Processors (APs)
 static void smp_ap_entry(struct limine_mp_info *info) {
+    // Enable per-CPU features (SSE, AVX, etc.)
+    cpu_features_init_ap();
+
     // Basic per-CPU init for APs
     printk(SMP_CLASS "CPU LAPIC ID %u starting up...\n", info->lapic_id);
 
@@ -53,7 +57,7 @@ static void smp_ap_entry(struct limine_mp_info *info) {
     gdt_init_ap();
 
     // Load IDT for this CPU
-    idt_install();
+    idt_load(&g_IdtPtr);
 
     // Mark this AP as online using wait counter
     wait_counter_inc(&ap_startup_counter);
@@ -88,6 +92,10 @@ void smp_init(void) {
 
     printk(SMP_CLASS "Detected %llu CPUs. BSP LAPIC ID: %u\n", cpu_count, (uint32_t)bsp_lapic_id);
 
+    // Initialize the wait counter for AP startup
+    int expected_aps = (int)(cpu_count > 0 ? (cpu_count - 1) : 0);
+    init_wait_counter(&ap_startup_counter, 0, expected_aps);
+
     // Initialize per_cpu_apic_id array
   uint64_t max_init = cpu_count < MAX_CPUS ? cpu_count : MAX_CPUS;
     if (cpu_count > MAX_CPUS) {
@@ -113,10 +121,6 @@ void smp_init(void) {
         printk(SMP_CLASS "Waking up CPU LAPIC ID: %u\n", cpu->lapic_id);
         __atomic_store_n(&cpu->goto_address, smp_ap_entry, __ATOMIC_RELEASE);
     }
-
-    // Initialize the wait counter for AP startup
-    int expected_aps = (int)(cpu_count > 0 ? (cpu_count - 1) : 0);
-    init_wait_counter(&ap_startup_counter, 0, expected_aps);
 
     // Wait until all APs have reported online using wait counter
     wait_counter_wait(&ap_startup_counter);
