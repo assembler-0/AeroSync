@@ -1,12 +1,10 @@
 #include <arch/x64/tsc.h>
 #include <compiler.h>
-#include <drivers/uart/serial.h>
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>
 #include <kernel/spinlock.h>
 #include <lib/log.h>
 #include <lib/ringbuf.h>
-#include <lib/string.h>
 #include <lib/vsprintf.h>
 
 // Simple global ring buffer for log messages, Linux-like but minimal
@@ -29,8 +27,7 @@ static char klog_ring_data[KLOG_RING_SIZE];
 static ringbuf_t klog_ring;
 static int klog_level = KLOG_INFO;
 static int klog_console_level = KLOG_INFO;
-static log_sink_putc_t klog_console_sink =
-    serial_write_char; // default to serial
+static log_sink_putc_t klog_console_sink = NULL; // defaults to ring buffer only
 static spinlock_t klog_lock = 0;
 static int klog_inited = 0;
 // Serialize immediate console output across CPUs to prevent mangled lines

@@ -13,6 +13,7 @@ typedef struct printk_backend {
   printk_backend_probe probe;
   printk_backend_init init;
   void (*cleanup)(void);
+  int (*is_active)(void);
 } printk_backend_t;
 
 static int generic_backend_init(void *payload) { (void)payload; return 1; }

@@ -111,7 +111,6 @@ SECTIONS
     /DISCARD/ :
     {
     	*(.llvm*)
-    	*(.debug*)
     	*(.gnu*)
         *(.eh_frame*)
         *(.note*)

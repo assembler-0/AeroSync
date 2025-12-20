@@ -35,6 +35,10 @@ int linearfb_init_standard(void *data) {
   return fb ? 0 : -1;
 }
 
+int linearfb_is_initialized(void) {
+    return fb_initialized;
+}
+
 static printk_backend_t fb_backend = {
     .name = "linearfb",
     .priority = 100,
@@ -42,6 +46,7 @@ static printk_backend_t fb_backend = {
     .probe = linearfb_probe,
     .init = linearfb_init_standard,
     .cleanup = linearfb_cleanup,
+    .is_active = linearfb_is_initialized
 };
 
 void linearfb_cleanup(void) {

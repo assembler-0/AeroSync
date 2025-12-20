@@ -46,6 +46,12 @@ __attribute__((
     section(".limine_requests"))) static volatile struct limine_memmap_request
     memmap_request = {.id = LIMINE_MEMMAP_REQUEST_ID, .revision = 0};
 
+// Request paging mode
+__attribute__((
+    used,
+    section(".limine_requests"))) static volatile struct limine_paging_mode_request
+    paging_request = {.id = LIMINE_PAGING_MODE_REQUEST_ID, .revision = 0, .mode = LIMINE_PAGING_MODE_X86_64_4LVL};
+
 // Request HHDM (Higher Half Direct Map)
 __attribute__((
     used,
@@ -84,6 +90,11 @@ __attribute__((
     section(".limine_requests"))) static volatile struct limine_executable_cmdline_request
     cmdline_request = {.id = LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID, .revision = 0};
 
+__attribute__((
+    used,
+    section(".limine_requests"))) static volatile struct limine_firmware_type_request
+    fw_request = {.id = LIMINE_FIRMWARE_TYPE_REQUEST_ID, .revision = 0};
+
 // Set Limine Request End Marker
 __attribute__((used, section(".limine_requests_end")))
 static volatile uint64_t limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
@@ -106,6 +117,11 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   printk_register_backend(serial_get_backend());
   printk_register_backend(linearfb_get_backend());
 
+  // check if we recived 4-level paging mode
+  if (!paging_request.response || paging_request.response->mode != LIMINE_PAGING_MODE_X86_64_4LVL) {
+    panic(KERN_CLASS "4-level paging mode not enabled");
+  }
+
   printk_init_auto(NULL);
   calibrate_tsc();
 
@@ -120,6 +136,15 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
       bootloader_info_request.response->version ? bootloader_info_request.response->version : "(null-version)",
       bootloader_performance_request.response->exec_usec,
       bootloader_performance_request.response->init_usec
+    );
+  }
+
+  if (fw_request.response) {
+    printk(FW_CLASS "firmware type: %s\n",
+     fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI64 ? "UEFI (64-bit)" :
+     fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI32 ? "UEFI (32-bit)" :
+     fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_X86BIOS ? "BIOS (x86)" :
+     fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_SBI ? "SBI" : "(unknown)"
     );
   }
 

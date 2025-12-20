@@ -34,6 +34,7 @@
 #define TIME_CLASS "[SYS::TIME] "         // RTC, PIT, HPET, System Clock
 #define ATOMIC_CLASS "[SYS::ATOMIC] "     // Atomic operations
 #define SPINLOCK_CLASS "[SYS::SPINLOCK] " // Spinlock operations
+#define FW_CLASS "[SYS::FW] "           // Firmware interfaces (BIOS/UEFI)
 
 ///@section Crypto
 #define RNG_CLASS "[CRPT::RNG] " // Random Number Generator

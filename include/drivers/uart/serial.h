@@ -10,6 +10,7 @@
 #include <lib/printk.h>
 
 int serial_init_standard(void *unused);
+int serial_is_initialized(void);
 
 // Initialize serial port (defaults to COM1)
 int serial_init(void);

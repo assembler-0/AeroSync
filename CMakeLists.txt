@@ -39,22 +39,6 @@ else()
     message(WARNING "Unsupported host system: ${CMAKE_HOST_SYSTEM_NAME}")
 endif()
 
-if(NOT CMAKE_TOOLCHAIN_FILE)
-    message(WARNING "CMAKE_TOOLCHAIN_FILE is not set. Automatically selecting toolchain file...")
-    if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
-        set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/cmake/toolchain/linux-x64.cmake" CACHE PATH "Toolchain file" FORCE)
-        message(STATUS "Defaulting to Linux x86_64 toolchain file: ${CMAKE_TOOLCHAIN_FILE}")
-    elseif (CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
-        set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/cmake/toolchain/macos-x64.cmake" CACHE PATH "Toolchain file" FORCE)
-        message(STATUS "Defaulting to macOS x86_64 toolchain file: ${CMAKE_TOOLCHAIN_FILE}")
-    elseif (CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
-        set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/cmake/toolchain/windows-x64.cmake" CACHE PATH "Toolchain file" FORCE)
-        message(STATUS "Defaulting to Windows x86_64 toolchain file: ${CMAKE_TOOLCHAIN_FILE}")
-    endif()
-else()
-    message(STATUS "CMake: Using toolchain file: ${CMAKE_TOOLCHAIN_FILE}")
-endif()
-
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
     message(STATUS "CMake Target Architecture: ${CMAKE_SYSTEM_PROCESSOR}")
     set(Rust_CARGO_TARGET "x86_64-unknown-none")
@@ -150,7 +134,7 @@ add_custom_command(
 add_custom_target(bootdir ALL DEPENDS bootd)
 
 add_custom_command(
-    OUTPUT voidframex.iso
+    OUTPUT voidframex.hybrid.iso
     # 1. Copy UEFI boot binary
     COMMAND ${CMAKE_COMMAND} -E copy
         ${LIMINE_RESOURCE_DIR}/limine-uefi-cd.bin
@@ -175,23 +159,20 @@ add_custom_command(
         --efi-boot-part                 # EFI boot partition
         --efi-boot-image                # Mark as EFI bootable
         --protective-msdos-label        # Hybrid MBR
-        -o ${CMAKE_CURRENT_BINARY_DIR}/voidframex.iso
+        -o ${CMAKE_CURRENT_BINARY_DIR}/voidframex.hybrid.iso
         ${CMAKE_CURRENT_BINARY_DIR}/bootdir
-    
-    # 4. Install Limine bootloader to the ISO (for BIOS compatibility)
-    # COMMAND limine bios-install ${CMAKE_CURRENT_BINARY_DIR}/voidframex.iso
     
     DEPENDS bootd 
         ${LIMINE_RESOURCE_DIR}/limine-uefi-cd.bin
         ${LIMINE_RESOURCE_DIR}/limine-bios.sys
         ${LIMINE_RESOURCE_DIR}/limine-bios-cd.bin
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    COMMENT "Generating hybrid BIOS+UEFI ISO (voidframex.iso)..."
+    COMMENT "Generating hybrid ISO (voidframex.hybrid.iso)..."
     VERBATIM
 )
 
-set(ISO_PATH ${CMAKE_CURRENT_BINARY_DIR}/voidframex.iso)
-add_custom_target(iso ALL DEPENDS voidframex.iso)
+set(ISO_PATH ${CMAKE_CURRENT_BINARY_DIR}/voidframex.hybrid.iso)
+add_custom_target(iso ALL DEPENDS voidframex.hybrid.iso)
 
 # ============================================================================
 # Run Targets
@@ -221,6 +202,7 @@ if(QEMU_SYSTEM_X86_64)
 	add_custom_target(run
 	        COMMAND ${QEMU_SYSTEM_X86_64}
   	        -cpu max
+            -enable-kvm
 	        -no-reboot -no-shutdown
 	        -m 1G
 	        -smp 4

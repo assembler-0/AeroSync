@@ -7,3 +7,4 @@
 int debugcon_probe(void);
 void debugcon_putc(const char c);
 const printk_backend_t* debugcon_get_backend(void);
+int debugcon_is_initialized(void);

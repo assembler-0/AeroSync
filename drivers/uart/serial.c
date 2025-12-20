@@ -55,6 +55,10 @@ static void serial_cleanup(void) {
     }
 }
 
+int serial_is_initialized(void) {
+    return serial_initialized;
+}
+
 static printk_backend_t serial_backend = {
     .name = "serial",
     .priority = 50,
@@ -62,6 +66,7 @@ static printk_backend_t serial_backend = {
     .probe = serial_probe,
     .init = serial_init_standard,
     .cleanup = serial_cleanup,
+    .is_active = serial_is_initialized
 };
 
 const printk_backend_t* serial_get_backend(void) {
