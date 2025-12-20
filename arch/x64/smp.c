@@ -26,6 +26,7 @@
 #include <arch/x64/gdt/gdt.h>
 #include <arch/x64/idt/idt.h>
 #include <drivers/apic/apic.h>
+#include <kernel/wait.h>
 
 // SMP Request
 __attribute__((used, section(".limine_requests"))) 
@@ -38,6 +39,7 @@ static uint64_t cpu_count = 0;
 static volatile int cpus_online = 0;
 volatile int smp_lock = 0;
 static volatile int smp_start_barrier = 0; // BSP releases APs to start interrupts
+static struct wait_counter ap_startup_counter;
 
 // Global array to map logical CPU ID to physical APIC ID
 int per_cpu_apic_id[MAX_CPUS];
@@ -53,7 +55,10 @@ static void smp_ap_entry(struct limine_mp_info *info) {
     // Load IDT for this CPU
     idt_install();
 
-    // Mark this AP as online
+    // Mark this AP as online using wait counter
+    wait_counter_inc(&ap_startup_counter);
+
+    // Also increment the atomic counter for consistency with other code
     __atomic_fetch_add(&cpus_online, 1, __ATOMIC_RELEASE);
 
     // Wait until BSP releases start barrier before enabling interrupts
@@ -109,11 +114,12 @@ void smp_init(void) {
         __atomic_store_n(&cpu->goto_address, smp_ap_entry, __ATOMIC_RELEASE);
     }
 
-    // Wait until all APs have reported online
+    // Initialize the wait counter for AP startup
     int expected_aps = (int)(cpu_count > 0 ? (cpu_count - 1) : 0);
-    while (__atomic_load_n(&cpus_online, __ATOMIC_ACQUIRE) < expected_aps) {
-        cpu_relax();
-    }
+    init_wait_counter(&ap_startup_counter, 0, expected_aps);
+
+    // Wait until all APs have reported online using wait counter
+    wait_counter_wait(&ap_startup_counter);
 
     // Release APs to enable interrupts and proceed
     __atomic_store_n(&smp_start_barrier, 1, __ATOMIC_RELEASE);

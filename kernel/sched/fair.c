@@ -143,7 +143,7 @@ static void __dequeue_entity(struct rq *rq, struct sched_entity *se) {
  * Update vruntime of the current task.
  * This function calculates the delta internally based on exec_start_ns.
  */
-static void update_curr(struct rq *rq) {
+void update_curr(struct rq *rq) {
   struct task_struct *curr = rq->curr;
   uint64_t now_ns = get_time_ns();
   uint64_t delta_exec_ns;

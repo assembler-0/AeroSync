@@ -123,6 +123,11 @@ void scheduler_tick(void);
 void check_preempt(void);
 void sched_dump_memory_stats(void);
 
+/* Task state management functions */
+void task_sleep(void);
+void task_wake_up(struct task_struct *task);
+void task_wake_up_all(void);
+
 /* Helper to get current task */
 extern struct task_struct *get_current(void);
 #define current get_current()
@@ -151,3 +156,8 @@ struct rq {
 /* Per-CPU Runqueue Access */
 /* This will need to be hooked up to your per-cpu data system */
 // DECLARE_PER_CPU(struct rq, int runqueues);
+
+/* Internal scheduler functions used by other scheduler modules */
+extern void deactivate_task(struct rq *rq, struct task_struct *p);
+extern void activate_task(struct rq *rq, struct task_struct *p);
+extern void update_curr(struct rq *rq);

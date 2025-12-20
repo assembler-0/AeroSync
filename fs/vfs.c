@@ -22,6 +22,7 @@
 #include <include/linux/list.h>
 #include <kernel/types.h>
 #include <kernel/spinlock.h>
+#include <kernel/mutex.h>
 #include <lib/printk.h>
 #include <kernel/classes.h>
 
@@ -30,13 +31,13 @@ LIST_HEAD(super_blocks);  // List of all mounted superblocks
 LIST_HEAD(inodes);        // List of all active inodes
 LIST_HEAD(dentries);      // List of all active dentries (dentry cache)
 
-// Spinlocks to protect global lists
-static spinlock_t sb_lock;
-static spinlock_t inode_lock;
-static spinlock_t dentry_lock;
+// Mutexes to protect global lists
+static struct mutex sb_mutex;
+static struct mutex inode_mutex;
+static struct mutex dentry_mutex;
 
 LIST_HEAD(file_systems); // List of all registered file system types
-static spinlock_t fs_type_lock;
+static struct mutex fs_type_mutex;
 
 void vfs_init(void) {
     printk(VFS_CLASS "Initializing Virtual File System...\n");
@@ -47,11 +48,11 @@ void vfs_init(void) {
     INIT_LIST_HEAD(&dentries);
     INIT_LIST_HEAD(&file_systems);
 
-    // Initialize spinlocks
-    spinlock_init(&sb_lock);
-    spinlock_init(&inode_lock);
-    spinlock_init(&dentry_lock);
-    spinlock_init(&fs_type_lock);
+    // Initialize mutexes
+    mutex_init(&sb_mutex);
+    mutex_init(&inode_mutex);
+    mutex_init(&dentry_mutex);
+    mutex_init(&fs_type_mutex);
 
     printk(VFS_CLASS "Initialization complete.\n");
 }
@@ -62,9 +63,9 @@ int register_filesystem(struct file_system_type *fs) {
         printk(KERN_ERR VFS_CLASS "ERROR: Attempted to register an invalid filesystem type.\n");
         return -1;
     }
-    spinlock_lock(&fs_type_lock);
+    mutex_lock(&fs_type_mutex);
     list_add_tail(&fs->fs_list, &file_systems);
-    spinlock_unlock(&fs_type_lock);
+    mutex_unlock(&fs_type_mutex);
     printk(VFS_CLASS "Registered filesystem: %s\n", fs->name);
     return 0;
 }
@@ -75,9 +76,9 @@ int unregister_filesystem(struct file_system_type *fs) {
         printk(KERN_ERR VFS_CLASS "ERROR: Attempted to unregister a NULL filesystem type.\n");
         return -1;
     }
-    spinlock_lock(&fs_type_lock);
+    mutex_lock(&fs_type_mutex);
     list_del(&fs->fs_list);
-    spinlock_unlock(&fs_type_lock);
+    mutex_unlock(&fs_type_mutex);
     printk(VFS_CLASS "Unregistered filesystem: %s\n", fs->name);
     return 0;
 }
