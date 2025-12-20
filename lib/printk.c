@@ -1,10 +1,29 @@
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * VoidFrameX monolithic kernel
+ *
+ * @file lib/printk.c
+ * @brief printk backend management and logging functions
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #include <arch/x64/io.h>
 #include <drivers/uart/serial.h>
 #include <kernel/classes.h>
 #include <kernel/types.h>
 #include <lib/printk.h>
 #include <lib/vsprintf.h>
-#include <kernel/errno.h>
 #include <lib/string.h>
 
 #define MAX_PRINTK_BACKENDS 8
@@ -94,9 +113,7 @@ void printk_shutdown(void) {
     log_set_console_sink(NULL);
 }
 static const char *parse_level_prefix(const char *fmt, int *level_io) {
-  if (!fmt)
-    return fmt;
-  // Preferred: $n$
+  // format: $<0-7>$ (see include/lib/printk.h for level definitions)
   if (fmt[0] == '$' && fmt[1] >= '0' && fmt[1] <= '7' && fmt[2] == '$') {
     if (level_io)
       *level_io = (fmt[1] - '0');

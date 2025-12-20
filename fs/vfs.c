@@ -1,8 +1,28 @@
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * VoidFrameX monolithic kernel
+ *
+ * @file fs/vfs.c
+ * @brief Virtual File System core implementation
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #include <fs/vfs.h>
-#include <../include/linux/list.h>
-#include <kernel/types.h> // For size_t, etc.
-#include <kernel/spinlock.h> // For spinlock_t
-#include <lib/printk.h> // Explicitly include printk
+#include <include/linux/list.h>
+#include <kernel/types.h>
+#include <kernel/spinlock.h>
+#include <lib/printk.h>
 #include <kernel/classes.h>
 
 // Global lists for VFS objects

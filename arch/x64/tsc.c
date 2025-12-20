@@ -1,8 +1,26 @@
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * VoidFrameX monolithic kernel
+ *
+ * @file arch/x64/tsc.c
+ * @brief TSC (Time Stamp Counter) management and calibration
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #include <arch/x64/tsc.h>
 #include <drivers/apic/ic.h>
 #include <drivers/timer/pit.h>
-#include <kernel/classes.h>
-#include <lib/printk.h>
 
 static uint64_t tsc_freq = 0;
 static uint64_t tsc_boot_offset = 0;

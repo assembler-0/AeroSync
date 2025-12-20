@@ -1,3 +1,14 @@
+/// SPDX-License-Identifier: MIT
+/**
+ * linearfb - Linear Framebuffer library
+ *
+ * @file lib/linearfb/linearfb.c
+ * @brief simple linear framebuffer graphics and console library
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the linearfb project.
+ */
+
 #include <lib/linearfb/linearfb.h>
 #include <string.h>
 #include <kernel/spinlock.h>
