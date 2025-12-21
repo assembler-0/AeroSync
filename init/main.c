@@ -103,21 +103,30 @@ __attribute__((
     module_request = {.id = LIMINE_MODULE_REQUEST_ID,
                       .revision = 0}; // New module request
 
-__attribute__((used, section(".limine_reuests"))) static volatile struct
-    limine_bootloader_info_request bootloader_info_request = {
-        .id = LIMINE_BOOTLOADER_INFO_REQUEST_ID, .revision = 0};
+__attribute__((
+    used,
+    section(".limine_reuests"))) static volatile struct limine_bootloader_info_request 
+    bootloader_info_request = {.id = LIMINE_BOOTLOADER_INFO_REQUEST_ID, .revision = 0};
 
-__attribute__((used, section(".limine_reuests"))) static volatile struct
-    limine_bootloader_performance_request bootloader_performance_request = {
-        .id = LIMINE_BOOTLOADER_PERFORMANCE_REQUEST_ID, .revision = 0};
+__attribute__((
+    used,
+    section(".limine_reuests"))) static volatile struct limine_bootloader_performance_request 
+    bootloader_performance_request = {.id = LIMINE_BOOTLOADER_PERFORMANCE_REQUEST_ID, .revision = 0};
 
-__attribute__((used, section(".limine_requests"))) static volatile struct
-    limine_executable_cmdline_request cmdline_request = {
-        .id = LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID, .revision = 0};
+__attribute__((
+    used,
+    section(".limine_requests"))) static volatile struct limine_executable_cmdline_request 
+    cmdline_request = {.id = LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID, .revision = 0};
 
-__attribute__((used, section(".limine_requests"))) static volatile struct
-    limine_firmware_type_request fw_request = {
-        .id = LIMINE_FIRMWARE_TYPE_REQUEST_ID, .revision = 0};
+__attribute__((
+    used,
+    section(".limine_requests"))) static volatile struct limine_firmware_type_request 
+    fw_request = {.id = LIMINE_FIRMWARE_TYPE_REQUEST_ID, .revision = 0};
+
+__attribute__((
+    used,
+    section(".limine_requests"))) static volatile struct limine_date_at_boot_request 
+    date_at_boot_request = {.id = LIMINE_DATE_AT_BOOT_REQUEST_ID, .revision = 0};
 
 // Set Limine Request End Marker
 __attribute__((used, section(".limine_requests_end"))) static volatile uint64_t
@@ -184,6 +193,10 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   if (cmdline_request.response) {
     printk(KERN_CLASS "cmdline: %s\n", cmdline_request.response->cmdline);
+  }
+
+  if (date_at_boot_request.response) {
+    printk(KERN_INFO "unix timestamp: %lld\n", date_at_boot_request.response->timestamp);
   }
 
   // Initialize Physical Memory Manager
