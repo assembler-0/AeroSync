@@ -27,6 +27,7 @@
 #define CPU_CLASS "[SYS::CPU] " // CPU features, MSRs, CPUID
 #define FPU_CLASS "[SYS::FPU] " // Floating Point / SSE / AVX contexts
 #define HPET_CLASS "[SYS::HPET] " // High Precision Event Timer
+#define TIME_CLASS "[SYS::TIME] " // Unified timer subsystem
 
 ///@section Core Kernel
 #define KERN_CLASS "[SYS::CORE] "         // Generic kernel core messages

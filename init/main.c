@@ -18,7 +18,6 @@
  * GNU General Public License for more details.
  */
 
-#include <kernel/types.h>
 #include <arch/x64/cpu.h>
 #include <arch/x64/features/features.h>
 #include <arch/x64/gdt/gdt.h>
@@ -31,25 +30,30 @@
 #include <drivers/apic/apic.h>
 #include <drivers/apic/ic.h>
 #include <drivers/apic/pic.h>
+#include <drivers/qemu/debugcon/debugcon.h>
+#include <drivers/timer/hpet.h>
+#include <drivers/timer/pit.h>
+#include <drivers/timer/time.h>
+#include <drivers/uart/serial.h>
 #include <fs/vfs.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>
+#include <kernel/types.h>
+#include <kernel/version.h>
+#include <lib/linearfb/linearfb.h>
 #include <lib/printk.h>
 #include <limine/limine.h>
 #include <mm/slab.h>
 #include <mm/vma.h>
 #include <uacpi/uacpi.h>
-#include <kernel/version.h>
-#include <drivers/uart/serial.h>
-#include <drivers/qemu/debugcon/debugcon.h>
-#include <lib/linearfb/linearfb.h>
-#include <drivers/timer/hpet.h>
+#include <drivers/timer/pit.h>
 
 // Set Limine Request Start Marker
-__attribute__((used, section(".limine_requests_start")))
-static volatile uint64_t limine_requests_start_marker[] = LIMINE_REQUESTS_START_MARKER;
+__attribute__((used,
+               section(".limine_requests_start"))) static volatile uint64_t
+    limine_requests_start_marker[] = LIMINE_REQUESTS_START_MARKER;
 
 // Set Limine Base Revision to 3
 __attribute__((used, section(".limine_requests"))) static volatile uint64_t
@@ -70,8 +74,11 @@ __attribute__((
 // Request paging mode
 __attribute__((
     used,
-    section(".limine_requests"))) static volatile struct limine_paging_mode_request
-    paging_request = {.id = LIMINE_PAGING_MODE_REQUEST_ID, .revision = 0, .mode = LIMINE_PAGING_MODE_X86_64_4LVL};
+    section(
+        ".limine_requests"))) static volatile struct limine_paging_mode_request
+    paging_request = {.id = LIMINE_PAGING_MODE_REQUEST_ID,
+                      .revision = 0,
+                      .mode = LIMINE_PAGING_MODE_X86_64_4LVL};
 
 // Request HHDM (Higher Half Direct Map)
 __attribute__((
@@ -80,9 +87,8 @@ __attribute__((
     hhdm_request = {.id = LIMINE_HHDM_REQUEST_ID, .revision = 0};
 
 // Request RSDP (for ACPI)
-__attribute__((
-    used,
-    section(".limine_requests"))) volatile struct limine_rsdp_request
+__attribute__((used,
+               section(".limine_requests"))) volatile struct limine_rsdp_request
     rsdp_request = {.id = LIMINE_RSDP_REQUEST_ID, .revision = 0};
 
 __attribute__((
@@ -94,31 +100,28 @@ __attribute__((
 __attribute__((
     used,
     section(".limine_requests"))) static volatile struct limine_module_request
-    module_request = {.id = LIMINE_MODULE_REQUEST_ID, .revision = 0}; // New module request
+    module_request = {.id = LIMINE_MODULE_REQUEST_ID,
+                      .revision = 0}; // New module request
 
-__attribute__((
-    used,
-    section(".limine_reuests"))) static volatile struct limine_bootloader_info_request
-    bootloader_info_request = {.id = LIMINE_BOOTLOADER_INFO_REQUEST_ID, .revision = 0};
+__attribute__((used, section(".limine_reuests"))) static volatile struct
+    limine_bootloader_info_request bootloader_info_request = {
+        .id = LIMINE_BOOTLOADER_INFO_REQUEST_ID, .revision = 0};
 
-__attribute__((
-    used,
-    section(".limine_reuests"))) static volatile struct limine_bootloader_performance_request
-    bootloader_performance_request = {.id = LIMINE_BOOTLOADER_PERFORMANCE_REQUEST_ID, .revision = 0};
+__attribute__((used, section(".limine_reuests"))) static volatile struct
+    limine_bootloader_performance_request bootloader_performance_request = {
+        .id = LIMINE_BOOTLOADER_PERFORMANCE_REQUEST_ID, .revision = 0};
 
-__attribute__((
-    used,
-    section(".limine_requests"))) static volatile struct limine_executable_cmdline_request
-    cmdline_request = {.id = LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID, .revision = 0};
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_executable_cmdline_request cmdline_request = {
+        .id = LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID, .revision = 0};
 
-__attribute__((
-    used,
-    section(".limine_requests"))) static volatile struct limine_firmware_type_request
-    fw_request = {.id = LIMINE_FIRMWARE_TYPE_REQUEST_ID, .revision = 0};
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_firmware_type_request fw_request = {
+        .id = LIMINE_FIRMWARE_TYPE_REQUEST_ID, .revision = 0};
 
 // Set Limine Request End Marker
-__attribute__((used, section(".limine_requests_end")))
-static volatile uint64_t limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
+__attribute__((used, section(".limine_requests_end"))) static volatile uint64_t
+    limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
 
 static struct task_struct bsp_task;
 
@@ -139,34 +142,44 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   printk_register_backend(linearfb_get_backend());
 
   // check if we recived 4-level paging mode
-  if (!paging_request.response || paging_request.response->mode != LIMINE_PAGING_MODE_X86_64_4LVL) {
+  if (!paging_request.response ||
+      paging_request.response->mode != LIMINE_PAGING_MODE_X86_64_4LVL) {
     panic(KERN_CLASS "4-level paging mode not enabled");
   }
 
   printk_init_auto(NULL);
-  calibrate_tsc();
+  pit_calibrate_tsc();
 
   printk(KERN_CLASS "VoidFrameX (R) v%s - %s\n", VOIDFRAMEX_VERSION,
          VOIDFRAMEX_COMPILER_VERSION);
   printk(KERN_CLASS "copyright (C) 2025 assembler-0\n");
   printk(KERN_CLASS "build: %s\n", VOIDFRAMEX_BUILD_DATE);
 
-  if (bootloader_info_request.response && bootloader_performance_request.response) {
-    printk(KERN_CLASS "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
-      bootloader_info_request.response->name ? bootloader_info_request.response->name : "(null)",
-      bootloader_info_request.response->version ? bootloader_info_request.response->version : "(null-version)",
-      bootloader_performance_request.response->exec_usec,
-      bootloader_performance_request.response->init_usec
-    );
+  if (bootloader_info_request.response &&
+      bootloader_performance_request.response) {
+    printk(KERN_CLASS
+           "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
+           bootloader_info_request.response->name
+               ? bootloader_info_request.response->name
+               : "(null)",
+           bootloader_info_request.response->version
+               ? bootloader_info_request.response->version
+               : "(null-version)",
+           bootloader_performance_request.response->exec_usec,
+           bootloader_performance_request.response->init_usec);
   }
 
   if (fw_request.response) {
     printk(FW_CLASS "firmware type: %s\n",
-     fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI64 ? "UEFI (64-bit)" :
-     fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI32 ? "UEFI (32-bit)" :
-     fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_X86BIOS ? "BIOS (x86)" :
-     fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_SBI ? "SBI" : "(unknown)"
-    );
+           fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI64
+               ? "UEFI (64-bit)"
+           : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI32
+               ? "UEFI (32-bit)"
+           : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_X86BIOS
+               ? "BIOS (x86)"
+           : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_SBI
+               ? "SBI"
+               : "(unknown)");
   }
 
   if (cmdline_request.response) {
@@ -194,6 +207,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   // Verify VMA Implementation
   vma_test();
 
+
   cpu_features_init();
   // Two-phase ACPI init to break IC/APIC/uACPI circular dependency
   uacpi_kernel_init_early();
@@ -207,7 +221,8 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   // Notify ACPI glue that IC is ready so it can bind any deferred handlers
   uacpi_notify_ic_ready();
 
-  // Complete ACPI initialization (will install SCI/GPE handlers now that IC is ready)
+  // Complete ACPI initialization (will install SCI/GPE handlers now that IC is
+  // ready)
   uacpi_kernel_init_late();
 
   if (ic_type == INTC_APIC)
@@ -226,12 +241,22 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   sched_init();
   sched_init_task(&bsp_task);
 
-  // Initialize HPET after basic system is up
-  hpet_init();
+  // --- Time Subsystem Initialization ---
+  printk(KERN_CLASS "Initializing Time Subsystem...\n");
 
-  // Perform late TSC recalibration using HPET if available
-  if (hpet_available()) {
-    hpet_calibrate_tsc();
+  time_register_source(pit_get_time_source());
+  time_register_source(hpet_get_time_source());
+
+  // Initialize unified time subsystem (Selects Best Source and Inits it)
+  if (time_init() != 0) {
+    printk(KERN_WARNING KERN_CLASS "Time subsystem initialization failed!\n");
+  }
+
+  // Recalibrate TSC using the best available time source
+  if (time_calibrate_tsc_system() != 0) {
+    printk(KERN_WARNING KERN_CLASS "TSC System Calibration failed.\n");
+  } else {
+    printk(KERN_CLASS "TSC calibrated successfully.\n");
   }
 
   printk_init_async();

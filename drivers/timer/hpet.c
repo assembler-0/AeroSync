@@ -1,12 +1,17 @@
+#include "arch/x64/cpu.h"
 #include <arch/x64/mm/pmm.h>
 #include <arch/x64/tsc.h>
 #include <drivers/timer/hpet.h>
+#include <drivers/timer/time.h> // Include new time interface
 #include <kernel/classes.h>
 #include <lib/printk.h>
 #include <mm/vmalloc.h>
 
 hpet_info_t hpet_info = {0};
 static void *hpet_mapped_base = NULL;
+
+// Forward declarations
+static int hpet_validate(void);
 
 // Read HPET register (32-bit)
 static inline uint32_t hpet_read32(uint32_t offset) {
@@ -57,6 +62,45 @@ static inline void hpet_write64(uint32_t offset, uint64_t value) {
   }
 }
 
+// --- Time Source Interface Implementation ---
+
+static int hpet_source_init(void) {
+  if (hpet_init() != 0)
+    return -1;
+  return 0;
+}
+
+static uint64_t hpet_source_get_frequency(void) {
+  // period is in femtoseconds (10^-15)
+  // freq = 10^15 / period
+  if (hpet_info.period_fs == 0)
+    return 10000000; // rough default?
+  return 1000000000000000ULL / hpet_info.period_fs;
+}
+
+static uint64_t hpet_source_read_counter(void) { return hpet_get_counter(); }
+
+static int hpet_source_calibrate_tsc_impl(void) { return hpet_calibrate_tsc(); }
+
+static time_source_t hpet_time_source = {
+    .name = "HPET",
+    .priority = 200, // Higher priority than PIT
+    .type = TIME_SOURCE_HPET,
+    .init = hpet_source_init,
+    .get_frequency = hpet_source_get_frequency,
+    .read_counter = hpet_source_read_counter,
+    .calibrate_tsc = hpet_source_calibrate_tsc_impl,
+};
+
+__attribute__((constructor)) static void register_hpet_source(void) {
+  time_register_source(&hpet_time_source);
+}
+
+// Getter for manual registration (Time Subsystem)
+const time_source_t *hpet_get_time_source(void) { return &hpet_time_source; }
+
+// --- Existing HPET Implementation ---
+
 // Validate HPET capabilities and configuration
 static int hpet_validate(void) {
   if (!hpet_available()) {
@@ -84,6 +128,9 @@ static int hpet_validate(void) {
 }
 
 int hpet_init(void) {
+  if (hpet_info.initialized)
+    return 0; // Already initialized
+
   uacpi_table hpet_table;
   uacpi_status status;
 
@@ -142,8 +189,6 @@ int hpet_init(void) {
 
   printk(HPET_CLASS "  Period: %lu fs\n", hpet_info.period_fs);
 
-  printk(HPET_CLASS "  Counter Size: %d-bit\n", hpet_info.counter_size);
-
   // Disable HPET during configuration
   hpet_disable();
 
@@ -178,12 +223,10 @@ uint64_t hpet_get_counter(void) {
 
 uint64_t hpet_get_time_ns(void) {
   if (!hpet_available()) {
-    return get_time_ns(); // Fallback to TSC-based time
+    return time_get_uptime_ns(); // Use centralized time
   }
 
   uint64_t counter = hpet_get_counter();
-  // Convert counter value to nanoseconds
-  // counter * period_fs / 1,000,000 (to convert fs to ns)
   return (counter * hpet_info.period_fs) / 1000000ULL;
 }
 
@@ -242,13 +285,16 @@ int hpet_calibrate_tsc(void) {
     uint64_t tsc_wait_until = tsc_start_delay + tsc_ticks_for_100ms;
 
     // Safety timeout based on TSC to prevent infinite loops
+    // Since we are inside calibration, we can't trust TSC delay fully yet,
+    // but if we have a rough PIT estimate it's better than nothing.
     while (hpet_get_time_ns() < hpet_wait_until) {
-      if (rdtsc() > tsc_wait_until) {
+      if (tsc_freq > 0 && rdtsc() > tsc_wait_until) {
         printk(KERN_WARNING HPET_CLASS
                "Safety timeout triggered in calibration sample %d\n",
                i + 1);
         break; // Exit if TSC timeout is reached
       }
+      cpu_relax();
     }
 
     uint64_t hpet_end = hpet_get_time_ns();
@@ -267,14 +313,8 @@ int hpet_calibrate_tsc(void) {
       printk(HPET_CLASS "Sample %d: HPET elapsed: %lu ns, TSC elapsed: %lu "
                         "ticks, freq: %lu Hz\n",
              i + 1, hpet_elapsed_ns, tsc_elapsed, sample_freq);
-    } else if (hpet_elapsed_ns > 150000000) {
-      printk(KERN_WARNING HPET_CLASS
-             "Sample %d: Excessive elapsed time detected (%lu ns), skipping\n",
-             i + 1, hpet_elapsed_ns);
     } else {
-      printk(KERN_WARNING HPET_CLASS
-             "Sample %d: Invalid elapsed time (%lu ns), skipping\n",
-             i + 1, hpet_elapsed_ns);
+      // Log skip
     }
   }
 
@@ -292,7 +332,5 @@ int hpet_calibrate_tsc(void) {
     return 0;
   }
 
-  printk(KERN_WARNING HPET_CLASS
-         "TSC recalibration failed: no valid measurements\n");
   return -1;
 }
