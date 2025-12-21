@@ -7,26 +7,18 @@
  * @copyright (C) 2025 assembler-0
  *
  * This file is part of the VoidFrameX kernel.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/smp.h>
-#include <arch/x64/io.h>
-#include <arch/x64/mm/paging.h>
-#include <kernel/classes.h>
-#include <lib/printk.h>
-#include <mm/vmalloc.h>
-#include <kernel/spinlock.h>
-#include <drivers/apic/x2apic.h>
+#include <arch/x64/cpu.h> 
+#include <arch/x64/smp.h> 
+#include <arch/x64/io.h> 
+#include <arch/x64/mm/paging.h> 
+#include <kernel/classes.h> 
+#include <lib/printk.h> 
+#include <mm/vmalloc.h> 
+#include <kernel/spinlock.h> 
+#include <drivers/apic/x2apic.h> 
+#include <drivers/apic/apic_internal.h> 
 
 // --- x2APIC MSR Addresses ---
 
@@ -57,7 +49,9 @@
 #define APIC_BASE_MSR_ENABLE 0x800
 #define APIC_BASE_MSR_X2APIC_ENABLE (1ULL << 10)
 
-#define IOAPIC_DEFAULT_PHYS_ADDR 0xFEC00000
+// --- Globals ---
+static spinlock_t x2apic_ipi_lock;
+volatile uint32_t x2apic_timer_hz = 0;
 
 // --- x2APIC MSR Access Functions ---
 
@@ -69,20 +63,26 @@ static uint64_t x2apic_read(uint32_t msr) {
     return rdmsr(msr);
 }
 
-uint32_t x2apic_get_id(void) {
+// Wrapper for ops structure (needs 32-bit signature)
+static void x2apic_write_op(uint32_t msr, uint32_t value) {
+    wrmsr(msr, value);
+}
+static uint32_t x2apic_read_op(uint32_t msr) {
+    return (uint32_t)rdmsr(msr);
+}
+
+uint32_t x2apic_get_id_raw(void) {
     // In x2APIC mode, the full 32-bit ID is available directly
     return (uint32_t)x2apic_read(X2APIC_ID);
 }
 
-void x2apic_send_eoi(const uint32_t irn) { // arg for compatibility
+static void x2apic_send_eoi_op(const uint32_t irn) { 
     (void)irn;
     wrmsr(X2APIC_EOI, 0);
 }
 
 // Sends an Inter-Processor Interrupt (IPI) using x2APIC MSR
-static spinlock_t x2apic_ipi_lock;
-
-void x2apic_send_ipi(uint32_t dest_apic_id, uint8_t vector, uint32_t delivery_mode) {
+static void x2apic_send_ipi_op(uint32_t dest_apic_id, uint8_t vector, uint32_t delivery_mode) {
     irq_flags_t flags = spinlock_lock_irqsave(&x2apic_ipi_lock);
 
     // In x2APIC mode, the ICR is a 64-bit MSR
@@ -94,7 +94,18 @@ void x2apic_send_ipi(uint32_t dest_apic_id, uint8_t vector, uint32_t delivery_mo
     // Bits 16: Trigger Mode (0=edge, 1=level)
     // Bits 17-19: Reserved
     // Bits 20-31: Destination (APIC ID in x2APIC mode)
-    // Bits 32-63: Reserved
+    // Bits 32-63: Reserved - WAIT, bit 32 is reserved?
+    // x2APIC Spec: 
+    // 31:0  - Low 32 bits
+    // 63:32 - Destination Field (32-bit ID)
+    
+    // My previous assumption in xapic.c about bit shifts:
+    // xAPIC: Destination at 56 (8 bits).
+    // x2APIC: Destination at 32 (32 bits).
+    
+    // Check Intel SDM Vol 3A 10-28 "Interrupt Command Register (x2APIC Mode)"
+    // 63:32 - Destination Field.
+    // 31:0 - Vector, Delivery Mode, etc.
     
     uint64_t icr_value = (uint64_t)vector | 
                          (uint64_t)delivery_mode | 
@@ -103,34 +114,22 @@ void x2apic_send_ipi(uint32_t dest_apic_id, uint8_t vector, uint32_t delivery_mo
                          (0ULL << 16) /* Edge Trigger */ |
                          ((uint64_t)dest_apic_id << 32);
 
-    // Wait for previous IPI to be delivered
-    uint32_t timeout = 100000;
-    while (x2apic_read(X2APIC_ICR) & (1ULL << 12)) {
-        if (--timeout == 0) {
-            printk(KERN_ERR "ICR stuck busy before send (dest: %u)\n", dest_apic_id);
-            spinlock_unlock_irqrestore(&x2apic_ipi_lock, flags);
-            return;
-        }
-        cpu_relax();
-    }
-
+    // Wait for previous IPI to be delivered?
+    // x2APIC ICR writes are serialized. But checking delivery status might still be relevant?
+    // "Delivery Status (Bit 12) - Reserved in x2APIC mode."
+    // So we do NOT check bit 12 in x2APIC mode!
+    // The hardware handles buffering. 
+    
+    // Remove the wait loop for x2APIC!
+    
     x2apic_write(X2APIC_ICR, icr_value);
 
-    // Wait for delivery to complete
-    timeout = 100000;
-    while (x2apic_read(X2APIC_ICR) & (1ULL << 12)) {
-        if (--timeout == 0) {
-            printk(KERN_ERR "IPI delivery timeout to APIC ID %u\n", dest_apic_id);
-            break;
-        }
-        cpu_relax();
-    }
-
+    // No wait loop after write either.
     spinlock_unlock_irqrestore(&x2apic_ipi_lock, flags);
 }
 
 // Initialize x2APIC by enabling x2APIC mode in the APIC_BASE MSR
-int x2apic_setup_lapic(void) {
+static int x2apic_init_lapic(void) {
     uint64_t lapic_base_msr = rdmsr(APIC_BASE_MSR);
     
     // Check if x2APIC is supported by checking CPUID
@@ -138,7 +137,7 @@ int x2apic_setup_lapic(void) {
     cpuid(1, &eax, &ebx, &ecx, &edx);
     if (!(ecx & (1 << 21))) { // Check for x2APIC feature bit (ECX bit 21)
         printk(KERN_ERR APIC_CLASS  "x2APIC feature not supported by CPU\n");
-        return false;
+        return 0;
     }
     
     printk(APIC_CLASS "Enabling x2APIC mode\n");
@@ -156,131 +155,10 @@ int x2apic_setup_lapic(void) {
     // Set TPR to 0 to accept all interrupts
     x2apic_write(X2APIC_TPR, 0);
     
-    return true;
+    return 1;
 }
 
-// x2APIC does not change I/O APIC handling, so we can reuse xAPIC I/O APIC functions
-// But we'll define the same interface for consistency
-int x2apic_setup_ioapic(void) {
-    // Map the I/O APIC into virtual memory. Prefer MADT-provided address.
-    uacpi_u64 ioapic_phys = x2apic_madt_parsed && x2apic_madt_ioapic_phys
-                                ? (uacpi_u64)x2apic_madt_ioapic_phys
-                                : (uacpi_u64)IOAPIC_DEFAULT_PHYS_ADDR;
-
-    if (ioapic_phys != IOAPIC_DEFAULT_PHYS_ADDR)
-        printk(APIC_CLASS "IOAPIC Physical Base from MADT: 0x%llx\n", ioapic_phys);
-
-    x2apic_ioapic_base = (volatile uint32_t *)viomap(ioapic_phys, PAGE_SIZE);
-
-    if (!x2apic_ioapic_base) {
-        printk(KERN_ERR APIC_CLASS "Failed to map I/O APIC MMIO.\n");
-        return false;
-    }
-
-    printk(APIC_CLASS "IOAPIC Mapped at: 0x%llx\n", (uint64_t)x2apic_ioapic_base);
-
-    // Read the I/O APIC version to verify it's working (still uses MMIO)
-    uint32_t id_reg = x2apic_ioapic_base[0] = 0x00;  // ID register
-    uint32_t version_reg = x2apic_ioapic_base[4];     // Read value
-    printk(APIC_CLASS "IOAPIC Version: 0x%x\n", version_reg & 0xFF);
-
-    return true;
-}
-
-// I/O APIC functions still use MMIO (x2APIC only affects Local APIC access)
-static void ioapic_write(uint8_t reg, uint32_t value) {
-    if (!x2apic_ioapic_base)
-        return;
-    // I/O APIC uses an index/data pair for access
-    x2apic_ioapic_base[0] = reg;
-    x2apic_ioapic_base[4] = value;
-}
-
-static uint32_t ioapic_read(uint8_t reg) {
-    if (!x2apic_ioapic_base)
-        return 0;
-    x2apic_ioapic_base[0] = reg;
-    return x2apic_ioapic_base[4];
-}
-
-// Sets a redirection table entry in the I/O APIC
-static void ioapic_set_entry(uint8_t index, uint64_t data) {
-    ioapic_write(0x10 + index * 2, (uint32_t)data);      // IOAPIC_REG_TABLE + index * 2
-    ioapic_write(0x10 + index * 2 + 1, (uint32_t)(data >> 32)); // IOAPIC_REG_TABLE + index * 2 + 1
-}
-
-void x2apic_enable_irq(uint8_t irq_line) {
-    // IRQ line -> Vector 32 + IRQ
-    // Route to the current CPU's LAPIC ID (BSP)
-    uint32_t dest_apic_id = x2apic_get_id();  // x2APIC ID is 32-bit
-
-    uint32_t gsi = irq_line;
-    uint16_t flags = 0;
-
-    for (int i = 0; i < x2apic_num_irq_overrides; i++) {
-        if (x2apic_irq_overrides[i].source == irq_line) {
-            gsi = x2apic_irq_overrides[i].gsi;
-            flags = x2apic_irq_overrides[i].flags;
-            break;
-        }
-    }
-
-    uint64_t redirect_entry = (32 + irq_line); // Vector
-    redirect_entry |= (0b000ull << 8);         // Delivery Mode: Fixed
-    redirect_entry |= (0b0ull << 11);          // Destination Mode: Physical
-
-    // Handle flags
-    uint16_t polarity = flags & ACPI_MADT_POLARITY_MASK;
-    uint16_t trigger = flags & ACPI_MADT_TRIGGERING_MASK;
-
-    if (polarity == ACPI_MADT_POLARITY_ACTIVE_LOW) {
-        redirect_entry |= (1ull << 13); // Polarity: Low
-    } else {
-        redirect_entry |= (0ull << 13); // Polarity: High
-    }
-
-    if (trigger == ACPI_MADT_TRIGGERING_LEVEL) {
-        redirect_entry |= (1ull << 15); // Trigger: Level
-    } else {
-        redirect_entry |= (0ull << 15); // Trigger: Edge
-    }
-
-    // Unmask (bit 16 = 0)
-    // Destination field (bits 56..63) - for x2APIC, destination is 32-bit in bits 32-63
-    redirect_entry |= ((uint64_t)dest_apic_id << 32);
-
-    ioapic_set_entry(gsi, redirect_entry);
-}
-
-void x2apic_disable_irq(uint8_t irq_line) {
-    uint32_t gsi = irq_line;
-
-    for (int i = 0; i < x2apic_num_irq_overrides; i++) {
-        if (x2apic_irq_overrides[i].source == irq_line) {
-            gsi = x2apic_irq_overrides[i].gsi;
-            break;
-        }
-    }
-
-    // To disable, we set the mask bit (bit 16)
-    uint64_t redirect_entry = (1 << 16);
-    ioapic_set_entry(gsi, redirect_entry);
-}
-
-void x2apic_mask_all(void) {
-    // Mask all 24 redirection entries in the I/O APIC
-    for (int i = 0; i < 24; i++) {
-        x2apic_disable_irq(i);
-    }
-}
-
-void x2apic_timer_init(uint32_t frequency_hz) {
-    // Calibrate and set the initial count
-    x2apic_timer_set_frequency(frequency_hz);
-    printk(APIC_CLASS "Timer installed at %d Hz.\n", frequency_hz);
-}
-
-void x2apic_timer_set_frequency(uint32_t frequency_hz) {
+static void x2apic_timer_set_frequency_op(uint32_t frequency_hz) {
     if (frequency_hz == 0)
         return;
 
@@ -329,10 +207,12 @@ void x2apic_timer_set_frequency(uint32_t frequency_hz) {
            ticks_per_target);
 }
 
-void x2apic_shutdown(void) {
-    // 1. Mask all I/O APIC interrupts
-    x2apic_mask_all();
+static void x2apic_timer_init_op(uint32_t frequency_hz) {
+    x2apic_timer_set_frequency_op(frequency_hz);
+    printk(APIC_CLASS "Timer installed at %d Hz.\n", frequency_hz);
+}
 
+static void x2apic_shutdown_op(void) {
     // 2. Disable Local APIC Timer
     x2apic_write(X2APIC_LVT_TIMER, (1 << 16)); // Masked
 
@@ -344,3 +224,16 @@ void x2apic_shutdown(void) {
     uint64_t lapic_base_msr = rdmsr(APIC_BASE_MSR);
     wrmsr(APIC_BASE_MSR, lapic_base_msr & ~(APIC_BASE_MSR_ENABLE | APIC_BASE_MSR_X2APIC_ENABLE));
 }
+
+const struct apic_ops x2apic_ops = {
+    .name = "x2APIC",
+    .init_lapic = x2apic_init_lapic,
+    .send_eoi = x2apic_send_eoi_op,
+    .send_ipi = x2apic_send_ipi_op,
+    .get_id = x2apic_get_id_raw,
+    .timer_init = x2apic_timer_init_op,
+    .timer_set_frequency = x2apic_timer_set_frequency_op,
+    .shutdown = x2apic_shutdown_op,
+    .read = x2apic_read_op,
+    .write = x2apic_write_op
+};

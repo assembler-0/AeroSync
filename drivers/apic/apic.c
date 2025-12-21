@@ -7,54 +7,38 @@
  * @copyright (C) 2025 assembler-0
  *
  * This file is part of the VoidFrameX kernel.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <arch/x64/cpu.h>
 #include <arch/x64/smp.h>
 #include <drivers/apic/apic.h>
+#include <drivers/apic/apic_internal.h>
+#include <drivers/apic/ioapic.h>
 #include <uacpi/uacpi.h>
 #include <uacpi/tables.h>
 #include <uacpi/acpi.h>
 #include <kernel/classes.h>
 #include <lib/printk.h>
 #include <drivers/apic/pic.h>
-#include <drivers/apic/xapic.h>
-#include <drivers/apic/x2apic.h>
 
-// --- Global Variables ---
-volatile uint32_t *xapic_lapic_base = NULL;
-volatile uint32_t *xapic_ioapic_base = NULL;
-volatile uint32_t xapic_timer_hz = 0;
+// --- Constants ---
+#define MAX_IRQ_OVERRIDES 16
 
+// --- Global Variables (Consolidated) ---
+
+// These are accessed by xapic.c (via extern)
 uacpi_u64 xapic_madt_lapic_override_phys = 0;   // 0 if not provided
-uacpi_u32 xapic_madt_ioapic_phys = 0;           // 0 if not provided
 int xapic_madt_parsed = 0;
 
-struct acpi_madt_interrupt_source_override xapic_irq_overrides[XAPIC_MAX_IRQ_OVERRIDES];
-int xapic_num_irq_overrides = 0;
+// IOAPIC physical address (used internally here)
+static uacpi_u32 apic_madt_ioapic_phys = 0;
 
-// x2APIC globals (shared with xAPIC for consistency)
-volatile uint32_t *x2apic_ioapic_base = NULL;  // x2APIC reuses the same I/O APIC base
-volatile uint32_t x2apic_timer_hz = 0;
+// Interrupt Overrides
+struct acpi_madt_interrupt_source_override apic_irq_overrides[MAX_IRQ_OVERRIDES];
+int apic_num_irq_overrides = 0;
 
-uacpi_u64 x2apic_madt_lapic_override_phys = 0;   // 0 if not provided
-uacpi_u32 x2apic_madt_ioapic_phys = 0;           // 0 if not provided
-int x2apic_madt_parsed = 0;
-
-struct acpi_madt_interrupt_source_override x2apic_irq_overrides[X2APIC_MAX_IRQ_OVERRIDES];
-int x2apic_num_irq_overrides = 0;
-
-// --- APIC Mode Selection ---
-static int apic_mode = 0; // 0 = xAPIC, 1 = x2APIC
+// Current APIC Ops
+static const struct apic_ops *current_ops = NULL;
 
 // --- Forward Declarations ---
 static int detect_apic(void);
@@ -81,24 +65,20 @@ static uacpi_iteration_decision apic_madt_iter_cb(uacpi_handle user, struct acpi
         case ACPI_MADT_ENTRY_TYPE_LAPIC_ADDRESS_OVERRIDE: {
             const struct acpi_madt_lapic_address_override* ovr = (const void*)ehdr;
             xapic_madt_lapic_override_phys = ovr->address;
-            x2apic_madt_lapic_override_phys = ovr->address; // Shared between both modes
             break;
         }
         case ACPI_MADT_ENTRY_TYPE_IOAPIC: {
             const struct acpi_madt_ioapic* io = (const void*)ehdr;
-            if (xapic_madt_ioapic_phys == 0) {
-                xapic_madt_ioapic_phys = io->address;
-                x2apic_madt_ioapic_phys = io->address; // Shared between both modes
+            if (apic_madt_ioapic_phys == 0) {
+                apic_madt_ioapic_phys = io->address;
             }
             break;
         }
         case ACPI_MADT_ENTRY_TYPE_INTERRUPT_SOURCE_OVERRIDE: {
             const struct acpi_madt_interrupt_source_override* iso = (const void*)ehdr;
-            if (xapic_num_irq_overrides < XAPIC_MAX_IRQ_OVERRIDES) {
-                xapic_irq_overrides[xapic_num_irq_overrides] = *iso;
-                x2apic_irq_overrides[xapic_num_irq_overrides] = *iso; // Shared between both modes
-                xapic_num_irq_overrides++;
-                x2apic_num_irq_overrides++;
+            if (apic_num_irq_overrides < MAX_IRQ_OVERRIDES) {
+                apic_irq_overrides[apic_num_irq_overrides] = *iso;
+                apic_num_irq_overrides++;
             }
             break;
         }
@@ -109,20 +89,16 @@ static uacpi_iteration_decision apic_madt_iter_cb(uacpi_handle user, struct acpi
 }
 
 static void apic_parse_madt(void) {
-    if (xapic_madt_parsed) return; // Use xapic flag as general MADT parsed flag
+    if (xapic_madt_parsed) return;
 
     uacpi_table tbl;
     uacpi_status st = uacpi_table_find_by_signature(ACPI_MADT_SIGNATURE, &tbl);
     if (uacpi_likely_success(st)) {
-        // Iterate subtables starting after struct acpi_madt header
         uacpi_for_each_subtable(tbl.hdr, sizeof(struct acpi_madt), apic_madt_iter_cb, NULL);
         uacpi_table_unref(&tbl);
         xapic_madt_parsed = 1;
-        x2apic_madt_parsed = 1;
     } else {
-        // Not fatal; fall back to defaults/MSR
-        xapic_madt_parsed = 1;
-        x2apic_madt_parsed = 1;
+        xapic_madt_parsed = 1; // Mark parsed anyway to avoid retry
     }
 }
 
@@ -131,123 +107,129 @@ static void apic_parse_madt(void) {
 int apic_init(void) {
     pic_mask_all();
 
-    // Parse MADT via uACPI to obtain LAPIC/IOAPIC bases if provided
+    // Parse MADT via uACPI
     apic_parse_madt();
 
-    // Detect and select APIC mode
+    // Select Driver
     if (detect_x2apic()) {
         printk(APIC_CLASS "x2APIC mode supported, attempting to enable\n");
-        if (x2apic_setup_lapic()) {
-            apic_mode = 1; // x2APIC mode
+        // Try x2APIC
+        if (x2apic_ops.init_lapic()) {
+            current_ops = &x2apic_ops;
             printk(APIC_CLASS "x2APIC mode enabled\n");
-        } else {
-            printk(KERN_INFO APIC_CLASS "x2APIC mode failed, falling back to xAPIC\n");
-            if (!xapic_setup_lapic()) {
-                printk(KERN_ERR APIC_CLASS "Failed to setup Local APIC.\n");
-                return false;
-            }
         }
-    } else {
-        // x2APIC not supported, use xAPIC
-        if (!xapic_setup_lapic()) {
-            printk(KERN_ERR APIC_CLASS "Failed to setup Local APIC.\n");
-            return false;
+    }
+    
+    if (!current_ops) {
+        // Fallback or default to xAPIC
+        if (xapic_ops.init_lapic()) {
+            current_ops = &xapic_ops;
+            printk(APIC_CLASS "xAPIC mode enabled\n");
         }
     }
 
-    // Initialize I/O APIC (same for both modes)
-    if (apic_mode == 1) {
-        if (!x2apic_setup_ioapic()) {
-            printk(KERN_ERR APIC_CLASS "Failed to setup I/O APIC.\n");
-            return false;
-        }
-    } else {
-        if (!xapic_setup_ioapic()) {
-            printk(KERN_ERR APIC_CLASS "Failed to setup I/O APIC.\n");
-            return false;
-        }
+    if (!current_ops) {
+        printk(KERN_ERR APIC_CLASS "Failed to initialize Local APIC (no driver).\n");
+        return 0;
     }
 
-    return true;
+    // Initialize I/O APIC
+    uint64_t ioapic_phys = apic_madt_ioapic_phys 
+                         ? (uint64_t)apic_madt_ioapic_phys 
+                         : (uint64_t)IOAPIC_DEFAULT_PHYS_ADDR;
+    
+    if (!ioapic_init(ioapic_phys)) {
+        printk(KERN_ERR APIC_CLASS "Failed to setup I/O APIC.\n");
+        return 0;
+    }
+
+    return 1;
 }
 
 int apic_probe(void) {
     return detect_apic();
 }
 
-void apic_send_eoi(const uint32_t irn) { // arg for compatibility
-    (void)irn;
-    if (apic_mode == 1) {
-        x2apic_send_eoi(irn);
-    } else {
-        xapic_send_eoi(irn);
-    }
+void apic_send_eoi(const uint32_t irn) { 
+    if (current_ops && current_ops->send_eoi)
+        current_ops->send_eoi(irn);
 }
 
 void apic_send_ipi(uint8_t dest_apic_id, uint8_t vector, uint32_t delivery_mode) {
-    if (apic_mode == 1) {
-        // For x2APIC, we need to convert the 8-bit APIC ID to a 32-bit ID
-        // In most cases, the 8-bit ID can be directly used as 32-bit ID for BSP
-        x2apic_send_ipi((uint32_t)dest_apic_id, vector, delivery_mode);
-    } else {
-        xapic_send_ipi(dest_apic_id, vector, delivery_mode);
+    if (current_ops && current_ops->send_ipi) {
+        // We pass the 8-bit dest_apic_id. The driver handles format.
+        // x2APIC driver expects 32-bit ID, but 8-bit fits in 32-bit.
+        current_ops->send_ipi((uint32_t)dest_apic_id, vector, delivery_mode);
     }
 }
 
 uint8_t lapic_get_id(void) {
-    if (apic_mode == 1) {
-        // x2APIC returns 32-bit ID, but we only need the lower 8 bits for compatibility
-        return (uint8_t)x2apic_get_id();
+    if (current_ops && current_ops->get_id) {
+        return (uint8_t)current_ops->get_id();
     }
-    return xapic_get_id();
+    return 0;
 }
 
 void apic_enable_irq(uint8_t irq_line) {
-    if (apic_mode == 1) {
-        x2apic_enable_irq(irq_line);
-    } else {
-        xapic_enable_irq(irq_line);
+    // 1. Get Destination Local APIC ID
+    // We route to the current CPU (BSP or whoever enabled it).
+    // Typically BSP for legacy IRQs.
+    uint32_t dest_apic_id = 0;
+    if (current_ops && current_ops->get_id) {
+        dest_apic_id = current_ops->get_id();
     }
+
+    // 2. Resolve GSI and Flags from Overrides
+    uint32_t gsi = irq_line;
+    uint16_t flags = 0;
+
+    for (int i = 0; i < apic_num_irq_overrides; i++) {
+        if (apic_irq_overrides[i].source == irq_line) {
+            gsi = apic_irq_overrides[i].gsi;
+            flags = apic_irq_overrides[i].flags;
+            break;
+        }
+    }
+
+    // 3. Determine if we are in x2APIC mode for IOAPIC format
+    // If current_ops is x2apic_ops, we use x2apic format.
+    int is_x2apic = (current_ops == &x2apic_ops);
+
+    // 4. Call IOAPIC driver
+    // Vector = 32 + irq_line
+    ioapic_set_gsi_redirect(gsi, 32 + irq_line, dest_apic_id, flags, 0 /* physical */, is_x2apic);
 }
 
 void apic_disable_irq(uint8_t irq_line) {
-    if (apic_mode == 1) {
-        x2apic_disable_irq(irq_line);
-    } else {
-        xapic_disable_irq(irq_line);
+    // Resolve GSI
+    uint32_t gsi = irq_line;
+    for (int i = 0; i < apic_num_irq_overrides; i++) {
+        if (apic_irq_overrides[i].source == irq_line) {
+            gsi = apic_irq_overrides[i].gsi;
+            break;
+        }
     }
+    ioapic_mask_gsi(gsi);
 }
 
 void apic_mask_all(void) {
-    if (apic_mode == 1) {
-        x2apic_mask_all();
-    } else {
-        xapic_mask_all();
-    }
+    ioapic_mask_all();
 }
 
 void apic_timer_init(uint32_t frequency_hz) {
-    if (apic_mode == 1) {
-        x2apic_timer_init(frequency_hz);
-    } else {
-        xapic_timer_init(frequency_hz);
-    }
+    if (current_ops && current_ops->timer_init)
+        current_ops->timer_init(frequency_hz);
 }
 
 void apic_timer_set_frequency(uint32_t frequency_hz) {
-    if (apic_mode == 1) {
-        x2apic_timer_set_frequency(frequency_hz);
-    } else {
-        xapic_timer_set_frequency(frequency_hz);
-    }
+    if (current_ops && current_ops->timer_set_frequency)
+        current_ops->timer_set_frequency(frequency_hz);
 }
 
 static void apic_shutdown(void) {
-    if (apic_mode == 1) {
-        x2apic_shutdown();
-    } else {
-        xapic_shutdown();
-    }
+    apic_mask_all();
+    if (current_ops && current_ops->shutdown)
+        current_ops->shutdown();
     printk(APIC_CLASS "APIC shut down.\n");
 }
 

@@ -27,6 +27,7 @@
 #include <arch/x64/smp.h>
 #include <compiler.h>
 #include <crypto/crc32.h>
+#include <drivers/acpi/power.h>
 #include <drivers/apic/apic.h>
 #include <drivers/apic/ic.h>
 #include <drivers/apic/pic.h>
@@ -237,6 +238,9 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   // Complete ACPI initialization (will install SCI/GPE handlers now that IC is
   // ready)
   uacpi_kernel_init_late();
+
+  // Initialize ACPI Power Management (Buttons, etc.)
+  acpi_power_init();
 
   if (ic_type == INTC_APIC)
     smp_init();

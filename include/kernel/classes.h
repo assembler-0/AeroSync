@@ -11,6 +11,7 @@
 ///@section Boot & Initialization
 #define BOOT_CLASS "[SYS::BOOT] " // Bootloader info, multiboot parsing
 #define ACPI_CLASS "[SYS::ACPI] " // ACPI table parsing (RSDP, MADT, FADT)
+#define ACPI_BUTTON_CLASS "[ACPI::BTN] " // ACPI Power/Sleep button handling
 #define HAL_CLASS "[SYS::HAL] "   // Hardware Abstraction Layer generic
 
 ///@section CPU & Interrupts

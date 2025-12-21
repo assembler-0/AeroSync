@@ -1,4 +1,4 @@
-/// SPDX-License-Identifier: GPL-2.0-only
+///SPDX-License-Identifier: GPL-2.0-only
 /**
  * VoidFrameX monolithic kernel
  *
@@ -7,15 +7,6 @@
  * @copyright (C) 2025 assembler-0
  *
  * This file is part of the VoidFrameX kernel.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <arch/x64/cpu.h>
@@ -27,6 +18,7 @@
 #include <mm/vmalloc.h>
 #include <kernel/spinlock.h>
 #include <drivers/apic/xapic.h>
+#include <drivers/apic/apic_internal.h>
 
 // --- Register Definitions ---
 
@@ -49,16 +41,14 @@
 #define XAPIC_TIMER_CUR_COUNT 0x0390  // Current Count (for Timer)
 #define XAPIC_TIMER_DIV 0x03E0        // Divide Configuration
 
-// I/O APIC registers
-#define IOAPIC_REG_ID 0x00    // ID Register
-#define IOAPIC_REG_VER 0x01   // Version Register
-#define IOAPIC_REG_TABLE 0x10 // Redirection Table
-
 // --- Constants ---
 #define APIC_BASE_MSR 0x1B
 #define APIC_BASE_MSR_ENABLE 0x800
 
-#define IOAPIC_DEFAULT_PHYS_ADDR 0xFEC00000
+// --- Globals ---
+volatile uint32_t *xapic_lapic_base = NULL;
+static spinlock_t xapic_ipi_lock;
+static volatile uint32_t xapic_timer_hz = 0;
 
 // --- MMIO Helper Functions ---
 
@@ -73,40 +63,20 @@ static uint32_t xapic_read(uint32_t reg) {
   return xapic_lapic_base[reg / 4];
 }
 
-uint8_t xapic_get_id(void) {
+uint32_t xapic_get_id_raw(void) {
   // LAPIC_ID register: bits 24..31 hold the APIC ID in xAPIC mode
-  return (uint8_t)(xapic_read(XAPIC_ID) >> 24);
-}
-
-static void ioapic_write(uint8_t reg, uint32_t value) {
-  if (!xapic_ioapic_base)
-    return;
-  // I/O APIC uses an index/data pair for access
-  xapic_ioapic_base[0] = reg;
-  xapic_ioapic_base[4] = value;
-}
-
-static uint32_t ioapic_read(uint8_t reg) {
-  if (!xapic_ioapic_base)
-    return 0;
-  xapic_ioapic_base[0] = reg;
-  return xapic_ioapic_base[4];
-}
-
-// Sets a redirection table entry in the I/O APIC
-static void ioapic_set_entry(uint8_t index, uint64_t data) {
-  ioapic_write(IOAPIC_REG_TABLE + index * 2, (uint32_t)data);
-  ioapic_write(IOAPIC_REG_TABLE + index * 2 + 1, (uint32_t)(data >> 32));
+  return (uint32_t)(xapic_read(XAPIC_ID) >> 24);
 }
 
 // --- xAPIC Functions ---
 
-int xapic_setup_lapic(void) {
+static int xapic_init_lapic(void) {
   // Get LAPIC physical base address from MSR
   uint64_t lapic_base_msr = rdmsr(APIC_BASE_MSR);
   uint64_t lapic_phys_base = lapic_base_msr & 0xFFFFFFFFFFFFF000ULL;
 
   // Prefer MADT LAPIC Address Override if present
+  // Accessed via global from apic.c (extern in xapic.h)
   if (xapic_madt_parsed && xapic_madt_lapic_override_phys) {
     lapic_phys_base = (uint64_t)xapic_madt_lapic_override_phys;
     printk(APIC_CLASS "LAPIC base overridden by MADT: 0x%llx\n", lapic_phys_base);
@@ -114,19 +84,17 @@ int xapic_setup_lapic(void) {
 
   printk(APIC_CLASS "LAPIC Physical Base: 0x%llx\n", lapic_phys_base);
 
-  // Map the LAPIC into virtual memory using the VMM MMIO allocator
-  // It will return a higher-half address (e.g. 0xFFFF9000...)
+  // Map the LAPIC into virtual memory
   xapic_lapic_base = (volatile uint32_t *)viomap(lapic_phys_base, PAGE_SIZE);
 
   if (!xapic_lapic_base) {
     printk(KERN_ERR APIC_CLASS "Failed to map LAPIC MMIO.\n");
-    return false;
+    return 0;
   }
 
   printk(APIC_CLASS "LAPIC Mapped at: 0x%llx\n", (uint64_t)xapic_lapic_base);
 
-  // Enable the LAPIC by setting the enable bit in the MSR and the spurious
-  // vector register
+  // Enable the LAPIC
   wrmsr(APIC_BASE_MSR, lapic_base_msr | APIC_BASE_MSR_ENABLE);
 
   // Set Spurious Interrupt Vector (0xFF) and enable APIC (bit 8)
@@ -134,43 +102,15 @@ int xapic_setup_lapic(void) {
 
   // Set TPR to 0 to accept all interrupts
   xapic_write(XAPIC_TPR, 0);
-  return true;
+  return 1;
 }
 
-int xapic_setup_ioapic(void) {
-  // Map the I/O APIC into virtual memory. Prefer MADT-provided address.
-  uacpi_u64 ioapic_phys = xapic_madt_parsed && xapic_madt_ioapic_phys
-                              ? (uacpi_u64)xapic_madt_ioapic_phys
-                              : (uacpi_u64)IOAPIC_DEFAULT_PHYS_ADDR;
-
-  if (ioapic_phys != IOAPIC_DEFAULT_PHYS_ADDR)
-    printk(APIC_CLASS "IOAPIC Physical Base from MADT: 0x%llx\n", ioapic_phys);
-
-  xapic_ioapic_base = (volatile uint32_t *)viomap(ioapic_phys, PAGE_SIZE);
-
-  if (!xapic_ioapic_base) {
-    printk(KERN_ERR APIC_CLASS "Failed to map I/O APIC MMIO.\n");
-    return false;
-  }
-
-  printk(APIC_CLASS "IOAPIC Mapped at: 0x%llx\n", (uint64_t)xapic_ioapic_base);
-
-  // Read the I/O APIC version to verify it's working
-  uint32_t version_reg = ioapic_read(IOAPIC_REG_VER);
-  printk(APIC_CLASS "IOAPIC Version: 0x%x\n", version_reg);
-
-  return true;
-}
-
-void xapic_send_eoi(const uint32_t irn) { // arg for compatibility
+static void xapic_send_eoi_op(uint32_t irn) { 
   (void)irn;
   xapic_write(XAPIC_EOI, 0);
 }
 
-// Sends an Inter-Processor Interrupt (IPI)
-static spinlock_t xapic_ipi_lock;
-
-void xapic_send_ipi(uint8_t dest_apic_id, uint8_t vector, uint32_t delivery_mode) {
+static void xapic_send_ipi_op(uint32_t dest_apic_id, uint8_t vector, uint32_t delivery_mode) {
   irq_flags_t flags = spinlock_lock_irqsave(&xapic_ipi_lock);
 
   // Wait for previous IPI to be delivered (ICR idle)
@@ -204,78 +144,7 @@ void xapic_send_ipi(uint8_t dest_apic_id, uint8_t vector, uint32_t delivery_mode
   spinlock_unlock_irqrestore(&xapic_ipi_lock, flags);
 }
 
-void xapic_enable_irq(uint8_t irq_line) {
-  // IRQ line -> Vector 32 + IRQ
-  // Route to the current CPU's LAPIC ID (BSP)
-  uint8_t dest_apic_id = xapic_get_id();
-
-  uint32_t gsi = irq_line;
-  uint16_t flags = 0;
-
-  for (int i = 0; i < xapic_num_irq_overrides; i++) {
-    if (xapic_irq_overrides[i].source == irq_line) {
-      gsi = xapic_irq_overrides[i].gsi;
-      flags = xapic_irq_overrides[i].flags;
-      break;
-    }
-  }
-
-  uint64_t redirect_entry = (32 + irq_line); // Vector
-  redirect_entry |= (0b000ull << 8);         // Delivery Mode: Fixed
-  redirect_entry |= (0b0ull << 11);          // Destination Mode: Physical
-
-  // Handle flags
-  uint16_t polarity = flags & ACPI_MADT_POLARITY_MASK;
-  uint16_t trigger = flags & ACPI_MADT_TRIGGERING_MASK;
-
-  if (polarity == ACPI_MADT_POLARITY_ACTIVE_LOW) {
-    redirect_entry |= (1ull << 13); // Polarity: Low
-  } else {
-    redirect_entry |= (0ull << 13); // Polarity: High
-  }
-
-  if (trigger == ACPI_MADT_TRIGGERING_LEVEL) {
-    redirect_entry |= (1ull << 15); // Trigger: Level
-  } else {
-    redirect_entry |= (0ull << 15); // Trigger: Edge
-  }
-
-  // Unmask (bit 16 = 0)
-  // Destination field (bits 56..63)
-  redirect_entry |= ((uint64_t)dest_apic_id << 56);
-
-  ioapic_set_entry(gsi, redirect_entry);
-}
-
-void xapic_disable_irq(uint8_t irq_line) {
-  uint32_t gsi = irq_line;
-
-  for (int i = 0; i < xapic_num_irq_overrides; i++) {
-    if (xapic_irq_overrides[i].source == irq_line) {
-      gsi = xapic_irq_overrides[i].gsi;
-      break;
-    }
-  }
-
-  // To disable, we set the mask bit (bit 16)
-  uint64_t redirect_entry = (1 << 16);
-  ioapic_set_entry(gsi, redirect_entry);
-}
-
-void xapic_mask_all(void) {
-  // Mask all 24 redirection entries in the I/O APIC
-  for (int i = 0; i < 24; i++) {
-    xapic_disable_irq(i);
-  }
-}
-
-void xapic_timer_init(uint32_t frequency_hz) {
-  // Calibrate and set the initial count
-  xapic_timer_set_frequency(frequency_hz);
-  printk(APIC_CLASS "Timer installed at %d Hz.\n", frequency_hz);
-}
-
-void xapic_timer_set_frequency(uint32_t frequency_hz) {
+static void xapic_timer_set_frequency_op(uint32_t frequency_hz) {
   if (frequency_hz == 0)
     return;
 
@@ -324,10 +193,12 @@ void xapic_timer_set_frequency(uint32_t frequency_hz) {
          ticks_per_target);
 }
 
-void xapic_shutdown(void) {
-    // 1. Mask all I/O APIC interrupts
-    xapic_mask_all();
+static void xapic_timer_init_op(uint32_t frequency_hz) {
+  xapic_timer_set_frequency_op(frequency_hz);
+  printk(APIC_CLASS "Timer installed at %d Hz.\n", frequency_hz);
+}
 
+static void xapic_shutdown_op(void) {
     // 2. Disable Local APIC Timer
     xapic_write(XAPIC_LVT_TIMER, (1 << 16)); // Masked
 
@@ -336,7 +207,19 @@ void xapic_shutdown(void) {
     xapic_write(XAPIC_SVR, svr & ~(1 << 8));
 
     // 4. Optionally disable via MSR (APIC Global Enable)
-    // Note: This effectively disconnects the LAPIC from the system.
     uint64_t lapic_base_msr = rdmsr(APIC_BASE_MSR);
     wrmsr(APIC_BASE_MSR, lapic_base_msr & ~APIC_BASE_MSR_ENABLE);
 }
+
+const struct apic_ops xapic_ops = {
+    .name = "xAPIC",
+    .init_lapic = xapic_init_lapic,
+    .send_eoi = xapic_send_eoi_op,
+    .send_ipi = xapic_send_ipi_op,
+    .get_id = xapic_get_id_raw,
+    .timer_init = xapic_timer_init_op,
+    .timer_set_frequency = xapic_timer_set_frequency_op,
+    .shutdown = xapic_shutdown_op,
+    .read = xapic_read,
+    .write = xapic_write
+};
