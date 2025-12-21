@@ -21,7 +21,7 @@
 #include <arch/x64/tsc.h>
 #include <drivers/timer/time.h> // Use Unified Time Subsystem
 #include <kernel/classes.h>
-#include <printk.h>
+#include <lib/printk.h>
 
 static uint64_t tsc_freq = 0;
 static uint64_t tsc_boot_offset = 0;

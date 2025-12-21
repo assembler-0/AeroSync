@@ -10,7 +10,7 @@
  */
 
 #include <lib/linearfb/linearfb.h>
-#include <string.h>
+#include <lib/string.h>
 #include <kernel/spinlock.h>
 #include <linearfb/font.h>
 #include <lib/printk.h>

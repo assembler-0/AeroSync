@@ -25,6 +25,7 @@
 #include <lib/string.h>
 #include <mm/slab.h>
 #include <mm/vmalloc.h>
+#include <arch/x64/mm/paging.h>
 
 /*
  * Process/Thread Management

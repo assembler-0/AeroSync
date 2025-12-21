@@ -2,14 +2,6 @@
 
 #include <kernel/types.h>
 
-/*
- * x86_64 Paging Definitions
- */
-
-#define PAGE_SIZE 4096UL
-#define PAGE_SHIFT 12
-#define PAGE_MASK (~(PAGE_SIZE - 1))
-
 // Page Table Entry Flags
 #define PTE_PRESENT (1ULL << 0)
 #define PTE_RW (1ULL << 1)       // Read/Write (0 = Read-only)

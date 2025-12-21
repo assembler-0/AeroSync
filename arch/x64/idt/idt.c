@@ -18,8 +18,8 @@
  * GNU General Public License for more details.
  */
 
-#include "kernel/classes.h"
-#include "printk.h"
+#include <kernel/classes.h>
+#include <lib/printk.h>
 #include <arch/x64/idt/idt.h>
 
 #define IDT_ENTRIES 256

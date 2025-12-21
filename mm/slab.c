@@ -25,6 +25,7 @@
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <mm/slab.h>
+#include <arch/x64/mm/paging.h>
 
 static slab_region_t regions[ALLOC_REGION_COUNT];
 static bool slab_initialized = false;

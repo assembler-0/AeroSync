@@ -28,6 +28,7 @@
 #include <linux/container_of.h>
 #include <mm/slab.h>
 #include <mm/vma.h>
+#include <arch/x64/mm/paging.h>
 
 /* ========================================================================
  * VMA Cache - Fast allocation using SLAB

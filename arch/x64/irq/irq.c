@@ -18,7 +18,7 @@
  * GNU General Public License for more details.
  */
 
-#include <printk.h>
+#include <lib/printk.h>
 #include <arch/x64/cpu.h>
 #include <drivers/apic/ic.h>
 #include <kernel/panic.h>

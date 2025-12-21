@@ -21,7 +21,7 @@
 #include <arch/x64/cpu.h>
 #include <arch/x64/smp.h>
 #include <arch/x64/io.h>
-#include <arch/x64/mm/pmm.h>
+#include <arch/x64/mm/paging.h>
 #include <kernel/classes.h>
 #include <lib/printk.h>
 #include <mm/vmalloc.h>

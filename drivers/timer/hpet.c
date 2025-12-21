@@ -1,5 +1,25 @@
-#include "arch/x64/cpu.h"
-#include <arch/x64/mm/pmm.h>
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * VoidFrameX monolithic kernel
+ *
+ * @file drivers/timer/hpet.c
+ * @brief HPET timer driver and time source integration
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include <arch/x64/cpu.h>
+#include <arch/x64/mm/paging.h>
 #include <arch/x64/tsc.h>
 #include <drivers/timer/hpet.h>
 #include <drivers/timer/time.h> // Include new time interface

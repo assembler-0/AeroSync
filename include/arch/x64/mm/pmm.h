@@ -2,11 +2,6 @@
 
 #include <kernel/types.h>
 
-// Page size constants
-#define PAGE_SIZE 4096UL
-#define PAGE_SHIFT 12
-#define PAGE_MASK (~(PAGE_SIZE - 1))
-
 // Align macros
 #define PAGE_ALIGN_DOWN(addr) ((addr) & PAGE_MASK)
 #define PAGE_ALIGN_UP(addr) (((addr) + PAGE_SIZE - 1) & PAGE_MASK)

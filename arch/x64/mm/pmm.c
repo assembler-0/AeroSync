@@ -36,6 +36,7 @@
 #include <lib/bitmap.h>
 #include <limine/limine.h>
 #include <arch/x64/mm/pmm.h>
+#include <arch/x64/mm/paging.h>
 
 // Global HHDM offset
 uint64_t g_hhdm_offset = 0;

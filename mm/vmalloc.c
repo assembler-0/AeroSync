@@ -25,7 +25,8 @@
 #include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/vmm.h>
 #include <kernel/spinlock.h>
-#include <string.h>
+#include <lib/string.h>
+#include <arch/x64/mm/paging.h>
 
 /*
  * Internal helper to map physical pages to a VMA.

@@ -26,6 +26,7 @@
 #include <kernel/spinlock.h>
 #include <lib/printk.h>
 #include <lib/string.h>
+#include <arch/x64/mm/paging.h>
 
 // Global kernel PML4 (physical address)
 uint64_t g_kernel_pml4 = 0;
