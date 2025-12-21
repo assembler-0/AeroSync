@@ -26,6 +26,7 @@
 #define TSC_CLASS "[SYS::TSC] " // Time Stamp Counter / CPU timing
 #define CPU_CLASS "[SYS::CPU] " // CPU features, MSRs, CPUID
 #define FPU_CLASS "[SYS::FPU] " // Floating Point / SSE / AVX contexts
+#define HPET_CLASS "[SYS::HPET] " // High Precision Event Timer
 
 ///@section Core Kernel
 #define KERN_CLASS "[SYS::CORE] "         // Generic kernel core messages

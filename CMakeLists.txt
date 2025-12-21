@@ -218,6 +218,7 @@ endif()
 if(QEMU_SYSTEM_X86_64)
 	add_custom_target(run
 	        COMMAND ${QEMU_SYSTEM_X86_64}
+            -M pc,hpet=on
   	        -cpu max
             -enable-kvm
 	        -no-reboot -no-shutdown
@@ -273,6 +274,7 @@ if(VBOXMANAGE)
 	        --vram 16
 	        --cpus 4
 	        --boot1 disk
+			--hpet on
 	        --boot2 dvd
 	        --boot3 none
 	        --boot4 none

@@ -18,9 +18,10 @@
  * GNU General Public License for more details.
  */
 
+#include <printk.h>
 #include <arch/x64/tsc.h>
-#include <drivers/apic/ic.h>
 #include <drivers/timer/pit.h>
+#include <kernel/classes.h>
 
 static uint64_t tsc_freq = 0;
 static uint64_t tsc_boot_offset = 0;
@@ -47,6 +48,13 @@ uint64_t tsc_freq_get() {
 uint64_t get_tsc_freq(void) { return tsc_freq; }
 
 uint64_t calibrate_tsc(void) { return tsc_freq_get(); }
+
+void tsc_recalibrate_with_freq(uint64_t new_freq) {
+    if (new_freq > 0) {
+        tsc_freq = new_freq;
+        printk(TSC_CLASS "TSC recalibrated to %lu Hz\n", tsc_freq);
+    }
+}
 
 uint64_t get_time_ns() {
   uint64_t now = rdtsc();

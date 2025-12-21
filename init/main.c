@@ -45,6 +45,7 @@
 #include <drivers/uart/serial.h>
 #include <drivers/qemu/debugcon/debugcon.h>
 #include <lib/linearfb/linearfb.h>
+#include <drivers/timer/hpet.h>
 
 // Set Limine Request Start Marker
 __attribute__((used, section(".limine_requests_start")))
@@ -224,6 +225,14 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   sched_init();
   sched_init_task(&bsp_task);
+
+  // Initialize HPET after basic system is up
+  hpet_init();
+
+  // Perform late TSC recalibration using HPET if available
+  if (hpet_available()) {
+    hpet_calibrate_tsc();
+  }
 
   printk_init_async();
 
