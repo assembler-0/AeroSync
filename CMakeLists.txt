@@ -1,10 +1,27 @@
 # ============================================================================
-# VoidFrameX CMake Build Script - v0.0.2-development4
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# VoidFrameX monolithic kernel
+#
+# @file CMakeLists.txt
+# @brief Kernel build configuration
+# @copyright (C) 2025 assembler-0
+#
+# This file is part of the VoidFrameX kernel.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License version 2 as
+# published by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
 # ============================================================================
 cmake_minimum_required(VERSION 3.30)
 set_property(GLOBAL PROPERTY RULE_MESSAGES OFF)
 project(VoidFrameX
-        VERSION 0.0.1
+        VERSION 1.0.1 # <EPOCH>.<FEATURE>.<PATCH>
         LANGUAGES C CXX ASM_NASM
         HOMEPAGE_URL "https://github.com/assembler-0/VoidFrameX"
         DESCRIPTION "A hobbyist operating system kernel written in C/C++ Assembly Rust"
@@ -22,6 +39,7 @@ include(dependencies)
 include(source)
 include(configuration)
 include(flags)
+include(lib/uACPI/uacpi.cmake)
 
 add_subdirectory(lib/linearfb)
 
@@ -36,22 +54,6 @@ elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
     message(WARNING "macOS detected. Please make sure you have compatible tools.")
 else()
     message(WARNING "Unsupported host system: ${CMAKE_HOST_SYSTEM_NAME}")
-endif()
-
-if(NOT CMAKE_TOOLCHAIN_FILE)
-    message(WARNING "CMAKE_TOOLCHAIN_FILE is not set. Automatically selecting toolchain file...")
-    if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
-        set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/cmake/toolchain/linux-x64.cmake" CACHE PATH "Toolchain file" FORCE)
-        message(STATUS "Defaulting to Linux x86_64 toolchain file: ${CMAKE_TOOLCHAIN_FILE}")
-    elseif (CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
-        set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/cmake/toolchain/macos-x64.cmake" CACHE PATH "Toolchain file" FORCE)
-        message(STATUS "Defaulting to macOS x86_64 toolchain file: ${CMAKE_TOOLCHAIN_FILE}")
-    elseif (CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
-        set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/cmake/toolchain/windows-x64.cmake" CACHE PATH "Toolchain file" FORCE)
-        message(STATUS "Defaulting to Windows x86_64 toolchain file: ${CMAKE_TOOLCHAIN_FILE}")
-    endif()
-else()
-    message(STATUS "CMake: Using toolchain file: ${CMAKE_TOOLCHAIN_FILE}")
 endif()
 
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
@@ -85,6 +87,18 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_executable(voidframex.krnl
     ${C_SOURCES}
     ${ASM_SOURCES}
+)
+
+target_sources(
+	voidframex.krnl
+	PRIVATE
+	${UACPI_SOURCES}
+)
+
+target_include_directories(
+    voidframex.krnl
+    PRIVATE
+    ${UACPI_INCLUDES}
 )
 
 target_link_libraries(voidframex.krnl PRIVATE linearfb)
@@ -137,68 +151,235 @@ add_custom_command(
 add_custom_target(bootdir ALL DEPENDS bootd)
 
 add_custom_command(
-        OUTPUT voidframex.iso
-        # 1. Copy the specific binary required for UEFI ISO booting
-        COMMAND ${CMAKE_COMMAND} -E copy
+    OUTPUT voidframex.hybrid.iso
+    # 1. Copy UEFI boot binary
+    COMMAND ${CMAKE_COMMAND} -E copy
         ${LIMINE_RESOURCE_DIR}/limine-uefi-cd.bin
         ${CMAKE_CURRENT_BINARY_DIR}/bootdir/limine-uefi-cd.bin
+    
+    # 2. Copy BIOS boot binary for hybrid support
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${LIMINE_RESOURCE_DIR}/limine-bios-cd.bin
+        ${CMAKE_CURRENT_BINARY_DIR}/bootdir/limine-bios-cd.bin    
 
-        # 2. Run xorriso to build the ISO (UEFI-only per Limine docs)
-        COMMAND ${XORRISO} -as mkisofs
-        -e limine-uefi-cd.bin           # Use Limine's EFI System Partition image
-        -no-emul-boot                   # UEFI El Torito image
-        -efi-boot-part                  # Create hidden EFI partition for compatibility
-        --efi-boot-image                # Mark as EFI boot image
-        --protective-msdos-label        # GPT protective MBR
-        -o ${CMAKE_CURRENT_BINARY_DIR}/voidframex.iso
+     COMMAND ${CMAKE_COMMAND} -E copy
+        ${LIMINE_RESOURCE_DIR}/limine-bios.sys
+        ${CMAKE_CURRENT_BINARY_DIR}/bootdir/limine-bios.sys
+    
+    # 3. Create the hybrid ISO with both BIOS and UEFI support
+    COMMAND ${XORRISO} -as mkisofs
+        -b limine-bios-cd.bin           # BIOS boot (El Torito)
+        -no-emul-boot                   # No emulation for BIOS
+        -boot-load-size 4               # Load 4 sectors
+        -boot-info-table                # Create boot info table for BIOS
+        --efi-boot limine-uefi-cd.bin   # UEFI boot
+        --efi-boot-part                 # EFI boot partition
+        --efi-boot-image                # Mark as EFI bootable
+        --protective-msdos-label        # Hybrid MBR
+        -o ${CMAKE_CURRENT_BINARY_DIR}/voidframex.hybrid.iso
         ${CMAKE_CURRENT_BINARY_DIR}/bootdir
-
-        DEPENDS bootd ${LIMINE_RESOURCE_DIR}/limine-uefi-cd.bin
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        COMMENT "Generating UEFI ISO (voidframex.iso) using xorriso..."
-        VERBATIM
+    
+    DEPENDS bootd 
+        ${LIMINE_RESOURCE_DIR}/limine-uefi-cd.bin
+        ${LIMINE_RESOURCE_DIR}/limine-bios.sys
+        ${LIMINE_RESOURCE_DIR}/limine-bios-cd.bin
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Generating hybrid ISO (voidframex.hybrid.iso)..."
+    VERBATIM
 )
 
-add_custom_target(iso ALL DEPENDS voidframex.iso)
+set(ISO_PATH ${CMAKE_CURRENT_BINARY_DIR}/voidframex.hybrid.iso)
+add_custom_target(iso ALL DEPENDS voidframex.hybrid.iso)
 
 # ============================================================================
 # Run Targets
 # ============================================================================
-add_custom_target(run
-        COMMAND ${QEMU_SYSTEM_X86_64}
-        -cpu max
-        -no-reboot -no-shutdown
-        -m 1G
-        -smp 4
-        -bios /usr/share/edk2/x64/OVMF.4m.fd
-        -debugcon file:bootstrap.log
-        -serial stdio
-        -boot d
-        -cdrom ${CMAKE_CURRENT_BINARY_DIR}/voidframex.iso
-        DEPENDS iso
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        COMMENT "Running voidframex kernel in QEMU (dev mode)"
-)
+if(BOCHS OR QEMU_SYSTEM_X86_64)
+	set(ROM_IMAGE "/usr/share/edk2/x64/OVMF.4m.fd" CACHE STRING "UEFI/Custom rom image")
+endif()
 
-add_custom_target(img
-        COMMAND ${QEMU_IMG} create -f qcow2 VoidFrameDisk.img 16G
-        COMMAND ${MKFS_EXT2} VoidFrameDisk.img
-        COMMENT "Creating disk images"
-)
+if (BOCHS)
+	set(BOCHS_CONFIG ${CMAKE_CURRENT_BINARY_DIR}/bochs.conf)
 
-add_custom_target(extra-img
-        COMMAND ${QEMU_IMG} create -f raw VirtioDisk.img 128M
-        COMMAND ${MKFS_EXT2} VirtioDisk.img
-        COMMAND ${QEMU_IMG} create -f raw SataDisk.img 128M
-        COMMAND ${MKFS_EXT2} SataDisk.img
-        COMMAND ${QEMU_IMG} create -f raw NVMeDisk.img 256M
-        COMMAND ${MKFS_EXT2} NVMeDisk.img
-        COMMENT "Creating extra disk images"
-)
+	configure_file(
+	        ${CMAKE_SOURCE_DIR}/tools/bochs.conf.in
+	        ${BOCHS_CONFIG}
+	        @ONLY
+	)
 
-add_custom_target(dump
-        COMMAND ${LLVM_OBJDUMP} -d $<TARGET_FILE:voidframex.krnl> > voidframex.dump
-        COMMAND ${LLVM_OBJDUMP} -t $<TARGET_FILE:voidframex.krnl> > voidframex.sym
-        DEPENDS voidframex.krnl
-        COMMENT "Generating disassembly and symbols"
-)
+	add_custom_target(run-bochs-bios
+	        COMMAND ${BOCHS} -q -f ${BOCHS_CONFIG}
+	        DEPENDS iso
+	        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+	        COMMENT "Running VoidFrameX kernel in Bochs"
+	)
+endif()
+
+if(QEMU_SYSTEM_X86_64)
+	add_custom_target(run
+	        COMMAND ${QEMU_SYSTEM_X86_64}
+            -M pc,hpet=on
+  	        -cpu max
+            -enable-kvm
+	        -no-reboot -no-shutdown
+	        -m 1G
+	        -smp 4
+	        -bios ${ROM_IMAGE}
+	        -debugcon file:bootstrap.log
+	        -serial stdio
+	        -boot d
+	        -cdrom ${ISO_PATH}
+	        DEPENDS iso
+	        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+	        COMMENT "Running voidframex kernel in QEMU"
+	)
+
+	add_custom_target(run-bios
+	        COMMAND ${QEMU_SYSTEM_X86_64}
+	        -cpu max
+	        -no-reboot -no-shutdown
+	        -m 1G
+	        -smp 4
+	        -debugcon file:bootstrap.log
+	        -serial stdio
+	        -boot d
+	        -cdrom ${ISO_PATH}
+	        DEPENDS iso
+	        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+	        COMMENT "Running voidframex kernel in QEMU"
+	)
+endif()
+
+if(VBOXMANAGE OR VMRUN) 
+	set(VM_NAME "VoidFrameX-${PROJECT_VERSION}" CACHE STRING "VM name for VBox/VMware")
+endif()
+
+if(VBOXMANAGE)	
+	# Target 1: Create the VM
+	add_custom_target(vbox-create-vm
+	    COMMAND ${CMAKE_COMMAND} -E echo "Creating VirtualBox VM: ${VM_NAME}"
+	    
+	    # Delete existing VM if it exists (optional, prevents errors)
+	    COMMAND ${VBOXMANAGE} unregistervm ${VM_NAME} --delete || true
+	    
+	    # Create new VM
+	    COMMAND ${VBOXMANAGE} createvm 
+	        --name ${VM_NAME} 
+	        --ostype "Other_64" 
+	        --register
+	    
+	    # Configure VM settings
+	    COMMAND ${VBOXMANAGE} modifyvm ${VM_NAME}
+	        --memory 1024
+	        --vram 16
+	        --cpus 4
+	        --boot1 disk
+			--hpet on
+	        --boot2 dvd
+	        --boot3 none
+	        --boot4 none
+	        --acpi on
+	        --ioapic on
+	        --rtcuseutc on
+	        --chipset piix3
+	        --firmware bios
+	        --graphicscontroller vmsvga
+	        --audio none
+	        --usb off
+	    
+	    # Add storage controller
+	    COMMAND ${VBOXMANAGE} storagectl ${VM_NAME}
+	        --name "IDE Controller"
+	        --add ide
+	        --controller PIIX4
+	    
+	    # Attach ISO
+	    COMMAND ${VBOXMANAGE} storageattach ${VM_NAME}
+	        --storagectl "IDE Controller"
+	        --port 0
+	        --device 0
+	        --type dvddrive
+	        --medium ${ISO_PATH}
+	    
+	    # Configure serial port for output
+	    COMMAND ${VBOXMANAGE} modifyvm ${VM_NAME}
+	        --uart1 0x3F8 4
+	        --uartmode1 file ${CMAKE_CURRENT_BINARY_DIR}/vboxserial.log
+	    
+	    COMMAND ${CMAKE_COMMAND} -E echo "VM '${VM_NAME}' created successfully!"
+	    COMMAND ${CMAKE_COMMAND} -E echo "Serial output will be logged to: ${CMAKE_CURRENT_BINARY_DIR}/serial_output.log"
+	    
+	    COMMENT "Creating VirtualBox VM in BIOS mode"
+	    VERBATIM
+	)
+	
+	# Target 3: Launch with GUI (bonus)
+	add_custom_target(vbox-run
+	    COMMAND ${CMAKE_COMMAND} -E echo "Starting VM: ${VM_NAME} (GUI mode)"
+	    COMMAND ${VBOXMANAGE} startvm ${VM_NAME}
+	    
+	    COMMENT "Running VirtualBox VM with GUI"
+	    VERBATIM
+	)
+	
+	# Target 5: Delete the VM
+	add_custom_target(vbox-delete-vm
+	    COMMAND ${CMAKE_COMMAND} -E echo "Deleting VM: ${VM_NAME}"
+	    COMMAND ${VBOXMANAGE} unregistervm ${VM_NAME} --delete || true
+	    
+	    COMMENT "Deleting VirtualBox VM"
+	    VERBATIM
+	)
+endif()
+
+if(VMRUN_EXECUTABLE)
+	set(VMWARE_DIR ${CMAKE_BINARY_DIR}/vmware)
+	set(VMWARE_VMX ${VMWARE_DIR}/voidframex.vmx)
+	set(VMWARE_SERIAL_FILE "${CMAKE_CURRENT_BINARY_DIR}/vmware.serial.log" CACHE STRING "VMware serial output")
+
+	add_custom_target(vmw-setup
+		COMMAND ${CMAKE_COMMAND} -E rm -rf ${VMWARE_DIR}
+		COMMAND ${CMAKE_COMMAND} -E make_directory ${VMWARE_DIR}
+	    COMMAND ${CMAKE_COMMAND}
+	            -DISO_PATH=${ISO_PATH}
+	            -DVMWARE_SERIAL_FILE=${VMWARE_SERIAL_FILE}
+	            -DVM_NAME=${VM_NAME}
+	            -DVMWARE_VMX=${VMWARE_VMX}
+	            -P ${CMAKE_SOURCE_DIR}/cmake/vmx.cmake
+		WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+		VERBATIM
+	)
+	
+	configure_file(
+	    ${CMAKE_SOURCE_DIR}/tools/vmware.vmx.in
+		${VMWARE_VMX}
+	    @ONLY
+	)
+
+	add_custom_target(vmw-delete-vm
+	    COMMAND ${CMAKE_COMMAND} -E rm -rf ${VMWARE_DIR}
+	    COMMENT "Removing VMware VM"
+	    VERBATIM
+	)
+
+	add_custom_target(vmw-run
+	    DEPENDS iso
+	
+	    COMMAND ${VMRUN_EXECUTABLE}
+	            -T ws
+	            start ${VMWARE_VMX}
+	
+	    WORKING_DIRECTORY ${VMWARE_DIR}
+	    COMMENT "Running VoidFrameX in VMware"
+	    VERBATIM
+	)
+endif()
+
+if(LLVM_OBJDUMP)
+	add_custom_target(dump
+	        COMMAND ${LLVM_OBJDUMP} -d $<TARGET_FILE:voidframex.krnl> > voidframex.dump
+	        COMMAND ${LLVM_OBJDUMP} -t $<TARGET_FILE:voidframex.krnl> > voidframex.sym
+	        DEPENDS voidframex.krnl
+	        COMMENT "Generating disassembly and symbols"
+	)
+endif()

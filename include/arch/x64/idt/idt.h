@@ -22,4 +22,7 @@ struct IdtPtr {
 
 
 int idt_install();
+void idt_load(struct IdtPtr* idtPtr);
 void idt_set_gate(uint8_t num, uint64_t base, uint16_t sel, uint8_t flags);
+
+extern struct IdtPtr g_IdtPtr;

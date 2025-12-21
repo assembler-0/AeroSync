@@ -26,6 +26,8 @@
 #define TSC_CLASS "[SYS::TSC] " // Time Stamp Counter / CPU timing
 #define CPU_CLASS "[SYS::CPU] " // CPU features, MSRs, CPUID
 #define FPU_CLASS "[SYS::FPU] " // Floating Point / SSE / AVX contexts
+#define HPET_CLASS "[SYS::HPET] " // High Precision Event Timer
+#define TIME_CLASS "[SYS::TIME] " // Unified timer subsystem
 
 ///@section Core Kernel
 #define KERN_CLASS "[SYS::CORE] "         // Generic kernel core messages
@@ -34,6 +36,7 @@
 #define TIME_CLASS "[SYS::TIME] "         // RTC, PIT, HPET, System Clock
 #define ATOMIC_CLASS "[SYS::ATOMIC] "     // Atomic operations
 #define SPINLOCK_CLASS "[SYS::SPINLOCK] " // Spinlock operations
+#define FW_CLASS "[SYS::FW] "           // Firmware interfaces (BIOS/UEFI)
 
 ///@section Crypto
 #define RNG_CLASS "[CRPT::RNG] " // Random Number Generator

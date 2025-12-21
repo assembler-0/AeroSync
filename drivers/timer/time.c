@@ -1,0 +1,200 @@
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * VoidFrameX monolithic kernel
+ *
+ * @file drivers/timer/time.c
+ * @brief Unified Time Subsystem implementation
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include <arch/x64/cpu.h>
+#include <arch/x64/tsc.h>
+#include <drivers/timer/time.h>
+#include <kernel/panic.h>
+#include <lib/printk.h>
+
+#define MAX_TIME_SOURCES 8
+
+static const time_source_t *registered_sources[MAX_TIME_SOURCES];
+static size_t num_registered_sources = 0;
+static const time_source_t *current_time_source = NULL;
+
+void time_register_source(const time_source_t *source) {
+  if (num_registered_sources >= MAX_TIME_SOURCES) {
+    printk(KERN_WARNING TIME_CLASS
+           "Max time sources registered, ignoring '%s'\n",
+           source->name);
+    return;
+  }
+  registered_sources[num_registered_sources++] = source;
+  printk(KERN_INFO TIME_CLASS "Registered time source: %s (prio: %d)\n",
+         source->name, source->priority);
+}
+
+int time_init(void) {
+  const time_source_t *selected = NULL;
+  const time_source_t *fallback = NULL;
+
+  printk(KERN_INFO TIME_CLASS "Initializing Time Subsystem...\n");
+
+  for (size_t i = 0; i < num_registered_sources; i++) {
+    // Simple selection logic: Best priority that initializes successfully
+    // We will probe them in order of priority if we sorted them, bu simpler
+    // loop is: iterate all, pick best priority.
+
+    // Actually, we should try to init the best priority one.
+    // Let's first finding the best candidate.
+    if (!selected || registered_sources[i]->priority > selected->priority) {
+      fallback = selected;
+      selected = registered_sources[i];
+    } else if (!fallback ||
+               registered_sources[i]->priority > fallback->priority) {
+      fallback = registered_sources[i];
+    }
+  }
+
+  // Attempt to initialize selected
+  if (selected) {
+    printk(KERN_INFO TIME_CLASS "Attempting to initialize best source: %s\n",
+           selected->name);
+    if (selected->init() != 0) {
+      printk(KERN_WARNING TIME_CLASS "Failed to init %s, trying fallback...\n",
+             selected->name);
+      selected = fallback;
+      if (selected && selected->init() != 0) {
+        selected = NULL;
+      }
+    }
+  }
+
+  if (!selected) {
+    panic(TIME_CLASS "No suitable time source found!");
+  }
+
+  current_time_source = selected;
+  printk(KERN_INFO TIME_CLASS "Selected time source: %s\n",
+         current_time_source->name);
+
+  return 0;
+}
+
+const char *time_get_source_name(void) {
+  if (!current_time_source)
+    return "NONE";
+  return current_time_source->name;
+}
+
+void time_wait_ns(uint64_t ns) {
+  if (!current_time_source) {
+    // Fallback or early boot safety?
+    // Maybe panic or just spin a bit?
+    // Very crude spin loop if no timer
+    volatile uint64_t count = ns / 10;
+    while (count--)
+      cpu_relax();
+    return;
+  }
+
+  uint64_t freq = current_time_source->get_frequency();
+  uint64_t start_count = current_time_source->read_counter();
+
+  // ticks = (ns * freq) / 1,000,000,000
+  // Be careful with overflow.
+  // If ns is large, this might overflow uint64 if freq is high.
+  // HPET freq is ~14MHz, ns can be up to ~10^18 without overflowing 64-bit
+  // logic mostly okay. 1 sec = 10^9 ns. 14*10^6 * 10^9 = 1.4 * 10^16. uint64
+  // max is 1.8 * 10^19. Safe for reasonable waits.
+
+  uint64_t ticks_needed = (ns * freq) / 1000000000ULL;
+  if (ticks_needed == 0 && ns > 0)
+    ticks_needed = 1; // Minimum wait
+
+  while (1) {
+    uint64_t current_count = current_time_source->read_counter();
+
+    // Handle potential wrapping if the counter is 32-bit or small,
+    // but most hardware counters we use (PIT/HPET) handle wrap or we assume
+    // 64-bit abstract. For PIT (downcounter) this logic needs to be careful if
+    // we implement read_counter as 0-MAX or MAX-0. Standardize: read_counter
+    // returns an UP-counting value (or raw value that we know how to diff).
+    // Let's assume read_counter returns a monotonic increasing value (handling
+    // hardware wrap in driver if needed, or if it's large enough). Both HPET
+    // and TSC are up-counters. PIT is down, so PIT driver should invert or we
+    // handle it. Suggestion: Driver returns monotonic up-counter (emulated if
+    // needed).
+
+    if (current_count >=
+        start_count + ticks_needed) { // Basic check, inaccurate on wrap
+      break;
+    }
+
+    // Wrap handling: if current < start, we wrapped.
+    if (current_count < start_count) {
+      uint64_t delta = (UINT64_MAX - start_count) + current_count + 1;
+      if (delta >= ticks_needed)
+        break;
+    }
+
+    cpu_relax();
+  }
+}
+
+int time_calibrate_tsc_system(void) {
+  if (!current_time_source)
+    return -1;
+
+  if (current_time_source->calibrate_tsc) {
+    return current_time_source->calibrate_tsc();
+  }
+
+  // Generic calibration using time_wait_ns (or raw counters)
+  printk(KERN_INFO TIME_CLASS
+         "Performing generic TSC calibration using %s...\n",
+         current_time_source->name);
+
+  uint64_t start_tsc = rdtsc();
+
+  // Wait 50ms (or sufficient time)
+  // We can't use time_wait_ns easily if we are defining it.
+  // We need to use specific source wait.
+
+  uint64_t freq = current_time_source->get_frequency();
+  uint64_t start_counter = current_time_source->read_counter();
+
+  // Wait for approx 50ms
+  uint64_t target_ticks = freq / 20; // 50ms
+
+  while (1) {
+    uint64_t current = current_time_source->read_counter();
+    if ((current - start_counter) >= target_ticks)
+      break; // Assumes simple monotonic up-counter
+    cpu_relax();
+  }
+
+  uint64_t end_tsc = rdtsc();
+  uint64_t tsc_delta = end_tsc - start_tsc;
+
+  // freq = delta * 20
+  uint64_t tsc_freq = tsc_delta * 20;
+
+  tsc_recalibrate_with_freq(tsc_freq);
+  return 0;
+}
+
+uint64_t time_get_uptime_ns(void) {
+  // Prefer TSC if calibrated, else ask source?
+  // Actually TSC usually provides system uptime if we track boot offset.
+  // This is a wrapper for get_time_ns currently in tsc.c
+  return get_time_ns();
+}

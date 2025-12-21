@@ -1,7 +1,7 @@
 # ============================================================================
 # Compiler Flags
 # ============================================================================
-set(C_FLAGS " -m64 -target ${CLANG_TARGET_TRIPLE} -O2 -fno-omit-frame-pointer -finline-functions -foptimize-sibling-calls -nostdlib -fno-builtin -ffreestanding -msoft-float -mno-red-zone -mserialize -fno-pic -fno-pie -mcmodel=kernel -fcf-protection=full -fvisibility=hidden")
+set(C_FLAGS " -m64 -target ${CLANG_TARGET_TRIPLE} -O2 -g0 -fdata-sections -ffunction-sections -fno-omit-frame-pointer -finline-functions -foptimize-sibling-calls -nostdlib -ffreestanding -mno-implicit-float -msoft-float -mno-red-zone -mserialize -fno-pic -fno-pie -mcmodel=kernel -fcf-protection=full -fvisibility=hidden")
 
 if(STACK_PROTECTION)
     string(APPEND C_FLAGS " -fstack-protector-all -D_FORTIFY_SOURCE=2")

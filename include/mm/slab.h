@@ -17,8 +17,8 @@ typedef enum {
 
 // Slab sizes (powers of 2)
 #define SLAB_MIN_SIZE 16
-#define SLAB_MAX_SIZE 4096
-#define SLAB_COUNT 9  // 16, 32, 64, 128, 256, 512, 1024, 2048, 4096
+#define SLAB_MAX_SIZE 2048
+#define SLAB_COUNT 8  // 16, 32, 64, 128, 256, 512, 1024, 2048
 
 typedef struct slab_obj {
     uint32_t magic;

@@ -1,8 +1,29 @@
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * VoidFrameX monolithic kernel
+ *
+ * @file kernel/sched/core.c
+ * @brief Core scheduler implementation
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #include <arch/x64/cpu.h>
 #include <arch/x64/smp.h>
 #include <arch/x64/tsc.h> // Added for get_time_ns
-#include <kernel/sched/process.h> 
+#include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>
+#include <kernel/wait.h>
 #include <drivers/apic/apic.h> // Added for IPI functions
 #include <drivers/apic/ic.h>
 #include <lib/printk.h>
@@ -15,7 +36,7 @@
  */
 
 // Simple fixed-size runqueue array for now (per CPU)
-static struct rq per_cpu_runqueues[MAX_CPUS];
+struct rq per_cpu_runqueues[MAX_CPUS];
 
 // Current task per CPU (lookup table)
 static struct task_struct *current_tasks[MAX_CPUS];
@@ -108,6 +129,66 @@ extern void task_tick_fair(struct rq *rq, struct task_struct *curr);
  */
 extern struct task_struct *switch_to(struct task_struct *prev,
                                      struct task_struct *next);
+
+/*
+ * Task state management functions
+ */
+
+/**
+ * task_sleep - Put current task to sleep
+ */
+void task_sleep(void) {
+    struct task_struct *curr = get_current();
+    struct rq *rq = this_rq();
+
+    irq_flags_t flags = spinlock_lock_irqsave(&rq->lock);
+
+    // Update runtime before sleeping
+    if (rq->curr == curr) {
+        update_curr(rq);
+    }
+
+    // Deactivate the task from the runqueue
+    deactivate_task(rq, curr);
+
+    // Task is now sleeping, so it's not on the runqueue
+    spinlock_unlock_irqrestore(&rq->lock, flags);
+
+    // Schedule another task
+    schedule();
+}
+
+/**
+ * task_wake_up - Wake up a specific task
+ * @task: Task to wake up
+ */
+void task_wake_up(struct task_struct *task) {
+    struct rq *rq = &per_cpu_runqueues[task->cpu];
+
+    irq_flags_t flags = spinlock_lock_irqsave(&rq->lock);
+
+    // If task was sleeping, wake it up by changing its state
+    if (task->state == TASK_INTERRUPTIBLE || task->state == TASK_UNINTERRUPTIBLE) {
+        task->state = TASK_RUNNING;
+        activate_task(rq, task);
+    }
+
+    spinlock_unlock_irqrestore(&rq->lock, flags);
+}
+
+/**
+ * task_wake_up_all - Wake up all tasks (for system events)
+ */
+void task_wake_up_all(void) {
+    // This function would iterate through all CPUs and wake up tasks
+    // For now, we'll implement a simple version
+    int cpu;
+    for (cpu = 0; cpu < smp_get_cpu_count(); cpu++) {
+        struct rq *rq = &per_cpu_runqueues[cpu];
+        // Wake up any sleeping tasks on this CPU
+        // Implementation would depend on how tasks are tracked when sleeping
+    }
+}
 
 /*
  * Cleanup for the previous task after a context switch.

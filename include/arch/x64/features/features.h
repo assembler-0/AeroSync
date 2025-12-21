@@ -20,5 +20,6 @@ typedef struct {
 } cpu_features_t;
 
 void cpu_features_init(void);
+void cpu_features_init_ap(void);
 void cpu_features_dump(cpu_features_t *features);
 cpu_features_t *get_cpu_features(void);

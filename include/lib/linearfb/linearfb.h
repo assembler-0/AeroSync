@@ -3,6 +3,8 @@
 #include <kernel/types.h>
 #include <limine/limine.h>
 
+#include <lib/printk.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -18,6 +20,10 @@ typedef struct {
     uint32_t pitch;
     uint32_t bpp;
 } linearfb_font_t;
+
+int linearfb_init_standard(void *data);
+void linearfb_cleanup(void);
+int linearfb_is_initialized(void);
 
 // Initialize framebuffer library with Limine framebuffer request
 int linearfb_init(struct limine_framebuffer_request *fb_req);
@@ -43,6 +49,8 @@ void linearfb_console_get_cursor(uint32_t *col, uint32_t *row);
 void linearfb_console_clear(uint32_t color);
 void linearfb_console_putc(char c);
 void linearfb_console_puts(const char *s);
+
+const printk_backend_t* linearfb_get_backend(void);
 
 #ifdef __cplusplus
 }

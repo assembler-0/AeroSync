@@ -1,8 +1,28 @@
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * VoidFrameX monolithic kernel
+ *
+ * @file fs/ustar.c
+ * @brief USTAR archive parser
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #include <fs/ustar.h>
 #include <kernel/classes.h>
 #include <lib/printk.h>
-#include <lib/string.h> // For strcmp, strncmp, strlen
-#include <kernel/types.h> // For size_t, uint8_t, offsetof
+#include <lib/string.h>
+#include <kernel/types.h>
 
 // Helper function to convert octal string to binary
 uint64_t ustar_oct_to_bin(const char *octal, size_t size) {

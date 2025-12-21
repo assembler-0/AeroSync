@@ -1,7 +1,29 @@
-#include <arch/x64/cpu.h>
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * VoidFrameX monolithic kernel
+ *
+ * @file drivers/apic/pic.c
+ * @brief Legacy PIC interrupt controller driver
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #include <arch/x64/io.h>
 #include <drivers/timer/pit.h>
 #include <kernel/types.h>
+#include <drivers/apic/ic.h>
+#include <lib/printk.h>
+#include <kernel/classes.h>
 
 #define PIC1_COMMAND 0x20
 #define PIC1_DATA 0x21
@@ -75,4 +97,26 @@ int pic_install(void) {
 
 int pic_probe(void) {
   return 1; // Assume PIC is always present
+}
+
+static void pic_shutdown(void) {
+    pic_mask_all();
+    printk(PIC_CLASS "PIC shut down.\n");
+}
+
+static const interrupt_controller_interface_t pic_interface = {
+    .type = INTC_PIC,
+    .probe = pic_probe,
+    .install = pic_install,
+    .timer_set = pit_set_frequency,
+    .enable_irq = pic_enable_irq,
+    .disable_irq = pic_disable_irq,
+    .send_eoi = pic_send_eoi,
+    .mask_all = pic_mask_all,
+    .shutdown = pic_shutdown,
+    .priority = 50,
+};
+
+const interrupt_controller_interface_t* pic_get_driver(void) {
+    return &pic_interface;
 }

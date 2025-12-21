@@ -1,5 +1,26 @@
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * VoidFrameX monolithic kernel
+ *
+ * @file drivers/uart/serial.c
+ * @brief serial UART printk backend
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #include <arch/x64/io.h>
 #include <drivers/uart/serial.h>
+#include <lib/printk.h>
 
 // Serial port register offsets
 #define SERIAL_DATA_REG     0  // Data register (DLAB=0)
@@ -37,8 +58,84 @@
 static uint16_t serial_port = COM1;
 static int serial_initialized = 0;
 
-int serial_probe(void) {
+int serial_init_standard(void *unused) {
+  (void)unused;
+  if (serial_init() != 0)
+    if (serial_init_port(COM2) != 0 || serial_init_port(COM3) != 0 ||
+        serial_init_port(COM4) != 0) return -1;
+  serial_initialized = 1;
+  return 0;
+}
+
+static void serial_cleanup(void) {
+    if (serial_initialized) {
+        // Disable interrupts
+        outb(serial_port + SERIAL_IER_REG, 0x00);
+    }
+}
+
+int serial_is_initialized(void) {
     return serial_initialized;
+}
+
+static printk_backend_t serial_backend = {
+    .name = "serial",
+    .priority = 50,
+    .putc = serial_write_char,
+    .probe = serial_probe,
+    .init = serial_init_standard,
+    .cleanup = serial_cleanup,
+    .is_active = serial_is_initialized
+};
+
+const printk_backend_t* serial_get_backend(void) {
+    return &serial_backend;
+}
+
+static int serial_lsr_sane(uint16_t base) {
+    uint8_t lsr = inb(base + 5);
+
+    /* Bits 6–7 are reserved on real UARTs */
+    if (lsr == 0xFF || lsr == 0x00)
+        return 0;
+
+    return 1;
+}
+
+
+int serial_port_exists(uint16_t base) {
+    uint8_t old = inb(base + 7);
+
+    outb(base + 7, 0xA5);
+    if (inb(base + 7) != 0xA5)
+        goto fallback;
+
+    outb(base + 7, 0x5A);
+    if (inb(base + 7) != 0x5A)
+        goto fallback;
+
+    outb(base + 7, old);
+    return 1;
+
+fallback:
+    outb(base + 7, old);
+    return serial_lsr_sane(base);
+}
+
+/**
+ * Probe all standard COM ports and return the first available one
+ * Returns the base port address, or 0 if none found
+ */
+int serial_probe(void) {
+    uint16_t ports[] = {COM1, COM2, COM3, COM4};
+    
+    for (int i = 0; i < 4; i++) {
+        if (serial_port_exists(ports[i])) {
+           return 1;
+        }
+    }
+    
+    return 0; // No serial ports found
 }
 
 int serial_init(void) {
@@ -48,12 +145,6 @@ int serial_init(void) {
 
 int serial_init_port(uint16_t port) {
     serial_port = port;
-
-    // Test if serial port exists by writing to scratch register
-    outb(port + 7, 0xAE);
-    if (inb(port + 7) != 0xAE) {
-        return -1; // Port doesn't exist
-    }
 
     // Disable all interrupts
     outb(port + SERIAL_IER_REG, 0x00);

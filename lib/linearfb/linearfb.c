@@ -1,6 +1,19 @@
+/// SPDX-License-Identifier: MIT
+/**
+ * linearfb - Linear Framebuffer library
+ *
+ * @file lib/linearfb/linearfb.c
+ * @brief simple linear framebuffer graphics and console library
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the linearfb project.
+ */
+
 #include <lib/linearfb/linearfb.h>
 #include <string.h>
 #include <kernel/spinlock.h>
+#include <linearfb/font.h>
+#include <lib/printk.h>
 
 static int fb_initialized = 0;
 static struct limine_framebuffer *fb = NULL;
@@ -16,8 +29,54 @@ static spinlock_t fb_lock = 0;
 static uint32_t console_bg = 0x00000000;
 static uint32_t console_fg = 0xFFFFFFFF;
 
-int linearfb_probe(void) {
+#define CONSOLE_BUF_MAX (128 * 1024)
+static char console_buffer[CONSOLE_BUF_MAX];
+
+extern volatile struct limine_framebuffer_request framebuffer_request;
+
+// Forward declaration
+static void linearfb_console_redraw(void);
+
+int linearfb_init_standard(void *data) {
+  (void)data;
+
+  linearfb_init((struct limine_framebuffer_request *)&framebuffer_request);
+
+  linearfb_font_t font = {
+    .width = 8, .height = 16, .data = (uint8_t *)console_font};
+  linearfb_load_font(&font, 256);
+  linearfb_set_mode(FB_MODE_CONSOLE);
+  linearfb_console_clear(0x00000000);
+  linearfb_console_set_cursor(0, 0);
+
+  return fb ? 0 : -1;
+}
+
+int linearfb_is_initialized(void) {
     return fb_initialized;
+}
+
+static printk_backend_t fb_backend = {
+    .name = "linearfb",
+    .priority = 100,
+    .putc = linearfb_console_putc,
+    .probe = linearfb_probe,
+    .init = linearfb_init_standard,
+    .cleanup = linearfb_cleanup,
+    .is_active = linearfb_is_initialized
+};
+
+void linearfb_cleanup(void) {
+    fb_initialized = 0;
+    fb = NULL;
+}
+
+const printk_backend_t* linearfb_get_backend(void) {
+    return &fb_backend;
+}
+
+int linearfb_probe(void) {
+    return framebuffer_request.response ? 1 : 0;
 }
 
 void linearfb_console_set_cursor(uint32_t col, uint32_t row) {
@@ -43,6 +102,8 @@ void linearfb_console_clear(uint32_t color) {
             putpixel(x, y, color);
         }
     }
+    // Clear backbuffer
+    memset(console_buffer, ' ', sizeof(console_buffer));
     console_col = 0;
     console_row = 0;
     console_bg = color;
@@ -73,29 +134,66 @@ static void fast_rect_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint3
   }
 }
 
-static void console_scroll(void) {
+static void linearfb_draw_glyph_at(uint32_t col, uint32_t row, char c) {
     if (!fb || !fb_font.data) return;
 
-    uint32_t row_bytes = fb->pitch * font_glyph_h;
-    uint32_t total_height_bytes = fb->height * fb->pitch;
+    // Boundary check
+    if (col >= console_cols || row >= console_rows) return;
 
-    // 1. Move the memory up
-    // WARNING: Reading VRAM is slow, but inevitable without a backbuffer.
-    // We optimize by moving big chunks.
-    uint8_t *dst = (uint8_t*)fb->address;
-    uint8_t *src = dst + row_bytes;
-    uint32_t copy_size = (console_rows - 1) * row_bytes;
+    uint32_t px = col * font_glyph_w;
+    uint32_t py = row * font_glyph_h;
 
-    // Safety clamp
-    if (copy_size > total_height_bytes) copy_size = total_height_bytes - row_bytes;
+    uint8_t ch = (uint8_t)c;
+    if (ch >= font_glyph_count) ch = '?';
+    const uint8_t *glyph = fb_font.data + ch * font_glyph_h;
 
-    memmove(dst, src, copy_size);
+    uint8_t *draw_ptr = (uint8_t*)fb->address + py * fb->pitch + px * 4;
 
-    // 2. Clear the bottom line using optimized fill
-    uint32_t clear_y = (console_rows - 1) * font_glyph_h;
-    fast_rect_fill(0, clear_y, fb->width, font_glyph_h, console_bg);
+    for (uint32_t r = 0; r < font_glyph_h; ++r) {
+        uint32_t *pixel_ptr = (uint32_t*)draw_ptr;
+        uint8_t bits = glyph[r];
+        for (uint32_t cx = 0; cx < font_glyph_w; ++cx) {
+            uint32_t color = (bits & (1 << (7 - cx))) ? console_fg : console_bg;
+            *pixel_ptr++ = color;
+        }
+        draw_ptr += fb->pitch;
+    }
+}
+
+static void linearfb_console_redraw(void) {
+    if (!fb) return;
+    for (uint32_t y = 0; y < console_rows; ++y) {
+        for (uint32_t x = 0; x < console_cols; ++x) {
+            size_t idx = y * console_cols + x;
+            if (idx < CONSOLE_BUF_MAX) {
+                linearfb_draw_glyph_at(x, y, console_buffer[idx]);
+            }
+        }
+    }
+}
+
+static void linearfb_console_scroll(void) {
+    if (console_rows <= 1) return;
+
+    // Shift buffer up
+    size_t line_size = console_cols;
+    size_t total_chars = console_rows * console_cols;
+    
+    // Ensure we don't overflow the buffer size
+    if (total_chars > CONSOLE_BUF_MAX) total_chars = CONSOLE_BUF_MAX;
+
+    size_t copy_size = (console_rows - 1) * line_size;
+
+    if (copy_size < CONSOLE_BUF_MAX) {
+        memmove(console_buffer, console_buffer + line_size, copy_size);
+        memset(console_buffer + copy_size, ' ', line_size);
+    }
+    
+    // Redraw screen from buffer
+    linearfb_console_redraw();
 
     console_row = console_rows - 1;
+    console_col = 0;
 }
 
 void linearfb_console_putc(char c) {
@@ -109,7 +207,7 @@ void linearfb_console_putc(char c) {
 
     if (c == '\n') {
         console_col = 0;
-        if (++console_row >= console_rows) console_scroll();
+        if (++console_row >= console_rows) linearfb_console_scroll();
         spinlock_unlock_irqrestore(&fb_lock, flags);
         return;
     }
@@ -119,36 +217,18 @@ void linearfb_console_putc(char c) {
         return;
     }
 
-    // --- Fast Glyph Rendering ---
-    // Pre-calculate destination memory address
-    uint32_t px = console_col * font_glyph_w;
-    uint32_t py = console_row * font_glyph_h;
-
-    uint8_t ch = (uint8_t)c;
-    if (ch >= font_glyph_count) ch = '?';
-    const uint8_t *glyph = fb_font.data + ch * font_glyph_h;
-
-    // Get pointer to top-left of the character cell in VRAM
-    uint8_t *draw_ptr = (uint8_t*)fb->address + py * fb->pitch + px * 4;
-
-    for (uint32_t row = 0; row < font_glyph_h; ++row) {
-        uint32_t *pixel_ptr = (uint32_t*)draw_ptr;
-        uint8_t bits = glyph[row];
-
-        // Unrolling inner loop slightly for speed
-        for (uint32_t col = 0; col < font_glyph_w; ++col) {
-            // Check bit (MSB first usually for bitmap fonts)
-            uint32_t color = (bits & (1 << (7 - col))) ? console_fg : console_bg;
-            *pixel_ptr++ = color;
-        }
-
-        // Move to next line
-        draw_ptr += fb->pitch;
+    // Update buffer
+    size_t buf_idx = console_row * console_cols + console_col;
+    if (buf_idx < CONSOLE_BUF_MAX) {
+        console_buffer[buf_idx] = c;
     }
+
+    // Draw directly
+    linearfb_draw_glyph_at(console_col, console_row, c);
 
     if (++console_col >= console_cols) {
         console_col = 0;
-        if (++console_row >= console_rows) console_scroll();
+        if (++console_row >= console_rows) linearfb_console_scroll();
     }
 
     spinlock_unlock_irqrestore(&fb_lock, flags);

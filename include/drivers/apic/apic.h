@@ -2,15 +2,12 @@
 
 #include <kernel/types.h>
 
-
 // Probe for APIC availability (CPUID feature bit). Returns non-zero if present.
 int apic_probe(void);
 
 // Main initialization function to detect and set up both Local APIC and I/O
 // APIC. Returns non-zero on success, 0 on failure.
 int apic_init(void);
-int setup_lapic(void);
-int setup_ioapic(void);
 
 // Replaces PIC_enable_irq. Unmasks an interrupt line in the I/O APIC.
 void apic_enable_irq(uint8_t irq_line);
@@ -39,5 +36,9 @@ void apic_timer_init(uint32_t frequency_hz);
 
 // Changes the APIC timer's frequency on the fly.
 void apic_timer_set_frequency(uint32_t frequency_hz);
+
 // Get the current CPU's LAPIC ID
 uint8_t lapic_get_id(void);
+
+#include <drivers/apic/ic.h>
+const interrupt_controller_interface_t* apic_get_driver(void);

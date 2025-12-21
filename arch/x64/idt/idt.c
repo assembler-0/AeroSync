@@ -1,3 +1,23 @@
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * VoidFrameX monolithic kernel
+ *
+ * @file arch/x64/idt/idt.c
+ * @brief Interrupt Descriptor Table (IDT) setup and installation
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #include "kernel/classes.h"
 #include "printk.h"
 #include <arch/x64/idt/idt.h>
@@ -6,8 +26,6 @@
 
 struct IdtEntry g_Idt[IDT_ENTRIES];
 struct IdtPtr   g_IdtPtr;
-
-extern void idt_load(struct IdtPtr* idtPtr);
 
 // Declare all ISRs from Interrupts.asm
 extern void isr0();

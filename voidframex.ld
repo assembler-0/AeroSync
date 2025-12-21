@@ -1,12 +1,29 @@
-/*
-* VoidFrameX kernel linker script optimized for x86_64
-*/
+/* SPDX-License-Identifier: GPL-2.0-only
+ *
+ * VoidFrameX monolithic kernel
+ *
+ * @file voidframex.ld
+ * @brief VoidFrameX kernel linker script
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
 
 ENTRY(start_kernel)
 
 /* Define constants */
 PAGE_SIZE = 4K;
 KERNEL_BASE = 0xFFFFFFFF80000000;
+BYTE = 8;
 
 PHDRS
 {
@@ -20,13 +37,14 @@ PHDRS
 SECTIONS
 {
     . = KERNEL_BASE;
-    _kernel_phys_start = .;
+    _kernel_vma_start = .;
 
     .limine ALIGN(PAGE_SIZE) :
     {
         _limine_start = .;
-        KEEP(*(.limine_header))
+        KEEP(*(.limine_requests_start))
         KEEP(*(.limine_requests))
+        KEEP(*(.limine_requests_end))
         . = ALIGN(PAGE_SIZE);
         _limine_end = .;
     } :requests
@@ -62,6 +80,23 @@ SECTIONS
         _rodata_end = .;
     } :rodata
 
+	.ctors ALIGN(BYTE) :
+	{
+	    _ctors_start = .;
+	    KEEP(*(.ctors*))
+	    . = ALIGN(BYTE);
+	    _ctors_end = .;
+	} :rodata
+
+
+	.dtors ALIGN(8) :
+	{
+	    _dtors_start = .;
+	    KEEP(*(.dtors*))
+   	    . = ALIGN(BYTE);
+	    _dtors_end = .;
+	} :rodata
+
     /* Initialized data - read-write */
     .data ALIGN(PAGE_SIZE) :
     {
@@ -73,8 +108,9 @@ SECTIONS
     } :data
 
     /* Uninitialized data - read-write, zero-initialized */
-    .bss ALIGN(PAGE_SIZE) :
+    .bss (NOLOAD) :
     {
+    	. = ALIGN(PAGE_SIZE);
         _bss_start = .;
         *(.bss)
         *(.bss.*)
@@ -85,21 +121,23 @@ SECTIONS
 
     /* Kernel end marker */
     . = ALIGN(PAGE_SIZE);
-    _kernel_phys_end = .;
-    _kernel_size = _kernel_phys_end - _kernel_phys_start;
+    _kernel_vma_end = .;
+    _kernel_size = _kernel_vma_end - _kernel_vma_start;
 
     /DISCARD/ :
     {
-        *(.eh_frame)
-        *(.eh_frame_hdr)
+    	*(.llvm*)
+    	*(.gnu*)
+        *(.eh_frame*)
         *(.note*)
-        *(.comment)
+        *(.comment*)
+        *(.gcc_except_table*)
     }
 }
 
 /* Sanity checks */
 ASSERT(_kernel_size < 16M, "Kernel too large (>16MB)")
-ASSERT(_text_start >= _kernel_phys_start, "Text section misaligned")
+ASSERT(_text_start >= _kernel_vma_start, "Text section misaligned")
 ASSERT(_rodata_start >= _text_end, "Rodata section misaligned")
 ASSERT(_data_start >= _rodata_end, "Data section misaligned")
 ASSERT(_bss_start >= _data_end, "BSS section misaligned")

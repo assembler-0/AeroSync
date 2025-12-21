@@ -1,55 +1,78 @@
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * VoidFrameX monolithic kernel
+ *
+ * @file lib/printk.c
+ * @brief printk backend management and logging functions
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #include <arch/x64/io.h>
 #include <drivers/uart/serial.h>
 #include <kernel/classes.h>
 #include <kernel/types.h>
 #include <lib/printk.h>
 #include <lib/vsprintf.h>
-#include <linearfb/linearfb.h>
+#include <lib/string.h>
 
-static void debugcon_putc(char c) { outb(0xE9, c); }
+#define MAX_PRINTK_BACKENDS 8
 
-static int debugcon_probe(void) { return 1; }
+static const printk_backend_t *registered_backends[MAX_PRINTK_BACKENDS];
+static int num_registered_backends = 0;
+static const printk_backend_t *active_backend = NULL;
 
-static printk_backend_t debugcon_backend = {
-    .name = "debugcon",
-    .priority = 30,
-    .putc = debugcon_putc,
-    .probe = debugcon_probe,
-};
-
-static printk_backend_t fb_backend = {
-    .name = "linearfb",
-    .priority = 100,
-    .putc = linearfb_console_putc,
-    .probe = linearfb_probe,
-};
-
-static printk_backend_t serial_backend = {
-    .name = "serial",
-    .priority = 50,
-    .putc = serial_write_char,
-    .probe = serial_probe,
-};
-
-static printk_backend_t *printk_backends[] = {
-    &fb_backend,
-    &serial_backend,
-    &debugcon_backend,
-};
-
-static int num_backends = sizeof(printk_backends) / sizeof(printk_backends[0]);
-
-void printk_init_auto(void) {
-  printk_backend_t target = {0};
-  int last_priority = -1;
-  for (int i = 0; i < num_backends; i++) {
-    if (printk_backends[i] && printk_backends[i]->priority > last_priority &&
-        printk_backends[i]->probe()) {
-      target = *printk_backends[i];
-      last_priority = printk_backends[i]->priority;
+void printk_register_backend(const printk_backend_t *backend) {
+    if (num_registered_backends >= MAX_PRINTK_BACKENDS) {
+        // Can't printk here safely maybe? or fallback to internal ring
+        return;
     }
-  }
-  printk_init(target.putc);
+    registered_backends[num_registered_backends++] = backend;
+}
+
+void printk_init_auto(void *payload)
+{
+    const printk_backend_t *best = NULL;
+
+    for (int i = 0; i < num_registered_backends; i++) {
+        const printk_backend_t *b = registered_backends[i];
+        if (!b)
+            continue;
+
+        if (!b->probe())
+            continue;
+
+        if (b->init(payload) != 0)
+            continue;
+
+        if (!best || b->priority > best->priority)
+            best = b;
+    }
+
+    if (!best) {
+        // Fallback to internal ringbuffer only
+        log_init(NULL);
+        printk(KERN_ERR KERN_CLASS "no active printk backend, logging to ringbuffer only\n");
+        active_backend = NULL;
+        return;
+    }
+
+    printk(KERN_INFO KERN_CLASS
+           "printk backend selected: %s (prio=%d)\n",
+           best->name, best->priority);
+
+    active_backend = best;
+    log_init(best->putc);
 }
 
 void printk_init_async(void) {
@@ -57,10 +80,40 @@ void printk_init_async(void) {
   log_init_async();
 }
 
+int printk_set_sink(const char *backend_name) {
+    if (!backend_name) return -1;
+
+    for (int i = 0; i < num_registered_backends; i++) {
+        const printk_backend_t *b = registered_backends[i];
+        if (b && b->name && strcmp(b->name, backend_name) == 0) {
+            if (active_backend->cleanup) { // null dereference check - not all backends implement cleanup
+                active_backend->cleanup();
+            }
+
+            if (b->is_active) { // same as above
+                if (!b->is_active() && b->init(NULL) != 0) {
+                    printk(KERN_ERR KERN_CLASS "failed to reinit printk backend %s\n", backend_name);
+                    return -1;
+                }
+            }
+
+            log_set_console_sink(b->putc);
+            active_backend = b;
+            return 0;
+        }
+    }
+    return -1; // Not found
+}
+
+void printk_shutdown(void) {
+    if (active_backend && active_backend->cleanup) {
+        active_backend->cleanup();
+    }
+    active_backend = NULL;
+    log_set_console_sink(NULL);
+}
 static const char *parse_level_prefix(const char *fmt, int *level_io) {
-  if (!fmt)
-    return fmt;
-  // Preferred: $n$
+  // format: $<0-7>$ (see include/lib/printk.h for level definitions)
   if (fmt[0] == '$' && fmt[1] >= '0' && fmt[1] <= '7' && fmt[2] == '$') {
     if (level_io)
       *level_io = (fmt[1] - '0');
@@ -93,5 +146,3 @@ int printk(const char *fmt, ...) {
   va_end(args);
   return ret;
 }
-
-void printk_init(const log_sink_putc_t backend) { log_init(backend); }

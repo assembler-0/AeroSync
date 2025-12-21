@@ -1,11 +1,44 @@
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * VoidFrameX monolithic kernel
+ *
+ * @file arch/x64/irq/irq.c
+ * @brief Interrupt handling for x64 architecture
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include <printk.h>
 #include <arch/x64/cpu.h>
 #include <drivers/apic/ic.h>
 #include <kernel/panic.h>
 #include <kernel/sched/sched.h>
 
 #define IRQ_BASE_VECTOR 32
+#define MAX_INTERRUPTS 256
 
 extern void irq_sched_ipi_handler(void);
+
+typedef void (*irq_handler_t)(cpu_regs *regs);
+static irq_handler_t irq_handlers[MAX_INTERRUPTS];
+
+void irq_install_handler(uint8_t vector, irq_handler_t handler) {
+    irq_handlers[vector] = handler;
+}
+
+void irq_uninstall_handler(uint8_t vector) {
+    irq_handlers[vector] = NULL;
+}
 
 void __used __hot irq_common_stub(cpu_regs *regs) {
   // CPU exceptions are vectors 0-31
@@ -17,12 +50,15 @@ void __used __hot irq_common_stub(cpu_regs *regs) {
 
   if (regs->interrupt_number == IRQ_SCHED_IPI_VECTOR + IRQ_BASE_VECTOR) {
     irq_sched_ipi_handler();
+    return;
+  }
+
+  if (irq_handlers[regs->interrupt_number]) {
+      irq_handlers[regs->interrupt_number](regs);
   }
 
   if (regs->interrupt_number == IRQ_BASE_VECTOR) {
     scheduler_tick();
-    // Trigger scheduling immediately on timer tick so that preemption works
-    // even when running non-cooperative threads.
     check_preempt();
   }
 }

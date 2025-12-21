@@ -1,11 +1,33 @@
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * VoidFrameX monolithic kernel
+ *
+ * @file arch/x64/smp.c
+ * @brief SMP initialization and AP entry point
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #include <kernel/classes.h>
 #include <arch/x64/smp.h>
 #include <limine/limine.h>
 #include <lib/printk.h>
 #include <arch/x64/cpu.h>
+#include <arch/x64/features/features.h>
 #include <arch/x64/gdt/gdt.h>
 #include <arch/x64/idt/idt.h>
 #include <drivers/apic/apic.h>
+#include <kernel/wait.h>
 
 // SMP Request
 __attribute__((used, section(".limine_requests"))) 
@@ -18,19 +40,29 @@ static uint64_t cpu_count = 0;
 static volatile int cpus_online = 0;
 volatile int smp_lock = 0;
 static volatile int smp_start_barrier = 0; // BSP releases APs to start interrupts
+static struct wait_counter ap_startup_counter;
 
 // Global array to map logical CPU ID to physical APIC ID
 int per_cpu_apic_id[MAX_CPUS];
 
 // The entry point for Application Processors (APs)
 static void smp_ap_entry(struct limine_mp_info *info) {
+    // Enable per-CPU features (SSE, AVX, etc.)
+    cpu_features_init_ap();
+
     // Basic per-CPU init for APs
     printk(SMP_CLASS "CPU LAPIC ID %u starting up...\n", info->lapic_id);
 
-    // Load IDT for this CPU
-    idt_install();
+    // Initialize GDT and TSS for this AP
+    gdt_init_ap();
 
-    // Mark this AP as online
+    // Load IDT for this CPU
+    idt_load(&g_IdtPtr);
+
+    // Mark this AP as online using wait counter
+    wait_counter_inc(&ap_startup_counter);
+
+    // Also increment the atomic counter for consistency with other code
     __atomic_fetch_add(&cpus_online, 1, __ATOMIC_RELEASE);
 
     // Wait until BSP releases start barrier before enabling interrupts
@@ -60,6 +92,10 @@ void smp_init(void) {
 
     printk(SMP_CLASS "Detected %llu CPUs. BSP LAPIC ID: %u\n", cpu_count, (uint32_t)bsp_lapic_id);
 
+    // Initialize the wait counter for AP startup
+    int expected_aps = (int)(cpu_count > 0 ? (cpu_count - 1) : 0);
+    init_wait_counter(&ap_startup_counter, 0, expected_aps);
+
     // Initialize per_cpu_apic_id array
   uint64_t max_init = cpu_count < MAX_CPUS ? cpu_count : MAX_CPUS;
     if (cpu_count > MAX_CPUS) {
@@ -86,11 +122,8 @@ void smp_init(void) {
         __atomic_store_n(&cpu->goto_address, smp_ap_entry, __ATOMIC_RELEASE);
     }
 
-    // Wait until all APs have reported online
-    int expected_aps = (int)(cpu_count > 0 ? (cpu_count - 1) : 0);
-    while (__atomic_load_n(&cpus_online, __ATOMIC_ACQUIRE) < expected_aps) {
-        cpu_relax();
-    }
+    // Wait until all APs have reported online using wait counter
+    wait_counter_wait(&ap_startup_counter);
 
     // Release APs to enable interrupts and proceed
     __atomic_store_n(&smp_start_barrier, 1, __ATOMIC_RELEASE);

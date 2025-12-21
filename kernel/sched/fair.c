@@ -1,3 +1,23 @@
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * VoidFrameX monolithic kernel
+ *
+ * @file kernel/sched/fair.c
+ * @brief Completely Fair Scheduler (CFS) implementation
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #include <linux/container_of.h>
 #include <kernel/sched/sched.h>
 #include <linux/rbtree.h>
@@ -123,7 +143,7 @@ static void __dequeue_entity(struct rq *rq, struct sched_entity *se) {
  * Update vruntime of the current task.
  * This function calculates the delta internally based on exec_start_ns.
  */
-static void update_curr(struct rq *rq) {
+void update_curr(struct rq *rq) {
   struct task_struct *curr = rq->curr;
   uint64_t now_ns = get_time_ns();
   uint64_t delta_exec_ns;

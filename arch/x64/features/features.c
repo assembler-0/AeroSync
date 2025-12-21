@@ -1,3 +1,23 @@
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * VoidFrameX monolithic kernel
+ *
+ * @file arch/x64/features/features.c
+ * @brief CPU feature detection and enabling for x86_64 architecture
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #include <kernel/classes.h>
 #include <arch/x64/cpu.h>
 #include <arch/x64/features/features.h>
@@ -51,6 +71,38 @@ static uint64_t read_cr4(void) {
 
 static void write_cr4(uint64_t cr4) {
   __asm__ volatile("mov %0, %%cr4" ::"r"(cr4));
+}
+
+void cpu_features_init_ap(void) {
+  // Enable SSE
+  if (g_cpu_features.sse) {
+    uint64_t cr0 = read_cr0();
+    cr0 &= ~CR0_EM;
+    cr0 |= CR0_MP;
+    write_cr0(cr0);
+
+    uint64_t cr4 = read_cr4();
+    cr4 |= CR4_OSFXSR | CR4_OSXMMEXCPT;
+    write_cr4(cr4);
+  }
+
+  // Enable AVX
+  if (g_cpu_features.avx && g_cpu_features.xsave) {
+    uint64_t cr4 = read_cr4();
+    cr4 |= CR4_OSXSAVE;
+    write_cr4(cr4);
+
+    uint64_t xcr0 = xgetbv(0);
+    xcr0 |= XCR0_SSE | XCR0_AVX;
+    xsetbv(0, xcr0);
+  }
+
+  // Enable AVX512
+  if (g_cpu_features.avx512f && g_cpu_features.osxsave) {
+    uint64_t xcr0 = xgetbv(0);
+    xcr0 |= XCR0_OPMASK | XCR0_ZMM_HI256 | XCR0_HI16_ZMM;
+    xsetbv(0, xcr0);
+  }
 }
 
 void cpu_features_init(void) {
