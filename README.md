@@ -3,9 +3,12 @@
 **Version:** v1.0.1
 **License:** GPL-2.0
 
-
-![](https://img.shields.io/github/languages/top/assembler-0/VoidFrameX) 
-![](https://img.shields.io/github/repo-size/assembler-0/VoidFrameX)
+<p align="center">
+  <img src="https://img.shields.io/github/languages/top/assembler-0/VoidFrameX?style=for-the-badge&color=blueviolet" />
+  <img src="https://img.shields.io/github/repo-size/assembler-0/VoidFrameX?style=for-the-badge&color=44cc11" />
+  <img src="https://img.shields.io/github/license/assembler-0/VoidFrameX?style=for-the-badge&color=informational" />
+  <img src="https://img.shields.io/badge/compiler-Clang/LLVM-9C27B0?style=for-the-badge&logo=llvm" />
+</p>
 
 VoidFrameX is a monolithic, higher-half, 64-bit x86_64 kernel built for modern systems. It is designed with a focus on a clean architecture and draws inspiration from the Linux kernel for many of its subsystems.
 
