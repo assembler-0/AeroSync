@@ -7,10 +7,10 @@
 * @compiler Clang
 */
 
-#define VOIDFRAMEX_EPOCH 0
+#define VOIDFRAMEX_EPOCH 1
 #define VOIDFRAMEX_FEATURE 0
 #define VOIDFRAMEX_PATCH 1
-#define VOIDFRAMEX_VERSION "0.0.1"
+#define VOIDFRAMEX_VERSION "1.0.1"
 
 #define VOIDFRAMEX_ABI_LEVEL 0
 
