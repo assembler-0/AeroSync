@@ -82,10 +82,11 @@ static int xapic_init_lapic(void) {
 
   // Get LAPIC physical base address from MSR
   uint64_t lapic_phys_base = lapic_base_msr & 0xFFFFFFFFFFFFF000ULL;
+  
 
-  // Prefer MADT LAPIC Address Override if present
-  // Accessed via global from apic.c (extern in xapic.h)
-  if (xapic_madt_parsed && xapic_madt_lapic_override_phys) {
+      // Prefer MADT LAPIC Address Override if present
+      // Accessed via global from apic.c (extern in xapic.h)
+      if (xapic_madt_parsed && xapic_madt_lapic_override_phys) {
     lapic_phys_base = (uint64_t)xapic_madt_lapic_override_phys;
     printk(APIC_CLASS "LAPIC base overridden by MADT: 0x%llx\n",
            lapic_phys_base);
@@ -180,13 +181,20 @@ static void xapic_timer_set_frequency_op(uint32_t ticks_per_target) {
   if (ticks_per_target == 0)
     return;
 
-  // Start Timer: Periodic, Interrupt Vector 32, Unmasked
-  uint32_t lvt_timer = 32 | (1 << 17); // Vector 32, Periodic mode
-  xapic_write(XAPIC_LVT_TIMER, lvt_timer);
+  // First mask the timer to prevent spurious interrupts during configuration
+  xapic_write(XAPIC_LVT_TIMER, (1 << 16)); // Masked
+
+  // Set the divisor before initializing the count
   xapic_write(XAPIC_TIMER_DIV, 0x3); // Divide by 16
+
+  // Set the initial count (this also resets the current count)
   xapic_write(XAPIC_TIMER_INIT_COUNT, ticks_per_target);
 
-  printk(APIC_CLASS "Timer configured: LVT=0x%x, Ticks=%u\n", lvt_timer,
+  // Start Timer: Periodic, Interrupt Vector 32, Unmasked
+  uint32_t lvt_timer = 32 | (1 << 17) | (0 << 16); // Vector 32, Periodic mode, Unmasked
+  xapic_write(XAPIC_LVT_TIMER, lvt_timer);
+
+  printk(APIC_CLASS "Timer configured: LVT=0x%x, Ticks=%u, Div=0x3\n", lvt_timer,
          ticks_per_target);
 }
 

@@ -112,21 +112,27 @@ void printk_shutdown(void) {
     active_backend = NULL;
     log_set_console_sink(NULL);
 }
+
 static const char *parse_level_prefix(const char *fmt, int *level_io) {
+  // Safety check for null or too-short strings
+  if (!fmt || !fmt[0] || !fmt[1] || !fmt[2])
+    return fmt;
+
   // format: $<0-7>$ (see include/lib/printk.h for level definitions)
   if (fmt[0] == '$' && fmt[1] >= '0' && fmt[1] <= '7' && fmt[2] == '$') {
     if (level_io)
       *level_io = (fmt[1] - '0');
-    return fmt + 3;
+    return fmt + 3;  // Skip past the level prefix
   }
-  return fmt;
+
+  return fmt;  // No level prefix found, return original
 }
 
 int vprintk(const char *fmt, va_list args) {
   if (!fmt)
     return -1;
 
-  int level = KLOG_INFO;
+  int level = KLOG_INFO; // Default log level
   // Parse optional level prefix (e.g. "$3$")
   const char *real_fmt = parse_level_prefix(fmt, &level);
 

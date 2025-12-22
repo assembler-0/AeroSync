@@ -18,13 +18,13 @@ void set_task_cpu(struct task_struct *task, int cpu);
 void move_task_to_rq(struct task_struct *task, int dest_cpu);
 
 pid_t sys_fork(void);
+struct task_struct *process_spawn(int (*entry)(void *), void *data,
+                                  const char *name);
 void sys_exit(int error_code);
 void free_task(struct task_struct *task);
 
 /* Internal helpers */
 struct task_struct *copy_process(unsigned long clone_flags,
-                                 unsigned long stack_start,
-                                 unsigned long stack_size,
                                  struct task_struct *p);
 
 void wake_up_new_task(struct task_struct *p);

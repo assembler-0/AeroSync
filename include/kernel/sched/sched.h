@@ -12,6 +12,10 @@
 #define TASK_ZOMBIE 3
 #define TASK_STOPPED 4
 
+/* Enqueue/Dequeue Flags for normalization */
+#define ENQUEUE_WAKEUP 0x01
+#define DEQUEUE_SKIP_NORM 0x01
+
 /* Scheduling Policies */
 #define SCHED_NORMAL 0
 #define SCHED_FIFO 1
@@ -24,6 +28,10 @@
 #define PF_KTHREAD 0x00200000 /* I am a kernel thread */
 #define PF_EXITING 0x00000004 /* getting shut down */
 
+/* Enqueue/Dequeue Flags for normalization */
+#define ENQUEUE_WAKEUP 0x01
+#define DEQUEUE_SKIP_NORM 0x01
+
 /* Priority Macros */
 #define MAX_USER_RT_PRIO 100
 #define MAX_RT_PRIO MAX_USER_RT_PRIO
@@ -35,7 +43,8 @@ struct mm_struct; /* Forward declaration for memory management struct */
 /* Represents a task's load weight */
 struct load_weight {
   unsigned long weight;
-  unsigned long inv_weight; // Inverse for faster division (optional, can be done with floating point or large scale integers)
+  unsigned long inv_weight; // Inverse for faster division (optional, can be
+                            // done with floating point or large scale integers)
 };
 
 struct sched_entity {
@@ -51,7 +60,6 @@ struct sched_entity {
   struct load_weight load; /* For CPU bandwidth distribution */
 };
 
-
 /* Nice values range from -20 to 19 */
 #define MIN_NICE (-20)
 #define MAX_NICE 19
@@ -61,7 +69,6 @@ struct sched_entity {
 
 // IPI Vector for Scheduler Reschedule
 #define IRQ_SCHED_IPI_VECTOR 0xEF // Using 239, typically a free vector
-
 
 /*
  * The `prio_to_weight` table is a mapping from nice values to load weights.
@@ -86,6 +93,7 @@ struct task_struct {
   struct list_head tasks;
 
   struct mm_struct *mm;
+  struct mm_struct *active_mm;
 
   /* Scheduler information */
   struct sched_entity se;
@@ -119,6 +127,7 @@ struct task_struct {
 void schedule(void);
 void sched_init(void);
 void sched_init_task(struct task_struct *initial_task);
+void sched_init_ap(void);
 void scheduler_tick(void);
 void check_preempt(void);
 void sched_dump_memory_stats(void);
@@ -133,7 +142,8 @@ extern struct task_struct *get_current(void);
 #define current get_current()
 
 /* Context Switch - returns the task that was switched out */
-extern struct task_struct *switch_to(struct task_struct *prev, struct task_struct *next);
+extern struct task_struct *switch_to(struct task_struct *prev,
+                                     struct task_struct *next);
 
 /* Global scheduler lock for SMP operations (e.g., task migration) */
 extern spinlock_t __rq_lock;

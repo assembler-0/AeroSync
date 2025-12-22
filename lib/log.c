@@ -20,6 +20,7 @@
 
 #include <arch/x64/tsc.h>
 #include <compiler.h>
+#include <printk.h>
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>
 #include <kernel/spinlock.h>
@@ -43,9 +44,11 @@ typedef struct {
   uint64_t ts_ns; // producer timestamp in nanoseconds
 } __packed klog_hdr_t;
 
+// Forward declaration for the klogd thread function used when creating kthreads
+static int klogd_thread(void *data);
+
 static char klog_ring_data[KLOG_RING_SIZE];
 static ringbuf_t klog_ring;
-static int klog_level = KLOG_INFO;
 static int klog_console_level = KLOG_INFO;
 static log_sink_putc_t klog_console_sink = NULL; // defaults to ring buffer only
 static spinlock_t klog_lock = 0;
@@ -55,6 +58,10 @@ static spinlock_t klog_console_lock = 0;
 // Async logging control
 static volatile int klog_async_enabled = 0;
 static struct task_struct *klogd_task = NULL;
+// Hint from the console driver that sink is asynchronous-capable
+static int klog_console_sink_async_hint = 0;
+// Debug enablement (independent of numeric KLOG_DEBUG value)
+static int klog_debug_enabled = 0;
 
 // klogd drain budgeting to avoid monopolizing CPU on slow sinks (e.g., linearfb)
 #ifndef KLOGD_MAX_BATCH_RECORDS
@@ -80,18 +87,49 @@ static void rb_drop_oldest(uint32_t need) {
 
 void log_init(const log_sink_putc_t backend) {
   ringbuf_init(&klog_ring, klog_ring_data, KLOG_RING_SIZE);
-  klog_level = KLOG_INFO;
   klog_console_level = KLOG_INFO;
   klog_console_sink = backend;
   klog_inited = 1;
 }
 
-void log_set_level(int level) { klog_level = level; }
-int log_get_level(void) { return klog_level; }
-
-void log_set_console_sink(log_sink_putc_t sink) { klog_console_sink = sink; }
+void log_set_console_sink(log_sink_putc_t sink) {
+  klog_console_sink = sink;
+  /* If console sink has already indicated it is async-capable, try to
+     start the background klogd so console emission can be deferred. */
+  if (klog_console_sink_async_hint)
+    log_try_init_async();
+}
 void log_set_console_level(int level) { klog_console_level = level; }
 int log_get_console_level(void) { return klog_console_level; }
+
+// Debug control helpers
+void log_enable_debug(void) { klog_debug_enabled = 1; }
+void log_disable_debug(void) { klog_debug_enabled = 0; }
+int log_is_debug_enabled(void) { return klog_debug_enabled; }
+
+// Console sink async hint
+void log_set_console_async_hint(int is_async) {
+  klog_console_sink_async_hint = is_async ? 1 : 0;
+  /* If the sink is async-capable and a sink is already registered,
+     attempt to bring up the background consumer. */
+  if (klog_console_sink_async_hint && klog_console_sink)
+    log_try_init_async();
+}
+
+
+// Try to initialize async klogd if scheduler is up. Returns non-zero on success.
+int log_try_init_async(void) {
+  if (klog_async_enabled)
+    return 1;
+  // If scheduler isn't available or kthread creation fails, return 0.
+  struct task_struct *t = kthread_create(klogd_thread, NULL, 5, "kthread/klogd");
+  if (!t)
+    return 0;
+  kthread_run(t);
+  klogd_task = t;
+  klog_async_enabled = 1;
+  return 1;
+}
 
 static const char *const klog_prefixes[] = {
     [KLOG_EMERG] = "[0] ", [KLOG_ALERT] = "[1] ",   [KLOG_CRIT] = "[2] ",
@@ -141,62 +179,77 @@ int log_write_str(int level, const char *msg) {
     return 0;
   }
 
-  if (level > klog_level) {
-    // Level too low — do not store
+  // If level is DEBUG but debug is currently disabled, drop early
+  if (level == KLOG_DEBUG && !klog_debug_enabled) {
+    // Debug messages are opt-in; drop silently when disabled to avoid
+    // recursive printk() re-entrancy and noisy early messages.
     return 0;
   }
 
   // Compute message length
-  int len = 0;
+  size_t len = 0;
   for (const char *p = msg; *p; ++p)
     len++;
 
   // Cap length to ring size - header - 1 to ensure progress
-  int max_payload = (int)KLOG_RING_SIZE - (int)sizeof(klog_hdr_t) - 1;
+  size_t max_payload = (size_t)KLOG_RING_SIZE - sizeof(klog_hdr_t) - 1;
   if (len > max_payload)
     len = max_payload;
 
   // Producer timestamp captured once
   uint64_t ts_ns = get_time_ns();
 
-  // Console output (immediate) respecting console level
+  // Decide whether to emit synchronously. We will prefer asynchronous
+  // emission when: a) async is enabled, or b) console sink signalled
+  // it is async-capable via hint. High severity messages still force
+  // synchronous emission based on klog_sync_threshold.
   int do_sync_emit = 0;
-  if (klog_console_sink && level <= klog_console_level) {
-    if (!klog_async_enabled) {
-      do_sync_emit = 1;
-    } else if (level <= klog_sync_threshold) {
-      do_sync_emit = 1;
-    }
-  }
+  // If debug is enabled, treat effective console level as inclusive of
+  // debug so that debug messages can be emitted even if the numeric
+  // console level is set to a higher priority (e.g. INFO).
+  int effective_console_level = klog_console_level;
+  if (klog_debug_enabled)
+    effective_console_level = KLOG_DEBUG;
+   if (klog_console_sink && level <= effective_console_level) {
+     /* Emit synchronously when we have no async path (no klogd and no
+        async hint), or the message is above the sync threshold. */
+    // Use effective_console_level for deciding whether the sink should
+    // actually consider this record for emission. This makes debug
+    // opt-in via log_enable_debug() while preserving the numeric
+    // console level for other messages.
+    if (level <= effective_console_level)
+      do_sync_emit = ((!klog_async_enabled && !klog_console_sink_async_hint) ||
+                      (level <= klog_sync_threshold));
+   }
 
-  uint8_t flags_hdr = 0;
-  if (do_sync_emit) {
-    irq_flags_t f = spinlock_lock_irqsave(&klog_console_lock);
-    console_emit_prefix_ts(level, ts_ns);
-    const char *p = msg;
-    while (*p)
-      klog_console_sink(*p++);
-    spinlock_unlock_irqrestore(&klog_console_lock, f);
-    flags_hdr |= KLOGF_SYNC_EMITTED;
-  }
+   uint8_t flags_hdr = 0;
+   if (do_sync_emit) {
+     irq_flags_t f = spinlock_lock_irqsave(&klog_console_lock);
+     console_emit_prefix_ts(level, ts_ns);
+     const char *p = msg;
+     while (*p)
+       klog_console_sink(*p++);
+     spinlock_unlock_irqrestore(&klog_console_lock, f);
+     flags_hdr |= KLOGF_SYNC_EMITTED;
+   }
 
-  // Always store in ring buffer regardless of sink presence
-  uint64_t flags = spinlock_lock_irqsave(&klog_lock);
+   // Always store in ring buffer regardless of sink presence
+   uint64_t flags = spinlock_lock_irqsave(&klog_lock);
 
-  uint32_t need = sizeof(klog_hdr_t) + (uint32_t)len;
-  if (ringbuf_space(&klog_ring) < need)
-    rb_drop_oldest(need);
+   uint32_t need = (uint32_t)(sizeof(klog_hdr_t) + (uint32_t)len);
+   if (ringbuf_space(&klog_ring) < need)
+     rb_drop_oldest(need);
 
-  // Write header and payload
-  klog_hdr_t hdr = {.level = (uint8_t)level, .flags = flags_hdr, .len = (uint16_t)len, .ts_ns = ts_ns};
-  ringbuf_write(&klog_ring, &hdr, sizeof(hdr));
-  ringbuf_write(&klog_ring, msg, len);
+   // Write header and payload
+   klog_hdr_t hdr = {.level = (uint8_t)level, .flags = flags_hdr, .len = (uint16_t)len, .ts_ns = ts_ns};
+   ringbuf_write(&klog_ring, &hdr, sizeof(hdr));
+   ringbuf_write(&klog_ring, msg, len);
 
-  spinlock_unlock_irqrestore(&klog_lock, flags);
-  
-  if (klog_async_enabled)
-    check_preempt();
-  return len;
+   spinlock_unlock_irqrestore(&klog_lock, flags);
+
+   if (klog_async_enabled)
+     check_preempt();
+  return (int)len;
 }
 
 // Background logger thread: drains ring buffer to console
@@ -207,25 +260,25 @@ static int klogd_thread(void *data) {
     int drained_any = 0;
     uint64_t slice_start = get_time_ns();
     int records = 0;
-    int bytes = 0;
+    size_t bytes = 0;
     for (;;) {
       int lvl = KLOG_INFO;
       uint64_t ts = 0;
       uint8_t flags_local = 0;
       // internal read to obtain ts/flags
-      int n = 0;
+      size_t n = 0;
       {
         // inline internal reader: duplicated logic of log_read to also fetch ts/flags
         uint64_t lflags = spinlock_lock_irqsave(&klog_lock);
         if (!ringbuf_empty(&klog_ring)) {
           klog_hdr_t hdr;
-          if (ringbuf_read(&klog_ring, &hdr, sizeof(hdr)) == (int)sizeof(hdr)) {
+          if (ringbuf_read(&klog_ring, &hdr, sizeof(hdr)) == sizeof(hdr)) {
             lvl = hdr.level;
             ts = hdr.ts_ns;
             flags_local = hdr.flags;
-            int to_copy = hdr.len;
-            if (to_copy > (int)sizeof(out_buf) - 1)
-              to_copy = (int)sizeof(out_buf) - 1;
+            size_t to_copy = hdr.len;
+            if (to_copy > sizeof(out_buf) - 1)
+              to_copy = sizeof(out_buf) - 1;
             n = ringbuf_read(&klog_ring, out_buf, to_copy);
             if (n < to_copy && hdr.len > to_copy) {
               ringbuf_skip(&klog_ring, hdr.len - to_copy);
@@ -235,25 +288,31 @@ static int klogd_thread(void *data) {
         }
         spinlock_unlock_irqrestore(&klog_lock, lflags);
       }
-      if (n <= 0)
+      if (n == 0)
         break;
 
-      if (!(flags_local & KLOGF_SYNC_EMITTED) && klog_console_sink && lvl <= klog_console_level) {
-        // In klogd context, avoid disabling IRQs while emitting to slow sinks
-        // to reduce system-wide latency. Console lock still protects output order.
-        irq_flags_t cf = spinlock_lock_irqsave(&klog_console_lock);
-        console_emit_prefix_ts(lvl, ts);
-        for (int j = 0; j < n; ++j)
-          klog_console_sink(out_buf[j]);
-        spinlock_unlock_irqrestore(&klog_console_lock, cf);
-      }
+      // Recompute effective console level here as well so background
+      // consumer honors the runtime debug enable flag.
+      int effective_console_level_klogd = klog_console_level;
+      if (klog_debug_enabled)
+        effective_console_level_klogd = KLOG_DEBUG;
+
+      if (!(flags_local & KLOGF_SYNC_EMITTED) && klog_console_sink && lvl <= effective_console_level_klogd) {
+         // In klogd context, avoid disabling IRQs while emitting to slow sinks
+         // to reduce system-wide latency. Console lock still protects output order.
+         irq_flags_t cf = spinlock_lock_irqsave(&klog_console_lock);
+         console_emit_prefix_ts(lvl, ts);
+         for (size_t j = 0; j < n; ++j)
+           klog_console_sink(out_buf[j]);
+         spinlock_unlock_irqrestore(&klog_console_lock, cf);
+       }
       drained_any = 1;
       records++;
       bytes += n;
 
       // Cooperative yield if we exceed any budget to avoid starving others
       uint64_t now = get_time_ns();
-      if (records >= KLOGD_MAX_BATCH_RECORDS || bytes >= KLOGD_MAX_BATCH_BYTES ||
+      if (records >= KLOGD_MAX_BATCH_RECORDS || bytes >= (size_t)KLOGD_MAX_BATCH_BYTES ||
           (now - slice_start) >= KLOGD_MAX_SLICE_NS) {
         check_preempt();
         schedule();
@@ -311,10 +370,10 @@ int log_read(char *out_buf, int out_buf_len, int *out_level) {
   if (to_copy > out_buf_len - 1)
     to_copy = out_buf_len - 1; // reserve NUL
 
-  int actual = ringbuf_read(&klog_ring, out_buf, to_copy);
-  if (actual < to_copy && hdr.len > to_copy) {
+  size_t actual = ringbuf_read(&klog_ring, out_buf, (size_t)to_copy);
+  if (actual < (size_t)to_copy && hdr.len > (size_t)to_copy) {
     // Skip remaining data we couldn't fit
-    ringbuf_skip(&klog_ring, hdr.len - to_copy);
+    ringbuf_skip(&klog_ring, hdr.len - (size_t)to_copy);
   }
 
   out_buf[actual] = '\0';
@@ -322,5 +381,5 @@ int log_read(char *out_buf, int out_buf_len, int *out_level) {
     *out_level = hdr.level;
 
   spinlock_unlock_irqrestore(&klog_lock, flags);
-  return actual;
+  return (int)actual;
 }

@@ -163,32 +163,32 @@ struct inode_operations {
     fn(int, create, struct inode *dir, struct dentry *dentry, vfs_mode_t mode);
     fn(struct dentry *, lookup, struct inode *dir, struct dentry *dentry, uint32_t flags);
     fn(int, link, struct dentry *old_dentry, struct inode *dir, struct dentry *new_dentry);
-    int (*unlink)       (struct inode *dir, struct dentry *dentry);
-    int (*mkdir)        (struct inode *dir, struct dentry *dentry, vfs_mode_t mode);
-    int (*rmdir)        (struct inode *dir, struct dentry *dentry);
-    int (*rename)       (struct inode *old_dir, struct dentry *old_dentry,
+    fn(int, unlink, struct inode *dir, struct dentry *dentry);
+    fn(int, mkdir, struct inode *dir, struct dentry *dentry, vfs_mode_t mode);
+    fn(int, rmdir, struct inode *dir, struct dentry *dentry);
+    fn(int, rename, struct inode *old_dir, struct dentry *old_dentry,
                          struct inode *new_dir, struct dentry *new_dentry);
-    int (*setattr)      (struct dentry *dentry, vfs_mode_t mode, vfs_loff_t size);
-    int (*getattr)      (struct dentry *dentry, struct inode *inode);
+    fn(int, setattr, struct dentry *dentry, vfs_mode_t mode, vfs_loff_t size);
+    fn(int, getattr, struct dentry *dentry, struct inode *inode);
     // Add more operations as needed, e.g., symlink, readlink, follow_link, permission
 };
 
 // struct super_operations: Operations for a superblock
 struct super_operations {
-    struct inode *(*alloc_inode)    (struct super_block *sb);
-    void (*destroy_inode)           (struct inode *inode);
-    void (*dirty_inode)             (struct inode *inode); // Mark inode as dirty
-    int (*write_inode)              (struct inode *inode, int sync);
-    void (*put_super)               (struct super_block *sb);
-    int (*statfs)                   (struct dentry *dentry, void *buf); // Fill fs statistics
+    fn(struct inode*, alloc_inode, struct super_block *sb);
+    fn(void, destroy_inode, struct inode *inode);
+    fn(void, dirty_inode, struct inode *inode); // Mark inode as dirty
+    fn(int, write_inode, struct inode *inode, int sync);
+    fn(void, put_super, struct super_block *sb);
+    fn(int, statfs, struct dentry *dentry, void *buf); // Fill fs statistics
     // Add more operations as needed, e.g., remount, show_options
 };
 
 // Structure to register a filesystem type
 struct file_system_type {
   const char *name;
-  int (*mount)(struct file_system_type *fs_type, const char *dev_name, const char *dir_name, unsigned long flags, void *data);
-  void (*kill_sb)(struct super_block *sb);
+  fn(int, mount, struct file_system_type *fs_type, const char *dev_name, const char *dir_name, unsigned long flags, void *data);
+  fn(void, kill_sb, struct super_block *sb);
   struct list_head fs_list; // List of registered filesystems
 };
 

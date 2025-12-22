@@ -171,13 +171,20 @@ static int x2apic_init_lapic(void) {
 static void x2apic_timer_set_frequency_op(uint32_t ticks_per_target) {
     if (ticks_per_target == 0) return;
 
-    // Start Timer: Periodic, Interrupt Vector 32, Unmasked
-    uint32_t lvt_timer = 32 | (1 << 17); // Vector 32, Periodic mode
-    x2apic_write(X2APIC_LVT_TIMER, lvt_timer);
+    // First mask the timer to prevent spurious interrupts during configuration
+    x2apic_write(X2APIC_LVT_TIMER, (1 << 16)); // Masked
+
+    // Set the divisor before initializing the count
     x2apic_write(X2APIC_TIMER_DIV, 0x3); // Divide by 16
+
+    // Set the initial count (this also resets the current count)
     x2apic_write(X2APIC_TIMER_INIT_CNT, ticks_per_target);
 
-    printk(APIC_CLASS "Timer configured: LVT=0x%x, Ticks=%u\n", lvt_timer, ticks_per_target);
+    // Start Timer: Periodic, Interrupt Vector 32, Unmasked
+    uint32_t lvt_timer = 32 | (1 << 17) | (0 << 16); // Vector 32, Periodic mode, Unmasked
+    x2apic_write(X2APIC_LVT_TIMER, lvt_timer);
+
+    printk(APIC_CLASS "Timer configured: LVT=0x%x, Ticks=%u, Div=0x3\n", lvt_timer, ticks_per_target);
 }
 
 static void x2apic_shutdown_op(void) {

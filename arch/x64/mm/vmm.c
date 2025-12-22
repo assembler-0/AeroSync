@@ -19,6 +19,7 @@
  */
 
 #include <arch/x64/cpu.h>
+#include <arch/x64/mm/paging.h>
 #include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/vmm.h>
 #include <kernel/classes.h>
@@ -26,7 +27,7 @@
 #include <kernel/spinlock.h>
 #include <lib/printk.h>
 #include <lib/string.h>
-#include <arch/x64/mm/paging.h>
+#include <mm/vma.h>
 
 // Global kernel PML4 (physical address)
 uint64_t g_kernel_pml4 = 0;
@@ -282,6 +283,10 @@ void vmm_init(void) {
 
   // Reload CR3
   vmm_switch_pml4(g_kernel_pml4);
+
+  // Initialize kernel mm_struct
+  mm_init(&init_mm);
+  init_mm.pml4 = (uint64_t *)g_kernel_pml4;
 
   printk(VMM_CLASS "VMM Initialized and switched to new Page Table.\n");
 }

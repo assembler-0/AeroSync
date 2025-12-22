@@ -80,8 +80,15 @@ static void smp_ap_entry(struct limine_mp_info *info) {
 
   printk(SMP_CLASS "CPU LAPIC ID %u online.\n", info->lapic_id);
 
-  // Idle loop for now
+  // Initialize scheduler for this AP
+  sched_init_ap();
+
+  // Enable interrupts for this CPU
+  cpu_sti();
+
+  // Scheduler Loop
   while (1) {
+    check_preempt();
     cpu_hlt();
   }
 }
@@ -144,6 +151,15 @@ void smp_init(void) {
 uint64_t smp_get_cpu_count(void) { return cpu_count; }
 
 uint64_t smp_get_id(void) {
-  // Use Local APIC ID when available
-  return (uint64_t)lapic_get_id();
+  // Use Local APIC ID
+  uint8_t lapic_id = lapic_get_id();
+
+  // Find logical ID from physical APIC ID
+  for (uint64_t i = 0; i < cpu_count; i++) {
+    if (per_cpu_apic_id[i] == (int)lapic_id) {
+      return i;
+    }
+  }
+
+  return 0; // Fallback to 0
 }
