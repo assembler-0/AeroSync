@@ -207,7 +207,7 @@ if (BOCHS)
 	        @ONLY
 	)
 
-	add_custom_target(run-bochs-bios
+	add_custom_target(bochs-run
 	        COMMAND ${BOCHS} -q -f ${BOCHS_CONFIG}
 	        DEPENDS iso
 	        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}

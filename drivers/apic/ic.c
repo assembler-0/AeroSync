@@ -10,7 +10,7 @@
 static interrupt_controller_interface_t *current_controller = NULL;
 static const interrupt_controller_interface_t *registered_controllers[MAX_CONTROLLERS];
 static size_t num_registered_controllers = 0;
-static uint32_t timer_frequency_hz = 100; // default - can be changed at runtime
+static uint32_t timer_frequency_hz = IC_DEFAULT_TICK; // default - can be changed at runtime
 
 void ic_register_controller(const interrupt_controller_interface_t* controller) {
     if (num_registered_controllers >= MAX_CONTROLLERS) {
@@ -62,6 +62,19 @@ interrupt_controller_t ic_install(void) {
         printk(KERN_INFO PIC_CLASS "PIC initialized successfully\n");
     }
     return current_controller->type;
+}
+
+
+void ic_ap_init(void) {
+    if (!current_controller) {
+        panic(IC_CLASS "IC not initialized on BSP before AP init");
+    }
+
+    if (current_controller->init_ap) {
+        if (!current_controller->init_ap()) {
+            panic(IC_CLASS "Failed to initialize interrupt controller on AP");
+        }
+    }
 }
 
 void ic_shutdown_controller(void) {

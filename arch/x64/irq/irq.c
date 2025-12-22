@@ -20,6 +20,7 @@
 
 #include <lib/printk.h>
 #include <arch/x64/cpu.h>
+#include <arch/x64/irq.h>
 #include <drivers/apic/ic.h>
 #include <kernel/panic.h>
 #include <kernel/sched/sched.h>
@@ -29,7 +30,6 @@
 
 extern void irq_sched_ipi_handler(void);
 
-typedef void (*irq_handler_t)(cpu_regs *regs);
 static irq_handler_t irq_handlers[MAX_INTERRUPTS];
 
 void irq_install_handler(uint8_t vector, irq_handler_t handler) {

@@ -21,6 +21,7 @@
 #include <arch/x64/cpu.h>
 #include <arch/x64/tsc.h>
 #include <drivers/timer/time.h>
+#include <kernel/classes.h>
 #include <kernel/panic.h>
 #include <lib/printk.h>
 
@@ -96,10 +97,17 @@ const char *time_get_source_name(void) {
 }
 
 void time_wait_ns(uint64_t ns) {
+  if (ns == 0)
+    return;
+
+  // Prefer TSC delay if it has been calibrated, as it's low overhead
+  if (get_tsc_freq() > 0) {
+    tsc_delay(ns);
+    return;
+  }
+
   if (!current_time_source) {
-    // Fallback or early boot safety?
-    // Maybe panic or just spin a bit?
-    // Very crude spin loop if no timer
+    // Very crude fallback early in boot
     volatile uint64_t count = ns / 10;
     while (count--)
       cpu_relax();
@@ -109,41 +117,16 @@ void time_wait_ns(uint64_t ns) {
   uint64_t freq = current_time_source->get_frequency();
   uint64_t start_count = current_time_source->read_counter();
 
-  // ticks = (ns * freq) / 1,000,000,000
-  // Be careful with overflow.
-  // If ns is large, this might overflow uint64 if freq is high.
-  // HPET freq is ~14MHz, ns can be up to ~10^18 without overflowing 64-bit
-  // logic mostly okay. 1 sec = 10^9 ns. 14*10^6 * 10^9 = 1.4 * 10^16. uint64
-  // max is 1.8 * 10^19. Safe for reasonable waits.
-
   uint64_t ticks_needed = (ns * freq) / 1000000000ULL;
   if (ticks_needed == 0 && ns > 0)
-    ticks_needed = 1; // Minimum wait
+    ticks_needed = 1;
 
   while (1) {
     uint64_t current_count = current_time_source->read_counter();
 
-    // Handle potential wrapping if the counter is 32-bit or small,
-    // but most hardware counters we use (PIT/HPET) handle wrap or we assume
-    // 64-bit abstract. For PIT (downcounter) this logic needs to be careful if
-    // we implement read_counter as 0-MAX or MAX-0. Standardize: read_counter
-    // returns an UP-counting value (or raw value that we know how to diff).
-    // Let's assume read_counter returns a monotonic increasing value (handling
-    // hardware wrap in driver if needed, or if it's large enough). Both HPET
-    // and TSC are up-counters. PIT is down, so PIT driver should invert or we
-    // handle it. Suggestion: Driver returns monotonic up-counter (emulated if
-    // needed).
-
-    if (current_count >=
-        start_count + ticks_needed) { // Basic check, inaccurate on wrap
+    // Standard wrap-around safe difference for up-counters
+    if ((current_count - start_count) >= ticks_needed) {
       break;
-    }
-
-    // Wrap handling: if current < start, we wrapped.
-    if (current_count < start_count) {
-      uint64_t delta = (UINT64_MAX - start_count) + current_count + 1;
-      if (delta >= ticks_needed)
-        break;
     }
 
     cpu_relax();

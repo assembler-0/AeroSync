@@ -52,12 +52,13 @@
 #include <drivers/timer/pit.h>
 
 // Set Limine Request Start Marker
-__attribute__((used,
-               section(".limine_requests_start"))) static volatile uint64_t
+__attribute__((used, section(".limine_requests_start"))) static volatile uint64_t
     limine_requests_start_marker[] = LIMINE_REQUESTS_START_MARKER;
 
 // Set Limine Base Revision to 3
-__attribute__((used, section(".limine_requests"))) static volatile uint64_t
+__attribute__((
+    used,
+    section(".limine_requests"))) static volatile uint64_t
     limine_base_revision[3] = LIMINE_BASE_REVISION(4);
 
 // Request framebuffer
@@ -75,8 +76,7 @@ __attribute__((
 // Request paging mode
 __attribute__((
     used,
-    section(
-        ".limine_requests"))) static volatile struct limine_paging_mode_request
+    section(".limine_requests"))) static volatile struct limine_paging_mode_request
     paging_request = {.id = LIMINE_PAGING_MODE_REQUEST_ID,
                       .revision = 0,
                       .mode = LIMINE_PAGING_MODE_X86_64_4LVL};
@@ -154,7 +154,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   // check if we recived 4-level paging mode
   if (!paging_request.response ||
       paging_request.response->mode != LIMINE_PAGING_MODE_X86_64_4LVL) {
-    panic(KERN_CLASS "4-level paging mode not enabled");
+    panic(KERN_CLASS "4-level paging mode not enabled or paging mode request not found");
   }
 
   printk_init_auto(NULL);
@@ -168,28 +168,30 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   if (bootloader_info_request.response &&
       bootloader_performance_request.response) {
     printk(KERN_CLASS
-           "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
-           bootloader_info_request.response->name
-               ? bootloader_info_request.response->name
-               : "(null)",
-           bootloader_info_request.response->version
-               ? bootloader_info_request.response->version
-               : "(null-version)",
-           bootloader_performance_request.response->exec_usec,
-           bootloader_performance_request.response->init_usec);
+       "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
+       bootloader_info_request.response->name
+           ? bootloader_info_request.response->name
+           : "(null)",
+       bootloader_info_request.response->version
+           ? bootloader_info_request.response->version
+           : "(null-version)",
+       bootloader_performance_request.response->exec_usec,
+       bootloader_performance_request.response->init_usec
+    );
   }
 
   if (fw_request.response) {
     printk(FW_CLASS "firmware type: %s\n",
-           fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI64
-               ? "UEFI (64-bit)"
-           : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI32
-               ? "UEFI (32-bit)"
-           : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_X86BIOS
-               ? "BIOS (x86)"
-           : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_SBI
-               ? "SBI"
-               : "(unknown)");
+       fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI64
+           ? "UEFI (64-bit)"
+       : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI32
+           ? "UEFI (32-bit)"
+       : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_X86BIOS
+           ? "BIOS (x86)"
+       : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_SBI
+           ? "SBI"
+           : "(unknown)"
+    );
   }
 
   if (cmdline_request.response) {
@@ -246,7 +248,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     smp_init();
   crc32_init();
   vfs_init();
-
   if (module_request.response && module_request.response->module_count > 0) {
     struct limine_file *initrd_module = module_request.response->modules[0];
     printk(INITRD_CLASS "Found module '%s' at %p, size %lu\n",

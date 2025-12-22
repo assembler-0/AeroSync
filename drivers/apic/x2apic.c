@@ -51,7 +51,6 @@
 
 // --- Globals ---
 static spinlock_t x2apic_ipi_lock;
-volatile uint32_t x2apic_timer_hz = 0;
 
 // --- x2APIC MSR Access Functions ---
 
@@ -145,71 +144,40 @@ static int x2apic_init_lapic(void) {
     // Enable x2APIC mode: set both APIC Global Enable and x2APIC Enable bits
     wrmsr(APIC_BASE_MSR, lapic_base_msr | APIC_BASE_MSR_ENABLE | APIC_BASE_MSR_X2APIC_ENABLE);
 
+    // Add a small delay to ensure x2APIC is ready before register access
+    // Different emulators have different timing requirements
+    for (volatile int i = 0; i < 1000; i++) {
+        __asm__ volatile("nop" ::: "memory");
+    }
+
     // Verify x2APIC is enabled by reading the version register
     uint64_t version = x2apic_read(X2APIC_VERSION);
-    printk(APIC_CLASS "Version: 0x%llx\n", version & 0xFF);
+    if ((version & 0xFF) == 0 || (version & 0xFF) == 0xFF) {
+        printk(KERN_ERR APIC_CLASS "x2APIC not responding after enable (version: 0x%llx)\n", version & 0xFF);
+        return 0;
+    }
+
+    printk(APIC_CLASS "x2APIC Version: 0x%llx\n", version & 0xFF);
 
     // Set Spurious Interrupt Vector (0xFF) and enable APIC (bit 8)
     x2apic_write(X2APIC_SVR, 0x1FF);
 
     // Set TPR to 0 to accept all interrupts
     x2apic_write(X2APIC_TPR, 0);
-    
+
     return 1;
 }
 
-static void x2apic_timer_set_frequency_op(uint32_t frequency_hz) {
-    if (frequency_hz == 0)
-        return;
+static void x2apic_timer_set_frequency_op(uint32_t ticks_per_target) {
+    if (ticks_per_target == 0) return;
 
-    x2apic_timer_hz = frequency_hz;
-
-    // Use PIT to calibrate
-    // 1. Prepare LAPIC Timer: Divide by 16, One-shot, Masked
-    x2apic_write(X2APIC_TIMER_DIV, 0x3);       // Divide by 16
-    x2apic_write(X2APIC_LVT_TIMER, (1 << 16)); // Masked
-
-    // 2. Prepare PIT: Channel 2, Mode 0, Rate = 11931 (approx 10ms)
-    // 1193182 Hz / 11931 ~= 100 Hz (10ms)
-    uint16_t pit_reload = 11931;
-    outb(0x61, (inb(0x61) & 0xFD) | 1); // Gate high
-    outb(0x43, 0xB0);                   // Channel 2, Access Lo/Hi, Mode 0, Binary
-    outb(0x42, pit_reload & 0xFF);
-    outb(0x42, (pit_reload >> 8) & 0xFF);
-
-    // 3. Reset APIC Timer to -1
-    x2apic_write(X2APIC_TIMER_INIT_CNT, 0xFFFFFFFF);
-
-    // 4. Wait for PIT to wrap (10ms)
-    while (!(inb(0x61) & 0x20))
-        ;
-
-    // 5. Stop APIC timer
-    x2apic_write(X2APIC_LVT_TIMER, (1 << 16));
-
-    // 6. Calculate ticks
-    uint64_t ticks_in_10ms = 0xFFFFFFFF - x2apic_read(X2APIC_TIMER_CUR_CNT);
-
-    // 7. Calculate ticks per period for target frequency
-    // ticks_in_10ms corresponds to 100Hz (0.01s)
-    // ticks_per_sec = ticks_in_10ms * 100
-    // target = ticks_per_sec / frequency_hz
-    uint32_t ticks_per_target = (ticks_in_10ms * 100) / frequency_hz;
-
-    // 8. Start Timer: Periodic, Interrupt Vector 32, Unmasked
-    // Bit 17 = 1 for Periodic mode, Bit 16 = 0 for Unmasked
-    uint32_t lvt_timer = 32 | (1 << 17); // Vector 32, Periodic mode, Unmasked
+    // Start Timer: Periodic, Interrupt Vector 32, Unmasked
+    uint32_t lvt_timer = 32 | (1 << 17); // Vector 32, Periodic mode
     x2apic_write(X2APIC_LVT_TIMER, lvt_timer);
     x2apic_write(X2APIC_TIMER_DIV, 0x3); // Divide by 16
     x2apic_write(X2APIC_TIMER_INIT_CNT, ticks_per_target);
 
-    printk(APIC_CLASS "Timer configured: LVT=0x%x, Ticks=%u\n", lvt_timer,
-           ticks_per_target);
-}
-
-static void x2apic_timer_init_op(uint32_t frequency_hz) {
-    x2apic_timer_set_frequency_op(frequency_hz);
-    printk(APIC_CLASS "Timer installed at %d Hz.\n", frequency_hz);
+    printk(APIC_CLASS "Timer configured: LVT=0x%x, Ticks=%u\n", lvt_timer, ticks_per_target);
 }
 
 static void x2apic_shutdown_op(void) {
@@ -231,7 +199,7 @@ const struct apic_ops x2apic_ops = {
     .send_eoi = x2apic_send_eoi_op,
     .send_ipi = x2apic_send_ipi_op,
     .get_id = x2apic_get_id_raw,
-    .timer_init = x2apic_timer_init_op,
+    .timer_init = NULL,
     .timer_set_frequency = x2apic_timer_set_frequency_op,
     .shutdown = x2apic_shutdown_op,
     .read = x2apic_read_op,

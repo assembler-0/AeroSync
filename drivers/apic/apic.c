@@ -11,6 +11,7 @@
 
 #include <arch/x64/cpu.h>
 #include <arch/x64/smp.h>
+#include <arch/x64/io.h>
 #include <drivers/apic/apic.h>
 #include <drivers/apic/apic_internal.h>
 #include <drivers/apic/ioapic.h>
@@ -20,29 +21,50 @@
 #include <kernel/classes.h>
 #include <lib/printk.h>
 #include <drivers/apic/pic.h>
+#include <drivers/apic/xapic.h>
+#include <drivers/apic/x2apic.h>
+
+// --- Register Definitions for Calibration ---
+// xAPIC MMIO Offsets
+#define XAPIC_LVT_TIMER_REG 0x0320
+#define XAPIC_TIMER_INIT_COUNT_REG 0x0380
+#define XAPIC_TIMER_CUR_COUNT_REG 0x0390
+#define XAPIC_TIMER_DIV_REG 0x03E0
+
+// x2APIC MSRs
+#define X2APIC_LVT_TIMER_MSR 0x832
+#define X2APIC_TIMER_INIT_CNT_MSR 0x838
+#define X2APIC_TIMER_CUR_CNT_MSR 0x839
+#define X2APIC_TIMER_DIV_MSR 0x83E
+
+struct apic_timer_regs {
+    uint32_t lvt_timer;
+    uint32_t init_count;
+    uint32_t cur_count;
+    uint32_t div;
+};
 
 // --- Constants ---
 #define MAX_IRQ_OVERRIDES 16
 
 // --- Global Variables (Consolidated) ---
-
-// These are accessed by xapic.c (via extern)
 uacpi_u64 xapic_madt_lapic_override_phys = 0;   // 0 if not provided
 int xapic_madt_parsed = 0;
-
-// IOAPIC physical address (used internally here)
 static uacpi_u32 apic_madt_ioapic_phys = 0;
-
-// Interrupt Overrides
 struct acpi_madt_interrupt_source_override apic_irq_overrides[MAX_IRQ_OVERRIDES];
 int apic_num_irq_overrides = 0;
-
-// Current APIC Ops
 static const struct apic_ops *current_ops = NULL;
+static uint32_t apic_calibrated_ticks = 0;
+
 
 // --- Forward Declarations ---
 static int detect_apic(void);
 static void apic_parse_madt(void);
+static void apic_timer_calibrate(const struct apic_timer_regs *regs);
+static void apic_shutdown(void);
+void apic_timer_set_frequency(uint32_t frequency_hz);
+int apic_init_ap(void);
+
 
 // --- APIC Mode Detection and Selection ---
 
@@ -106,14 +128,10 @@ static void apic_parse_madt(void) {
 
 int apic_init(void) {
     pic_mask_all();
-
-    // Parse MADT via uACPI
     apic_parse_madt();
 
-    // Select Driver
     if (detect_x2apic()) {
         printk(APIC_CLASS "x2APIC mode supported, attempting to enable\n");
-        // Try x2APIC
         if (x2apic_ops.init_lapic()) {
             current_ops = &x2apic_ops;
             printk(APIC_CLASS "x2APIC mode enabled\n");
@@ -121,7 +139,6 @@ int apic_init(void) {
     }
     
     if (!current_ops) {
-        // Fallback or default to xAPIC
         if (xapic_ops.init_lapic()) {
             current_ops = &xapic_ops;
             printk(APIC_CLASS "xAPIC mode enabled\n");
@@ -133,7 +150,25 @@ int apic_init(void) {
         return 0;
     }
 
-    // Initialize I/O APIC
+    // Calibrate timer with mode-specific registers
+    if (current_ops == &x2apic_ops) {
+        const struct apic_timer_regs regs = {
+            .lvt_timer = X2APIC_LVT_TIMER_MSR,
+            .init_count = X2APIC_TIMER_INIT_CNT_MSR,
+            .cur_count = X2APIC_TIMER_CUR_CNT_MSR,
+            .div = X2APIC_TIMER_DIV_MSR
+        };
+        apic_timer_calibrate(&regs);
+    } else {
+        const struct apic_timer_regs regs = {
+            .lvt_timer = XAPIC_LVT_TIMER_REG,
+            .init_count = XAPIC_TIMER_INIT_COUNT_REG,
+            .cur_count = XAPIC_TIMER_CUR_COUNT_REG,
+            .div = XAPIC_TIMER_DIV_REG
+        };
+        apic_timer_calibrate(&regs);
+    }
+    
     uint64_t ioapic_phys = apic_madt_ioapic_phys 
                          ? (uint64_t)apic_madt_ioapic_phys 
                          : (uint64_t)IOAPIC_DEFAULT_PHYS_ADDR;
@@ -144,6 +179,14 @@ int apic_init(void) {
     }
 
     return 1;
+}
+
+int apic_init_ap(void) {
+    if (!current_ops || !current_ops->init_lapic) {
+        printk(KERN_ERR APIC_CLASS "APIC driver not initialized on BSP.\n");
+        return 0;
+    }
+    return current_ops->init_lapic();
 }
 
 int apic_probe(void) {
@@ -157,8 +200,6 @@ void apic_send_eoi(const uint32_t irn) {
 
 void apic_send_ipi(uint8_t dest_apic_id, uint8_t vector, uint32_t delivery_mode) {
     if (current_ops && current_ops->send_ipi) {
-        // We pass the 8-bit dest_apic_id. The driver handles format.
-        // x2APIC driver expects 32-bit ID, but 8-bit fits in 32-bit.
         current_ops->send_ipi((uint32_t)dest_apic_id, vector, delivery_mode);
     }
 }
@@ -171,15 +212,11 @@ uint8_t lapic_get_id(void) {
 }
 
 void apic_enable_irq(uint8_t irq_line) {
-    // 1. Get Destination Local APIC ID
-    // We route to the current CPU (BSP or whoever enabled it).
-    // Typically BSP for legacy IRQs.
     uint32_t dest_apic_id = 0;
     if (current_ops && current_ops->get_id) {
         dest_apic_id = current_ops->get_id();
     }
 
-    // 2. Resolve GSI and Flags from Overrides
     uint32_t gsi = irq_line;
     uint16_t flags = 0;
 
@@ -191,17 +228,11 @@ void apic_enable_irq(uint8_t irq_line) {
         }
     }
 
-    // 3. Determine if we are in x2APIC mode for IOAPIC format
-    // If current_ops is x2apic_ops, we use x2apic format.
     int is_x2apic = (current_ops == &x2apic_ops);
-
-    // 4. Call IOAPIC driver
-    // Vector = 32 + irq_line
-    ioapic_set_gsi_redirect(gsi, 32 + irq_line, dest_apic_id, flags, 0 /* physical */, is_x2apic);
+    ioapic_set_gsi_redirect(gsi, 32 + irq_line, dest_apic_id, flags, 0, is_x2apic);
 }
 
 void apic_disable_irq(uint8_t irq_line) {
-    // Resolve GSI
     uint32_t gsi = irq_line;
     for (int i = 0; i < apic_num_irq_overrides; i++) {
         if (apic_irq_overrides[i].source == irq_line) {
@@ -216,14 +247,34 @@ void apic_mask_all(void) {
     ioapic_mask_all();
 }
 
-void apic_timer_init(uint32_t frequency_hz) {
-    if (current_ops && current_ops->timer_init)
-        current_ops->timer_init(frequency_hz);
+static void apic_timer_calibrate(const struct apic_timer_regs *regs) {
+    if (!current_ops || !current_ops->write || !current_ops->read) return;
+
+    current_ops->write(regs->div, 0x3); 
+    current_ops->write(regs->lvt_timer, (1 << 16));
+
+    uint16_t pit_reload = 11931;
+    outb(0x61, (inb(0x61) & 0xFD) | 1);
+    outb(0x43, 0xB0);
+    outb(0x42, pit_reload & 0xFF);
+    outb(0x42, (pit_reload >> 8) & 0xFF);
+
+    current_ops->write(regs->init_count, 0xFFFFFFFF);
+    while (!(inb(0x61) & 0x20));
+
+    current_ops->write(regs->lvt_timer, (1 << 16));
+    apic_calibrated_ticks = 0xFFFFFFFF - current_ops->read(regs->cur_count);
+    printk(APIC_CLASS "Calibrated timer: %u ticks in 10ms.\n", apic_calibrated_ticks);
 }
 
 void apic_timer_set_frequency(uint32_t frequency_hz) {
-    if (current_ops && current_ops->timer_set_frequency)
-        current_ops->timer_set_frequency(frequency_hz);
+    if (frequency_hz == 0 || apic_calibrated_ticks == 0) return;
+
+    uint32_t ticks_per_target = (apic_calibrated_ticks * 100) / frequency_hz;
+
+    if (current_ops && current_ops->timer_set_frequency) {
+        current_ops->timer_set_frequency(ticks_per_target);
+    }
 }
 
 static void apic_shutdown(void) {
@@ -237,7 +288,8 @@ static const interrupt_controller_interface_t apic_interface = {
     .type = INTC_APIC,
     .probe = apic_probe,
     .install = apic_init,
-    .timer_set = apic_timer_init,
+    .init_ap = apic_init_ap,
+    .timer_set = apic_timer_set_frequency,
     .enable_irq = apic_enable_irq,
     .disable_irq = apic_disable_irq,
     .send_eoi = apic_send_eoi,

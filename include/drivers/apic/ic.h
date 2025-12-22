@@ -14,20 +14,24 @@ typedef enum {
 
 typedef struct {
   interrupt_controller_t type;
-  int (*probe)(void);
-  int (*install)(void);
-  void (*timer_set)(uint32_t frequency_hz);
-  void (*enable_irq)(uint8_t irq_line);
-  void (*disable_irq)(uint8_t irq_line);
-  void (*send_eoi)(uint32_t interrupt_number);
-  void (*mask_all)(void);
-  void (*shutdown)(void);
+  fn(int, probe, void);
+  fn(int, install, void);
+  fn(int, init_ap, void);
+  fn(void, timer_set, uint32_t frequency_hz);
+  fn(void, enable_irq, uint8_t irq_line);
+  fn(void, disable_irq, uint8_t irq_line);
+  fn(void, send_eoi, uint32_t interrupt_number);
+  fn(void, mask_all, void);
+  fn(void, shutdown, void);
   uint32_t priority;
 } interrupt_controller_interface_t;
+
+#define IC_DEFAULT_TICK 100
 
 // Unified interrupt controller interface
 void ic_register_controller(const interrupt_controller_interface_t* controller);
 interrupt_controller_t ic_install(void); // returns initialized controller type
+void ic_ap_init(void);
 void ic_shutdown_controller(void);
 void ic_enable_irq(uint8_t irq_line);
 void ic_disable_irq(uint8_t irq_line);

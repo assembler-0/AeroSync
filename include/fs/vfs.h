@@ -1,5 +1,4 @@
-#ifndef VFS_H
-#define VFS_H
+#pragma once
 
 #include <kernel/types.h>
 #include <kernel/spinlock.h>
@@ -151,19 +150,19 @@ struct file {
 
 // struct file_operations: Operations for an open file
 struct file_operations {
-    vfs_off_t (*llseek) (struct file *file, vfs_off_t offset, int whence);
-    ssize_t (*read)     (struct file *file, char *buf, size_t count, vfs_loff_t *ppos);
-    ssize_t (*write)    (struct file *file, const char *buf, size_t count, vfs_loff_t *ppos);
-    int (*open)         (struct inode *inode, struct file *file);
-    int (*release)      (struct inode *inode, struct file *file);
+    fn(vfs_off_t, llseek, struct file *file, vfs_off_t offset, int whence);
+    fn(ssize_t, read, struct file *file, char *buf, size_t count, vfs_loff_t *ppos);
+    fn(ssize_t, write, struct file *file, const char *buf, size_t count, vfs_loff_t *ppos);
+    fn(int, open, struct inode *inode, struct file *file);
+    fn(int, release, struct inode *inode, struct file *file);
     // Add more operations as needed, e.g., ioctl, mmap, poll, etc.
 };
 
 // struct inode_operations: Operations for an inode
 struct inode_operations {
-    int (*create)       (struct inode *dir, struct dentry *dentry, vfs_mode_t mode);
-    struct dentry *(*lookup)    (struct inode *dir, struct dentry *dentry, uint32_t flags);
-    int (*link)         (struct dentry *old_dentry, struct inode *dir, struct dentry *new_dentry);
+    fn(int, create, struct inode *dir, struct dentry *dentry, vfs_mode_t mode);
+    fn(struct dentry *, lookup, struct inode *dir, struct dentry *dentry, uint32_t flags);
+    fn(int, link, struct dentry *old_dentry, struct inode *dir, struct dentry *new_dentry);
     int (*unlink)       (struct inode *dir, struct dentry *dentry);
     int (*mkdir)        (struct inode *dir, struct dentry *dentry, vfs_mode_t mode);
     int (*rmdir)        (struct inode *dir, struct dentry *dentry);
@@ -196,5 +195,3 @@ struct file_system_type {
 void vfs_init(void);
 int register_filesystem(struct file_system_type *fs_type);
 int unregister_filesystem(struct file_system_type *fs_type);
-
-#endif // VFS_H

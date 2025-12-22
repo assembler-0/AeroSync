@@ -234,8 +234,11 @@ void *viomap(uint64_t phys_addr, size_t size) {
     // Since vmm_map_page maps one page, we loop.
     for (uint64_t i = 0; i < page_aligned_size; i += PAGE_SIZE) {
         vmm_map_page(g_kernel_pml4, virt_start + i, phys_start + i, 
-                     PTE_PRESENT | PTE_RW | PTE_PCD); // PCD for Cache Disable (IO)
+                     PTE_PRESENT | PTE_RW | PTE_PCD | PTE_PWT); // Strong Uncacheable for IO
     }
+
+    // Ensure page table updates are fully visible before returning
+    __asm__ volatile("mfence" ::: "memory");
 
     return (void *)(virt_start + offset);
 }

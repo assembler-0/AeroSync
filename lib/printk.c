@@ -19,7 +19,7 @@
  */
 
 #include <arch/x64/io.h>
-#include <drivers/uart/serial.h>
+#include <lib/log.h>
 #include <kernel/classes.h>
 #include <kernel/types.h>
 #include <lib/printk.h>

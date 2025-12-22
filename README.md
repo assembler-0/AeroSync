@@ -12,6 +12,16 @@
 
 VoidFrameX is a monolithic, higher-half, 64-bit x86_64 kernel built for modern systems. It is designed with a focus on a clean architecture and draws inspiration from the Linux kernel for many of its subsystems.
 
+## Status
+
+| Platform | Status | Performance |
+| :--- | :--- | :--- |
+| **VMware Workstation Pro 25H2** | ![](https://img.shields.io/badge/PASSED-success?style=flat-square&logo=vmware) | High |
+| **QEMU 10.1.2** | ![](https://img.shields.io/badge/PASSED-success?style=flat-square&logo=qemu) | High |
+| **Bochs 3.0.devel** | ![](https://img.shields.io/badge/PASSED-brightgreen?style=flat-square&logo=x86) | Low |
+| **Oracle VirtualBox 7.2.4r170995** | ![](https://img.shields.io/badge/PASSED-success?style=flat-square&logo=virtualbox) | High |
+| **Intel Alder Lake CPU** | ![](https://img.shields.io/badge/PASSED-success?style=flat-square&logo=intel) | High |
+
 ## Features
 
 *   **x86-64 Monolithic Kernel:** A full-featured 64-bit kernel.

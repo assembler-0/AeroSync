@@ -1,19 +1,15 @@
 #pragma once
 
 #include <kernel/types.h>
-#include <lib/log.h>
-
-typedef int (*printk_backend_probe)(void);
-typedef int (*printk_backend_init)(void *payload);
 
 typedef struct printk_backend {
   const char *name;
   int priority;              // bigger = preferred
-  log_sink_putc_t putc;
-  printk_backend_probe probe;
-  printk_backend_init init;
-  void (*cleanup)(void);
-  int (*is_active)(void);
+  fn(void, putc, char c);
+  fn(int, probe, void);
+  fn(int, init, void *payload);
+  fn(void, cleanup, void);
+  fn(int, is_active, void);
 } printk_backend_t;
 
 static int generic_backend_init(void *payload) { (void)payload; return 1; }
