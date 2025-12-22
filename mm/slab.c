@@ -181,7 +181,7 @@ int slab_init(void) {
   }
 
   slab_initialized = true;
-  printk(SLAB_CLASS "Slab allocator initialized (VMM-based)\n");
+  printk(SLAB_CLASS "Slab allocator initialized\n");
   return 0;
 }
 

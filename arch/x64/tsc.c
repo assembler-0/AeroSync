@@ -39,8 +39,7 @@ uint64_t tsc_freq_get() {
         tsc_freq = 2500000000ULL; // 2.5 GHz safe default/fallback
         tsc_boot_offset = rdtsc();
 
-        printk(KERN_WARNING TSC_CLASS
-               "TSC calibration failed, assuming 2.5 GHz\n");
+        printk(KERN_WARNING TSC_CLASS "TSC calibration failed, assuming 2.5 GHz\n");
       }
     }
   }
@@ -55,7 +54,7 @@ uint64_t calibrate_tsc(void) { return tsc_freq_get(); }
 void tsc_recalibrate_with_freq(uint64_t new_freq) {
   if (new_freq > 0) {
     tsc_freq = new_freq;
-    printk(TSC_CLASS "TSC recalibrated to %lu Hz\n", tsc_freq);
+    printk(KERN_DEBUG TSC_CLASS "TSC recalibrated to %lu Hz\n", tsc_freq);
   }
 }
 

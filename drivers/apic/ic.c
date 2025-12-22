@@ -17,6 +17,8 @@ void ic_register_controller(const interrupt_controller_interface_t* controller) 
         printk(KERN_WARNING IC_CLASS "Max interrupt controllers registered, ignoring.\n");
         return;
     }
+    printk(IC_CLASS "Registered interrupt controller type %d (prio: %d)\n",
+           controller->type, controller->priority);
     registered_controllers[num_registered_controllers++] = controller;
 }
 

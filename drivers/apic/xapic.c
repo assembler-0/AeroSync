@@ -88,11 +88,11 @@ static int xapic_init_lapic(void) {
       // Accessed via global from apic.c (extern in xapic.h)
       if (xapic_madt_parsed && xapic_madt_lapic_override_phys) {
     lapic_phys_base = (uint64_t)xapic_madt_lapic_override_phys;
-    printk(APIC_CLASS "LAPIC base overridden by MADT: 0x%llx\n",
+    printk(KERN_DEBUG APIC_CLASS "LAPIC base overridden by MADT: 0x%llx\n",
            lapic_phys_base);
   }
 
-  printk(APIC_CLASS "LAPIC Physical Base: 0x%llx\n", lapic_phys_base);
+  printk(KERN_DEBUG APIC_CLASS "LAPIC Physical Base: 0x%llx\n", lapic_phys_base);
 
   // Map the LAPIC into virtual memory
   xapic_lapic_base = (volatile uint32_t *)viomap(lapic_phys_base, PAGE_SIZE);
@@ -102,7 +102,7 @@ static int xapic_init_lapic(void) {
     return 0;
   }
 
-  printk(APIC_CLASS "LAPIC Mapped at: 0x%llx\n", (uint64_t)xapic_lapic_base);
+  printk(KERN_DEBUG APIC_CLASS "LAPIC Mapped at: 0x%llx\n", (uint64_t)xapic_lapic_base);
 
   // Enable the LAPIC
   wrmsr(APIC_BASE_MSR, lapic_base_msr | APIC_BASE_MSR_ENABLE);
@@ -122,7 +122,7 @@ static int xapic_init_lapic(void) {
     return 0;
   }
 
-  printk(APIC_CLASS "LAPIC Version: 0x%x\n", version);
+  printk(KERN_DEBUG APIC_CLASS "LAPIC Version: 0x%x\n", version);
 
   // Set Spurious Interrupt Vector (0xFF) and enable APIC (bit 8)
   xapic_write(XAPIC_SVR, 0x1FF);
@@ -194,7 +194,7 @@ static void xapic_timer_set_frequency_op(uint32_t ticks_per_target) {
   uint32_t lvt_timer = 32 | (1 << 17) | (0 << 16); // Vector 32, Periodic mode, Unmasked
   xapic_write(XAPIC_LVT_TIMER, lvt_timer);
 
-  printk(APIC_CLASS "Timer configured: LVT=0x%x, Ticks=%u, Div=0x3\n", lvt_timer,
+  printk(KERN_DEBUG APIC_CLASS "Timer configured: LVT=0x%x, Ticks=%u, Div=0x3\n", lvt_timer,
          ticks_per_target);
 }
 
@@ -211,14 +211,15 @@ static void xapic_shutdown_op(void) {
   wrmsr(APIC_BASE_MSR, lapic_base_msr & ~APIC_BASE_MSR_ENABLE);
 }
 
-const struct apic_ops xapic_ops = {.name = "xAPIC",
-                                   .init_lapic = xapic_init_lapic,
-                                   .send_eoi = xapic_send_eoi_op,
-                                   .send_ipi = xapic_send_ipi_op,
-                                   .get_id = xapic_get_id_raw,
-                                   .timer_init = NULL,
-                                   .timer_set_frequency =
-                                       xapic_timer_set_frequency_op,
-                                   .shutdown = xapic_shutdown_op,
-                                   .read = xapic_read,
-                                   .write = xapic_write};
+const struct apic_ops xapic_ops = {
+  .name = "xAPIC",
+  .init_lapic = xapic_init_lapic,
+  .send_eoi = xapic_send_eoi_op,
+  .send_ipi = xapic_send_ipi_op,
+  .get_id = xapic_get_id_raw,
+  .timer_init = NULL,
+  .timer_set_frequency = xapic_timer_set_frequency_op,
+  .shutdown = xapic_shutdown_op,
+  .read = xapic_read,
+  .write = xapic_write
+};

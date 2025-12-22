@@ -146,8 +146,8 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
 
   g_hhdm_offset = hhdm_offset;
 
-  printk(PMM_CLASS "Initializing with HHDM offset: 0x%llx\n", hhdm_offset);
-  printk(PMM_CLASS "Memory map has %llu entries\n", memmap->entry_count);
+  printk(KERN_DEBUG PMM_CLASS "Initializing with HHDM offset: 0x%llx\n", hhdm_offset);
+  printk(KERN_DEBUG PMM_CLASS "Memory map has %llu entries\n", memmap->entry_count);
 
   // First pass: Find highest physical address to determine bitmap size
   uint64_t highest_addr = 0;
@@ -170,7 +170,7 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
     }
   }
 
-  printk(PMM_CLASS "Detected highest address: 0x%llx\n", highest_addr);
+  printk(KERN_DEBUG PMM_CLASS "Detected highest address: 0x%llx\n", highest_addr);
   printk(PMM_CLASS "Total usable memory: %llu MB\n",
          total_usable_bytes / (1024 * 1024));
 
@@ -184,8 +184,8 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
   uint64_t bitmap_bytes = pmm_bitmap_size_words * sizeof(unsigned long);
   uint64_t bitmap_bytes_aligned = PAGE_ALIGN_UP(bitmap_bytes);
 
-  printk(PMM_CLASS "Max pages: %llu\n", pmm_max_pages);
-  printk(PMM_CLASS "Bitmap size: %llu bytes (%llu pages)\n",
+  printk(KERN_DEBUG PMM_CLASS "Max pages: %llu\n", pmm_max_pages);
+  printk(KERN_DEBUG PMM_CLASS "Bitmap size: %llu bytes (%llu pages)\n",
          bitmap_bytes, bitmap_bytes_aligned / PAGE_SIZE);
 
   // Find memory region for bitmap
@@ -201,7 +201,7 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
   uint64_t bitmap_phys = PAGE_ALIGN_UP(bitmap_region->base);
   pmm_bitmap = (unsigned long *)pmm_phys_to_virt(bitmap_phys);
 
-  printk(PMM_CLASS "Bitmap allocated at phys: 0x%llx, virt: %p\n",
+  printk(KERN_DEBUG PMM_CLASS "Bitmap allocated at phys: 0x%llx, virt: %p\n",
          bitmap_phys, pmm_bitmap);
 
   // Initialize bitmap - mark all pages as used initially
@@ -270,7 +270,7 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
   printk(PMM_CLASS "Free pages: %llu (%llu MB)\n",
          pmm_stats.free_pages,
          (pmm_stats.free_pages * PAGE_SIZE) / (1024 * 1024));
-  printk(PMM_CLASS "Bitmap overhead: %llu pages (%llu KB)\n",
+  printk(KERN_DEBUG PMM_CLASS "Bitmap overhead: %llu pages (%llu KB)\n",
          pmm_stats.bitmap_pages,
          (pmm_stats.bitmap_pages * PAGE_SIZE) / 1024);
 

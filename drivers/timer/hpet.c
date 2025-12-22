@@ -178,12 +178,12 @@ int hpet_init(void) {
       1;
   hpet_info.page_protection = hpet->flags & ACPI_HPET_PAGE_PROTECTION_MASK;
 
-  printk(HPET_CLASS "HPET found:\n");
-  printk(HPET_CLASS "  Base Address: 0x%lx\n", hpet_info.base_address);
-  printk(HPET_CLASS "  Revision: %d\n", hpet_info.revision_id);
-  printk(HPET_CLASS "  Vendor ID: 0x%x\n", hpet_info.vendor_id);
-  printk(HPET_CLASS "  Num Comparators: %d\n", hpet_info.num_comparators);
-  printk(HPET_CLASS "  Page Protection: %d\n", hpet_info.page_protection);
+  printk(KERN_DEBUG HPET_CLASS "HPET found:\n");
+  printk(KERN_DEBUG HPET_CLASS "  Base Address: 0x%lx\n", hpet_info.base_address);
+  printk(KERN_DEBUG HPET_CLASS "  Revision: %d\n", hpet_info.revision_id);
+  printk(KERN_DEBUG HPET_CLASS "  Vendor ID: 0x%x\n", hpet_info.vendor_id);
+  printk(KERN_DEBUG HPET_CLASS "  Num Comparators: %d\n", hpet_info.num_comparators);
+  printk(KERN_DEBUG HPET_CLASS "  Page Protection: %d\n", hpet_info.page_protection);
 
   // Map HPET registers to virtual memory using viomap (MMIO mapping)
   hpet_mapped_base = viomap(hpet_info.base_address, PAGE_SIZE);
@@ -207,7 +207,7 @@ int hpet_init(void) {
     hpet_info.period_fs = 69841279; // ~14.31818 MHz in fs
   }
 
-  printk(HPET_CLASS "  Period: %lu fs\n", hpet_info.period_fs);
+  printk(KERN_DEBUG HPET_CLASS "  Period: %lu fs\n", hpet_info.period_fs);
 
   // Disable HPET during configuration
   hpet_disable();
@@ -330,7 +330,7 @@ int hpet_calibrate_tsc(void) {
       total_tsc_freq += sample_freq;
       measurements++;
 
-      printk(HPET_CLASS "Sample %d: HPET elapsed: %lu ns, TSC elapsed: %lu "
+      printk(KERN_DEBUG HPET_CLASS "Sample %d: HPET elapsed: %lu ns, TSC elapsed: %lu "
                         "ticks, freq: %lu Hz\n",
              i + 1, hpet_elapsed_ns, tsc_elapsed, sample_freq);
     } else {
@@ -342,7 +342,7 @@ int hpet_calibrate_tsc(void) {
   if (measurements > 0) {
     uint64_t avg_tsc_freq = total_tsc_freq / measurements;
 
-    printk(HPET_CLASS "Average TSC frequency from %d samples: %lu Hz\n",
+    printk(KERN_DEBUG HPET_CLASS "Average TSC frequency from %d samples: %lu Hz\n",
            measurements, avg_tsc_freq);
 
     // Update the TSC frequency with the more accurate HPET-based value

@@ -265,7 +265,7 @@ void vmm_init(void) {
     panic(VMM_CLASS "Failed to allocate kernel PML4");
   }
 
-  printk(VMM_CLASS "Kernel PML4 allocated at 0x%llx\n", g_kernel_pml4);
+  printk(KERN_DEBUG VMM_CLASS "Kernel PML4 allocated at 0x%llx\n", g_kernel_pml4);
 
   // We need to copy the existing mappings from the bootloader's page table
   // typically the higher half (kernel, HHDM) so we don't crash immediately

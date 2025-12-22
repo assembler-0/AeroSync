@@ -399,7 +399,7 @@ static void load_balance(void) {
 
   /* Perform migration while locks are held */
   __move_task_to_rq_locked(candidate, underloaded_cpu);
-  printk(SCHED_CLASS "Migrated task %p (PID: %d) from CPU %d to %d\n", candidate,
+  printk(KERN_DEBUG SCHED_CLASS "Migrated task %p (PID: %d) from CPU %d to %d\n", candidate,
          candidate->pid, overloaded_cpu, underloaded_cpu);
 
   /* Signal destination CPU to reschedule */

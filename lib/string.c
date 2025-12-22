@@ -104,7 +104,7 @@ int strnlen(const char *str, const size_t max) {
   return len;
 }
 
-const char *strchr(const char *str, int c) {
+char *strchr(char *str, int c) {
   char target = (char)c;
 
   // Loop until we hit the null terminator
@@ -297,7 +297,7 @@ char *strsep(char **s, const char *ct) {
   return sbegin;
 }
 
-const char *strrchr(const char *s, int c) {
+char *strrchr(const char *s, int c) {
   const char *last_occurrence = NULL;
   do {
     if ((unsigned char)*s == (unsigned char)c) {

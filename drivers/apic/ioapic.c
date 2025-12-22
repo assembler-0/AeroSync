@@ -52,11 +52,11 @@ int ioapic_init(uint64_t phys_addr) {
         return 0;
     }
 
-    printk(APIC_CLASS "IOAPIC Mapped at: 0x%llx (Phys: 0x%llx)\n", (uint64_t)ioapic_base, phys_addr);
+    printk(KERN_DEBUG APIC_CLASS "IOAPIC Mapped at: 0x%llx (Phys: 0x%llx)\n", (uint64_t)ioapic_base, phys_addr);
 
     // Read the I/O APIC version to verify it's working
     uint32_t version_reg = ioapic_read(IOAPIC_REG_VER);
-    printk(APIC_CLASS "IOAPIC Version: 0x%x\n", version_reg);
+    printk(KERN_DEBUG APIC_CLASS "IOAPIC Version: 0x%x\n", version_reg);
 
     return 1;
 }
