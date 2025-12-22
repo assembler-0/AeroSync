@@ -131,17 +131,17 @@ int apic_init(void) {
     apic_parse_madt();
 
     if (detect_x2apic()) {
-        printk(APIC_CLASS "x2APIC mode supported, attempting to enable\n");
+        printk(KERN_DEBUG APIC_CLASS "x2APIC mode supported, attempting to enable\n");
         if (x2apic_ops.init_lapic()) {
             current_ops = &x2apic_ops;
-            printk(APIC_CLASS "x2APIC mode enabled\n");
+            printk(KERN_DEBUG APIC_CLASS "x2APIC mode enabled\n");
         }
     }
     
     if (!current_ops) {
         if (xapic_ops.init_lapic()) {
             current_ops = &xapic_ops;
-            printk(APIC_CLASS "xAPIC mode enabled\n");
+            printk(KERN_DEBUG APIC_CLASS "xAPIC mode enabled\n");
         }
     }
 
@@ -271,16 +271,16 @@ static void apic_timer_calibrate(const struct apic_timer_regs *regs) {
         // If timeout occurred, use a reasonable default for the timer calibration
         // This can happen in some emulators like Bochs with timing issues
         apic_calibrated_ticks = 100000; // Reasonable default for 10ms
-        printk(APIC_CLASS "Timer calibration timeout, using default: %u ticks in 10ms.\n", apic_calibrated_ticks);
+        printk(KERN_NOTICE APIC_CLASS "Timer calibration timeout, using default: %u ticks in 10ms.\n", apic_calibrated_ticks);
     } else {
         current_ops->write(regs->lvt_timer, (1 << 16));
         apic_calibrated_ticks = 0xFFFFFFFF - current_ops->read(regs->cur_count);
-        printk(APIC_CLASS "Calibrated timer: %u ticks in 10ms.\n", apic_calibrated_ticks);
+        printk(KERN_DEBUG APIC_CLASS "Calibrated timer: %u ticks in 10ms.\n", apic_calibrated_ticks);
     }
 
     // Additional safety check: if calibration result is unreasonable, use default
     if (apic_calibrated_ticks < 1000 || apic_calibrated_ticks > 10000000) {
-        printk(APIC_CLASS "Calibration result unreasonable (%u), using default.\n", apic_calibrated_ticks);
+        printk(KERN_NOTICE APIC_CLASS "Calibration result unreasonable (%u), using default.\n", apic_calibrated_ticks);
         apic_calibrated_ticks = 100000; // Reasonable default
     }
 }
@@ -294,7 +294,7 @@ void apic_timer_set_frequency(uint32_t frequency_hz) {
         // If calibration failed, use a reasonable default based on common frequencies
         // For 100Hz timer with typical APIC clock, use a default value
         ticks_per_target = 1000000 / frequency_hz; // 1MHz default estimate
-        printk(APIC_CLASS "Using default timer value for %u Hz: %u ticks\n",
+        printk(KERN_NOTICE APIC_CLASS "Using default timer value for %u Hz: %u ticks\n",
                frequency_hz, ticks_per_target);
     } else {
         ticks_per_target = (apic_calibrated_ticks * 100) / frequency_hz;
@@ -303,10 +303,10 @@ void apic_timer_set_frequency(uint32_t frequency_hz) {
     // Ensure the ticks value is reasonable (not too small or too large)
     if (ticks_per_target < 100) {
         ticks_per_target = 100;
-        printk(APIC_CLASS "Adjusted timer ticks to minimum safe value: %u\n", ticks_per_target);
+        printk(KERN_NOTICE APIC_CLASS "Adjusted timer ticks to minimum safe value: %u\n", ticks_per_target);
     } else if (ticks_per_target > 0x7FFFFFFF) { // Avoid potential overflow issues
         ticks_per_target = 0x7FFFFFFF;
-        printk(APIC_CLASS "Adjusted timer ticks to maximum safe value: %u\n", ticks_per_target);
+        printk(KERN_NOTICE APIC_CLASS "Adjusted timer ticks to maximum safe value: %u\n", ticks_per_target);
     }
 
     if (current_ops && current_ops->timer_set_frequency) {
@@ -318,7 +318,7 @@ static void apic_shutdown(void) {
     apic_mask_all();
     if (current_ops && current_ops->shutdown)
         current_ops->shutdown();
-    printk(APIC_CLASS "APIC shut down.\n");
+    printk(KERN_DEBUG APIC_CLASS "APIC shut down.\n");
 }
 
 static const interrupt_controller_interface_t apic_interface = {

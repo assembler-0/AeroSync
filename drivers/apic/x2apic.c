@@ -139,7 +139,7 @@ static int x2apic_init_lapic(void) {
         return 0;
     }
     
-    printk(APIC_CLASS "Enabling x2APIC mode\n");
+    printk(KERN_DEBUG APIC_CLASS "Enabling x2APIC mode\n");
 
     // Enable x2APIC mode: set both APIC Global Enable and x2APIC Enable bits
     wrmsr(APIC_BASE_MSR, lapic_base_msr | APIC_BASE_MSR_ENABLE | APIC_BASE_MSR_X2APIC_ENABLE);

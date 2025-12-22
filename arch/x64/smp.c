@@ -55,7 +55,7 @@ static void smp_ap_entry(struct limine_mp_info *info) {
   cpu_features_init_ap();
 
   // Basic per-CPU init for APs
-  printk(SMP_CLASS "CPU LAPIC ID %u starting up...\n", info->lapic_id);
+  printk(KERN_DEBUG SMP_CLASS "CPU LAPIC ID %u starting up...\n", info->lapic_id);
 
   // Initialize GDT and TSS for this AP
   gdt_init_ap();
@@ -78,7 +78,7 @@ static void smp_ap_entry(struct limine_mp_info *info) {
     cpu_relax();
   }
 
-  printk(SMP_CLASS "CPU LAPIC ID %u online.\n", info->lapic_id);
+  printk(KERN_DEBUG SMP_CLASS "CPU LAPIC ID %u online.\n", info->lapic_id);
 
   // Initialize scheduler for this AP
   sched_init_ap();
@@ -97,7 +97,7 @@ void smp_init(void) {
   struct limine_mp_response *mp_response = mp_request.response;
 
   if (!mp_response) {
-    printk(SMP_CLASS "Limine MP response not found. Single core mode.\n");
+    printk(KERN_WARNING SMP_CLASS "Limine MP response not found. Single core mode.\n");
     cpu_count = 1;
     return;
   }
@@ -105,7 +105,7 @@ void smp_init(void) {
   cpu_count = mp_response->cpu_count;
   uint64_t bsp_lapic_id = mp_response->bsp_lapic_id;
 
-  printk(SMP_CLASS "Detected %llu CPUs. BSP LAPIC ID: %u\n", cpu_count,
+  printk(KERN_DEBUG SMP_CLASS "Detected %llu CPUs. BSP LAPIC ID: %u\n", cpu_count,
          (uint32_t)bsp_lapic_id);
 
   // Initialize the wait counter for AP startup
@@ -115,7 +115,7 @@ void smp_init(void) {
   // Initialize per_cpu_apic_id array
   uint64_t max_init = cpu_count < MAX_CPUS ? cpu_count : MAX_CPUS;
   if (cpu_count > MAX_CPUS) {
-    printk(SMP_CLASS
+    printk(KERN_WARNING SMP_CLASS
            "Warning: CPU count %llu exceeds MAX_CPUS %d, limiting to %d\n",
            cpu_count, MAX_CPUS, MAX_CPUS);
   }
@@ -135,7 +135,7 @@ void smp_init(void) {
 
     // Send the AP to our entry point
     // Limine handles the trampoline for us!
-    printk(SMP_CLASS "Waking up CPU LAPIC ID: %u\n", cpu->lapic_id);
+    printk(KERN_DEBUG SMP_CLASS "Waking up CPU LAPIC ID: %u\n", cpu->lapic_id);
     __atomic_store_n(&cpu->goto_address, smp_ap_entry, __ATOMIC_RELEASE);
   }
 

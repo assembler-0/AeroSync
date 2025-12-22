@@ -235,7 +235,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   }
 
   if (date_at_boot_request.response) {
-    printk(KERN_INFO "unix timestamp: %lld\n",
+    printk(KERN_CLASS "unix timestamp: %lld\n",
            date_at_boot_request.response->timestamp);
   }
 
@@ -316,9 +316,10 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   printk_init_async();
 
-  printk(KERN_CLASS "VoidFrameX initialization complete, starting V-PXS(R)...\n");
+  printk(KERN_CLASS "VoidFrameX initialization complete, starting init...\n");
 
-  process_spawn(process, NULL, "v-pxs");
+  if (!process_spawn(process, NULL, "v-pxs"))
+    panic(KERN_CLASS "attempted to kill init, nothing to do.");
 
   cpu_sti();
 
