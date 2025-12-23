@@ -192,7 +192,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   printk(KERN_CLASS "VoidFrameX (R) v%s - %s\n", VOIDFRAMEX_VERSION,
          VOIDFRAMEX_COMPILER_VERSION);
   printk(KERN_CLASS "copyright (C) 2025 assembler-0\n");
-  printk(KERN_CLASS "build: %s\n", VOIDFRAMEX_BUILD_DATE);
 
   if (bootloader_info_request.response &&
       bootloader_performance_request.response) {

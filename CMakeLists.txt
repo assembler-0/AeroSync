@@ -24,9 +24,30 @@ project(VoidFrameX
         VERSION 1.0.1 # <EPOCH>.<FEATURE>.<PATCH>
         LANGUAGES C CXX ASM_NASM
         HOMEPAGE_URL "https://github.com/assembler-0/VoidFrameX"
-        DESCRIPTION "A hobbyist operating system kernel written in C/C++ Assembly Rust"
+        DESCRIPTION "A modern monolithic operating system kernel designed for performance and modularity."
 )
 enable_language(ASM_NASM)
+
+execute_process(
+        COMMAND git describe --tags --dirty --always
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_DESCRIBE
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+execute_process(
+        COMMAND git rev-parse --abbrev-ref HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_BRANCH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+set(VOIDFRAMEX_ABI_LEVEL "0")
+set(VOIDFRAMEX_CODENAME "Invariant" CACHE STRING "VoidFrameX codename")
+configure_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/kernel/version.h.in
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/kernel/version.h
+)
 
 # ============================================================================
 # Module Path & Includes & Subdirectories
