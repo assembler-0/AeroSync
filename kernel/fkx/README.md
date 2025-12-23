@@ -10,6 +10,7 @@ FKX is a load-time only kernel extension framework for VoidFrameX. Modules are s
 - **Permanent**: Once loaded, modules cannot be unloaded.
 - **ELF Format**: Modules must be Position Independent Executables (PIE) / Shared Objects.
 - **API Table**: Kernel exports functionality via `struct fkx_kernel_api`.
+- **Dead simple**: No fancy stuff
 
 ## Structure
 - `include/kernel/fkx/fkx.h`: Public API and structures.
@@ -23,7 +24,7 @@ Modules should define their metadata using `FKX_MODULE_DEFINE`:
 #include <kernel/fkx/fkx.h>
 
 static int my_init(const struct fkx_kernel_api *api) {
-    api->printf("Hello from FKX!\n");
+    api->printk("Hello from FKX!\n");
     return 0;
 }
 
@@ -34,7 +35,7 @@ FKX_MODULE_DEFINE(
     "Description",
     0,
     my_init,
-    FKX_NO_DEPENDENCIES
+    NULL
 );
 ```
 
