@@ -22,6 +22,9 @@
 
 #include <kernel/types.h>
 #include <drivers/timer/time.h>
+#include <drivers/apic/ic.h>
+#include <lib/printk.h>
+#include <arch/x64/cpu.h>
 
 /* FKX Magic: "FKX1" in little-endian */
 #define FKX_MAGIC 0x31584B46
@@ -82,12 +85,12 @@ struct fkx_kernel_api {
   int    (*memcmp)(const void *s1, const void *s2, size_t n);
 
   /* String operations */
-  size_t (*strlen)(const char *s);
-  char * (*strcpy)(char *dest, const char *src);
+  int    (*strlen)(const char *s);
+  void   (*strcpy)(char *dest, const char *src);
   int    (*strcmp)(const char *s1, const char *s2);
 
   /* Logging/debug */
-  void (*printf)(const char *fmt, ...);
+  int  (*printk)(const char *fmt, ...);
   int  (*snprintf)(char *buf, size_t size, const char *fmt, ...);
   void (*panic)(const char *msg);
 
@@ -108,10 +111,10 @@ struct fkx_kernel_api {
   void (*outl)(uint16_t port, uint32_t value);
 
   /* Timing */
-  void     (*ndelay)(uint32_t usec);
-  void     (*udelay)(uint32_t msec);
-  void     (*mdelay)(uint32_t msec);
-  void     (*sdelay)(uint32_t sec);
+  void     (*ndelay)(uint64_t usec);
+  void     (*udelay)(uint64_t msec);
+  void     (*mdelay)(uint64_t msec);
+  void     (*sdelay)(uint64_t sec);
   uint64_t (*get_time_ns)(void);
   uint64_t (*rdtsc)(void);
   void     (*time_register_source)(const time_source_t *source);
@@ -127,10 +130,21 @@ struct fkx_kernel_api {
   void     (*ic_send_ipi)(uint8_t dest_apic_id, uint8_t vector, uint32_t delivery_mode);
   interrupt_controller_t (*ic_get_controller_type)(void);
 
+  /* Limine Resources */
+  volatile struct limine_framebuffer_response* (*get_framebuffer_response)(void);
+
   /* printk framework */
   void (*printk_register_backend)(const printk_backend_t *backend);
+
   int  (*printk_set_sink)(const char *backend_name);
   void (*printk_shutdown)(void);
+
+  /* synchronization */
+  void (*spinlock_init)(volatile int *lock);
+  void (*spinlock_lock)(volatile int *lock);
+  void (*spinlock_unlock)(volatile int *lock);
+  irq_flags_t (*spinlock_lock_irqsave)(volatile int *lock);
+  void (*spinlock_unlock_irqrestore)(volatile int *lock, irq_flags_t flags);
 };
 
 /**
@@ -193,5 +207,13 @@ struct fkx_module_info {
 /**
  * FKX_NO_DEPENDENCIES - Use when module has no dependencies
  */
-#define FKX_NO_DEPENDENCIES ((const char **)0)
+
+/**
+ * Load an FKX module from memory
+ *
+ * @param data Pointer to the start of the ELF module
+ * @param size Size of the module in bytes
+ * @return FKX_SUCCESS on success, error code otherwise
+ */
+int fkx_load_module(void *data, size_t size);
 

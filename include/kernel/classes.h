@@ -38,6 +38,7 @@
 #define ATOMIC_CLASS "[SYS::ATOMIC] "     // Atomic operations
 #define SPINLOCK_CLASS "[SYS::SPINLOCK] " // Spinlock operations
 #define FW_CLASS "[SYS::FW] "           // Firmware interfaces (BIOS/UEFI)
+#define FKX_CLASS "[SYS::FKX] "         // FKX Module Loader
 
 ///@section Crypto
 #define RNG_CLASS "[CRPT::RNG] " // Random Number Generator

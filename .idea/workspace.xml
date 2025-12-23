@@ -39,23 +39,17 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/include/kernel/fkx/fkx.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/fkx/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/codeStyles/codeStyleConfig.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/copilot.data.migration.edit.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/gdt/gdt.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/gdt/gdt.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/drivers/acpi/uacpi_glue.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/acpi/uacpi_glue.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/drivers/apic/ic.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/apic/ic.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/drivers/timer/hpet.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/timer/hpet.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/drivers/timer/time.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/timer/time.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/mutex.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/mutex.h" afterDir="false" />
+    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="Mutexes and FKX spec">
+      <change afterPath="$PROJECT_DIR$/cmake/fkx.cmake" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/CMakeLists.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/kernel/classes.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/classes.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/kernel/fkx/fkx.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/fkx/fkx.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/include/kernel/version.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/version.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/wait.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/wait.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/fkx/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/fkx/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/linearfb/linearfb.c" beforeDir="false" afterPath="$PROJECT_DIR$/lib/linearfb/linearfb.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/printk.c" beforeDir="false" afterPath="$PROJECT_DIR$/lib/printk.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/limine.conf" beforeDir="false" afterPath="$PROJECT_DIR$/limine.conf" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -145,7 +139,7 @@
   }
 }</component>
   <component name="RecapUselessUpdatesCounter">
-    <option name="suspendCountdown" value="6" />
+    <option name="suspendCountdown" value="5" />
   </component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
@@ -257,8 +251,17 @@
       <updated>1766480210569</updated>
       <workItem from="1766480212517" duration="1634000" />
       <workItem from="1766482201151" duration="2877000" />
-      <workItem from="1766485132097" duration="1384000" />
+      <workItem from="1766485132097" duration="5825000" />
     </task>
+    <task id="LOCAL-00001" summary="Mutexes and FKX spec">
+      <option name="closed" value="true" />
+      <created>1766486533838</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1766486533838</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -268,6 +271,10 @@
     <isAutomaticCheckingOnLaunch value="false" />
     <isAutomaticFoundErrors value="true" />
     <isAutomaticReloadCMake value="true" />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="Mutexes and FKX spec" />
+    <option name="LAST_COMMIT_MESSAGE" value="Mutexes and FKX spec" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

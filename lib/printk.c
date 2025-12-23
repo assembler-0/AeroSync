@@ -89,15 +89,15 @@ int printk_set_sink(const char *backend_name) {
             if (active_backend->cleanup) { // null dereference check - not all backends implement cleanup
                 active_backend->cleanup();
             }
-
-            if (b->is_active) { // same as above
+            printk("here!\n");
+            if (b->is_active && b->init) { // same as above
                 if (!b->is_active() && b->init(NULL) != 0) {
                     printk(KERN_ERR KERN_CLASS "failed to reinit printk backend %s\n", backend_name);
                     return -1;
                 }
             }
 
-            log_set_console_sink(b->putc);
+            if (b->putc) log_set_console_sink(b->putc);
             active_backend = b;
             return 0;
         }

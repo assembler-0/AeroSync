@@ -1,38 +1,43 @@
-# FKX - (initial) Fused Kernel eXtension
+# FKX - Fused Kernel eXtension
 
-> I can't unload this module, it's fixed!
+> "I can't unload this module, it's fixed!"
 
 ## Overview
-- **Load-time only**: Modules are loaded at boot or specific checkpoints.
-- **Permanent**: Once loaded, modules cannot be unloaded ("Fused").
-- **Secure**: All modules must be signed.
-- **ELF Format**: Modules are relocatable ELF objects.
+FKX is a load-time only kernel extension framework for VoidFrameX. Modules are standard ELF shared objects (`ET_DYN`) that are loaded into kernel memory, relocated, and linked via a global kernel API table.
+
+## Features
+- **Load-time only**: Modules are loaded at boot via Limine or specific checkpoints.
+- **Permanent**: Once loaded, modules cannot be unloaded.
+- **ELF Format**: Modules must be Position Independent Executables (PIE) / Shared Objects.
+- **API Table**: Kernel exports functionality via `struct fkx_kernel_api`.
 
 ## Structure
-The FKX system uses the following structures defined in `fkx.h`:
+- `include/kernel/fkx/fkx.h`: Public API and structures.
+- `kernel/fkx/loader.c`: The ELF loader and relocator.
+- `kernel/fkx/elf_parser.c`: Internal ELF parsing helpers.
 
-### `fkx_metadata_t`
-Embedded in the module's ELF section `.fkx.meta`. Contains:
-- Magic Signature (`FKX1`)
-- Module Name
-- Version
-- Init Entry Point
+## Creating a Module
+Modules should define their metadata using `FKX_MODULE_DEFINE`:
 
-### `fkx_module_t`
-Runtime representation in the kernel. Tracks:
-- List node (for global registry)
-- Pointer to metadata
-- Memory location (Base address, Size)
-- Flags (Signed, Active, Broken)
-- Signature data
-
-## Usage
-Modules define their metadata using the `FKX_DEFINE_MODULE` macro:
 ```c
-FKX_DEFINE_MODULE(my_driver, my_init, 1, 0, 0);
+#include <kernel/fkx/fkx.h>
+
+static int my_init(const struct fkx_kernel_api *api) {
+    api->printf("Hello from FKX!\n");
+    return 0;
+}
+
+FKX_MODULE_DEFINE(
+    my_mod,
+    "1.0.0",
+    "Author",
+    "Description",
+    0,
+    my_init,
+    FKX_NO_DEPENDENCIES
+);
 ```
 
-## TODO
-- [ ] ELF Loader implementation
-- [ ] Signature verification logic
-- [ ] Symbol resolution (Kernel export table)
+## Compilation
+Compile modules as freestanding shared objects:
+`gcc -shared -fPIC -ffreestanding -nostdlib ...`

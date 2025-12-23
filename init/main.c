@@ -42,7 +42,9 @@
 #include <kernel/panic.h>
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>
+#include <kernel/fkx/fkx.h>
 #include <kernel/types.h>
+
 #include <kernel/version.h>
 #include <lib/linearfb/linearfb.h>
 #include <lib/log.h>
@@ -134,6 +136,10 @@ __attribute__((used, section(".limine_requests_end"))) static volatile uint64_t
 
 static struct task_struct bsp_task;
 
+volatile struct limine_framebuffer_response* get_framebuffer_response(void) {
+  return framebuffer_request.response;
+}
+
 int process(void *data) {
   while (1) {
     cpu_hlt();
@@ -148,7 +154,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   // Register printk backends
   printk_register_backend(debugcon_get_backend());
   printk_register_backend(serial_get_backend());
-  printk_register_backend(linearfb_get_backend());
 
   // check if we recived 4-level paging mode
   if (!paging_request.response ||
@@ -231,6 +236,25 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   // Verify VMA Implementation
   vma_test();
 
+  if (module_request.response) {
+    printk(KERN_DEBUG FKX_CLASS "Found %lu modules, \n",
+           module_request.response->module_count);
+
+    for (size_t i = 0; i < module_request.response->module_count; i++) {
+      struct limine_file *m =
+          module_request.response->modules[i];
+      printk(FKX_CLASS "  [%zu] %s @ %p (%lu bytes)\n",
+             i, m->path, m->address, m->size);
+
+      // Attempt to load as FKX module
+      if (fkx_load_module(m->address, m->size) == 0) {
+        printk(FKX_CLASS "Successfully loaded module: %s\n", m->path);
+      }
+    }
+  } else {
+    printk(INITRD_CLASS "No initrd module found.\n");
+  }
+
   cpu_features_init();
   // Two-phase ACPI init to break IC/APIC/uACPI circular dependency
   uacpi_kernel_init_early();
@@ -255,21 +279,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     smp_init();
   crc32_init();
   vfs_init();
-
-  if (module_request.response) {
-    printk(KERN_DEBUG INITRD_CLASS "modules: %lu\n",
-           module_request.response->module_count);
-
-    for (size_t i = 0; i < module_request.response->module_count; i++) {
-      struct limine_file *m =
-          module_request.response->modules[i];
-      printk(KERN_DEBUG INITRD_CLASS "  [%zu] %s @ %p (%lu bytes)\n",
-             i, m->path, m->address, m->size);
-    }
-  }
-  else {
-    printk(INITRD_CLASS "No initrd module found.\n");
-  }
 
   sched_init();
   sched_init_task(&bsp_task);

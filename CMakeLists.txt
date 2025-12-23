@@ -61,6 +61,7 @@ include(source)
 include(configuration)
 include(flags)
 include(lib/uACPI/uacpi.cmake)
+include(fkx)
 
 add_subdirectory(lib/linearfb)
 
@@ -121,11 +122,11 @@ target_include_directories(
     PRIVATE
     ${UACPI_INCLUDES}
 )
-
-target_link_libraries(voidframex.krnl
-        PRIVATE
-        linearfb
-)
+#
+#target_link_libraries(voidframex.krnl
+#        PRIVATE
+#        linearfb
+#)
 
 # Configure the linker to use ld.lld with proper arguments
 set_target_properties(voidframex.krnl PROPERTIES
