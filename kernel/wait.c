@@ -129,7 +129,7 @@ void finish_wait(wait_queue_head_t *wq_head, wait_queue_t *wait)
     spinlock_unlock_irqrestore(&wq_head->lock, flags);
 
     // Ensure we're in the running state
-    if (curr->state != TASK_RUNNING) {
+    if (curr && curr->state != TASK_RUNNING) {
         curr->state = TASK_RUNNING;
     }
 }

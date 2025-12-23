@@ -1,123 +1,63 @@
 #pragma once
 
-#include <kernel/wait.h>
+#include <kernel/sched/sched.h>
 #include <kernel/spinlock.h>
+#include <kernel/wait.h>
 
-/*
- * Mutex implementation using wait queues for VoidFrameX kernel
+/**
+ * @file include/kernel/mutex.h
+ * @brief Mutex (Mutual Exclusion) primitive
+ *
+ * Mutexes are sleeping locks. When a task attempts to acquire a mutex that is
+ * already held, it will sleep until the mutex is released.
  */
 
 struct mutex {
-    spinlock_t lock;
-    int owner;
-    int count;
-    wait_queue_head_t wait_list;
+  spinlock_t lock; /* Spinlock to protect mutex state */
+  int count; /* 0 = locked, 1 = unlocked (following binary semaphore logic for
+                simplicity) */
+  struct task_struct *owner;
+  wait_queue_head_t wait_q;
 };
 
-#define MUTEX_INITIALIZER(name) \
-{ \
-    .lock = 0, \
-    .owner = -1, \
-    .count = 1, \
-    .wait_list = __WAIT_QUEUE_HEAD_INITIALIZER(name.wait_list) \
-}
+typedef struct mutex mutex_t;
 
-#define DEFINE_MUTEX(name) \
-    struct mutex name = MUTEX_INITIALIZER(name)
+#define MUTEX_INITIALIZER(name)                                                \
+  {.lock = 0,                                                                  \
+   .count = 1,                                                                 \
+   .owner = NULL,                                                              \
+   .wait_q = __WAIT_QUEUE_HEAD_INITIALIZER(name.wait_q)}
 
-static inline void mutex_init(struct mutex *mutex)
-{
-    spinlock_init(&mutex->lock);
-    mutex->owner = -1;
-    mutex->count = 1;
-    init_waitqueue_head(&mutex->wait_list);
-}
+#define DEFINE_MUTEX(name) mutex_t name = MUTEX_INITIALIZER(name)
 
-static inline int mutex_trylock(struct mutex *mutex)
-{
-    unsigned long flags;
-    int result = 0; // Return 0 if we failed to get the mutex
+/**
+ * Initialize a mutex
+ * @param m Mutex to initialize
+ */
+void mutex_init(mutex_t *m);
 
-    flags = spinlock_lock_irqsave(&mutex->lock);
-    if (mutex->count > 0) {
-        mutex->count--;
-        mutex->owner = get_current()->pid; // Store current task ID
-        result = 1; // Return 1 if we got the mutex
-    }
-    spinlock_unlock_irqrestore(&mutex->lock, flags);
+/**
+ * Lock a mutex (blocks if already held)
+ * @param m Mutex to lock
+ */
+void mutex_lock(mutex_t *m);
 
-    return result;
-}
+/**
+ * Unlock a mutex (wakes up one waiting task)
+ * @param m Mutex to unlock
+ */
+void mutex_unlock(mutex_t *m);
 
-static inline void mutex_lock(struct mutex *mutex)
-{
-    wait_queue_t wait;
-    init_wait(&wait);
+/**
+ * Attempt to lock a mutex without blocking
+ * @param m Mutex to try locking
+ * @return 1 if locked, 0 if already held
+ */
+int mutex_trylock(mutex_t *m);
 
-    while (1) {
-        // Try to acquire the mutex
-        if (mutex_trylock(mutex))
-            break; // Got it!
-
-        // Add ourselves to the wait queue and sleep
-        prepare_to_wait(&mutex->wait_list, &wait, TASK_UNINTERRUPTIBLE);
-        
-        // Check again in case someone woke us up
-        if (mutex_trylock(mutex))
-            break;
-
-        // Now we actually sleep
-        schedule();
-    }
-    
-    finish_wait(&mutex->wait_list, &wait);
-}
-
-static inline int mutex_lock_interruptible(struct mutex *mutex)
-{
-    wait_queue_t wait;
-    init_wait(&wait);
-    int ret = 0;
-
-    while (1) {
-        // Try to acquire the mutex
-        if (mutex_trylock(mutex))
-            break; // Got it!
-
-        // Add ourselves to the wait queue and sleep
-        prepare_to_wait(&mutex->wait_list, &wait, TASK_INTERRUPTIBLE);
-        
-        // Check again in case someone woke us up
-        if (mutex_trylock(mutex))
-            break;
-
-        // Now we actually sleep
-        schedule();
-
-        // Check if we were interrupted
-        if (get_current()->state == TASK_RUNNING) {
-            ret = -1; // Interrupted
-            break;
-        }
-    }
-    
-    finish_wait(&mutex->wait_list, &wait);
-    return ret;
-}
-
-static inline void mutex_unlock(struct mutex *mutex)
-{
-    unsigned long flags;
-    
-    flags = spinlock_lock_irqsave(&mutex->lock);
-    
-    if (mutex->count < 1) {
-        mutex->count++;
-        mutex->owner = -1;
-        
-        // Wake up one waiting task if there are any
-        wake_up(&mutex->wait_list);
-    }
-    
-    spinlock_unlock_irqrestore(&mutex->lock, flags);
-}
+/**
+ * Check if a mutex is held by anyone
+ * @param m Mutex to check
+ * @return 1 if held, 0 if free
+ */
+static inline int mutex_is_locked(mutex_t *m) { return m->count == 0; }

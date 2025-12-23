@@ -285,7 +285,7 @@ int hpet_calibrate_tsc(void) {
   // Multiple measurements to improve accuracy
   uint64_t total_tsc_freq = 0;
   int measurements = 0;
-  const int num_samples = 3;
+  const int num_samples = 2;
 
   for (int i = 0; i < num_samples; i++) {
     // Get initial readings
@@ -298,10 +298,10 @@ int hpet_calibrate_tsc(void) {
     uint64_t tsc_freq =
         get_tsc_freq(); // Use current TSC frequency for delay calculation
     uint64_t tsc_ticks_for_100ms =
-        (tsc_freq * 100) / 1000; // 100ms worth of ticks
+        (tsc_freq * 100) / 100; // 100ms worth of ticks
 
     // Wait using a combination of both timers with a safety timeout
-    uint64_t hpet_wait_until = hpet_start + 100000000; // 100ms in nanoseconds
+    uint64_t hpet_wait_until = hpet_start + 7000000; // 7ms in nanoseconds
     uint64_t tsc_wait_until = tsc_start_delay + tsc_ticks_for_100ms;
 
     // Safety timeout based on TSC to prevent infinite loops

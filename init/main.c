@@ -38,123 +38,95 @@
 #include <drivers/uart/serial.h>
 #include <fs/vfs.h>
 #include <kernel/classes.h>
+#include <kernel/cmdline.h>
 #include <kernel/panic.h>
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>
 #include <kernel/types.h>
 #include <kernel/version.h>
-#include <kernel/cmdline.h>
 #include <lib/linearfb/linearfb.h>
-#include <lib/printk.h>
 #include <lib/log.h>
+#include <lib/printk.h>
 #include <limine/limine.h>
 #include <mm/slab.h>
 #include <mm/vma.h>
 #include <uacpi/uacpi.h>
 
 // Set Limine Request Start Marker
-__attribute__((
-    used,
-    section(".limine_requests_start"))) static volatile uint64_t
+__attribute__((used,
+               section(".limine_requests_start"))) static volatile uint64_t
     limine_requests_start_marker[] = LIMINE_REQUESTS_START_MARKER;
 
 // Set Limine Base Revision to 3
-__attribute__((
-    used,
-    section(".limine_requests"))) static volatile uint64_t
+__attribute__((used, section(".limine_requests"))) static volatile uint64_t
     limine_base_revision[3] = LIMINE_BASE_REVISION(4);
 
 // Request framebuffer
 __attribute__((
     used,
     section(".limine_requests"))) volatile struct limine_framebuffer_request
-    framebuffer_request = {
-      .id = LIMINE_FRAMEBUFFER_REQUEST_ID, .revision = 0
-    };
+    framebuffer_request = {.id = LIMINE_FRAMEBUFFER_REQUEST_ID, .revision = 0};
 
 // Request memory map
 __attribute__((
     used,
     section(".limine_requests"))) static volatile struct limine_memmap_request
-    memmap_request = {
-      .id = LIMINE_MEMMAP_REQUEST_ID, .revision = 0
-    };
+    memmap_request = {.id = LIMINE_MEMMAP_REQUEST_ID, .revision = 0};
 
 // Request paging mode
 __attribute__((
     used,
-    section(".limine_requests"))) static volatile struct limine_paging_mode_request
-    paging_request = {
-      .id = LIMINE_PAGING_MODE_REQUEST_ID,
-      .revision = 0,
-      .mode = LIMINE_PAGING_MODE_X86_64_4LVL
-    };
+    section(
+        ".limine_requests"))) static volatile struct limine_paging_mode_request
+    paging_request = {.id = LIMINE_PAGING_MODE_REQUEST_ID,
+                      .revision = 0,
+                      .mode = LIMINE_PAGING_MODE_X86_64_4LVL};
 
 // Request HHDM (Higher Half Direct Map)
 __attribute__((
     used,
     section(".limine_requests"))) static volatile struct limine_hhdm_request
-    hhdm_request = {
-      .id = LIMINE_HHDM_REQUEST_ID, .revision = 0
-    };
+    hhdm_request = {.id = LIMINE_HHDM_REQUEST_ID, .revision = 0};
 
 // Request RSDP (for ACPI)
-__attribute__((
-    used,
-    section(".limine_requests"))) volatile struct limine_rsdp_request
-    rsdp_request = {
-      .id = LIMINE_RSDP_REQUEST_ID, .revision = 0
-    };
+__attribute__((used,
+               section(".limine_requests"))) volatile struct limine_rsdp_request
+    rsdp_request = {.id = LIMINE_RSDP_REQUEST_ID, .revision = 0};
 
 __attribute__((
     used,
     section(".limine_requests"))) static volatile struct limine_smbios_request
-    smbios_request = {
-      .id = LIMINE_SMBIOS_REQUEST_ID, .revision = 0
-    };
+    smbios_request = {.id = LIMINE_SMBIOS_REQUEST_ID, .revision = 0};
 
 // Request modules (initrd)
 __attribute__((
     used,
     section(".limine_requests"))) static volatile struct limine_module_request
-    module_request = {
-        .id = LIMINE_MODULE_REQUEST_ID, .revision = 0
-    }; // New module request
+    module_request = {.id = LIMINE_MODULE_REQUEST_ID,
+                      .revision = 0}; // New module request
+
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_bootloader_info_request bootloader_info_request = {
+        .id = LIMINE_BOOTLOADER_INFO_REQUEST_ID, .revision = 0};
+
+__attribute__((used, section(".limine_reuests"))) static volatile struct
+    limine_bootloader_performance_request bootloader_performance_request = {
+        .id = LIMINE_BOOTLOADER_PERFORMANCE_REQUEST_ID, .revision = 0};
+
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_executable_cmdline_request cmdline_request = {
+        .id = LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID, .revision = 0};
+
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_firmware_type_request fw_request = {
+        .id = LIMINE_FIRMWARE_TYPE_REQUEST_ID, .revision = 0};
 
 __attribute__((
     used,
-    section(".limine_reuests"))) static volatile struct limine_bootloader_info_request
-    bootloader_info_request = {
-        .id = LIMINE_BOOTLOADER_INFO_REQUEST_ID, .revision = 0
-    };
-
-__attribute__((
-    used,
-    section(".limine_reuests"))) static volatile struct limine_bootloader_performance_request
-    bootloader_performance_request = {
-        .id = LIMINE_BOOTLOADER_PERFORMANCE_REQUEST_ID, .revision = 0
-    };
-
-__attribute__((
-    used,
-    section(".limine_requests"))) static volatile struct limine_executable_cmdline_request
-    cmdline_request = {
-        .id = LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID, .revision = 0
-    };
-
-__attribute__((
-    used,
-    section(".limine_requests"))) static volatile struct limine_firmware_type_request
-    fw_request = {
-        .id = LIMINE_FIRMWARE_TYPE_REQUEST_ID, .revision = 0
-    };
-
-__attribute__((
-    used,
-    section(".limine_requests"))) static volatile struct limine_date_at_boot_request
-    date_at_boot_request = {
-        .id = LIMINE_DATE_AT_BOOT_REQUEST_ID, .revision = 0
-    };
+    section(
+        ".limine_requests"))) static volatile struct limine_date_at_boot_request
+    date_at_boot_request = {.id = LIMINE_DATE_AT_BOOT_REQUEST_ID,
+                            .revision = 0};
 
 // Set Limine Request End Marker
 __attribute__((used, section(".limine_requests_end"))) static volatile uint64_t
@@ -213,7 +185,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
                ? "UEFI (64-bit)"
            : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI32
                ? "UEFI (32-bit)"
-               : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_X86BIOS
+           : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_X86BIOS
                ? "BIOS (x86)"
            : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_SBI
                ? "SBI"
@@ -284,11 +256,18 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   crc32_init();
   vfs_init();
 
-  if (module_request.response && module_request.response->module_count > 0) {
-    struct limine_file *initrd_module = module_request.response->modules[0];
-    printk(KERN_DEBUG INITRD_CLASS "Found module '%s' at %p, size %lu\n",
-           initrd_module->path, initrd_module->address, initrd_module->size);
-  } else {
+  if (module_request.response) {
+    printk(KERN_DEBUG INITRD_CLASS "modules: %lu\n",
+           module_request.response->module_count);
+
+    for (size_t i = 0; i < module_request.response->module_count; i++) {
+      struct limine_file *m =
+          module_request.response->modules[i];
+      printk(KERN_DEBUG INITRD_CLASS "  [%zu] %s @ %p (%lu bytes)\n",
+             i, m->path, m->address, m->size);
+    }
+  }
+  else {
     printk(INITRD_CLASS "No initrd module found.\n");
   }
 
@@ -296,14 +275,13 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   sched_init_task(&bsp_task);
 
   // --- Time Subsystem Initialization ---
-  printk(KERN_CLASS "Initializing Time Subsystem...\n");
 
   time_register_source(pit_get_time_source());
   time_register_source(hpet_get_time_source());
 
   // Initialize unified time subsystem (Selects Best Source and Inits it)
   if (time_init() != 0) {
-    printk(KERN_WARNING KERN_CLASS "Time subsystem initialization failed!\n");
+    printk(KERN_WARNING KERN_CLASS "Time subsystem initialization failed\n");
   }
 
   // Recalibrate TSC using the best available time source

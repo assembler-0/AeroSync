@@ -1,0 +1,197 @@
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * VoidFrameX monolithic kernel
+ *
+ * @file kernel/fkx/fkx.h
+ * @brief FKX Module Interface Definitions
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#pragma once
+
+#include <kernel/types.h>
+#include <drivers/timer/time.h>
+
+/* FKX Magic: "FKX1" in little-endian */
+#define FKX_MAGIC 0x31584B46
+
+/* FKX Module API Version */
+#define FKX_API_VERSION 1
+
+/* Module flags */
+#define FKX_FLAG_REQUIRED    (1 << 0)  /* System cannot boot without this module */
+#define FKX_FLAG_EARLY_INIT  (1 << 1)  /* Load during early boot phase */
+#define FKX_FLAG_CORE        (1 << 2)  /* Core system component */
+
+/* Return codes */
+#define FKX_SUCCESS          0
+// use errno.h!
+
+/* Forward declarations */
+struct fkx_kernel_api;
+struct fkx_module_info;
+
+/**
+ * Module entry point signature
+ *
+ * @param api Pointer to kernel API table
+ * @return FKX_SUCCESS on success, negative error code on failure
+ */
+typedef int (*fkx_entry_fn)(const struct fkx_kernel_api *api);
+
+/**
+ * Kernel API Table
+ *
+ * Contains function pointers to kernel services available to FKX modules.
+ * The kernel guarantees this structure remains valid for the lifetime of
+ * the system.
+ */
+struct fkx_kernel_api {
+  uint32_t version; /* API version (FKX_API_VERSION) */
+  uint32_t reserved;
+
+  /* Memory management */
+  void *   (*kmalloc)(size_t size);
+  void     (*kfree)(void *ptr);
+  void *   (*vmalloc)(size_t size);
+  void *   (*vmalloc_exec)(size_t size);
+  void     (*vfree)(void *ptr);
+  void *   (*viomap)(uintptr_t phys_addr, size_t size);
+  void     (*viounmap)(void *addr);
+  int      (*vmm_map_page)(uint64_t pml4_phys, uint64_t virt, uint64_t phys,
+                         uint64_t flags);
+  int      (*vmm_unmap_page)(uint64_t pml4_phys, uint64_t virt);
+  uint64_t (*vmm_virt_to_phys)(uint64_t pml4_phys, uint64_t virt);
+  void     (*vmm_switch_pml4)(uint64_t pml4_phys);
+
+  /* Memory operations */
+  void * (*memset)(void *dest, int c, size_t n);
+  void * (*memcpy)(void *dest, const void *src, size_t n);
+  void * (*memmove)(void *dest, const void *src, size_t n);
+  int    (*memcmp)(const void *s1, const void *s2, size_t n);
+
+  /* String operations */
+  size_t (*strlen)(const char *s);
+  char * (*strcpy)(char *dest, const char *src);
+  int    (*strcmp)(const char *s1, const char *s2);
+
+  /* Logging/debug */
+  void (*printf)(const char *fmt, ...);
+  int  (*snprintf)(char *buf, size_t size, const char *fmt, ...);
+  void (*panic)(const char *msg);
+
+  /* Physical memory */
+  uint64_t  (*pmm_alloc_page)(void);
+  void      (*pmm_free_page)(uint64_t phys_addr);
+  uint64_t  (*pmm_alloc_pages)(size_t count);
+  void      (*pmm_free_pages)(uint64_t phys_addr, size_t count);
+  void *    (*pmm_phys_to_virt)(uintptr_t phys_addr);
+  uintptr_t (*pmm_virt_to_phys)(void *virt_addr);
+
+  /* I/O operations */
+  uint8_t  (*inb)(uint16_t port);
+  uint16_t (*inw)(uint16_t port);
+  uint32_t (*inl)(uint16_t port);
+  void (*outb)(uint16_t port, uint8_t value);
+  void (*outw)(uint16_t port, uint16_t value);
+  void (*outl)(uint16_t port, uint32_t value);
+
+  /* Timing */
+  void     (*ndelay)(uint32_t usec);
+  void     (*udelay)(uint32_t msec);
+  void     (*mdelay)(uint32_t msec);
+  void     (*sdelay)(uint32_t sec);
+  uint64_t (*get_time_ns)(void);
+  uint64_t (*rdtsc)(void);
+  void     (*time_register_source)(const time_source_t *source);
+
+  /* Interrupt controlling */
+  void     (*ic_register_controller)(const interrupt_controller_interface_t *controller);
+  void     (*ic_shutdown_controller)(void);
+  void     (*ic_enable_irq)(uint8_t irq_line);
+  void     (*ic_disable_irq)(uint8_t irq_line);
+  void     (*ic_send_eoi)(uint32_t interrupt_number);
+  void     (*ic_set_timer)(uint32_t frequency_hz);
+  uint32_t (*ic_get_frequency)(void);
+  void     (*ic_send_ipi)(uint8_t dest_apic_id, uint8_t vector, uint32_t delivery_mode);
+  interrupt_controller_t (*ic_get_controller_type)(void);
+
+  /* printk framework */
+  void (*printk_register_backend)(const printk_backend_t *backend);
+  int  (*printk_set_sink)(const char *backend_name);
+  void (*printk_shutdown)(void);
+};
+
+/**
+ * Module Information Structure
+ *
+ * Must be present in every FKX module at a well-known location.
+ * Typically placed in a dedicated section (.fkx_info)
+ */
+struct fkx_module_info {
+  uint32_t magic; /* Must be FKX_MAGIC */
+  uint32_t api_version; /* FKX_API_VERSION this module was built for */
+
+  const char *name; /* Module name (null-terminated) */
+  const char *version; /* Module version string */
+  const char *author; /* Author/vendor */
+  const char *description; /* Brief description */
+
+  uint32_t flags; /* FKX_FLAG_* combination */
+  uint32_t reserved;
+
+  /* Entry point */
+  fkx_entry_fn init;
+
+  /* Dependencies (null-terminated array of module names) */
+  const char **depends;
+
+  /* Reserved for future use */
+  void *reserved_ptr[4];
+};
+
+/**
+ * FKX_MODULE_DEFINE - Convenience macro to define module info
+ *
+ * Usage:
+ *   FKX_MODULE_DEFINE(
+ *       my_module,
+ *       "1.0.0",
+ *       "Author Name",
+ *       "Module description",
+ *       FKX_FLAG_CORE,
+ *       my_module_init,
+ *       my_module_deps
+ *   );
+ */
+#define FKX_MODULE_DEFINE(_name, ver, auth, desc, flg, entry, deps) \
+    __attribute__((section(".fkx_info"), used)) struct fkx_module_info __fkx_module_info_##_name = { \
+        .magic = FKX_MAGIC, \
+        .api_version = FKX_API_VERSION, \
+        .name = #_name, \
+        .version = ver, \
+        .author = auth, \
+        .description = desc, \
+        .flags = flg, \
+        .reserved = 0, \
+        .init = entry, \
+        .depends = deps, \
+        .reserved_ptr = {0} \
+    }
+
+/**
+ * FKX_NO_DEPENDENCIES - Use when module has no dependencies
+ */
+#define FKX_NO_DEPENDENCIES ((const char **)0)
+

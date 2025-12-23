@@ -100,7 +100,7 @@ void gdt_init(void) {
 
 void gdt_init_ap(void) {
     // APs are initialized after slab_init, so we can use kmalloc
-    printk(GDT_CLASS "Initializing GDT for AP\n");
+    printk(KERN_DEBUG GDT_CLASS "Initializing GDT for AP\n");
     struct gdt_entry *ap_gdt = kmalloc(sizeof(struct gdt_entry) * 7);
     struct tss_entry *ap_tss = kmalloc(sizeof(struct tss_entry));
 

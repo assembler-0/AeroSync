@@ -39,7 +39,7 @@ void time_register_source(const time_source_t *source) {
     return;
   }
   registered_sources[num_registered_sources++] = source;
-  printk(KERN_INFO TIME_CLASS "Registered time source: %s (prio: %d)\n",
+  printk(KERN_DEBUG TIME_CLASS "Registered time source: %s (prio: %d)\n",
          source->name, source->priority);
 }
 
@@ -47,7 +47,7 @@ int time_init(void) {
   const time_source_t *selected = NULL;
   const time_source_t *fallback = NULL;
 
-  printk(KERN_INFO TIME_CLASS "Initializing Time Subsystem...\n");
+  printk(TIME_CLASS "Initializing Time Subsystem...\n");
 
   for (size_t i = 0; i < num_registered_sources; i++) {
     // Simple selection logic: Best priority that initializes successfully
@@ -67,7 +67,7 @@ int time_init(void) {
 
   // Attempt to initialize selected
   if (selected) {
-    printk(KERN_INFO TIME_CLASS "Attempting to initialize best source: %s\n",
+    printk(KERN_DEBUG TIME_CLASS "Attempting to initialize best source: %s\n",
            selected->name);
     if (selected->init() != 0) {
       printk(KERN_WARNING TIME_CLASS "Failed to init %s, trying fallback...\n",

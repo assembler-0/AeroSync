@@ -17,7 +17,7 @@ void ic_register_controller(const interrupt_controller_interface_t* controller) 
         printk(KERN_WARNING IC_CLASS "Max interrupt controllers registered, ignoring.\n");
         return;
     }
-    printk(IC_CLASS "Registered interrupt controller type %d (prio: %d)\n",
+    printk(KERN_DEBUG IC_CLASS "Registered interrupt controller type %d (prio: %d)\n",
            controller->type, controller->priority);
     registered_controllers[num_registered_controllers++] = controller;
 }
@@ -50,10 +50,10 @@ interrupt_controller_t ic_install(void) {
         panic(IC_CLASS "No interrupt controller could be installed\n");
     }
 
-    printk(KERN_INFO IC_CLASS "Configuring timer to %u Hz...\n", timer_frequency_hz);
+    printk(KERN_DEBUG IC_CLASS "Configuring timer to %u Hz...\n", timer_frequency_hz);
     selected->timer_set(timer_frequency_hz);
     selected->mask_all();
-    printk(KERN_INFO IC_CLASS "Timer configured.\n");
+    printk(IC_CLASS "Timer configured.\n");
 
     // Set current controller type
     current_controller = (interrupt_controller_interface_t*)selected;
