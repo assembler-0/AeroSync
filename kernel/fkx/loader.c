@@ -148,28 +148,42 @@ int fkx_load_module(void *data, size_t size) {
              Elf64_Rela *relas = (Elf64_Rela *)((uint8_t *)data + sections[i].sh_offset);
              size_t count = sections[i].sh_size / sizeof(Elf64_Rela);
              
-             // The section being relocated
-             Elf64_Shdr *target_sec = &sections[sections[i].sh_info];
-             // Base address of the target section in memory
-             // Note: For ET_DYN, relocations are usually relative to the load base if they refer to addresses.
-             // But r_offset is virtual address in the image.
-             // We need to translate r_offset to our loaded address.
+             // The symbol table used for relocations
+             Elf64_Shdr *symtab_sec = &sections[sections[i].sh_link];
+             Elf64_Sym *symtab = (Elf64_Sym *)((uint8_t *)data + symtab_sec->sh_offset);
              
              for (size_t j = 0; j < count; j++) {
                  uint64_t r_offset = relas[j].r_offset;
                  uint64_t *target = (uint64_t *)(base_addr + (r_offset - min_vaddr));
                  
                  uint64_t type = ELF64_R_TYPE(relas[j].r_info);
+                 uint32_t sym_idx = ELF64_R_SYM(relas[j].r_info);
                  int64_t addend = relas[j].r_addend;
+
+                 Elf64_Sym *sym = &symtab[sym_idx];
+                 uint64_t S = 0;
+                 
+                 if (sym->st_shndx != 0) { // SHN_UNDEF is 0
+                     S = base_addr + (sym->st_value - min_vaddr);
+                 }
                  
                  switch (type) {
                      case R_X86_64_RELATIVE:
-                         *target = base_addr + addend;
+                         // For R_X86_64_RELATIVE: B + A (base + addend)
+                         // addend is the virtual address in the image, so we adjust by min_vaddr
+                         *target = base_addr + (addend - min_vaddr);
                          break;
-                     // Implement others if symbols are involved, but for self-contained modules RELATIVE is key
+                     case R_X86_64_64:
+                         // For R_X86_64_64: S + A
+                         *target = S + addend;
+                         break;
+                     case R_X86_64_JUMP_SLOT:
+                     case R_X86_64_GLOB_DAT:
+                         // For GOT/PLT: S
+                         *target = S;
+                         break;
                      default:
-                         // We ignore others for now as we assume strict self-containment or relative addressing
-                         // Real implementation would look up symbols in the dynsym
+                         printk(KERN_WARNING FKX_CLASS "Unhandled relocation type %lu at offset 0x%lx\n", type, r_offset);
                          break;
                  }
              }
