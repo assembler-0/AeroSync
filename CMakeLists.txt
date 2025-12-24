@@ -107,8 +107,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Kernel Linking
 # ============================================================================
 add_executable(voidframex.krnl
-    ${C_SOURCES}
-    ${ASM_SOURCES}
+    ${VOIDFRAMEX_SOURCES}
 )
 
 target_sources(
