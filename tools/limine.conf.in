@@ -1,0 +1,13 @@
+timeout: 5
+
+/VoidFrameX (verbose)
+    protocol: limine
+    path: boot():/kernel/voidframex.krnl
+    cmdline: verbose
+@LIMINE_MODULES@
+
+/VoidFrameX
+    protocol: limine
+    path: boot():/kernel/voidframex.krnl
+    cmdline:
+@LIMINE_MODULES@

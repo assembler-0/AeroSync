@@ -41,6 +41,15 @@
 #define FKX_SUCCESS          0
 // use errno.h!
 
+typedef enum {
+  FKX_PRINTK_CLASS,
+  FKX_DRIVER_CLASS,
+  FKX_IC_CLASS,
+  FKX_MM_CLASS,
+  FKX_GENERIC_CLASS,
+  FKX_MAX_CLASS,
+} fkx_module_class_t;
+
 /* Forward declarations */
 struct fkx_kernel_api;
 struct fkx_module_info;
@@ -131,7 +140,7 @@ struct fkx_kernel_api {
   interrupt_controller_t (*ic_get_controller_type)(void);
 
   /* Limine Resources */
-  volatile struct limine_framebuffer_response* (*get_framebuffer_response)(void);
+  volatile struct limine_framebuffer_request* (*get_framebuffer_request)(void);
 
   /* printk framework */
   void (*printk_register_backend)(const printk_backend_t *backend);
@@ -163,7 +172,7 @@ struct fkx_module_info {
   const char *description; /* Brief description */
 
   uint32_t flags; /* FKX_FLAG_* combination */
-  uint32_t reserved;
+  fkx_module_class_t module_class;
 
   /* Entry point */
   fkx_entry_fn init;
@@ -189,7 +198,7 @@ struct fkx_module_info {
  *       my_module_deps
  *   );
  */
-#define FKX_MODULE_DEFINE(_name, ver, auth, desc, flg, entry, deps) \
+#define FKX_MODULE_DEFINE(_name, ver, auth, desc, flg, cls, entry, deps) \
     __attribute__((section(".fkx_info"), used)) struct fkx_module_info __fkx_module_info_##_name = { \
         .magic = FKX_MAGIC, \
         .api_version = FKX_API_VERSION, \
@@ -198,7 +207,7 @@ struct fkx_module_info {
         .author = auth, \
         .description = desc, \
         .flags = flg, \
-        .reserved = 0, \
+        .module_class = cls, \
         .init = entry, \
         .depends = deps, \
         .reserved_ptr = {0} \
@@ -209,11 +218,18 @@ struct fkx_module_info {
  */
 
 /**
- * Load an FKX module from memory
+ * Load an FKX module image into memory without calling init
  *
  * @param data Pointer to the start of the ELF module
  * @param size Size of the module in bytes
  * @return FKX_SUCCESS on success, error code otherwise
  */
-int fkx_load_module(void *data, size_t size);
+int fkx_load_image(void *data, size_t size);
 
+/**
+ * Initialize all modules of a specific class
+ *
+ * @param module_class The class of modules to initialize
+ * @return FKX_SUCCESS on success, error code otherwise
+ */
+int fkx_init_module_class(fkx_module_class_t module_class);

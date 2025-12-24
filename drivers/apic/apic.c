@@ -15,14 +15,12 @@
 #include <drivers/apic/apic.h>
 #include <drivers/apic/apic_internal.h>
 #include <drivers/apic/ioapic.h>
-#include <uacpi/uacpi.h>
 #include <uacpi/tables.h>
 #include <uacpi/acpi.h>
 #include <kernel/classes.h>
 #include <lib/printk.h>
 #include <drivers/apic/pic.h>
 #include <drivers/apic/xapic.h>
-#include <drivers/apic/x2apic.h>
 
 // --- Register Definitions for Calibration ---
 // xAPIC MMIO Offsets

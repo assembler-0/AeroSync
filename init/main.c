@@ -35,7 +35,6 @@
 #include <drivers/timer/hpet.h>
 #include <drivers/timer/pit.h>
 #include <drivers/timer/time.h>
-#include <drivers/uart/serial.h>
 #include <fs/vfs.h>
 #include <kernel/classes.h>
 #include <kernel/cmdline.h>
@@ -44,9 +43,7 @@
 #include <kernel/sched/sched.h>
 #include <kernel/fkx/fkx.h>
 #include <kernel/types.h>
-
 #include <kernel/version.h>
-#include <lib/linearfb/linearfb.h>
 #include <lib/log.h>
 #include <lib/printk.h>
 #include <limine/limine.h>
@@ -111,7 +108,7 @@ __attribute__((used, section(".limine_requests"))) static volatile struct
     limine_bootloader_info_request bootloader_info_request = {
         .id = LIMINE_BOOTLOADER_INFO_REQUEST_ID, .revision = 0};
 
-__attribute__((used, section(".limine_reuests"))) static volatile struct
+__attribute__((used, section(".limine_requests"))) static volatile struct
     limine_bootloader_performance_request bootloader_performance_request = {
         .id = LIMINE_BOOTLOADER_PERFORMANCE_REQUEST_ID, .revision = 0};
 
@@ -136,8 +133,8 @@ __attribute__((used, section(".limine_requests_end"))) static volatile uint64_t
 
 static struct task_struct bsp_task;
 
-volatile struct limine_framebuffer_response* get_framebuffer_response(void) {
-  return framebuffer_request.response;
+volatile struct limine_framebuffer_request* get_framebuffer_request(void) {
+  return &framebuffer_request;
 }
 
 int process(void *data) {
@@ -146,14 +143,17 @@ int process(void *data) {
   }
 }
 
+// TODO: MAKE ALL HARDWARE DRIVER A SEPERATE MODULE!!
+
 void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   if (LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision) == false) {
     panic_early();
   }
 
-  // Register printk backends
   printk_register_backend(debugcon_get_backend());
-  printk_register_backend(serial_get_backend());
+
+  printk_auto_configure(NULL, 0);
+  pit_calibrate_tsc();
 
   // check if we recived 4-level paging mode
   if (!paging_request.response ||
@@ -161,10 +161,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     panic(KERN_CLASS
           "4-level paging mode not enabled or paging mode request not found");
   }
-
-  printk_init_auto(NULL);
-
-  pit_calibrate_tsc();
 
   printk(KERN_CLASS "VoidFrameX (R) v%s - %s\n", VOIDFRAMEX_VERSION,
          VOIDFRAMEX_COMPILER_VERSION);
@@ -247,13 +243,16 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
              i, m->path, m->address, m->size);
 
       // Attempt to load as FKX module
-      if (fkx_load_module(m->address, m->size) == 0) {
+      if (fkx_load_image(m->address, m->size) == 0) {
         printk(FKX_CLASS "Successfully loaded module: %s\n", m->path);
       }
     }
   } else {
     printk(INITRD_CLASS "No initrd module found.\n");
   }
+
+  fkx_init_module_class(FKX_PRINTK_CLASS);
+  printk_auto_configure(NULL, 1);
 
   cpu_features_init();
   // Two-phase ACPI init to break IC/APIC/uACPI circular dependency

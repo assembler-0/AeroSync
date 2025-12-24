@@ -44,6 +44,7 @@
 
 // Extern the request from init/main.c
 extern volatile struct limine_rsdp_request rsdp_request;
+extern void uacpi_kernel_enumerate_test(void);
 
 static volatile int s_ic_ready = 0;
 // Pending ACPI IRQ handlers before IC is ready

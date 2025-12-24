@@ -25,9 +25,6 @@ int linearfb_init_standard(void *data);
 void linearfb_cleanup(void);
 int linearfb_is_initialized(void);
 
-// Initialize framebuffer library with Limine framebuffer request
-int linearfb_init(struct limine_framebuffer_request *fb_req);
-
 // Set mode (console/graphics)
 void linearfb_set_mode(linearfb_mode_t mode);
 

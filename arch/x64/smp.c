@@ -67,11 +67,11 @@ static void smp_ap_entry(struct limine_mp_info *info) {
   ic_ap_init();
   ic_set_timer(IC_DEFAULT_TICK);
 
-  // Mark this AP as online using wait counter
-  wait_counter_inc(&ap_startup_counter);
-
   // Also increment the atomic counter for consistency with other code
   __atomic_fetch_add(&cpus_online, 1, __ATOMIC_RELEASE);
+
+  // Mark this AP as online using wait counter
+  wait_counter_inc(&ap_startup_counter);
 
   // Wait until BSP releases start barrier before enabling interrupts
   while (!__atomic_load_n(&smp_start_barrier, __ATOMIC_ACQUIRE)) {

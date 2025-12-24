@@ -52,7 +52,10 @@ configure_file(
 # ============================================================================
 # Module Path & Includes & Subdirectories
 # ============================================================================
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+list(APPEND CMAKE_MODULE_PATH
+        "${CMAKE_SOURCE_DIR}/cmake"
+        "${CMAKE_SOURCE_DIR}/lib"
+)
 
 include(cache)
 include(ccache)
@@ -62,8 +65,8 @@ include(configuration)
 include(flags)
 include(lib/uACPI/uacpi.cmake)
 include(fkx)
-
-add_subdirectory(lib/linearfb)
+include(lib/linearfb/linearfb.cmake)
+include(drivers/uart/uart.cmake)
 
 # ============================================================================
 # Platform Checks
@@ -121,11 +124,6 @@ target_include_directories(
     PRIVATE
     ${UACPI_INCLUDES}
 )
-#
-#target_link_libraries(voidframex.krnl
-#        PRIVATE
-#        linearfb
-#)
 
 # Configure the linker to use ld.lld with proper arguments
 set_target_properties(voidframex.krnl PROPERTIES
@@ -151,12 +149,28 @@ endif()
 # ============================================================================
 # ISO Generation with Limine Bootloader
 # ============================================================================
-set(LIMINE_RESOURCE_DIR "/usr/share/limine")
+set(LIMINE_RESOURCE_DIR "/usr/share/limine" CACHE STRING "Limine binary directory")
+
+# Generate limine.conf from template
+get_property(FKX_MODULE_LIST GLOBAL PROPERTY FKX_MODULES)
+set(LIMINE_MODULES "")
+set(FKX_MODULE_FILES "")
+foreach(MOD ${FKX_MODULE_LIST})
+    string(APPEND LIMINE_MODULES "    module_path: boot():/module/${MOD}.module.fkx\n")
+    list(APPEND FKX_MODULE_FILES $<TARGET_FILE:${MOD}>)
+endforeach()
+
+configure_file(
+    ${CMAKE_SOURCE_DIR}/tools/limine.conf.in
+    ${CMAKE_BINARY_DIR}/limine.conf
+    @ONLY
+)
 
 add_custom_command(
         OUTPUT bootd
         COMMAND ${CMAKE_COMMAND} -E touch bootd
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir/kernel
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir/module
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir/EFI/BOOT
         # Copy Limine UEFI bootloader
         COMMAND ${CMAKE_COMMAND} -E copy ${LIMINE_RESOURCE_DIR}/BOOTX64.EFI
@@ -165,14 +179,20 @@ add_custom_command(
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:voidframex.krnl>
         ${CMAKE_CURRENT_BINARY_DIR}/bootdir/kernel/voidframex.krnl
         # Copy Limine config
-        COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/limine.conf
+        COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/limine.conf
         ${CMAKE_CURRENT_BINARY_DIR}/bootdir/limine.conf
-        DEPENDS voidframex.krnl ${CMAKE_CURRENT_SOURCE_DIR}/limine.conf
+        DEPENDS voidframex.krnl ${CMAKE_BINARY_DIR}/limine.conf ${FKX_MODULE_FILES}
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         COMMENT "Setting up boot directory with Limine"
         VERBATIM
 )
+
 add_custom_target(bootdir ALL DEPENDS bootd)
+
+get_property(FKX_MODULE_LIST GLOBAL PROPERTY FKX_MODULES)
+if (FKX_MODULE_LIST)
+    add_dependencies(bootdir ${FKX_MODULE_LIST})
+endif()
 
 add_custom_command(
     OUTPUT voidframex.hybrid.iso
@@ -180,16 +200,16 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy
         ${LIMINE_RESOURCE_DIR}/limine-uefi-cd.bin
         ${CMAKE_CURRENT_BINARY_DIR}/bootdir/limine-uefi-cd.bin
-    
+
     # 2. Copy BIOS boot binary for hybrid support
     COMMAND ${CMAKE_COMMAND} -E copy
         ${LIMINE_RESOURCE_DIR}/limine-bios-cd.bin
-        ${CMAKE_CURRENT_BINARY_DIR}/bootdir/limine-bios-cd.bin    
+        ${CMAKE_CURRENT_BINARY_DIR}/bootdir/limine-bios-cd.bin
 
-     COMMAND ${CMAKE_COMMAND} -E copy
+    COMMAND ${CMAKE_COMMAND} -E copy
         ${LIMINE_RESOURCE_DIR}/limine-bios.sys
         ${CMAKE_CURRENT_BINARY_DIR}/bootdir/limine-bios.sys
-    
+
     # 3. Create the hybrid ISO with both BIOS and UEFI support
     COMMAND ${XORRISO} -as mkisofs
         -b limine-bios-cd.bin           # BIOS boot (El Torito)
@@ -202,8 +222,8 @@ add_custom_command(
         --protective-msdos-label        # Hybrid MBR
         -o ${CMAKE_CURRENT_BINARY_DIR}/voidframex.hybrid.iso
         ${CMAKE_CURRENT_BINARY_DIR}/bootdir
-    
-    DEPENDS bootd 
+
+    DEPENDS bootd $<TARGET_FILE:voidframex.krnl>
         ${LIMINE_RESOURCE_DIR}/limine-uefi-cd.bin
         ${LIMINE_RESOURCE_DIR}/limine-bios.sys
         ${LIMINE_RESOURCE_DIR}/limine-bios-cd.bin
@@ -214,6 +234,12 @@ add_custom_command(
 
 set(ISO_PATH ${CMAKE_CURRENT_BINARY_DIR}/voidframex.hybrid.iso)
 add_custom_target(iso ALL DEPENDS voidframex.hybrid.iso)
+
+# Add FKX module dependencies to ISO target
+get_property(FKX_MODULE_LIST GLOBAL PROPERTY FKX_MODULES)
+if (FKX_MODULE_LIST)
+    add_dependencies(iso ${FKX_MODULE_LIST})
+endif()
 
 # ============================================================================
 # Run Targets

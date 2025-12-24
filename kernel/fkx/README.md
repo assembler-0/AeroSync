@@ -10,7 +10,8 @@ FKX is a load-time only kernel extension framework for VoidFrameX. Modules are s
 - **Permanent**: Once loaded, modules cannot be unloaded.
 - **ELF Format**: Modules must be Position Independent Executables (PIE) / Shared Objects.
 - **API Table**: Kernel exports functionality via `struct fkx_kernel_api`.
-- **Dead simple**: No fancy stuff
+- **Flexible Loading**: New system allows loading images separately from initialization to avoid circular dependencies.
+- **Module Classes**: Modules can be grouped by class for ordered initialization.
 
 ## Structure
 - `include/kernel/fkx/fkx.h`: Public API and structures.
@@ -34,10 +35,47 @@ FKX_MODULE_DEFINE(
     "Author",
     "Description",
     0,
+    FKX_DRIVER_CLASS,  // Module class
     my_init,
     NULL
 );
 ```
+
+## Module Classes
+Modules are organized into classes to allow ordered initialization and avoid circular dependencies:
+
+- `FKX_PRINTK_CLASS`: Printk-related modules
+- `FKX_DRIVER_CLASS`: Device drivers
+- `FKX_IC_CLASS`: Interrupt controller modules
+- `FKX_MM_CLASS`: Memory management modules
+- `FKX_GENERIC_CLASS`: Generic modules
+
+## New Flexible Loading API
+
+### Loading Images
+Use `fkx_load_image()` to load module images without calling initialization:
+
+```c
+void *handle;
+int ret = fkx_load_image(module_data, module_size, &handle);
+if (ret != 0) {
+    // Handle error
+}
+```
+
+### Initializing Module Classes
+Initialize all modules of a specific class using `fkx_init_module_class()`:
+
+```c
+// Initialize all driver class modules
+int ret = fkx_init_module_class(FKX_DRIVER_CLASS);
+if (ret != 0) {
+    // Handle initialization errors
+}
+```
+
+### Backwards Compatibility
+The old `fkx_load_module()` function is still available for direct load-and-init operations, but is deprecated in favor of the new flexible approach.
 
 ## Compilation
 Compile modules as freestanding shared objects:

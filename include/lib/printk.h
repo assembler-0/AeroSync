@@ -12,7 +12,7 @@ typedef struct printk_backend {
   fn(int, is_active, void);
 } printk_backend_t;
 
-static int generic_backend_init(void *payload) { (void)payload; return 1; }
+static int generic_backend_init(void *payload) { (void)payload; return 0; }
 
 #define KERN_EMERG "$0$"
 #define KERN_ALERT "$1$"
@@ -29,7 +29,13 @@ int vprintk(const char *fmt, va_list args);
 
 // Initialize printing subsystem
 void printk_register_backend(const printk_backend_t *backend);
-void printk_init_auto(void *payload);
+
+/**
+ * @funtion printk_auto_configure(2) - setup registered printk backedns
+ * @param payload payload passed to init()
+ * @param reinit status to check if
+ */
+void printk_auto_configure(void *payload, int reinit);
 int printk_set_sink(const char *backend_name);
 void printk_shutdown(void);
 // Enable asynchronous printk logging (spawns background consumer thread).

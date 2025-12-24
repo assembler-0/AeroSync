@@ -102,6 +102,7 @@ typedef struct {
 
 /* sh_type */
 #define SHT_NULL     0
+#define SHN_UNDEF    0
 #define SHT_PROGBITS 1
 #define SHT_SYMTAB   2
 #define SHT_STRTAB   3
@@ -113,7 +114,7 @@ typedef struct {
 #define SHT_REL      9
 #define SHT_SHLIB    10
 #define SHT_DYNSYM   11
-
+\
 /* sh_flags */
 #define SHF_WRITE     (1 << 0)
 #define SHF_ALLOC     (1 << 1)

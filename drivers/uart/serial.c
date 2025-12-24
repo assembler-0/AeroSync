@@ -18,9 +18,8 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/io.h>
+#include <kernel/fkx/fkx.h>
 #include <drivers/uart/serial.h>
-#include <lib/printk.h>
 
 // Serial port register offsets
 #define SERIAL_DATA_REG     0  // Data register (DLAB=0)
@@ -58,6 +57,8 @@
 static uint16_t serial_port = COM1;
 static int serial_initialized = 0;
 
+static const struct fkx_kernel_api *kapi = NULL;
+
 int serial_init_standard(void *unused) {
   (void)unused;
   if (serial_init() != 0)
@@ -70,7 +71,7 @@ int serial_init_standard(void *unused) {
 static void serial_cleanup(void) {
     if (serial_initialized) {
         // Disable interrupts
-        outb(serial_port + SERIAL_IER_REG, 0x00);
+        kapi->outb(serial_port + SERIAL_IER_REG, 0x00);
     }
 }
 
@@ -93,7 +94,7 @@ const printk_backend_t* serial_get_backend(void) {
 }
 
 static int serial_lsr_sane(uint16_t base) {
-    uint8_t lsr = inb(base + 5);
+    uint8_t lsr = kapi->inb(base + 5);
 
     /* Bits 6–7 are reserved on real UARTs */
     if (lsr == 0xFF || lsr == 0x00)
@@ -104,21 +105,21 @@ static int serial_lsr_sane(uint16_t base) {
 
 
 int serial_port_exists(uint16_t base) {
-    uint8_t old = inb(base + 7);
+    uint8_t old = kapi->inb(base + 7);
 
-    outb(base + 7, 0xA5);
-    if (inb(base + 7) != 0xA5)
+    kapi->outb(base + 7, 0xA5);
+    if (kapi->inb(base + 7) != 0xA5)
         goto fallback;
 
-    outb(base + 7, 0x5A);
-    if (inb(base + 7) != 0x5A)
+    kapi->outb(base + 7, 0x5A);
+    if (kapi->inb(base + 7) != 0x5A)
         goto fallback;
 
-    outb(base + 7, old);
+    kapi->outb(base + 7, old);
     return 1;
 
 fallback:
-    outb(base + 7, old);
+    kapi->outb(base + 7, old);
     return serial_lsr_sane(base);
 }
 
@@ -147,35 +148,35 @@ int serial_init_port(uint16_t port) {
     serial_port = port;
 
     // Disable all interrupts
-    outb(port + SERIAL_IER_REG, 0x00);
+    kapi->outb(port + SERIAL_IER_REG, 0x00);
 
     // Enable DLAB to set baud rate
-    outb(port + SERIAL_LCR_REG, SERIAL_LCR_DLAB);
+    kapi->outb(port + SERIAL_LCR_REG, SERIAL_LCR_DLAB);
 
     // Set divisor to 3 (38400 baud)
-    outb(port + SERIAL_DIVISOR_LOW, 0x03);
-    outb(port + SERIAL_DIVISOR_HIGH, 0x00);
+    kapi->outb(port + SERIAL_DIVISOR_LOW, 0x03);
+    kapi->outb(port + SERIAL_DIVISOR_HIGH, 0x00);
 
     // Configure: 8 bits, no parity, 1 stop bit
-    outb(port + SERIAL_LCR_REG, SERIAL_LCR_8BITS | SERIAL_LCR_NOPARITY | SERIAL_LCR_1STOP);
+    kapi->outb(port + SERIAL_LCR_REG, SERIAL_LCR_8BITS | SERIAL_LCR_NOPARITY | SERIAL_LCR_1STOP);
 
     // Enable and configure FIFO
-    outb(port + SERIAL_FIFO_REG, SERIAL_FIFO_ENABLE | SERIAL_FIFO_CLEAR_RX |
+    kapi->outb(port + SERIAL_FIFO_REG, SERIAL_FIFO_ENABLE | SERIAL_FIFO_CLEAR_RX |
          SERIAL_FIFO_CLEAR_TX | SERIAL_FIFO_TRIGGER_14);
 
     // Enable DTR, RTS, and OUT2
-    outb(port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2);
+    kapi->outb(port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2);
 
     // Test serial chip (loopback test)
-    outb(port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2 | 0x10);
-    outb(port + SERIAL_DATA_REG, 0xAE);
+    kapi->outb(port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2 | 0x10);
+    kapi->outb(port + SERIAL_DATA_REG, 0xAE);
 
-    if (inb(port + SERIAL_DATA_REG) != 0xAE) {
+    if (kapi->inb(port + SERIAL_DATA_REG) != 0xAE) {
         return -2; // Serial chip failed
     }
 
     // Restore normal operation
-    outb(port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2);
+    kapi->outb(port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2);
 
     serial_initialized = 1;
     return 0; // Success
@@ -183,12 +184,12 @@ int serial_init_port(uint16_t port) {
 
 int serial_transmit_empty(void) {
     if (!serial_initialized) return 0;
-    return inb(serial_port + SERIAL_LSR_REG) & SERIAL_LSR_TRANSMIT_EMPTY;
+    return kapi->inb(serial_port + SERIAL_LSR_REG) & SERIAL_LSR_TRANSMIT_EMPTY;
 }
 
 int serial_data_available(void) {
     if (!serial_initialized) return 0;
-    return inb(serial_port + SERIAL_LSR_REG) & SERIAL_LSR_DATA_READY;
+    return kapi->inb(serial_port + SERIAL_LSR_REG) & SERIAL_LSR_DATA_READY;
 }
 
 void serial_write_char(const char a) {
@@ -201,14 +202,14 @@ void serial_write_char(const char a) {
     if (a == '\n') {
         while (!serial_transmit_empty() && --timeout > 0);
         if (timeout <= 0) return;
-        outb(serial_port + SERIAL_DATA_REG, '\r');
+        kapi->outb(serial_port + SERIAL_DATA_REG, '\r');
         timeout = 65536; // Reset timeout
     }
 
     while (!serial_transmit_empty() && --timeout > 0);
     if (timeout <= 0) return;
 
-    outb(serial_port + SERIAL_DATA_REG, a);
+    kapi->outb(serial_port + SERIAL_DATA_REG, a);
 }
 
 int serial_read_char(void) {
@@ -218,7 +219,7 @@ int serial_read_char(void) {
         return -1; // No data available
     }
 
-    return inb(serial_port + SERIAL_DATA_REG);
+    return kapi->inb(serial_port + SERIAL_DATA_REG);
 }
 
 int serial_write(const char* str) {
@@ -294,3 +295,21 @@ int serial_readline(char* buffer, int max_length) {
     buffer[pos] = '\0';
     return pos;
 }
+
+static int serial_mod_init(const struct fkx_kernel_api *api) {
+  if (!api) return -1;
+  kapi = api;
+  kapi->printk_register_backend(serial_get_backend());
+  return 0;
+}
+
+FKX_MODULE_DEFINE(
+  linearfb,
+  "0.0.1",
+  "assembler-0",
+  "Simple Linear Framebuffer Graphics Module",
+  0,
+  FKX_PRINTK_CLASS,
+  serial_mod_init,
+  NULL
+);
