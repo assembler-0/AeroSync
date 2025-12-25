@@ -18,18 +18,18 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/io.h>
-#include <arch/x64/tsc.h>
 #include <drivers/timer/pit.h>
 #include <kernel/sysintf/time.h>
+#include <kernel/fkx/fkx.h>
+
+extern const struct fkx_kernel_api *timer_kapi;
 
 #define PIT_CMD_PORT 0x43
 #define PIT_CH0_PORT 0x40
 #define PIT_CH1_PORT 0x41
 #define PIT_CH2_PORT 0x42
 
-static uint32_t global_pit_frequency = 100; // Default
+static uint32_t global_pit_frequency = IC_DEFAULT_TICK; // Default
 static uint16_t pit_reload_value = 0;
 
 void pit_set_frequency(uint32_t frequency) {
@@ -47,20 +47,20 @@ void pit_set_frequency(uint32_t frequency) {
   pit_reload_value = (uint16_t)divisor;
 
   // Save IRQ state
-  irq_flags_t flags = save_irq_flags();
+  irq_flags_t flags = timer_kapi->save_irq_flags();
 
   // Mode 2 (Rate Generator), Binary, Channel 0
   // 00 11 010 0 -> 0x34
-  outb(PIT_CMD_PORT, 0x34);
-  outb(PIT_CH0_PORT, divisor & 0xFF);
-  outb(PIT_CH0_PORT, (divisor >> 8) & 0xFF);
+  timer_kapi->outb(PIT_CMD_PORT, 0x34);
+  timer_kapi->outb(PIT_CH0_PORT, divisor & 0xFF);
+  timer_kapi->outb(PIT_CH0_PORT, (divisor >> 8) & 0xFF);
 
-  restore_irq_flags(flags);
+  timer_kapi->restore_irq_flags(flags);
 }
 
 // Internal wait function (keeps existing logic but private/adapted)
 static void pit_wait_internal(uint32_t ms) {
-  irq_flags_t flags = save_irq_flags();
+  irq_flags_t flags = timer_kapi->save_irq_flags();
 
   while (ms > 0) {
     uint32_t chunk_ms = (ms > 50) ? 50 : ms;
@@ -70,15 +70,15 @@ static void pit_wait_internal(uint32_t ms) {
     uint16_t count = (uint16_t)((PIT_FREQUENCY_BASE * chunk_ms) / 1000);
 
     // Mode 0: Interrupt on Terminal Count
-    outb(PIT_CMD_PORT, 0x30);
-    outb(PIT_CH0_PORT, count & 0xFF);
-    outb(PIT_CH0_PORT, (count >> 8) & 0xFF);
+    timer_kapi->outb(PIT_CMD_PORT, 0x30);
+    timer_kapi->outb(PIT_CH0_PORT, count & 0xFF);
+    timer_kapi->outb(PIT_CH0_PORT, (count >> 8) & 0xFF);
 
     while (1) {
       // Latch Counter 0
-      outb(PIT_CMD_PORT, 0x00);
-      uint8_t lo = inb(PIT_CH0_PORT);
-      uint8_t hi = inb(PIT_CH0_PORT);
+      timer_kapi->outb(PIT_CMD_PORT, 0x00);
+      uint8_t lo = timer_kapi->inb(PIT_CH0_PORT);
+      uint8_t hi = timer_kapi->inb(PIT_CH0_PORT);
       uint16_t current_val = ((uint16_t)hi << 8) | lo;
 
       if (current_val == 0 || current_val > count) {
@@ -92,7 +92,7 @@ static void pit_wait_internal(uint32_t ms) {
   // Restore generic frequency
   pit_set_frequency(global_pit_frequency);
 
-  restore_irq_flags(flags);
+  timer_kapi->restore_irq_flags(flags);
 }
 
 // Time Source Interface Implementation
@@ -100,7 +100,7 @@ static void pit_wait_internal(uint32_t ms) {
 static int pit_source_init(void) {
   // PIT is usually always available and initialized early, but we can reset it
   // here
-  pit_set_frequency(100);
+  pit_set_frequency(IC_DEFAULT_TICK);
   return 0;
 }
 
@@ -124,11 +124,11 @@ static uint64_t pit_source_read_counter(void) {
   // But `time_wait_ns` wants high precision.
 
   // Latch and read
-  irq_flags_t flags = save_irq_flags();
-  outb(PIT_CMD_PORT, 0x00);
-  uint8_t lo = inb(PIT_CH0_PORT);
-  uint8_t hi = inb(PIT_CH0_PORT);
-  restore_irq_flags(flags);
+  irq_flags_t flags = timer_kapi->save_irq_flags();
+  timer_kapi->outb(PIT_CMD_PORT, 0x00);
+  uint8_t lo = timer_kapi->inb(PIT_CH0_PORT);
+  uint8_t hi = timer_kapi->inb(PIT_CH0_PORT);
+  timer_kapi->restore_irq_flags(flags);
 
   uint16_t count = ((uint16_t)hi << 8) | lo;
 
@@ -138,12 +138,12 @@ static uint64_t pit_source_read_counter(void) {
 
 static int pit_source_calibrate_tsc(void) {
   // Use the existing busy-wait logic which is robust for PIT
-  uint64_t start = rdtsc();
+  uint64_t start = timer_kapi->rdtsc();
   pit_wait_internal(50); // 50ms
-  uint64_t end = rdtsc();
+  uint64_t end = timer_kapi->rdtsc();
 
   uint64_t freq = (end - start) * 20;
-  tsc_recalibrate_with_freq(freq);
+  timer_kapi->tsc_recalibrate_with_freq(freq);
   return 0;
 }
 
@@ -159,11 +159,6 @@ static time_source_t pit_time_source = {
 
 // Direct calibration function exposed for early boot
 void pit_calibrate_tsc(void) { pit_source_calibrate_tsc(); }
-
-// Make sure this is called during system init
-__attribute__((constructor)) static void register_pit_source(void) {
-  time_register_source(&pit_time_source);
-}
 
 // Getter for manual registration (Time Subsystem)
 const time_source_t *pit_get_time_source(void) { return &pit_time_source; }

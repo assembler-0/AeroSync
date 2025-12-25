@@ -143,6 +143,8 @@ struct fkx_kernel_api {
   uint64_t (*get_time_ns)(void);
   uint64_t (*rdtsc)(void);
   void     (*time_register_source)(const time_source_t *source);
+  void     (*tsc_recalibrate_with_freq)(uint64_t new_freq);
+  uint64_t (*tsc_freq_get)(void);
 
   /* Interrupt controlling */
   void     (*ic_register_controller)(const interrupt_controller_interface_t *controller);
@@ -186,6 +188,7 @@ struct fkx_kernel_api {
     uacpi_subtable_iteration_callback cb, void *user
   );
   uacpi_status (*uacpi_table_unref)(uacpi_table *tbl);
+  const uacpi_char *(*uacpi_status_to_string)(uacpi_status st);
 };
 
 /**

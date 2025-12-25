@@ -81,6 +81,8 @@ static struct fkx_kernel_api g_fkx_api = {
   .get_time_ns = get_time_ns,
   .rdtsc = rdtsc,
   .time_register_source = time_register_source,
+  .tsc_freq_get = tsc_freq_get,
+  .tsc_recalibrate_with_freq = tsc_recalibrate_with_freq,
   .ic_register_controller = ic_register_controller,
   .ic_shutdown_controller = ic_shutdown_controller,
   .ic_enable_irq = ic_enable_irq,
@@ -106,7 +108,8 @@ static struct fkx_kernel_api g_fkx_api = {
   .mutex_is_locked = mutex_is_locked,
   .uacpi_table_find_by_signature = uacpi_table_find_by_signature,
   .uacpi_for_each_subtable = uacpi_for_each_subtable,
-  .uacpi_table_unref = uacpi_table_unref
+  .uacpi_table_unref = uacpi_table_unref,
+  .uacpi_status_to_string = uacpi_status_to_string,
 };
 
 int fkx_load_image(void *data, size_t size) {

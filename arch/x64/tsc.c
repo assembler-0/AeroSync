@@ -45,7 +45,7 @@ void tsc_calibrate_early(void) {
 
   if (eax) {
     /* eax = base frequency in MHz */
-    tsc_freq = eax / 1000;
+    tsc_freq = eax * 1000000;
     return;
   }
 
@@ -57,8 +57,6 @@ void tsc_calibrate_early(void) {
 uint64_t tsc_freq_get() {
   return tsc_freq;
 }
-
-uint64_t get_tsc_freq(void) { return tsc_freq; }
 
 void tsc_recalibrate_with_freq(uint64_t new_freq) {
   if (new_freq > 0) {

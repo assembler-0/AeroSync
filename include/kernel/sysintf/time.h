@@ -95,12 +95,3 @@ static __always_inline void delay_s(uint64_t s) { time_wait_ns(s * 1000000000ULL
  * @return 0 on success, -1 on failure.
  */
 int time_calibrate_tsc_system(void);
-
-/**
- * @brief Get the current high-precision timestamp in nanoseconds.
- * Note: This typically relies on TSC after calibration, but can fallback to the
- * time source.
- * @return Timestamp in nanoseconds.
- */
-uint64_t time_get_uptime_ns(void);
-

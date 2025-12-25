@@ -18,17 +18,14 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/cpu.h>
 #include <arch/x64/mm/paging.h>
-#include <arch/x64/tsc.h>
 #include <drivers/timer/hpet.h>
-#include <kernel/sysintf/time.h>
 #include <kernel/classes.h>
-#include <lib/printk.h>
-#include <mm/vmalloc.h>
+#include <kernel/fkx/fkx.h>
 
 hpet_info_t hpet_info = {0};
 static void *hpet_mapped_base = NULL;
+extern const struct fkx_kernel_api *timer_kapi;
 
 // Forward declarations
 static int hpet_validate(void);
@@ -112,10 +109,6 @@ static time_source_t hpet_time_source = {
     .calibrate_tsc = hpet_source_calibrate_tsc_impl,
 };
 
-__attribute__((constructor)) static void register_hpet_source(void) {
-  time_register_source(&hpet_time_source);
-}
-
 // Getter for manual registration (Time Subsystem)
 const time_source_t *hpet_get_time_source(void) { return &hpet_time_source; }
 
@@ -129,7 +122,7 @@ static int hpet_validate(void) {
 
   uint64_t capabilities = hpet_read64(HPET_GENERAL_CAPABILITIES_ID);
   if (capabilities == 0 || capabilities == 0xFFFFFFFF) {
-    printk(KERN_ERR HPET_CLASS "Invalid HPET capabilities: 0x%lx\n",
+    timer_kapi->printk(KERN_ERR HPET_CLASS "Invalid HPET capabilities: 0x%lx\n",
            capabilities);
     return -1;
   }
@@ -138,12 +131,12 @@ static int hpet_validate(void) {
   uint8_t detected_counter_size =
       (capabilities & HPET_CAP_COUNT_SIZE_CAP) ? 64 : 32;
   if (detected_counter_size != hpet_info.counter_size) {
-    printk(KERN_WARNING HPET_CLASS
+    timer_kapi->printk(KERN_WARNING HPET_CLASS
            "Counter size mismatch: detected %d-bit, expected %d-bit\n",
            detected_counter_size, hpet_info.counter_size);
   }
 
-  printk(HPET_CLASS "HPET validation passed\n");
+  timer_kapi->printk(HPET_CLASS "HPET validation passed\n");
   return 0;
 }
 
@@ -154,13 +147,13 @@ int hpet_init(void) {
   uacpi_table hpet_table;
   uacpi_status status;
 
-  printk(HPET_CLASS "Initializing HPET driver...\n");
+  timer_kapi->printk(HPET_CLASS "Initializing HPET driver...\n");
 
   // Find HPET ACPI table
-  status = uacpi_table_find_by_signature(ACPI_HPET_SIGNATURE, &hpet_table);
+  status = timer_kapi->uacpi_table_find_by_signature(ACPI_HPET_SIGNATURE, &hpet_table);
   if (uacpi_unlikely_error(status)) {
-    printk(KERN_WARNING HPET_CLASS "HPET table not found: %s\n",
-           uacpi_status_to_string(status));
+    timer_kapi->printk(KERN_WARNING HPET_CLASS "HPET table not found: %s\n",
+           timer_kapi->uacpi_status_to_string(status));
     return -1;
   }
 
@@ -178,18 +171,18 @@ int hpet_init(void) {
       1;
   hpet_info.page_protection = hpet->flags & ACPI_HPET_PAGE_PROTECTION_MASK;
 
-  printk(KERN_DEBUG HPET_CLASS "HPET found:\n");
-  printk(KERN_DEBUG HPET_CLASS "  Base Address: 0x%lx\n", hpet_info.base_address);
-  printk(KERN_DEBUG HPET_CLASS "  Revision: %d\n", hpet_info.revision_id);
-  printk(KERN_DEBUG HPET_CLASS "  Vendor ID: 0x%x\n", hpet_info.vendor_id);
-  printk(KERN_DEBUG HPET_CLASS "  Num Comparators: %d\n", hpet_info.num_comparators);
-  printk(KERN_DEBUG HPET_CLASS "  Page Protection: %d\n", hpet_info.page_protection);
+  timer_kapi->printk(KERN_DEBUG HPET_CLASS "HPET found:\n");
+  timer_kapi->printk(KERN_DEBUG HPET_CLASS "  Base Address: 0x%lx\n", hpet_info.base_address);
+  timer_kapi->printk(KERN_DEBUG HPET_CLASS "  Revision: %d\n", hpet_info.revision_id);
+  timer_kapi->printk(KERN_DEBUG HPET_CLASS "  Vendor ID: 0x%x\n", hpet_info.vendor_id);
+  timer_kapi->printk(KERN_DEBUG HPET_CLASS "  Num Comparators: %d\n", hpet_info.num_comparators);
+  timer_kapi->printk(KERN_DEBUG HPET_CLASS "  Page Protection: %d\n", hpet_info.page_protection);
 
   // Map HPET registers to virtual memory using viomap (MMIO mapping)
-  hpet_mapped_base = viomap(hpet_info.base_address, PAGE_SIZE);
+  hpet_mapped_base = timer_kapi->viomap(hpet_info.base_address, PAGE_SIZE);
   if (!hpet_mapped_base) {
-    printk(KERN_ERR HPET_CLASS "Failed to map HPET registers\n");
-    uacpi_table_unref(&hpet_table);
+    timer_kapi->printk(KERN_ERR HPET_CLASS "Failed to map HPET registers\n");
+    timer_kapi->uacpi_table_unref(&hpet_table);
     return -1;
   }
 
@@ -201,13 +194,13 @@ int hpet_init(void) {
   hpet_info.period_fs = (capabilities >> 32) & 0xFFFFFFFF;
 
   if (hpet_info.period_fs == 0) {
-    printk(KERN_WARNING HPET_CLASS
+    timer_kapi->printk(KERN_WARNING HPET_CLASS
            "HPET period is 0 (likely emulation bug), falling back to standard "
            "14.318MHz period\n");
     hpet_info.period_fs = 69841279; // ~14.31818 MHz in fs
   }
 
-  printk(KERN_DEBUG HPET_CLASS "  Period: %lu fs\n", hpet_info.period_fs);
+  timer_kapi->printk(KERN_DEBUG HPET_CLASS "  Period: %lu fs\n", hpet_info.period_fs);
 
   // Disable HPET during configuration
   hpet_disable();
@@ -217,18 +210,18 @@ int hpet_init(void) {
 
   hpet_info.initialized = true;
 
-  uacpi_table_unref(&hpet_table);
+  timer_kapi->uacpi_table_unref(&hpet_table);
 
   // Validate HPET after enabling
   hpet_enable();
 
   if (hpet_validate() != 0) {
-    printk(KERN_ERR HPET_CLASS "HPET validation failed\n");
-    uacpi_table_unref(&hpet_table);
+    timer_kapi->printk(KERN_ERR HPET_CLASS "HPET validation failed\n");
+    timer_kapi->uacpi_table_unref(&hpet_table);
     return -1;
   }
 
-  printk(HPET_CLASS "HPET driver initialized successfully\n");
+  timer_kapi->printk(HPET_CLASS "HPET driver initialized successfully\n");
   return 0;
 }
 
@@ -243,7 +236,7 @@ uint64_t hpet_get_counter(void) {
 
 uint64_t hpet_get_time_ns(void) {
   if (!hpet_available()) {
-    return time_get_uptime_ns(); // Use centralized time
+    return timer_kapi->get_time_ns(); // Use centralized time
   }
 
   uint64_t counter = hpet_get_counter();
@@ -276,11 +269,11 @@ void hpet_disable(void) {
 
 int hpet_calibrate_tsc(void) {
   if (!hpet_available()) {
-    printk(KERN_WARNING HPET_CLASS "HPET not available for TSC calibration\n");
+    timer_kapi->printk(KERN_WARNING HPET_CLASS "HPET not available for TSC calibration\n");
     return -1;
   }
 
-  printk(HPET_CLASS "Starting TSC recalibration using HPET...\n");
+  timer_kapi->printk(HPET_CLASS "Starting TSC recalibration using HPET...\n");
 
   // Multiple measurements to improve accuracy
   uint64_t total_tsc_freq = 0;
@@ -290,13 +283,13 @@ int hpet_calibrate_tsc(void) {
   for (int i = 0; i < num_samples; i++) {
     // Get initial readings
     uint64_t hpet_start = hpet_get_time_ns();
-    uint64_t tsc_start = rdtsc();
+    uint64_t tsc_start = timer_kapi->rdtsc();
 
     // Wait for a period (e.g., 100ms) to get accurate calibration
     // Use TSC-based delay as fallback to avoid infinite loops
-    uint64_t tsc_start_delay = rdtsc();
+    uint64_t tsc_start_delay = timer_kapi->rdtsc();
     uint64_t tsc_freq =
-        get_tsc_freq(); // Use current TSC frequency for delay calculation
+        timer_kapi->tsc_freq_get(); // Use current TSC frequency for delay calculation
     uint64_t tsc_ticks_for_100ms =
         (tsc_freq * 100) / 100; // 100ms worth of ticks
 
@@ -308,8 +301,8 @@ int hpet_calibrate_tsc(void) {
     // Since we are inside calibration, we can't trust TSC delay fully yet,
     // but if we have a rough PIT estimate it's better than nothing.
     while (hpet_get_time_ns() < hpet_wait_until) {
-      if (tsc_freq > 0 && rdtsc() > tsc_wait_until) {
-        printk(KERN_WARNING HPET_CLASS
+      if (tsc_freq > 0 && timer_kapi->rdtsc() > tsc_wait_until) {
+        timer_kapi->printk(KERN_WARNING HPET_CLASS
                "Safety timeout triggered in calibration sample %d\n",
                i + 1);
         break; // Exit if TSC timeout is reached
@@ -318,7 +311,7 @@ int hpet_calibrate_tsc(void) {
     }
 
     uint64_t hpet_end = hpet_get_time_ns();
-    uint64_t tsc_end = rdtsc();
+    uint64_t tsc_end = timer_kapi->rdtsc();
 
     uint64_t hpet_elapsed_ns = hpet_end - hpet_start;
     uint64_t tsc_elapsed = tsc_end - tsc_start;
@@ -330,7 +323,7 @@ int hpet_calibrate_tsc(void) {
       total_tsc_freq += sample_freq;
       measurements++;
 
-      printk(KERN_DEBUG HPET_CLASS "Sample %d: HPET elapsed: %lu ns, TSC elapsed: %lu "
+      timer_kapi->printk(KERN_DEBUG HPET_CLASS "Sample %d: HPET elapsed: %lu ns, TSC elapsed: %lu "
                         "ticks, freq: %lu Hz\n",
              i + 1, hpet_elapsed_ns, tsc_elapsed, sample_freq);
     } else {
@@ -342,13 +335,13 @@ int hpet_calibrate_tsc(void) {
   if (measurements > 0) {
     uint64_t avg_tsc_freq = total_tsc_freq / measurements;
 
-    printk(KERN_DEBUG HPET_CLASS "Average TSC frequency from %d samples: %lu Hz\n",
+    timer_kapi->printk(KERN_DEBUG HPET_CLASS "Average TSC frequency from %d samples: %lu Hz\n",
            measurements, avg_tsc_freq);
 
     // Update the TSC frequency with the more accurate HPET-based value
-    tsc_recalibrate_with_freq(avg_tsc_freq);
+    timer_kapi->tsc_recalibrate_with_freq(avg_tsc_freq);
 
-    printk(HPET_CLASS "TSC recalibrated using HPET reference\n");
+    timer_kapi->printk(HPET_CLASS "TSC recalibrated using HPET reference\n");
     return 0;
   }
 

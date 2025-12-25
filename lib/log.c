@@ -148,7 +148,7 @@ static void console_emit_prefix_ts(int level, uint64_t ts_ns) {
     klog_console_sink(*pfx++);
 
   // Add Timestamp [    0.000000]
-  if (get_tsc_freq() > 0) { // Check if calibrated
+  if (tsc_freq_get() > 0) { // Check if calibrated
     uint64_t ns = ts_ns;
     uint64_t s = ns / 1000000000ULL;
     uint64_t us = (ns % 1000000000ULL) / 1000ULL;

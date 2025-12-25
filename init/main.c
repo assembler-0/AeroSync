@@ -141,7 +141,7 @@ int process(void *data) {
   }
 }
 
-// TODO: MAKE ALL HARDWARE DRIVER A SEPERATE MODULE!!
+// TODO: MAKE ALL HARDWARE DRIVER A SEPARATE MODULE!!
 
 void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   if (LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision) == false) {
@@ -244,7 +244,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
       }
     }
   } else {
-    printk(KERN_NOTICE FKX_CLASS "no FKX module found"
+    printk(KERN_NOTICE FKX_CLASS "no FKX module found/loaded"
       ", you probably do not want this"
       ", this build of VoidFrameX does not have "
       "any built-in hardware drivers"
@@ -253,7 +253,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   }
 
   fkx_init_module_class(FKX_PRINTK_CLASS);
-
   printk_auto_configure(NULL, 1);
 
   fkx_init_module_class(FKX_IC_CLASS);
@@ -276,19 +275,8 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   // Initialize ACPI Power Management (Buttons, etc.)
   acpi_power_init();
 
-  if (ic_type == INTC_APIC)
-    smp_init();
-  crc32_init();
-  vfs_init();
-
-  sched_init();
-  sched_init_task(&bsp_task);
-
   // --- Time Subsystem Initialization ---
-
-  time_register_source(pit_get_time_source());
-  time_register_source(hpet_get_time_source());
-
+  fkx_init_module_class(FKX_TIMER_CLASS);
   // Initialize unified time subsystem (Selects Best Source and Inits it)
   if (time_init() != 0) {
     printk(KERN_WARNING KERN_CLASS "Time subsystem initialization failed\n");
@@ -300,6 +288,14 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   } else {
     printk(KERN_CLASS "TSC calibrated successfully.\n");
   }
+
+  if (ic_type == INTC_APIC)
+    smp_init();
+  crc32_init();
+  vfs_init();
+
+  sched_init();
+  sched_init_task(&bsp_task);
 
   printk_init_async();
 

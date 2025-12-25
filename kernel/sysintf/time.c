@@ -101,7 +101,7 @@ void time_wait_ns(uint64_t ns) {
     return;
 
   // Prefer TSC delay if it has been calibrated, as it's low overhead
-  if (get_tsc_freq() > 0) {
+  if (tsc_freq_get() > 0) {
     tsc_delay(ns);
     return;
   }
@@ -173,11 +173,4 @@ int time_calibrate_tsc_system(void) {
 
   tsc_recalibrate_with_freq(tsc_freq);
   return 0;
-}
-
-uint64_t time_get_uptime_ns(void) {
-  // Prefer TSC if calibrated, else ask source?
-  // Actually TSC usually provides system uptime if we track boot offset.
-  // This is a wrapper for get_time_ns currently in tsc.c
-  return get_time_ns();
 }
