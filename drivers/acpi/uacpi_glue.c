@@ -24,7 +24,7 @@
 #include <arch/x64/mm/layout.h>
 #include <arch/x64/mm/vmm.h>
 #include <arch/x64/tsc.h>
-#include <lib/ic.h>
+#include <kernel/sysintf/ic.h>
 #include <kernel/classes.h>
 #include <kernel/mutex.h>
 #include <kernel/sched/process.h>

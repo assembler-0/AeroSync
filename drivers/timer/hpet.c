@@ -22,7 +22,7 @@
 #include <arch/x64/mm/paging.h>
 #include <arch/x64/tsc.h>
 #include <drivers/timer/hpet.h>
-#include <drivers/timer/time.h> // Include new time interface
+#include <kernel/sysintf/time.h>
 #include <kernel/classes.h>
 #include <lib/printk.h>
 #include <mm/vmalloc.h>

@@ -20,7 +20,7 @@
 
 #include <arch/x64/cpu.h>
 #include <arch/x64/irq.h>
-#include <lib/ic.h>
+#include <kernel/sysintf/ic.h>
 #include <kernel/panic.h>
 #include <kernel/sched/sched.h>
 

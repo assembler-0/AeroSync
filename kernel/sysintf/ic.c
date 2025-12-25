@@ -1,8 +1,28 @@
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * VoidFrameX monolithic kernel
+ *
+ * @file kernel/sysintf/ic.c
+ * @brief Unified interrupt controller management
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #include <drivers/apic/apic.h>
 #include <kernel/classes.h>
 #include <kernel/types.h>
 #include <lib/printk.h>
-#include <lib/ic.h>
+#include <kernel/sysintf/ic.h>
 #include <kernel/panic.h>
 
 #define MAX_CONTROLLERS 8

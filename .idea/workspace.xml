@@ -41,12 +41,27 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="Bit of README.md">
+    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="logging again">
+      <change afterPath="$PROJECT_DIR$/kernel/sysintf/README.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x64/irq/irq.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/irq/irq.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x64/smp.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/smp.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmake/source.cmake" beforeDir="false" afterPath="$PROJECT_DIR$/cmake/source.cmake" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/drivers/acpi/uacpi_glue.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/acpi/uacpi_glue.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/drivers/apic/ic.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/apic/ic.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/drivers/timer/hpet.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/timer/hpet.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/drivers/timer/pit.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/timer/pit.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/drivers/timer/time.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/sysintf/time.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/drivers/apic/apic.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/drivers/apic/apic.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/drivers/apic/pic.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/drivers/apic/pic.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/drivers/timer/time.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/sysintf/time.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/kernel/fkx/fkx.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/fkx/fkx.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/include/kernel/version.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/version.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/lib/ic.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/sysintf/ic.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/kernel/fkx/loader.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/fkx/loader.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tools/limine.conf.in" beforeDir="false" afterPath="$PROJECT_DIR$/tools/limine.conf.in" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/sched/core.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/sched/core.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/ic.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/sysintf/ic.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -87,6 +102,7 @@
     <setting file="file://$PROJECT_DIR$/drivers/apic/x2apic.c" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/drivers/apic/xapic.c" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/include/kernel/fkx/fkx.h" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/include/kernel/sysintf/ic.h" root0="SKIP_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/lib/linearfb/linearfb.c" root0="FORCE_HIGHLIGHTING" />
   </component>
   <component name="MacroExpansionManager">
@@ -153,6 +169,8 @@
       <recent name="$PROJECT_DIR$/drivers/apic" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/include/kernel/sysintf" />
+      <recent name="$PROJECT_DIR$/kernel/sysintf" />
       <recent name="$PROJECT_DIR$/include/lib" />
       <recent name="$PROJECT_DIR$/lib" />
       <recent name="$PROJECT_DIR$/include/kernel/fkx" />
@@ -282,7 +300,7 @@
       <workItem from="1766572035477" duration="335000" />
       <workItem from="1766572878778" duration="2007000" />
       <workItem from="1766624616392" duration="9000" />
-      <workItem from="1766645665586" duration="3035000" />
+      <workItem from="1766645665586" duration="4246000" />
     </task>
     <task id="LOCAL-00001" summary="Mutexes and FKX spec">
       <option name="closed" value="true" />
@@ -324,7 +342,15 @@
       <option name="project" value="LOCAL" />
       <updated>1766647062913</updated>
     </task>
-    <option name="localTasksCounter" value="6" />
+    <task id="LOCAL-00006" summary="logging again">
+      <option name="closed" value="true" />
+      <created>1766650025112</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1766650025112</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -345,7 +371,8 @@
     <MESSAGE value="APIC as a module" />
     <MESSAGE value="TSC early calibrate" />
     <MESSAGE value="Bit of README.md" />
-    <option name="LAST_COMMIT_MESSAGE" value="Bit of README.md" />
+    <MESSAGE value="logging again" />
+    <option name="LAST_COMMIT_MESSAGE" value="logging again" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

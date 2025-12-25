@@ -2,7 +2,7 @@
 /**
  * VoidFrameX monolithic kernel
  *
- * @file drivers/timer/time.c
+ * @file kernel/sysintf/time.c
  * @brief Unified Time Subsystem implementation
  * @copyright (C) 2025 assembler-0
  *
@@ -20,7 +20,7 @@
 
 #include <arch/x64/cpu.h>
 #include <arch/x64/tsc.h>
-#include <drivers/timer/time.h>
+#include <kernel/sysintf/time.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>
 #include <lib/printk.h>

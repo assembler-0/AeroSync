@@ -20,9 +20,8 @@
 
 #pragma once
 
-#include <kernel/types.h>
-#include <drivers/timer/time.h>
-#include <lib/ic.h>
+#include <kernel/sysintf/time.h>
+#include <kernel/sysintf/ic.h>
 #include <lib/printk.h>
 #include <arch/x64/cpu.h>
 #include <kernel/mutex.h>
@@ -41,8 +40,7 @@
 
 /* Module flags */
 #define FKX_FLAG_REQUIRED    (1 << 0)  /* System cannot boot without this module */
-#define FKX_FLAG_EARLY_INIT  (1 << 1)  /* Load during early boot phase */
-#define FKX_FLAG_CORE        (1 << 2)  /* Core system component */
+#define FKX_FLAG_CORE        (1 << 1)  /* Core system component */
 
 /* Return codes */
 #define FKX_SUCCESS          0
@@ -52,6 +50,7 @@ typedef enum {
   FKX_PRINTK_CLASS,
   FKX_DRIVER_CLASS,
   FKX_IC_CLASS,
+  FKX_TIMER_CLASS,
   FKX_MM_CLASS,
   FKX_GENERIC_CLASS,
   FKX_MAX_CLASS,

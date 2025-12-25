@@ -24,8 +24,7 @@
 #include <arch/x64/idt/idt.h>
 #include <arch/x64/mm/vmm.h>
 #include <arch/x64/smp.h>
-#include <drivers/apic/apic.h>
-#include <lib/ic.h>
+#include <kernel/sysintf/ic.h>
 #include <kernel/classes.h>
 #include <kernel/wait.h>
 #include <lib/printk.h>

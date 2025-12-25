@@ -28,11 +28,11 @@
 #include <compiler.h>
 #include <crypto/crc32.h>
 #include <drivers/acpi/power.h>
-#include <lib/ic.h>
+#include <kernel/sysintf/ic.h>
 #include <drivers/qemu/debugcon/debugcon.h>
 #include <drivers/timer/hpet.h>
 #include <drivers/timer/pit.h>
-#include <drivers/timer/time.h>
+#include <kernel/sysintf/time.h>
 #include <fs/vfs.h>
 #include <kernel/classes.h>
 #include <kernel/cmdline.h>
@@ -239,7 +239,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
       printk(KERN_DEBUG FKX_CLASS "  [%zu] %s @ %p (%lu bytes)\n",
              i, m->path, m->address, m->size);
 
-      // Attempt to load as FKX module
       if (fkx_load_image(m->address, m->size) == 0) {
         printk(FKX_CLASS "Successfully loaded module: %s\n", m->path);
       }

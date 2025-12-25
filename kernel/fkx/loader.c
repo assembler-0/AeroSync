@@ -8,8 +8,8 @@
 #include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/vmm.h>
 #include <arch/x64/io.h>
-#include <drivers/timer/time.h>
-#include <lib/ic.h>
+#include <kernel/sysintf/time.h>
+#include <kernel/sysintf/ic.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>
 
