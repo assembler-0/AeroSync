@@ -47,6 +47,7 @@
 #include <limine/limine.h>
 #include <mm/slab.h>
 #include <mm/vma.h>
+#include <mm/vmalloc.h>
 #include <uacpi/uacpi.h>
 
 // Set Limine Request Start Marker
@@ -259,6 +260,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   ic_register_lapic_get_id_early();
 
   cpu_features_init();
+
   // Two-phase ACPI init to break IC/APIC/uACPI circular dependency
   uacpi_kernel_init_early();
 

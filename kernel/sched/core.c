@@ -482,8 +482,3 @@ void sched_init_ap(void) {
 
   sched_init_task(idle);
 }
-
-/*
- * Scheduler memory statistics
- */
-void sched_dump_memory_stats(void) { slab_dump_stats(); }

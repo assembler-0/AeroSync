@@ -41,6 +41,7 @@ volatile int smp_lock = 0;
 static volatile int smp_start_barrier =
     0; // BSP releases APs to start interrupts
 static struct wait_counter ap_startup_counter;
+static int smp_initialized = 0;
 
 // Global array to map logical CPU ID to physical APIC ID
 int per_cpu_apic_id[MAX_CPUS];
@@ -144,10 +145,13 @@ void smp_init(void) {
   // Release APs to enable interrupts and proceed
   __atomic_store_n(&smp_start_barrier, 1, __ATOMIC_RELEASE);
 
+  smp_initialized = 1;
   printk(SMP_CLASS "%d APs online.\n", cpus_online);
 }
 
 uint64_t smp_get_cpu_count(void) { return cpu_count; }
+
+int smp_is_active() { return smp_initialized; }
 
 uint64_t smp_get_id(void) {
   // Use Local APIC ID

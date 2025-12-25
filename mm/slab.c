@@ -1,274 +1,233 @@
-/// SPDX-License-Identifier: GPL-2.0-only
-/**
- * VoidFrameX monolithic kernel
- *
- * @file mm/slab.c
- * @brief Slab allocator implementation (VMM-based)
- * @copyright (C) 2025 assembler-0
- *
- * This file is part of the VoidFrameX kernel.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- */
-
-#include <arch/x64/mm/layout.h>
-#include <arch/x64/mm/pmm.h>
-#include <kernel/classes.h>
-#include <kernel/panic.h>
-#include <lib/printk.h>
-#include <lib/string.h>
+#include <arch/x64/smp.h>
 #include <mm/slab.h>
+#include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/paging.h>
+#include <kernel/classes.h>
+#include <lib/string.h>
+#include <lib/printk.h>
+#include <kernel/panic.h>
 
-static slab_region_t regions[ALLOC_REGION_COUNT];
-static bool slab_initialized = false;
+static kmem_cache_t *kmalloc_caches[9];  // 8, 16, 32... 2048
+static kmem_cache_t *cache_cache;        // Cache for kmem_cache_t structures
 
-// Size mapping: 16, 32, 64, 128, 256, 512, 1024, 2048
-static const size_t slab_sizes[SLAB_COUNT] = {16,  32,   64,   128, 256,
-                                              512, 1024, 2048};
-
-static inline size_t slab_size_to_index(size_t size) {
-  if (size <= 16)
-    return 0;
-  if (size <= 32)
-    return 1;
-  if (size <= 64)
-    return 2;
-  if (size <= 128)
-    return 3;
-  if (size <= 256)
-    return 4;
-  if (size <= 512)
-    return 5;
-  if (size <= 1024)
-    return 6;
-  return 7; // 2048
-}
-
-static inline size_t slab_index_to_size(size_t index) {
-  return slab_sizes[index];
-}
-
-static void slab_fill_guards(slab_obj_t *obj, bool strict) {
-  uint8_t pattern = strict ? 0xAA : 0x55;
-  memset(obj->guard_pre, pattern, SLAB_GUARD_SIZE);
-
-  uint8_t *guard_post = (uint8_t *)obj + sizeof(slab_obj_t) + obj->size;
-  memset(guard_post, pattern, SLAB_GUARD_SIZE);
-}
-
-static bool slab_check_guards_internal(slab_obj_t *obj) {
-  bool strict = regions[obj->region].strict_guards;
-  uint8_t pattern = strict ? 0xAA : 0x55;
-
-  // Check pre-guard
-  for (int i = 0; i < SLAB_GUARD_SIZE; i++) {
-    if (obj->guard_pre[i] != pattern)
-      return false;
-  }
-
-  // Check post-guard
-  uint8_t *guard_post = (uint8_t *)obj + sizeof(slab_obj_t) + obj->size;
-  for (int i = 0; i < SLAB_GUARD_SIZE; i++) {
-    if (guard_post[i] != pattern)
-      return false;
-  }
-
-  return true;
+// Helper: Get slab header from an object pointer (assumes 4KB alignment)
+static inline slab_page_t *get_slab_from_obj(void *obj) {
+    return (slab_page_t *)((uint64_t)obj & ~0xFFF);
 }
 
 static void *slab_alloc_page(void) {
-  // 1. Allocate physical page
-  uint64_t phys = pmm_alloc_page();
-  if (!phys)
-    return NULL;
-
-  // 2. Return HHDM address (Direct Map) - ZERO overhead
-  return pmm_phys_to_virt(phys);
+    uint64_t phys = pmm_alloc_page();
+    if (!phys) return NULL;
+    return pmm_phys_to_virt(phys);
 }
 
-static slab_obj_t *slab_alloc_obj(slab_cache_t *cache, alloc_region_t region) {
-  if (cache->free_list) {
-    slab_obj_t *obj = cache->free_list;
-    cache->free_list = obj->next;
-    cache->free_objs--;
+static slab_page_t *allocate_new_slab(kmem_cache_t *cache) {
+    void *page_addr = slab_alloc_page();
+    if (!page_addr) return NULL;
 
-    obj->magic = SLAB_MAGIC_ALLOC;
-    obj->region = region;
-    obj->next = NULL;
-    slab_fill_guards(obj, regions[region].strict_guards);
+    slab_page_t *slab = (slab_page_t *)page_addr;
+    slab->cache = cache;
+    slab->in_use = 0;
+    slab->next = NULL;
+    slab->on_partial_list = 0;
+    slab->cpu = -1;
 
-    return obj;
-  }
+    // Offset the first object to bypass the slab_page header
+    // Ensure the first object is aligned
+    size_t header_size = sizeof(slab_page_t);
+    size_t offset = (header_size + (cache->align - 1)) & ~(cache->align - 1);
+    
+    uint8_t *first_obj = (uint8_t *)page_addr + offset;
+    slab->free_list = (void **)first_obj;
 
-  // Allocate new page via VMM
-  void *page = slab_alloc_page();
-  if (!page)
-    return NULL;
+    // Link objects in the page
+    if (offset + cache->size > PAGE_SIZE) {
+        slab->free_list = NULL;
+        return slab;
+    }
 
-  size_t obj_total_size =
-      sizeof(slab_obj_t) + cache->obj_size + SLAB_GUARD_SIZE;
-  size_t objs_in_page = PAGE_SIZE / obj_total_size;
+    uint32_t count = (PAGE_SIZE - offset) / cache->size;
+    cache->objs_per_slab = count;
+    
+    uint8_t *curr = first_obj;
+    for (uint32_t i = 0; i < count - 1; i++) {
+        uint8_t *next = curr + cache->size;
+        *(void **)curr = next; // Store pointer to next free object inside the object
+        curr = next;
+    }
+    *(void **)curr = NULL; // Last object
 
-  // Initialize objects in page
-  for (size_t i = 0; i < objs_in_page; i++) {
-    slab_obj_t *obj = (slab_obj_t *)((uint8_t *)page + i * obj_total_size);
-    obj->magic = SLAB_MAGIC_FREE;
-    obj->size = cache->obj_size;
-    obj->region = region;
+    return slab;
+}
 
-    if (i == 0) {
-      // Return first object
-      obj->magic = SLAB_MAGIC_ALLOC;
-      obj->next = NULL;
-      slab_fill_guards(obj, regions[region].strict_guards);
-      cache->total_objs++;
+void *kmem_cache_alloc(kmem_cache_t *cache) {
+    uint64_t flags = save_irq_flags();
+    uint64_t cpu = smp_is_active() ? smp_get_id() : 0;
+    kmem_cpu_cache_t *cpu_cache = &cache->cpu_caches[cpu];
 
-      // Add rest to free list
-      if (objs_in_page > 1) {
-        slab_obj_t *next_obj = (slab_obj_t *)((uint8_t *)page + obj_total_size);
-        cache->free_list = next_obj;
+    // FAST PATH: Try CPU local cache
+    if (cpu_cache->free_list) {
+        void *obj = cpu_cache->free_list;
+        cpu_cache->free_list = * (void **)obj;
+        __atomic_add_fetch(&get_slab_from_obj(obj)->in_use, 1, __ATOMIC_RELAXED);
+        restore_irq_flags(flags);
+        return obj;
+    }
 
-        for (size_t j = 1; j < objs_in_page; j++) {
-          slab_obj_t *curr =
-              (slab_obj_t *)((uint8_t *)page + j * obj_total_size);
-          curr->next =
-              (j == objs_in_page - 1)
-                  ? NULL
-                  : (slab_obj_t *)((uint8_t *)page + (j + 1) * obj_total_size);
-          cache->total_objs++;
-          cache->free_objs++;
+    // MEDIUM PATH: Try to reclaim from the current CPU page (objects freed by other CPUs)
+    if (cpu_cache->page) {
+        spinlock_lock(&cache->node_lock);
+        if (cpu_cache->page->free_list) {
+            cpu_cache->free_list = cpu_cache->page->free_list;
+            cpu_cache->page->free_list = NULL;
+            spinlock_unlock(&cache->node_lock);
+            
+            void *obj = cpu_cache->free_list;
+            cpu_cache->free_list = *(void **)obj;
+            __atomic_add_fetch(&cpu_cache->page->in_use, 1, __ATOMIC_RELAXED);
+            restore_irq_flags(flags);
+            return obj;
         }
-      }
-
-      return obj;
+        // Slab is truly full, detach it
+        slab_page_t *old_page = cpu_cache->page;
+        old_page->cpu = -1;
+        cpu_cache->page = NULL;
+        
+        // Check if someone freed an object JUST before we set cpu = -1
+        if (old_page->free_list && !old_page->on_partial_list) {
+            old_page->next = cache->partial_list;
+            cache->partial_list = old_page;
+            old_page->on_partial_list = 1;
+        }
+        spinlock_unlock(&cache->node_lock);
     }
-  }
 
-  return NULL;
+    // SLOW PATH: Try Global Partial List
+    spinlock_lock(&cache->node_lock);
+    if (cache->partial_list) {
+        slab_page_t *slab = cache->partial_list;
+        cache->partial_list = slab->next;
+        slab->next = NULL;
+        slab->on_partial_list = 0;
+        
+        void *obj = slab->free_list;
+        slab->free_list = *(void **)obj;
+        __atomic_add_fetch(&slab->in_use, 1, __ATOMIC_RELAXED);
+        
+        // If slab still has space, set as current CPU slab
+        if (slab->free_list) {
+            cpu_cache->page = slab;
+            slab->cpu = (int)cpu;
+            cpu_cache->free_list = slab->free_list;
+            slab->free_list = NULL;
+        }
+
+        spinlock_unlock(&cache->node_lock);
+        restore_irq_flags(flags);
+        return obj;
+    }
+    spinlock_unlock(&cache->node_lock);
+
+    // VERY SLOW PATH: Allocate new page
+    slab_page_t *new_slab = allocate_new_slab(cache);
+    if (!new_slab || !new_slab->free_list) {
+        restore_irq_flags(flags);
+        return NULL;
+    }
+
+    void *obj = new_slab->free_list;
+    new_slab->free_list = *(void **)obj;
+    __atomic_add_fetch(&new_slab->in_use, 1, __ATOMIC_RELAXED);
+
+    if (new_slab->free_list) {
+        cpu_cache->page = new_slab;
+        new_slab->cpu = (int)cpu;
+        cpu_cache->free_list = new_slab->free_list;
+        new_slab->free_list = NULL;
+    }
+
+    restore_irq_flags(flags);
+    return obj;
 }
 
-int slab_init(void) {
-  // Initialize regions
-  regions[ALLOC_REGION_KERNEL] =
-      (slab_region_t){.name = "kernel", .strict_guards = false};
+void kmem_cache_free(kmem_cache_t *cache, void *obj) {
+    if (!obj) return;
 
-  regions[ALLOC_REGION_STACK] =
-      (slab_region_t){.name = "stack", .strict_guards = true};
+    uint64_t flags = save_irq_flags();
+    slab_page_t *slab = get_slab_from_obj(obj);
+    uint64_t cpu = smp_is_active() ? smp_get_id() : 0;
+    kmem_cpu_cache_t *cpu_cache = &cache->cpu_caches[cpu];
 
-  regions[ALLOC_REGION_DMA] =
-      (slab_region_t){.name = "dma", .strict_guards = false};
-
-  // Initialize caches for each region
-  for (int r = 0; r < ALLOC_REGION_COUNT; r++) {
-    for (int i = 0; i < SLAB_COUNT; i++) {
-      slab_cache_t *cache = &regions[r].caches[i];
-      cache->obj_size = slab_sizes[i];
-      cache->objs_per_page =
-          PAGE_SIZE / (sizeof(slab_obj_t) + slab_sizes[i] + SLAB_GUARD_SIZE);
-      cache->free_list = NULL;
-      cache->total_objs = 0;
-      cache->free_objs = 0;
-      spinlock_init(&cache->lock);
+    // If the object belongs to the page currently being used by THIS CPU
+    if (slab == cpu_cache->page) {
+        *(void **)obj = cpu_cache->free_list;
+        cpu_cache->free_list = obj;
+    } else {
+        // Return to the slab's local free list
+        spinlock_lock(&cache->node_lock);
+        *(void **)obj = slab->free_list;
+        slab->free_list = obj;
+        
+        // If slab was full and is now partial, move it to partial list
+        // ONLY if it's not a private page for some CPU
+        if (slab->free_list != NULL && !slab->on_partial_list && slab->cpu == -1) {
+            slab->next = cache->partial_list;
+            cache->partial_list = slab;
+            slab->on_partial_list = 1;
+        }
+        spinlock_unlock(&cache->node_lock);
     }
-  }
 
-  slab_initialized = true;
-  printk(SLAB_CLASS "Slab allocator initialized\n");
-  return 0;
+    __atomic_sub_fetch(&slab->in_use, 1, __ATOMIC_RELAXED);
+    restore_irq_flags(flags);
 }
 
-#include <mm/vmalloc.h>
+kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align) {
+    kmem_cache_t *cache = kmem_cache_alloc(cache_cache);
+    cache->name = name;
+    cache->size = (size < sizeof(void *)) ? sizeof(void *) : size;
+    cache->size = (cache->size + (align - 1)) & ~(align - 1);
+    cache->align = align;
+    cache->partial_list = NULL;
+    spinlock_init(&cache->node_lock);
+    memset(cache->cpu_caches, 0, sizeof(cache->cpu_caches));
+    return cache;
+}
 
-void *kmalloc_region(size_t size, alloc_region_t region) {
-  if (!slab_initialized || size == 0 || region >= ALLOC_REGION_COUNT)
+// Global Kmalloc Initialization
+void slab_init(void) {
+    // 1. Manually set up the cache for kmem_cache_t (bootstrap)
+    static kmem_cache_t bootstrap_cache;
+    cache_cache = &bootstrap_cache;
+    cache_cache->name = "kmem_cache";
+    cache_cache->size = sizeof(kmem_cache_t);
+    cache_cache->align = 8;
+    spinlock_init(&cache_cache->node_lock);
+    memset(cache_cache->cpu_caches, 0, sizeof(cache_cache->cpu_caches));
+
+    // 2. Initialize size buckets
+    char *names[] = {"kmalloc-8", "kmalloc-16", "kmalloc-32", "kmalloc-64", 
+                     "kmalloc-128", "kmalloc-256", "kmalloc-512", "kmalloc-1k", 
+                     "kmalloc-2k"};
+    
+    for (int i = 0; i < 9; i++) {
+        kmalloc_caches[i] = kmem_cache_create(names[i], 8 << i, 8);
+    }
+    
+    printk(SLAB_CLASS "Initialized (SMP %s)\n", smp_is_active() ? "Active" : "Inactive");
+}
+
+void *kmalloc(size_t size) {
+    if (size > SLAB_MAX_SIZE) return NULL; // Should call vmalloc
+    for (int i = 0; i < 9; i++) {
+        if (size <= kmalloc_caches[i]->size) 
+            return kmem_cache_alloc(kmalloc_caches[i]);
+    }
     return NULL;
-
-  size_t index = slab_size_to_index(size);
-  slab_cache_t *cache = &regions[region].caches[index];
-
-  spinlock_lock(&cache->lock);
-  slab_obj_t *obj = slab_alloc_obj(cache, region);
-  if (obj) {
-    regions[region].total_allocated += cache->obj_size;
-    if (regions[region].total_allocated > regions[region].peak_allocated)
-      regions[region].peak_allocated = regions[region].total_allocated;
-  }
-  spinlock_unlock(&cache->lock);
-
-  return obj ? (void *)((uint8_t *)obj + sizeof(slab_obj_t)) : NULL;
-}
-
-void *kmalloc(size_t size) { return kmalloc_region(size, ALLOC_REGION_KERNEL); }
-
-void *alloc_stack(size_t size) {
-  return kmalloc_region(size, ALLOC_REGION_STACK);
 }
 
 void kfree(void *ptr) {
-  if (!ptr || !slab_initialized)
-    return;
-
-  slab_obj_t *obj = (slab_obj_t *)((uint8_t *)ptr - sizeof(slab_obj_t));
-
-  if (obj->magic != SLAB_MAGIC_ALLOC) {
-    printk(KERN_ERR SLAB_CLASS "invalid magic 0x%x at %p\n", obj->magic, ptr);
-    panic(SLAB_CLASS "invalid magic");
-  }
-
-  if (obj->region >= ALLOC_REGION_COUNT) {
-    printk(KERN_ERR SLAB_CLASS "invalid region %d at %p\n", obj->region, ptr);
-    panic(SLAB_CLASS "invalid region");
-  }
-
-  size_t index = slab_size_to_index(obj->size);
-  slab_cache_t *cache = &regions[obj->region].caches[index];
-
-  spinlock_lock(&cache->lock);
-
-  obj->magic = SLAB_MAGIC_FREE;
-  obj->next = cache->free_list;
-  cache->free_list = obj;
-  cache->free_objs++;
-
-  regions[obj->region].total_allocated -= obj->size;
-
-  spinlock_unlock(&cache->lock);
-}
-
-void free_stack(void *ptr) {
-  kfree(ptr); // Same implementation, guards are checked
-}
-
-bool slab_check_guards(void *ptr) {
-  if (!ptr)
-    return false;
-
-  slab_obj_t *obj = (slab_obj_t *)((uint8_t *)ptr - sizeof(slab_obj_t));
-  return obj->magic == SLAB_MAGIC_ALLOC && slab_check_guards_internal(obj);
-}
-
-void slab_dump_stats(void) {
-  printk(SLAB_CLASS "-- Slab Allocator Statistics: \n");
-
-  for (int r = 0; r < ALLOC_REGION_COUNT; r++) {
-    slab_region_t *region = &regions[r];
-    printk(SLAB_CLASS "Region %s: allocated=%llu peak=%llu\n", region->name,
-           region->total_allocated, region->peak_allocated);
-
-    for (int i = 0; i < SLAB_COUNT; i++) {
-      slab_cache_t *cache = &region->caches[i];
-      if (cache->total_objs > 0) {
-        printk(SLAB_CLASS "  Size %llu: total=%llu free=%llu\n",
-               cache->obj_size, cache->total_objs, cache->free_objs);
-      }
-    }
-  }
+    if (!ptr) return;
+    slab_page_t *slab = get_slab_from_obj(ptr);
+    kmem_cache_free(slab->cache, ptr);
 }

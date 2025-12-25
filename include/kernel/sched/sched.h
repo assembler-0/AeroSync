@@ -130,7 +130,6 @@ void sched_init_task(struct task_struct *initial_task);
 void sched_init_ap(void);
 void scheduler_tick(void);
 void check_preempt(void);
-void sched_dump_memory_stats(void);
 
 /* Task state management functions */
 void task_sleep(void);

@@ -128,7 +128,10 @@ void *uacpi_kernel_alloc(uacpi_size size) {
 }
 
 void *uacpi_kernel_alloc_zeroed(uacpi_size size) {
-  return memset(uacpi_kernel_alloc(size), 0, size);
+  void *res = uacpi_kernel_alloc(size);
+  if (res)
+    memset(res, 0, size);
+  return res;
 }
 
 void uacpi_kernel_free(void *mem) {
