@@ -18,38 +18,47 @@
  * GNU General Public License for more details.
  */
 
+#include <arch/x64/cpu.h>
 #include <arch/x64/tsc.h>
-#include <drivers/timer/time.h> // Use Unified Time Subsystem
 #include <kernel/classes.h>
 #include <lib/printk.h>
 
 static uint64_t tsc_freq = 0;
 static uint64_t tsc_boot_offset = 0;
 
-uint64_t tsc_freq_get() {
-  if (tsc_freq == 0) {
-    // Try system calibration first (if time subsystem is up)
-    if (time_calibrate_tsc_system() != 0) {
+void tsc_calibrate_early(void) {
+  uint32_t eax, ebx, ecx, edx;
 
-      // If still 0, we are in trouble.
-      if (tsc_freq == 0) {
-        // Only print if robust enough, or risk infinite recursion if printk
-        // needs time? Assuming printk is safe if we don't crash here. Set a
-        // fallback immediately to avoid div-by-zero in printk's timestamping
-        tsc_freq = 2500000000ULL; // 2.5 GHz safe default/fallback
-        tsc_boot_offset = rdtsc();
+  /* ---------- Tier 1: CPUID 0x15 ---------- */
+  cpuid(0x15, &eax, &ebx, &ecx, &edx);
 
-        printk(KERN_WARNING TSC_CLASS "TSC calibration failed, assuming 2.5 GHz\n");
-      }
-    }
+  if (eax && ebx && ecx) {
+    uint64_t crystal_hz = ecx;
+    uint64_t tsc_hz = (crystal_hz * ebx) / eax;
+
+    tsc_freq = tsc_hz;
+    return;
   }
 
+  /* ---------- Tier 2: CPUID 0x16 ---------- */
+  cpuid(0x16, &eax, &ebx, &ecx, &edx);
+
+  if (eax) {
+    /* eax = base frequency in MHz */
+    tsc_freq = eax / 1000;
+    return;
+  }
+
+  /* ---------- Tier 3: Trust me bro fallback ---------- */
+  /* Assume ~3GHz */
+  tsc_freq = 3000000000;
+}
+
+uint64_t tsc_freq_get() {
   return tsc_freq;
 }
 
 uint64_t get_tsc_freq(void) { return tsc_freq; }
-
-uint64_t calibrate_tsc(void) { return tsc_freq_get(); }
 
 void tsc_recalibrate_with_freq(uint64_t new_freq) {
   if (new_freq > 0) {

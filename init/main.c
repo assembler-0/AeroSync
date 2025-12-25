@@ -149,9 +149,8 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   }
 
   printk_register_backend(debugcon_get_backend());
-
   printk_auto_configure(NULL, 0);
-  pit_calibrate_tsc();
+  tsc_calibrate_early();
 
   // check if we recived 4-level paging mode
   if (!paging_request.response ||

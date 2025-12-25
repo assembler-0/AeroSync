@@ -41,31 +41,11 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="CMake sources">
-      <change afterPath="$PROJECT_DIR$/drivers/apic/ic.cmake" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/lib/ic.c" afterDir="false" />
+    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="APIC as a module">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/CMakeLists.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/irq/irq.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/irq/irq.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/smp.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/smp.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cmake/source.cmake" beforeDir="false" afterPath="$PROJECT_DIR$/cmake/source.cmake" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/drivers/acpi/uacpi_glue.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/acpi/uacpi_glue.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/drivers/apic/apic.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/apic/apic.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/drivers/apic/ic.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/apic/ic.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/drivers/apic/ioapic.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/apic/ioapic.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/drivers/apic/pic.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/apic/pic.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/drivers/apic/x2apic.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/apic/x2apic.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/drivers/apic/xapic.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/apic/xapic.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/drivers/uart/serial.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/uart/serial.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/drivers/apic/apic.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/drivers/apic/apic.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/drivers/apic/ic.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/lib/ic.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/drivers/apic/pic.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/drivers/apic/pic.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/fkx/fkx.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/fkx/fkx.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/version.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/version.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x64/tsc.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/tsc.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/arch/x64/tsc.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/tsc.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/fkx/loader.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/fkx/loader.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/sched/core.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/sched/core.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/stack.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/stack.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -301,7 +281,7 @@
       <workItem from="1766572035477" duration="335000" />
       <workItem from="1766572878778" duration="2007000" />
       <workItem from="1766624616392" duration="9000" />
-      <workItem from="1766645665586" duration="8000" />
+      <workItem from="1766645665586" duration="1095000" />
     </task>
     <task id="LOCAL-00001" summary="Mutexes and FKX spec">
       <option name="closed" value="true" />
@@ -319,7 +299,15 @@
       <option name="project" value="LOCAL" />
       <updated>1766558577792</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="APIC as a module">
+      <option name="closed" value="true" />
+      <created>1766645708902</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1766645708902</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -337,7 +325,8 @@
     <MESSAGE value="Mutexes and FKX spec" />
     <MESSAGE value="CMake sources" />
     <MESSAGE value="slab shit" />
-    <option name="LAST_COMMIT_MESSAGE" value="slab shit" />
+    <MESSAGE value="APIC as a module" />
+    <option name="LAST_COMMIT_MESSAGE" value="APIC as a module" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>
