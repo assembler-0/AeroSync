@@ -10,17 +10,17 @@
   <img src="https://img.shields.io/badge/compiler-Clang/LLVM-9C27B0?style=for-the-badge&logo=llvm" />
 </p>
 
-VoidFrameX is a monolithic, higher-half, 64-bit x86_64 kernel built for modern systems. It is designed with a focus on a clean architecture and draws inspiration from the Linux kernel for many of its subsystems.
+VoidFrameX is a monolithic, higher-half, 64-bit x86_64 kernel (a KERNEL!, NOT AN OS!) built for modern systems. It is designed with a focus on a clean architecture and draws inspiration from the Linux kernel for many of its subsystems.
 
 ## Status
 
-| Platform | Status | Performance |
-| :--- | :--- | :--- |
-| **VMware Workstation Pro 25H2** | ![](https://img.shields.io/badge/PASSED-success?style=flat-square&logo=vmware) | High |
-| **QEMU 10.1.2** | ![](https://img.shields.io/badge/PASSED-success?style=flat-square&logo=qemu) | High |
-| **Bochs 3.0.devel** | ![](https://img.shields.io/badge/PASSED-brightgreen?style=flat-square&logo=x86) | Low |
-| **Oracle VirtualBox 7.2.4r170995** | ![](https://img.shields.io/badge/PASSED-success?style=flat-square&logo=virtualbox) | High |
-| **Intel Alder Lake CPU** | ![](https://img.shields.io/badge/PASSED-success?style=flat-square&logo=intel) | High |
+| Platform                            | Status                                                                             | Performance |
+|:------------------------------------|:-----------------------------------------------------------------------------------|:------------|
+| **VMware Workstation Pro 25H2**     | ![](https://img.shields.io/badge/PASSED-success?style=flat-square&logo=vmware)     | High        |
+| **QEMU 10.1.2**                     | ![](https://img.shields.io/badge/PASSED-success?style=flat-square&logo=qemu)       | High        |
+| **Bochs 3.0.devel**                 | ![](https://img.shields.io/badge/PASSED-brightgreen?style=flat-square&logo=x86)    | Low         |
+| **Oracle VirtualBox 7.2.4r170995**  | ![](https://img.shields.io/badge/PASSED-success?style=flat-square&logo=virtualbox) | High        |
+| **Intel Alder Lake-based computer** | ![](https://img.shields.io/badge/PASSED-success?style=flat-square&logo=intel)      | High        |
 
 ## Features
 
@@ -36,8 +36,9 @@ VoidFrameX is a monolithic, higher-half, 64-bit x86_64 kernel built for modern s
     *   Virtual Memory Area (VMA) manager
 *   **Virtual File System (VFS):** A Linux-inspired VFS layer that provides a unified interface for file systems. Includes a USTAR (initrd) parser.
 *   **Graphical Console:** A framebuffer console provided by the `linearfb` library.
-*   **Interrupt Handling:** Supports both modern APIC and legacy PIC interrupt controllers.
+*   **Interrupt Handling:** Supports both modern APIC (x2APIC) and legacy PIC interrupt controllers.
 *   **Timers:** Supports HPET and PIT timers.
+*   **[FKX](kernel/fkx/README.md)**: Fused Kernel eXtension for modularity.
 
 ## Architecture
 
@@ -59,7 +60,7 @@ VoidFrameX leverages several excellent open-source projects:
 *   **[Limine](https://github.com/limine-bootloader/limine):** A modern, robust bootloader.
 *   **[uACPI](https://github.com/uacpi/uacpi):** A lightweight, portable ACPI implementation.
 *   **[linearfb](https://github.com/assembler-0/linearfb):** A simple linear framebuffer library.
-*   **Linux Kernel:** Serves as a major architectural inspiration, with some data structures (like `rbtree.h` and `list.h`) adapted from it.
+*   **[Linux](https://github.com/torvalds/linux):** Serves as a major architectural inspiration, with some data structures (like `rbtree.h` and `list.h`) adapted from it.
 
 ## Prerequisites
 
@@ -97,4 +98,4 @@ To build VoidFrameX, you will need the following tools:
 
 ## License
 
-VoidFrameX is licensed under the **GNU General Public License v2.0**. See the `LICENSE` file for more details.
+VoidFrameX is licensed under the **GNU General Public License v2.0**. See the [LICENSE](LICENSE) file for more details.

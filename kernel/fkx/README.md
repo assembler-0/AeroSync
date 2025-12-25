@@ -1,6 +1,6 @@
 # FKX - Fused Kernel eXtension
 
-> "I can't unload this module, it's fixed!"
+> "I can't unload this module, it's fused!"
 
 ## Overview
 FKX is a load-time only kernel extension framework for VoidFrameX. Modules are standard ELF shared objects (`ET_DYN`) that are loaded into kernel memory, relocated, and linked via a global kernel API table.
