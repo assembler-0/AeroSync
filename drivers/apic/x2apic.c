@@ -7,18 +7,21 @@
  * @copyright (C) 2025 assembler-0
  *
  * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
-#include <arch/x64/cpu.h> 
-#include <arch/x64/smp.h> 
-#include <arch/x64/io.h> 
-#include <arch/x64/mm/paging.h> 
-#include <kernel/classes.h> 
-#include <lib/printk.h> 
-#include <mm/vmalloc.h> 
-#include <kernel/spinlock.h> 
+#include <kernel/classes.h>
 #include <drivers/apic/x2apic.h> 
 #include <drivers/apic/apic_internal.h> 
+#include <kernel/fkx/fkx.h>
 
 // --- x2APIC MSR Addresses ---
 
@@ -49,25 +52,27 @@
 #define APIC_BASE_MSR_ENABLE 0x800
 #define APIC_BASE_MSR_X2APIC_ENABLE (1ULL << 10)
 
+extern struct fkx_kernel_api *ic_kapi; 
+
 // --- Globals ---
 static spinlock_t x2apic_ipi_lock;
 
 // --- x2APIC MSR Access Functions ---
 
 static void x2apic_write(uint32_t msr, uint64_t value) {
-    wrmsr(msr, value);
+    ic_kapi->wrmsr(msr, value);
 }
 
 static uint64_t x2apic_read(uint32_t msr) {
-    return rdmsr(msr);
+    return ic_kapi->rdmsr(msr);
 }
 
 // Wrapper for ops structure (needs 32-bit signature)
 static void x2apic_write_op(uint32_t msr, uint32_t value) {
-    wrmsr(msr, value);
+    ic_kapi->wrmsr(msr, value);
 }
 static uint32_t x2apic_read_op(uint32_t msr) {
-    return (uint32_t)rdmsr(msr);
+    return (uint32_t)ic_kapi->rdmsr(msr);
 }
 
 uint32_t x2apic_get_id_raw(void) {
@@ -77,12 +82,12 @@ uint32_t x2apic_get_id_raw(void) {
 
 static void x2apic_send_eoi_op(const uint32_t irn) { 
     (void)irn;
-    wrmsr(X2APIC_EOI, 0);
+    ic_kapi->wrmsr(X2APIC_EOI, 0);
 }
 
 // Sends an Inter-Processor Interrupt (IPI) using x2APIC MSR
 static void x2apic_send_ipi_op(uint32_t dest_apic_id, uint8_t vector, uint32_t delivery_mode) {
-    irq_flags_t flags = spinlock_lock_irqsave(&x2apic_ipi_lock);
+    irq_flags_t flags = ic_kapi->spinlock_lock_irqsave(&x2apic_ipi_lock);
 
     // In x2APIC mode, the ICR is a 64-bit MSR
     // Bits 0-7: Vector
@@ -124,25 +129,25 @@ static void x2apic_send_ipi_op(uint32_t dest_apic_id, uint8_t vector, uint32_t d
     x2apic_write(X2APIC_ICR, icr_value);
 
     // No wait loop after write either.
-    spinlock_unlock_irqrestore(&x2apic_ipi_lock, flags);
+    ic_kapi->spinlock_unlock_irqrestore(&x2apic_ipi_lock, flags);
 }
 
 // Initialize x2APIC by enabling x2APIC mode in the APIC_BASE MSR
 static int x2apic_init_lapic(void) {
-    uint64_t lapic_base_msr = rdmsr(APIC_BASE_MSR);
+    uint64_t lapic_base_msr = ic_kapi->rdmsr(APIC_BASE_MSR);
     
     // Check if x2APIC is supported by checking CPUID
     uint32_t eax, ebx, ecx, edx;
-    cpuid(1, &eax, &ebx, &ecx, &edx);
+    ic_kapi->cpuid(1, &eax, &ebx, &ecx, &edx);
     if (!(ecx & (1 << 21))) { // Check for x2APIC feature bit (ECX bit 21)
-        printk(KERN_ERR APIC_CLASS  "x2APIC feature not supported by CPU\n");
+        ic_kapi->printk(KERN_ERR APIC_CLASS  "x2APIC feature not supported by CPU\n");
         return 0;
     }
     
-    printk(KERN_DEBUG APIC_CLASS "Enabling x2APIC mode\n");
+    ic_kapi->printk(KERN_DEBUG APIC_CLASS "Enabling x2APIC mode\n");
 
     // Enable x2APIC mode: set both APIC Global Enable and x2APIC Enable bits
-    wrmsr(APIC_BASE_MSR, lapic_base_msr | APIC_BASE_MSR_ENABLE | APIC_BASE_MSR_X2APIC_ENABLE);
+    ic_kapi->wrmsr(APIC_BASE_MSR, lapic_base_msr | APIC_BASE_MSR_ENABLE | APIC_BASE_MSR_X2APIC_ENABLE);
 
     // Add a small delay to ensure x2APIC is ready before register access
     // Different emulators have different timing requirements
@@ -153,11 +158,11 @@ static int x2apic_init_lapic(void) {
     // Verify x2APIC is enabled by reading the version register
     uint64_t version = x2apic_read(X2APIC_VERSION);
     if ((version & 0xFF) == 0 || (version & 0xFF) == 0xFF) {
-        printk(KERN_ERR APIC_CLASS "x2APIC not responding after enable (version: 0x%llx)\n", version & 0xFF);
+        ic_kapi->printk(KERN_ERR APIC_CLASS "x2APIC not responding after enable (version: 0x%llx)\n", version & 0xFF);
         return 0;
     }
 
-    printk(KERN_DEBUG APIC_CLASS "x2APIC Version: 0x%llx\n", version & 0xFF);
+    ic_kapi->printk(KERN_DEBUG APIC_CLASS "x2APIC Version: 0x%llx\n", version & 0xFF);
 
     // Set Spurious Interrupt Vector (0xFF) and enable APIC (bit 8)
     x2apic_write(X2APIC_SVR, 0x1FF);
@@ -184,7 +189,7 @@ static void x2apic_timer_set_frequency_op(uint32_t ticks_per_target) {
     uint32_t lvt_timer = 32 | (1 << 17) | (0 << 16); // Vector 32, Periodic mode, Unmasked
     x2apic_write(X2APIC_LVT_TIMER, lvt_timer);
 
-    printk(KERN_DEBUG APIC_CLASS "Timer configured: LVT=0x%x, Ticks=%u, Div=0x3\n", lvt_timer, ticks_per_target);
+    ic_kapi->printk(KERN_DEBUG APIC_CLASS "Timer configured: LVT=0x%x, Ticks=%u, Div=0x3\n", lvt_timer, ticks_per_target);
 }
 
 static void x2apic_shutdown_op(void) {
@@ -196,8 +201,8 @@ static void x2apic_shutdown_op(void) {
     x2apic_write(X2APIC_SVR, svr & ~(1ULL << 8));
 
     // 4. Disable x2APIC mode via MSR
-    uint64_t lapic_base_msr = rdmsr(APIC_BASE_MSR);
-    wrmsr(APIC_BASE_MSR, lapic_base_msr & ~(APIC_BASE_MSR_ENABLE | APIC_BASE_MSR_X2APIC_ENABLE));
+    uint64_t lapic_base_msr = ic_kapi->rdmsr(APIC_BASE_MSR);
+    ic_kapi->wrmsr(APIC_BASE_MSR, lapic_base_msr & ~(APIC_BASE_MSR_ENABLE | APIC_BASE_MSR_X2APIC_ENABLE));
 }
 
 const struct apic_ops x2apic_ops = {

@@ -23,7 +23,7 @@
 #include <arch/x64/smp.h>
 #include <arch/x64/tsc.h>      // Added for get_time_ns
 #include <drivers/apic/apic.h> // Added for IPI functions
-#include <drivers/apic/ic.h>
+#include <lib/ic.h>
 #include <kernel/classes.h>
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>

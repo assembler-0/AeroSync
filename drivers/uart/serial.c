@@ -304,7 +304,7 @@ static int serial_mod_init(const struct fkx_kernel_api *api) {
 }
 
 FKX_MODULE_DEFINE(
-  linearfb,
+  serial,
   "0.0.1",
   "assembler-0",
   "Simple Linear Framebuffer Graphics Module",

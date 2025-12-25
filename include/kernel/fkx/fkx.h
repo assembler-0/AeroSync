@@ -22,9 +22,16 @@
 
 #include <kernel/types.h>
 #include <drivers/timer/time.h>
-#include <drivers/apic/ic.h>
+#include <lib/ic.h>
 #include <lib/printk.h>
 #include <arch/x64/cpu.h>
+#include <kernel/mutex.h>
+#include <kernel/semaphore.h>
+#include <kernel/wait.h>
+#include <kernel/errno.h>
+#include <uacpi/acpi.h>
+#include <uacpi/tables.h>
+#include <uacpi/types.h>
 
 /* FKX Magic: "FKX1" in little-endian */
 #define FKX_MAGIC 0x31584B46
@@ -115,9 +122,19 @@ struct fkx_kernel_api {
   uint8_t  (*inb)(uint16_t port);
   uint16_t (*inw)(uint16_t port);
   uint32_t (*inl)(uint16_t port);
-  void (*outb)(uint16_t port, uint8_t value);
-  void (*outw)(uint16_t port, uint16_t value);
-  void (*outl)(uint16_t port, uint32_t value);
+  void     (*outb)(uint16_t port, uint8_t value);
+  void     (*outw)(uint16_t port, uint16_t value);
+  void     (*outl)(uint16_t port, uint32_t value);
+
+  /* MSR access */
+  uint64_t (*rdmsr)(uint32_t msr);
+  void     (*wrmsr)(uint32_t msr, uint64_t value);
+
+  /* CPU specific */
+  irq_flags_t (*save_irq_flags)(void);
+  void        (*restore_irq_flags)(irq_flags_t flags);
+  void        (*cpuid)(uint32_t leaf, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx);
+  void        (*cpuid_count)(uint32_t leaf, uint32_t subleaf, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx);
 
   /* Timing */
   void     (*ndelay)(uint64_t usec);
@@ -154,6 +171,22 @@ struct fkx_kernel_api {
   void (*spinlock_unlock)(volatile int *lock);
   irq_flags_t (*spinlock_lock_irqsave)(volatile int *lock);
   void (*spinlock_unlock_irqrestore)(volatile int *lock, irq_flags_t flags);
+
+  void  (*mutex_init)(mutex_t *m);
+  void  (*mutex_lock)(mutex_t *m);
+  void  (*mutex_unlock)(mutex_t *m);
+  int   (*mutex_trylock)(mutex_t *m);
+  int   (*mutex_is_locked)(mutex_t *m);
+
+  /* uACPI interface */
+  uacpi_status (*uacpi_table_find_by_signature)(
+    const uacpi_char *signature_string, struct uacpi_table *out_table
+  );
+  uacpi_status (*uacpi_for_each_subtable)(
+    struct acpi_sdt_hdr *hdr, size_t hdr_size,
+    uacpi_subtable_iteration_callback cb, void *user
+  );
+  uacpi_status (*uacpi_table_unref)(uacpi_table *tbl);
 };
 
 /**

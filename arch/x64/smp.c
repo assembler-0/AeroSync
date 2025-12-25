@@ -25,7 +25,7 @@
 #include <arch/x64/mm/vmm.h>
 #include <arch/x64/smp.h>
 #include <drivers/apic/apic.h>
-#include <drivers/apic/ic.h>
+#include <lib/ic.h>
 #include <kernel/classes.h>
 #include <kernel/wait.h>
 #include <lib/printk.h>
@@ -152,7 +152,7 @@ uint64_t smp_get_cpu_count(void) { return cpu_count; }
 
 uint64_t smp_get_id(void) {
   // Use Local APIC ID
-  uint8_t lapic_id = lapic_get_id();
+  uint8_t lapic_id = ic_lapic_get_id();
 
   // Find logical ID from physical APIC ID
   for (uint64_t i = 0; i < cpu_count; i++) {

@@ -60,12 +60,13 @@ list(APPEND CMAKE_MODULE_PATH
 include(cache)
 include(ccache)
 include(dependencies)
-include(source)
 include(configuration)
+include(lib/uACPI/uacpi.cmake)
+include(source)
 include(fkx)
 include(lib/linearfb/linearfb.cmake)
 include(drivers/uart/uart.cmake)
-include(lib/uACPI/uacpi.cmake)
+include(drivers/apic/ic.cmake)
 
 # ============================================================================
 # Platform Checks
@@ -115,12 +116,6 @@ add_executable(voidframex.krnl
 target_sources(voidframex.krnl 
 	PRIVATE
 	${UACPI_SOURCES}
-)
-
-target_include_directories(
-    voidframex.krnl
-    PRIVATE
-    ${UACPI_INCLUDES}
 )
 
 target_compile_options(voidframex.krnl PRIVATE 

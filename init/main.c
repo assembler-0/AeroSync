@@ -28,9 +28,7 @@
 #include <compiler.h>
 #include <crypto/crc32.h>
 #include <drivers/acpi/power.h>
-#include <drivers/apic/apic.h>
-#include <drivers/apic/ic.h>
-#include <drivers/apic/pic.h>
+#include <lib/ic.h>
 #include <drivers/qemu/debugcon/debugcon.h>
 #include <drivers/timer/hpet.h>
 #include <drivers/timer/pit.h>
@@ -252,16 +250,17 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   }
 
   fkx_init_module_class(FKX_PRINTK_CLASS);
+
   printk_auto_configure(NULL, 1);
+
+  fkx_init_module_class(FKX_IC_CLASS);
+  ic_register_lapic_get_id_early();
 
   cpu_features_init();
   // Two-phase ACPI init to break IC/APIC/uACPI circular dependency
   uacpi_kernel_init_early();
 
   // Register interrupt controllers
-  ic_register_controller(apic_get_driver());
-  ic_register_controller(pic_get_driver());
-
   interrupt_controller_t ic_type = ic_install();
 
   // Notify ACPI glue that IC is ready so it can bind any deferred handlers

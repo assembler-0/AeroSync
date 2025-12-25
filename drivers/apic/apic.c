@@ -3,24 +3,29 @@
  * VoidFrameX monolithic kernel
  *
  * @file drivers/apic/apic.c
- * @brief APIC abstraction layer and mode selection
+ * @brief APIC abstraction system
  * @copyright (C) 2025 assembler-0
  *
  * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/smp.h>
-#include <arch/x64/io.h>
-#include <drivers/apic/apic.h>
 #include <drivers/apic/apic_internal.h>
 #include <drivers/apic/ioapic.h>
-#include <uacpi/tables.h>
-#include <uacpi/acpi.h>
-#include <kernel/classes.h>
-#include <lib/printk.h>
 #include <drivers/apic/pic.h>
-#include <drivers/apic/xapic.h>
+#include <kernel/classes.h>
+#include <kernel/fkx/fkx.h>
+#include <uacpi/platform/types.h>
+
+extern const struct fkx_kernel_api *ic_kapi;
 
 // --- Register Definitions for Calibration ---
 // xAPIC MMIO Offsets
@@ -60,7 +65,6 @@ static int detect_apic(void);
 static void apic_parse_madt(void);
 static void apic_timer_calibrate(const struct apic_timer_regs *regs);
 static void apic_shutdown(void);
-void apic_timer_set_frequency(uint32_t frequency_hz);
 int apic_init_ap(void);
 
 
@@ -68,13 +72,13 @@ int apic_init_ap(void);
 
 static int detect_x2apic(void) {
     uint32_t eax, ebx, ecx, edx;
-    cpuid(1, &eax, &ebx, &ecx, &edx);
+    ic_kapi->cpuid(1, &eax, &ebx, &ecx, &edx);
     return (ecx & (1 << 21)) != 0; // Check for x2APIC feature bit
 }
 
 static int detect_apic(void) {
     uint32_t eax, ebx, ecx, edx;
-    cpuid(1, &eax, &ebx, &ecx, &edx);
+    ic_kapi->cpuid(1, &eax, &ebx, &ecx, &edx);
     return (edx & (1 << 9)) != 0; // Check for APIC feature bit
 }
 
@@ -112,10 +116,10 @@ static void apic_parse_madt(void) {
     if (xapic_madt_parsed) return;
 
     uacpi_table tbl;
-    uacpi_status st = uacpi_table_find_by_signature(ACPI_MADT_SIGNATURE, &tbl);
+    uacpi_status st = ic_kapi->uacpi_table_find_by_signature(ACPI_MADT_SIGNATURE, &tbl);
     if (uacpi_likely_success(st)) {
-        uacpi_for_each_subtable(tbl.hdr, sizeof(struct acpi_madt), apic_madt_iter_cb, NULL);
-        uacpi_table_unref(&tbl);
+        ic_kapi->uacpi_for_each_subtable(tbl.hdr, sizeof(struct acpi_madt), apic_madt_iter_cb, NULL);
+        ic_kapi->uacpi_table_unref(&tbl);
         xapic_madt_parsed = 1;
     } else {
         xapic_madt_parsed = 1; // Mark parsed anyway to avoid retry
@@ -129,22 +133,22 @@ int apic_init(void) {
     apic_parse_madt();
 
     if (detect_x2apic()) {
-        printk(KERN_DEBUG APIC_CLASS "x2APIC mode supported, attempting to enable\n");
+        ic_kapi->printk(KERN_DEBUG APIC_CLASS "x2APIC mode supported, attempting to enable\n");
         if (x2apic_ops.init_lapic()) {
             current_ops = &x2apic_ops;
-            printk(KERN_DEBUG APIC_CLASS "x2APIC mode enabled\n");
+            ic_kapi->printk(KERN_DEBUG APIC_CLASS "x2APIC mode enabled\n");
         }
     }
     
     if (!current_ops) {
         if (xapic_ops.init_lapic()) {
             current_ops = &xapic_ops;
-            printk(KERN_DEBUG APIC_CLASS "xAPIC mode enabled\n");
+            ic_kapi->printk(KERN_DEBUG APIC_CLASS "xAPIC mode enabled\n");
         }
     }
 
     if (!current_ops) {
-        printk(KERN_ERR APIC_CLASS "Failed to initialize Local APIC (no driver).\n");
+        ic_kapi->printk(KERN_ERR APIC_CLASS "Failed to initialize Local APIC (no driver).\n");
         return 0;
     }
 
@@ -172,7 +176,7 @@ int apic_init(void) {
                          : (uint64_t)IOAPIC_DEFAULT_PHYS_ADDR;
     
     if (!ioapic_init(ioapic_phys)) {
-        printk(KERN_ERR APIC_CLASS "Failed to setup I/O APIC.\n");
+        ic_kapi->printk(KERN_ERR APIC_CLASS "Failed to setup I/O APIC.\n");
         return 0;
     }
 
@@ -181,7 +185,7 @@ int apic_init(void) {
 
 int apic_init_ap(void) {
     if (!current_ops || !current_ops->init_lapic) {
-        printk(KERN_ERR APIC_CLASS "APIC driver not initialized on BSP.\n");
+        ic_kapi->printk(KERN_ERR APIC_CLASS "APIC driver not initialized on BSP.\n");
         return 0;
     }
     return current_ops->init_lapic();
@@ -254,31 +258,31 @@ static void apic_timer_calibrate(const struct apic_timer_regs *regs) {
     // Bochs may have timing issues with the standard calibration
     // Use a more robust approach that includes verification
     uint16_t pit_reload = 11931; // ~10ms at 1193180 Hz
-    outb(0x61, (inb(0x61) & 0xFD) | 1);
-    outb(0x43, 0xB0);
-    outb(0x42, pit_reload & 0xFF);
-    outb(0x42, (pit_reload >> 8) & 0xFF);
+    ic_kapi->outb(0x61, (ic_kapi->inb(0x61) & 0xFD) | 1);
+    ic_kapi->outb(0x43, 0xB0);
+    ic_kapi->outb(0x42, pit_reload & 0xFF);
+    ic_kapi->outb(0x42, (pit_reload >> 8) & 0xFF);
 
     current_ops->write(regs->init_count, 0xFFFFFFFF);
 
     // Wait for PIT countdown to complete (with timeout to avoid infinite loops in emulators)
     uint32_t timeout = 0x1000000; // Reasonable timeout
-    while (!(inb(0x61) & 0x20) && timeout--);
+    while (!(ic_kapi->inb(0x61) & 0x20) && timeout--);
 
     if (timeout == 0) {
         // If timeout occurred, use a reasonable default for the timer calibration
         // This can happen in some emulators like Bochs with timing issues
         apic_calibrated_ticks = 100000; // Reasonable default for 10ms
-        printk(KERN_NOTICE APIC_CLASS "Timer calibration timeout, using default: %u ticks in 10ms.\n", apic_calibrated_ticks);
+        ic_kapi->printk(KERN_NOTICE APIC_CLASS "Timer calibration timeout, using default: %u ticks in 10ms.\n", apic_calibrated_ticks);
     } else {
         current_ops->write(regs->lvt_timer, (1 << 16));
         apic_calibrated_ticks = 0xFFFFFFFF - current_ops->read(regs->cur_count);
-        printk(KERN_DEBUG APIC_CLASS "Calibrated timer: %u ticks in 10ms.\n", apic_calibrated_ticks);
+        ic_kapi->printk(KERN_DEBUG APIC_CLASS "Calibrated timer: %u ticks in 10ms.\n", apic_calibrated_ticks);
     }
 
     // Additional safety check: if calibration result is unreasonable, use default
     if (apic_calibrated_ticks < 1000 || apic_calibrated_ticks > 10000000) {
-        printk(KERN_NOTICE APIC_CLASS "Calibration result unreasonable (%u), using default.\n", apic_calibrated_ticks);
+        ic_kapi->printk(KERN_NOTICE APIC_CLASS "Calibration result unreasonable (%u), using default.\n", apic_calibrated_ticks);
         apic_calibrated_ticks = 100000; // Reasonable default
     }
 }
@@ -292,7 +296,7 @@ void apic_timer_set_frequency(uint32_t frequency_hz) {
         // If calibration failed, use a reasonable default based on common frequencies
         // For 100Hz timer with typical APIC clock, use a default value
         ticks_per_target = 1000000 / frequency_hz; // 1MHz default estimate
-        printk(KERN_NOTICE APIC_CLASS "Using default timer value for %u Hz: %u ticks\n",
+        ic_kapi->printk(KERN_NOTICE APIC_CLASS "Using default timer value for %u Hz: %u ticks\n",
                frequency_hz, ticks_per_target);
     } else {
         ticks_per_target = (apic_calibrated_ticks * 100) / frequency_hz;
@@ -301,10 +305,10 @@ void apic_timer_set_frequency(uint32_t frequency_hz) {
     // Ensure the ticks value is reasonable (not too small or too large)
     if (ticks_per_target < 100) {
         ticks_per_target = 100;
-        printk(KERN_NOTICE APIC_CLASS "Adjusted timer ticks to minimum safe value: %u\n", ticks_per_target);
+        ic_kapi->printk(KERN_NOTICE APIC_CLASS "Adjusted timer ticks to minimum safe value: %u\n", ticks_per_target);
     } else if (ticks_per_target > 0x7FFFFFFF) { // Avoid potential overflow issues
         ticks_per_target = 0x7FFFFFFF;
-        printk(KERN_NOTICE APIC_CLASS "Adjusted timer ticks to maximum safe value: %u\n", ticks_per_target);
+        ic_kapi->printk(KERN_NOTICE APIC_CLASS "Adjusted timer ticks to maximum safe value: %u\n", ticks_per_target);
     }
 
     if (current_ops && current_ops->timer_set_frequency) {
@@ -316,7 +320,7 @@ static void apic_shutdown(void) {
     apic_mask_all();
     if (current_ops && current_ops->shutdown)
         current_ops->shutdown();
-    printk(KERN_DEBUG APIC_CLASS "APIC shut down.\n");
+    ic_kapi->printk(KERN_DEBUG APIC_CLASS "APIC shut down.\n");
 }
 
 static const interrupt_controller_interface_t apic_interface = {
@@ -331,6 +335,8 @@ static const interrupt_controller_interface_t apic_interface = {
     .mask_all = apic_mask_all,
     .shutdown = apic_shutdown,
     .priority = 100,
+    .send_ipi = apic_send_ipi,
+    .get_id = lapic_get_id,
 };
 
 const interrupt_controller_interface_t* apic_get_driver(void) {

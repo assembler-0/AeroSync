@@ -28,13 +28,11 @@ list(APPEND KERNEL_SOURCES
 )
 file(GLOB DRIVER_SOURCES "drivers/*.c")
 file(GLOB_RECURSE DRIVER_PCI_SOURCES "drivers/pci/*.c")
-file(GLOB_RECURSE DRIVER_APIC_SOURCES "drivers/apic/*.c")
 file(GLOB_RECURSE DRIVER_ACPI_SOURCES "drivers/acpi/*.c")
 file(GLOB_RECURSE DRIVER_TIMER_SOURCES "drivers/timer/*.c")
 file(GLOB_RECURSE DRIVER_QEMU_SOURCES "drivers/qemu/*.c")
 list(APPEND DRIVER_SOURCES
     ${DRIVER_PCI_SOURCES}
-    ${DRIVER_APIC_SOURCES}
     ${DRIVER_ACPI_SOURCES}
     ${DRIVER_TIMER_SOURCES}
     ${DRIVER_QEMU_SOURCES}
@@ -55,6 +53,7 @@ include_directories(
         .
         include
         include/lib
+        ${UACPI_INCLUDES}
 )
 
 # ============================================================================

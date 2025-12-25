@@ -18,13 +18,13 @@
  * GNU General Public License for more details.
  */
 
-#include <drivers/apic/ioapic.h>
 #include <arch/x64/mm/paging.h>
-#include <mm/vmalloc.h>
-#include <lib/printk.h>
-#include <uacpi/tables.h>
-#include <uacpi/acpi.h>
+#include <drivers/apic/ioapic.h>
 #include <kernel/classes.h>
+#include <kernel/fkx/fkx.h>
+#include <uacpi/acpi.h>
+
+extern struct fkx_kernel_api *ic_kapi;
 
 static volatile uint32_t *ioapic_base = NULL;
 
@@ -45,18 +45,18 @@ static uint32_t ioapic_read(uint8_t reg) {
 
 int ioapic_init(uint64_t phys_addr) {
     // Map the I/O APIC into virtual memory.
-    ioapic_base = (volatile uint32_t *)viomap(phys_addr, PAGE_SIZE);
+    ioapic_base = (volatile uint32_t *)ic_kapi->viomap(phys_addr, PAGE_SIZE);
 
     if (!ioapic_base) {
-        printk(KERN_ERR APIC_CLASS "Failed to map I/O APIC MMIO.\n");
+        ic_kapi->printk(KERN_ERR APIC_CLASS "Failed to map I/O APIC MMIO.\n");
         return 0;
     }
 
-    printk(KERN_DEBUG APIC_CLASS "IOAPIC Mapped at: 0x%llx (Phys: 0x%llx)\n", (uint64_t)ioapic_base, phys_addr);
+    ic_kapi->printk(KERN_DEBUG APIC_CLASS "IOAPIC Mapped at: 0x%llx (Phys: 0x%llx)\n", (uint64_t)ioapic_base, phys_addr);
 
     // Read the I/O APIC version to verify it's working
     uint32_t version_reg = ioapic_read(IOAPIC_REG_VER);
-    printk(KERN_DEBUG APIC_CLASS "IOAPIC Version: 0x%x\n", version_reg);
+    ic_kapi->printk(KERN_DEBUG APIC_CLASS "IOAPIC Version: 0x%x\n", version_reg);
 
     return 1;
 }

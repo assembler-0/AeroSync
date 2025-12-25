@@ -19,6 +19,7 @@
     <generated>
       <config projectName="VoidFrameX" targetName="run" />
       <config projectName="VoidFrameX" targetName="run-bios" />
+      <config projectName="VoidFrameX" targetName="ic" />
       <config projectName="VoidFrameX" targetName="bootdir" />
       <config projectName="VoidFrameX" targetName="iso" />
       <config projectName="VoidFrameX" targetName="vbox-run" />
@@ -41,13 +42,30 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="CMake sources">
+      <change afterPath="$PROJECT_DIR$/drivers/apic/ic.cmake" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/lib/ic.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/CMakeLists.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cmake/configuration.cmake" beforeDir="false" afterPath="$PROJECT_DIR$/cmake/configuration.cmake" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cmake/fkx.cmake" beforeDir="false" afterPath="$PROJECT_DIR$/cmake/fkx.cmake" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cmake/flags.cmake" beforeDir="false" afterPath="$PROJECT_DIR$/cmake/flags.cmake" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x64/irq/irq.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/irq/irq.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x64/smp.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/smp.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmake/source.cmake" beforeDir="false" afterPath="$PROJECT_DIR$/cmake/source.cmake" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/drivers/acpi/uacpi_glue.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/acpi/uacpi_glue.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/drivers/apic/apic.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/apic/apic.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/drivers/apic/ic.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/apic/ic.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/drivers/apic/ioapic.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/apic/ioapic.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/drivers/apic/pic.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/apic/pic.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/drivers/apic/x2apic.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/apic/x2apic.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/drivers/apic/xapic.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/apic/xapic.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/drivers/uart/serial.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/uart/serial.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/drivers/apic/apic.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/drivers/apic/apic.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/drivers/apic/ic.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/lib/ic.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/drivers/apic/pic.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/drivers/apic/pic.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/include/kernel/fkx/fkx.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/fkx/fkx.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/include/kernel/version.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/version.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/fkx/loader.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/fkx/loader.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/sched/core.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/sched/core.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mm/stack.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/stack.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -58,11 +76,16 @@
     <option name="formatViaClangd" value="false" />
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="639" />
+    <option name="cachedIndexableFilesCount" value="355" />
     <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
   </component>
   <component name="ExecutionTargetManager" SELECTED_TARGET="CMakeBuildProfile:Release" />
   <component name="Git.Settings">
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$" value="dev" />
+      </map>
+    </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
   <component name="GitHubPullRequestSearchHistory">{
@@ -78,6 +101,10 @@
   }
 }</component>
   <component name="HighlightingSettingsPerFile">
+    <setting file="file://$PROJECT_DIR$/drivers/apic/apic.c" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/drivers/apic/pic.c" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/drivers/apic/x2apic.c" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/drivers/apic/xapic.c" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/include/kernel/fkx/fkx.h" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/lib/linearfb/linearfb.c" root0="FORCE_HIGHLIGHTING" />
   </component>
@@ -126,6 +153,7 @@
     &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
     &quot;git-widget-placeholder&quot;: &quot;dev&quot;,
     &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/home/Atheria/workspace/VoidFrameX/drivers/apic&quot;,
     &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
     &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
     &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
@@ -137,10 +165,15 @@
   }
 }</component>
   <component name="RecapUselessUpdatesCounter">
-    <option name="suspendCountdown" value="4" />
+    <option name="suspendCountdown" value="1" />
   </component>
   <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/drivers/apic" />
+    </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/include/lib" />
+      <recent name="$PROJECT_DIR$/lib" />
       <recent name="$PROJECT_DIR$/include/kernel/fkx" />
     </key>
   </component>
@@ -161,6 +194,11 @@
       </method>
     </configuration>
     <configuration name="dump" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="VoidFrameX" TARGET_NAME="dump" CONFIG_NAME="Release">
+      <method v="2">
+        <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="ic" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="VoidFrameX" TARGET_NAME="ic" CONFIG_NAME="Release" RUN_TARGET_PROJECT_NAME="VoidFrameX" RUN_TARGET_NAME="ic">
       <method v="2">
         <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
       </method>
@@ -239,6 +277,7 @@
       <item itemvalue="CMake Application.vmw-run" />
       <item itemvalue="CMake Application.vmw-setup" />
       <item itemvalue="CMake Application.voidframex.krnl" />
+      <item itemvalue="CMake Application.ic" />
       <item itemvalue="CMake Application.linearfb" />
       <item itemvalue="CMake Application.uart" />
     </list>
@@ -262,6 +301,7 @@
       <workItem from="1766572035477" duration="335000" />
       <workItem from="1766572878778" duration="2007000" />
       <workItem from="1766624616392" duration="9000" />
+      <workItem from="1766645665586" duration="8000" />
     </task>
     <task id="LOCAL-00001" summary="Mutexes and FKX spec">
       <option name="closed" value="true" />
@@ -296,7 +336,8 @@
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Mutexes and FKX spec" />
     <MESSAGE value="CMake sources" />
-    <option name="LAST_COMMIT_MESSAGE" value="CMake sources" />
+    <MESSAGE value="slab shit" />
+    <option name="LAST_COMMIT_MESSAGE" value="slab shit" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

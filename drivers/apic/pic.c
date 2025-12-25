@@ -18,12 +18,8 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/io.h>
-#include <drivers/timer/pit.h>
-#include <kernel/types.h>
-#include <drivers/apic/ic.h>
-#include <lib/printk.h>
 #include <kernel/classes.h>
+#include <kernel/fkx/fkx.h>
 
 #define PIC1_COMMAND 0x20
 #define PIC1_DATA 0x21
@@ -34,6 +30,8 @@
 #define ICW1_INIT 0x10
 #define ICW4_8086 0x01
 
+extern struct fkx_kernel_api *ic_kapi;
+
 static uint16_t s_irq_mask = 0xFFFF; // All masked initially
 
 // pit_set_frequency is now in drivers/timer/pit.c
@@ -41,8 +39,8 @@ static uint16_t s_irq_mask = 0xFFFF; // All masked initially
 
 // Helper to write the cached mask to the PICs
 static void pic_write_mask() {
-  outb(PIC1_DATA, s_irq_mask & 0xFF);
-  outb(PIC2_DATA, (s_irq_mask >> 8) & 0xFF);
+  ic_kapi->outb(PIC1_DATA, s_irq_mask & 0xFF);
+  ic_kapi->outb(PIC2_DATA, (s_irq_mask >> 8) & 0xFF);
 }
 
 void pic_mask_all(void) {
@@ -66,29 +64,30 @@ void pic_disable_irq(uint8_t irq_line) {
 
 void pic_send_eoi(uint32_t interrupt_number) {
   if (interrupt_number >= 40)
-    outb(PIC2_COMMAND, 0x20);
-  outb(PIC1_COMMAND, 0x20);
+    ic_kapi->outb(PIC2_COMMAND, 0x20);
+  ic_kapi->outb(PIC1_COMMAND, 0x20);
 }
 
 int pic_install(void) {
+  ic_kapi->printk(KERN_NOTICE PIC_CLASS "PIC drivers does not come with builtin PIT timer");
   // Standard initialization sequence
-  outb(PIC1_COMMAND, ICW1_INIT | ICW1_ICW4);
-  outb(PIC2_COMMAND, ICW1_INIT | ICW1_ICW4);
+  ic_kapi->outb(PIC1_COMMAND, ICW1_INIT | ICW1_ICW4);
+  ic_kapi->outb(PIC2_COMMAND, ICW1_INIT | ICW1_ICW4);
 
   // Remap PIC vectors to 0x20-0x2F
-  outb(PIC1_DATA, 0x20); // Master PIC vector offset
+  ic_kapi->outb(PIC1_DATA, 0x20); // Master PIC vector offset
 
-  outb(PIC2_DATA, 0x28); // Slave PIC vector offset
+  ic_kapi->outb(PIC2_DATA, 0x28); // Slave PIC vector offset
 
   // Configure cascade
-  outb(PIC1_DATA, 4); // Tell Master PIC about slave at IRQ2
+  ic_kapi->outb(PIC1_DATA, 4); // Tell Master PIC about slave at IRQ2
 
-  outb(PIC2_DATA, 2); // Tell Slave PIC its cascade identity
+  ic_kapi->outb(PIC2_DATA, 2); // Tell Slave PIC its cascade identity
 
   // Set 8086 mode
-  outb(PIC1_DATA, ICW4_8086);
+  ic_kapi->outb(PIC1_DATA, ICW4_8086);
 
-  outb(PIC2_DATA, ICW4_8086);
+  ic_kapi->outb(PIC2_DATA, ICW4_8086);
 
 
   // Indicate success
@@ -101,14 +100,14 @@ int pic_probe(void) {
 
 static void pic_shutdown(void) {
     pic_mask_all();
-    printk(PIC_CLASS "PIC shut down.\n");
+    ic_kapi->printk(PIC_CLASS "PIC shut down.\n");
 }
 
 static const interrupt_controller_interface_t pic_interface = {
     .type = INTC_PIC,
     .probe = pic_probe,
     .install = pic_install,
-    .timer_set = pit_set_frequency,
+    .timer_set = NULL,
     .enable_irq = pic_enable_irq,
     .disable_irq = pic_disable_irq,
     .send_eoi = pic_send_eoi,

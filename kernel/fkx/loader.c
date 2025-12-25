@@ -9,7 +9,7 @@
 #include <arch/x64/mm/vmm.h>
 #include <arch/x64/io.h>
 #include <drivers/timer/time.h>
-#include <drivers/apic/ic.h>
+#include <lib/ic.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>
 
@@ -34,6 +34,7 @@ static struct fkx_loaded_image *g_module_class_heads[FKX_MAX_CLASS] = {NULL};
 // Global API Table
 static struct fkx_kernel_api g_fkx_api = {
   .version = FKX_API_VERSION,
+  .reserved = 0,
   .kmalloc = kmalloc,
   .kfree = kfree,
   .vmalloc = vmalloc,
@@ -67,6 +68,12 @@ static struct fkx_kernel_api g_fkx_api = {
   .outb = outb,
   .outw = outw,
   .outl = outl,
+  .wrmsr = wrmsr,
+  .rdmsr = rdmsr,
+  .save_irq_flags = save_irq_flags,
+  .restore_irq_flags = restore_irq_flags,
+  .cpuid = cpuid,
+  .cpuid_count = cpuid_count,
   .ndelay = time_wait_ns,
   .udelay = delay_us,
   .mdelay = delay_ms,
@@ -91,7 +98,15 @@ static struct fkx_kernel_api g_fkx_api = {
   .spinlock_lock = spinlock_lock,
   .spinlock_unlock = spinlock_unlock,
   .spinlock_lock_irqsave = spinlock_lock_irqsave,
-  .spinlock_unlock_irqrestore = spinlock_unlock_irqrestore
+  .spinlock_unlock_irqrestore = spinlock_unlock_irqrestore,
+  .mutex_init = mutex_init,
+  .mutex_lock = mutex_lock,
+  .mutex_unlock = mutex_unlock,
+  .mutex_trylock = mutex_trylock,
+  .mutex_is_locked = mutex_is_locked,
+  .uacpi_table_find_by_signature = uacpi_table_find_by_signature,
+  .uacpi_for_each_subtable = uacpi_for_each_subtable,
+  .uacpi_table_unref = uacpi_table_unref
 };
 
 int fkx_load_image(void *data, size_t size) {
@@ -269,7 +284,7 @@ int fkx_load_image(void *data, size_t size) {
     return -1;
   }
 
-  printk(FKX_CLASS "Loaded image for module '%s' v%s by %s (not initialized)\n", info->name, info->version, info->author);
+  printk(FKX_CLASS "Loaded image for module '%s' v%s by %s class %d\n", info->name, info->version, info->author, info->module_class);
 
   // 6. Create loaded image structure and add to appropriate class list
   struct fkx_loaded_image *loaded_img = (struct fkx_loaded_image *)kmalloc(sizeof(struct fkx_loaded_image));
@@ -307,11 +322,11 @@ int fkx_init_module_class(fkx_module_class_t module_class) {
     return -1;
   }
 
-  struct fkx_loaded_image *current = g_module_class_heads[module_class];
+  struct fkx_loaded_image *current_mod = g_module_class_heads[module_class];
   int count = 0;
 
   // First pass: count total modules in this class
-  struct fkx_loaded_image *temp = current;
+  struct fkx_loaded_image *temp = current_mod;
   while (temp) {
     count++;
     temp = temp->next;
@@ -325,25 +340,25 @@ int fkx_init_module_class(fkx_module_class_t module_class) {
   printk(FKX_CLASS "Initializing %d modules in class %d\n", count, module_class);
 
   // Second pass: initialize all modules in this class
-  current = g_module_class_heads[module_class];
+  current_mod = g_module_class_heads[module_class];
   int initialized_count = 0;
   int error_count = 0;
 
-  while (current) {
-    if (!current->initialized && current->info->init) {
-      printk(FKX_CLASS "Initializing module '%s' in class %d\n", current->info->name, module_class);
+  while (current_mod) {
+    if (!current_mod->initialized && current_mod->info->init) {
+      printk(FKX_CLASS "Initializing module '%s' in class %d\n", current_mod->info->name, module_class);
 
-      int ret = current->info->init(&g_fkx_api);
+      int ret = current_mod->info->init(&g_fkx_api);
       if (ret != 0) {
-        printk(KERN_ERR FKX_CLASS "Module '%s' init failed: %d\n", current->info->name, ret);
+        printk(KERN_ERR FKX_CLASS "Module '%s' init failed: %d\n", current_mod->info->name, ret);
         error_count++;
         // Continue with other modules even if one fails
       } else {
-        current->initialized = 1;
+        current_mod->initialized = 1;
         initialized_count++;
       }
     }
-    current = current->next;
+    current_mod = current_mod->next;
   }
 
   printk(FKX_CLASS "%d/%d modules in class %d initialized successfully\n",

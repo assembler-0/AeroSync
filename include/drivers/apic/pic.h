@@ -1,7 +1,7 @@
 #pragma once
 
 #include <kernel/types.h>
-#include <drivers/apic/ic.h>
+#include <lib/ic.h>
 
 // PIT command for channel 2 (PC Speaker)
 #define PIT_CMD_CHANNEL_2 0xB6
