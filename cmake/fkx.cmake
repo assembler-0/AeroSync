@@ -3,16 +3,31 @@ function(add_fkx_module MODULE_NAME)
     add_executable(${MODULE_NAME} ${ARGN})
 
     # Freestanding compilation
-    target_compile_options(${MODULE_NAME} PRIVATE
-            -ffreestanding
-            -fno-builtin
-            -fno-exceptions
-            -fno-rtti
-            -fno-stack-protector
-            -fPIC
-            -m64
-            -mcmodel=kernel
-    )
+   	target_compile_options(${MODULE_NAME} PRIVATE
+   	    $<$<COMPILE_LANGUAGE:C>:
+   	        -m64
+   	        -target ${CLANG_TARGET_TRIPLE}
+   	        -O2
+   	        -g0
+   	        -fdata-sections
+   	        -ffunction-sections
+   	        -fno-omit-frame-pointer
+   	        -finline-functions
+   	        -foptimize-sibling-calls
+   	        -ffreestanding
+   	        -mno-implicit-float
+   	        -msoft-float
+   	        -mno-red-zone
+   	        -mserialize
+   	        -fPIC
+   	        -mcmodel=kernel
+   	        -fcf-protection=full
+   	        -fvisibility=hidden
+   	    >
+   	    $<$<COMPILE_LANGUAGE:ASM_NASM>:
+   	        -felf64
+   	    >
+   	)
 
     # Link flags
     target_link_options(${MODULE_NAME} PRIVATE
@@ -22,10 +37,42 @@ function(add_fkx_module MODULE_NAME)
             -Wl,-melf_x86_64
     )
 
-    if(LTO)
-        target_compile_options(${MODULE_NAME} PRIVATE -flto)
-        target_link_options(${MODULE_NAME} PRIVATE -flto)
+	if(MOD_SANITIZER)
+	    target_compile_options(${MODULE_NAME} PRIVATE
+	        $<$<COMPILE_LANGUAGE:C>:
+	            -fsanitize=undefined,bounds,null,return,vla-bound
+	        >
+	    )
+	endif()
+
+	if(MOD_STACK_PROTECTION)
+	    target_compile_options(${MODULE_NAME} PRIVATE
+	        $<$<COMPILE_LANGUAGE:C>:
+	            -fstack-protector-all
+	            -D_FORTIFY_SOURCE=2
+	        >
+	    )
+	endif()
+
+    if(MOD_LTO)
+        target_compile_options(${MODULE_NAME} PRIVATE 
+        	$<$<COMPILE_LANGUAGE:C>:
+        		-flto
+        	>
+       	)
+        target_link_options(${MODULE_NAME} PRIVATE 
+        	-flto
+        	-Wl,--gc-sections
+       	)
     endif()
+
+	if(MOD_INTEL_CET)
+		target_compile_options(${MODULE_NAME} PRIVATE
+			$<$<COMPILE_LANGUAGE:C>:
+				-fcf-protection=full
+			>
+		)
+	endif()
 
     # Set output extension
     set_target_properties(${MODULE_NAME} PROPERTIES
