@@ -48,6 +48,8 @@ struct mm_struct {
 
   int map_count; /* Number of VMAs */
 
+  uint64_t mmap_base; /* Hint for where to start looking for free space */
+
   uint64_t start_code, end_code, start_data, end_data;
   uint64_t start_brk, brk, start_stack;
 };

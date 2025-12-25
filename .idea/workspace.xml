@@ -42,17 +42,17 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="HPET driver separation">
+    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="SLUB allocator">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/smp.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/smp.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/drivers/acpi/uacpi_glue.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/acpi/uacpi_glue.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x64/mm/vmm.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/vmm.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/drivers/uart/serial.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/uart/serial.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/arch/x64/smp.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/smp.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/sched/sched.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/sched/sched.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/mm/slab.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/slab.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/arch/x64/mm/vmm.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/mm/vmm.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/mm/mm_types.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/mm_types.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/mm/vmalloc.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/vmalloc.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/sched/core.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/sched/core.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mm/slab.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/slab.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mm/vma.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vma.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mm/vmalloc.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vmalloc.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -63,7 +63,6 @@
     <option name="formatViaClangd" value="false" />
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="358" />
     <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
   </component>
   <component name="ExecutionTargetManager" SELECTED_TARGET="CMakeBuildProfile:Release" />
@@ -294,7 +293,8 @@
       <workItem from="1766572878778" duration="2007000" />
       <workItem from="1766624616392" duration="9000" />
       <workItem from="1766645665586" duration="5862000" />
-      <workItem from="1766654933291" duration="2922000" />
+      <workItem from="1766654933291" duration="4189000" />
+      <workItem from="1766659347260" duration="9000" />
     </task>
     <task id="LOCAL-00001" summary="Mutexes and FKX spec">
       <option name="closed" value="true" />
@@ -360,7 +360,15 @@
       <option name="project" value="LOCAL" />
       <updated>1766654957129</updated>
     </task>
-    <option name="localTasksCounter" value="9" />
+    <task id="LOCAL-00009" summary="SLUB allocator">
+      <option name="closed" value="true" />
+      <created>1766657869875</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1766657869875</updated>
+    </task>
+    <option name="localTasksCounter" value="10" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -384,7 +392,8 @@
     <MESSAGE value="logging again" />
     <MESSAGE value="sysintf" />
     <MESSAGE value="HPET driver separation" />
-    <option name="LAST_COMMIT_MESSAGE" value="HPET driver separation" />
+    <MESSAGE value="SLUB allocator" />
+    <option name="LAST_COMMIT_MESSAGE" value="SLUB allocator" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

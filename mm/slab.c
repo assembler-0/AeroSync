@@ -214,7 +214,7 @@ void slab_init(void) {
         kmalloc_caches[i] = kmem_cache_create(names[i], 8 << i, 8);
     }
     
-    printk(SLAB_CLASS "Initialized (SMP %s)\n", smp_is_active() ? "Active" : "Inactive");
+    printk(SLAB_CLASS "SLUB allocator initialized (SMP %s)\n", smp_is_active() ? "Active" : "Inactive");
 }
 
 void *kmalloc(size_t size) {

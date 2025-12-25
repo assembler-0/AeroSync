@@ -136,7 +136,7 @@ static int vmm_map_page_locked(uint64_t pml4_phys, uint64_t virt, uint64_t phys,
   return 0;
 }
 
-static int vmm_unmap_page_locked(uint64_t pml4_phys, uint64_t virt) {
+static uint64_t vmm_unmap_page_locked(uint64_t pml4_phys, uint64_t virt) {
   uint64_t *pml4 = (uint64_t *)phys_to_virt(pml4_phys);
 
   uint64_t *pdpt = get_next_level(pml4, PML4_INDEX(virt), false, 4);
@@ -152,6 +152,7 @@ static int vmm_unmap_page_locked(uint64_t pml4_phys, uint64_t virt) {
     return 0;
 
   uint64_t pt_index = PT_INDEX(virt);
+  uint64_t phys = PTE_GET_ADDR(pt[pt_index]);
   pt[pt_index] = 0; // Clear entry
 
   uint64_t current_cr3;
@@ -159,10 +160,57 @@ static int vmm_unmap_page_locked(uint64_t pml4_phys, uint64_t virt) {
   if ((current_cr3 & PTE_ADDR_MASK) == pml4_phys) {
     __asm__ volatile("invlpg (%0)" ::"r"(virt) : "memory");
   }
-  return 0;
+  return phys;
 }
 
 // --- Public VMM API (Locked) ---
+
+int vmm_map_pages_list(uint64_t pml4_phys, uint64_t virt, uint64_t *phys_list,
+                       size_t count, uint64_t flags) {
+  irq_flags_t irq = spinlock_lock_irqsave(&vmm_lock);
+  for (size_t i = 0; i < count; i++) {
+    if (vmm_map_page_locked(pml4_phys, virt + i * PAGE_SIZE, phys_list[i],
+                            flags) < 0) {
+      spinlock_unlock_irqrestore(&vmm_lock, irq);
+      return -1;
+    }
+  }
+  spinlock_unlock_irqrestore(&vmm_lock, irq);
+  return 0;
+}
+
+int vmm_map_pages(uint64_t pml4_phys, uint64_t virt, uint64_t phys,
+                  size_t count, uint64_t flags) {
+  irq_flags_t irq = spinlock_lock_irqsave(&vmm_lock);
+  for (size_t i = 0; i < count; i++) {
+    if (vmm_map_page_locked(pml4_phys, virt + i * PAGE_SIZE,
+                            phys + i * PAGE_SIZE, flags) < 0) {
+      spinlock_unlock_irqrestore(&vmm_lock, irq);
+      return -1;
+    }
+  }
+  spinlock_unlock_irqrestore(&vmm_lock, irq);
+  return 0;
+}
+
+int vmm_unmap_pages_and_get_phys(uint64_t pml4_phys, uint64_t virt,
+                                 uint64_t *phys_list, size_t count) {
+  irq_flags_t irq = spinlock_lock_irqsave(&vmm_lock);
+  for (size_t i = 0; i < count; i++) {
+    phys_list[i] = vmm_unmap_page_locked(pml4_phys, virt + i * PAGE_SIZE);
+  }
+  spinlock_unlock_irqrestore(&vmm_lock, irq);
+  return 0;
+}
+
+int vmm_unmap_pages(uint64_t pml4_phys, uint64_t virt, size_t count) {
+  irq_flags_t irq = spinlock_lock_irqsave(&vmm_lock);
+  for (size_t i = 0; i < count; i++) {
+    vmm_unmap_page_locked(pml4_phys, virt + i * PAGE_SIZE);
+  }
+  spinlock_unlock_irqrestore(&vmm_lock, irq);
+  return 0;
+}
 
 int vmm_map_page(uint64_t pml4_phys, uint64_t virt, uint64_t phys,
                  uint64_t flags) {
@@ -174,9 +222,9 @@ int vmm_map_page(uint64_t pml4_phys, uint64_t virt, uint64_t phys,
 
 int vmm_unmap_page(uint64_t pml4_phys, uint64_t virt) {
   irq_flags_t irq = spinlock_lock_irqsave(&vmm_lock);
-  int ret = vmm_unmap_page_locked(pml4_phys, virt);
+  vmm_unmap_page_locked(pml4_phys, virt);
   spinlock_unlock_irqrestore(&vmm_lock, irq);
-  return ret;
+  return 0;
 }
 
 // Improved virt_to_phys that handles Huge Pages

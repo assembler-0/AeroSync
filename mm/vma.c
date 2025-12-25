@@ -76,6 +76,7 @@ void mm_init(struct mm_struct *mm) {
   mm->mm_rb = RB_ROOT;
   INIT_LIST_HEAD(&mm->mmap_list);
   mm->map_count = 0;
+  mm->mmap_base = 0;
   mm->pml4 = NULL;
   spinlock_init(&mm->page_table_lock);
   spinlock_init(&mm->mmap_lock);
@@ -716,9 +717,36 @@ uint64_t vma_find_free_region_aligned(struct mm_struct *mm, size_t size,
     return 0;
   }
 
-  for_each_vma(mm, vma) {
-    if (vma->vm_end <= range_start)
-      continue;
+  /* 
+   * Optimization: Find the first VMA that could possibly be after our start.
+   * This avoids scanning potentially thousands of VMAs at the start of the address space.
+   */
+  struct rb_node *node = mm->mm_rb.rb_node;
+  struct vm_area_struct *first_search = NULL;
+  
+  while (node) {
+      struct vm_area_struct *tmp = rb_entry(node, struct vm_area_struct, vm_rb);
+      if (tmp->vm_end > range_start) {
+          first_search = tmp;
+          node = node->rb_left;
+      } else {
+          node = node->rb_right;
+      }
+  }
+
+  /* If we found no VMA ending after range_start, the entire range from current_addr is free */
+  if (!first_search) {
+      if (range_end - current_addr >= size)
+          return current_addr;
+      return 0;
+  }
+
+  // Iterate through VMAs starting from the first potential gap
+  struct list_head *pos = &first_search->vm_list;
+  
+  while (pos != &mm->mmap_list) {
+    vma = list_entry(pos, struct vm_area_struct, vm_list);
+    
     if (vma->vm_start >= range_end)
       break;
 
@@ -731,6 +759,9 @@ uint64_t vma_find_free_region_aligned(struct mm_struct *mm, size_t size,
     }
 
     current_addr = vma->vm_end;
+    if (current_addr < range_start) current_addr = range_start;
+    
+    pos = pos->next;
   }
 
   /* Check tail gap */

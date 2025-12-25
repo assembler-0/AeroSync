@@ -44,6 +44,10 @@ void vmm_init(void);
  */
 int vmm_map_page(uint64_t pml4_phys, uint64_t virt, uint64_t phys,
                  uint64_t flags);
+int vmm_map_pages(uint64_t pml4_phys, uint64_t virt, uint64_t phys,
+                  size_t count, uint64_t flags);
+int vmm_map_pages_list(uint64_t pml4_phys, uint64_t virt, uint64_t *phys_list,
+                       size_t count, uint64_t flags);
 
 /**
  * Unmap a virtual page.
@@ -53,6 +57,9 @@ int vmm_map_page(uint64_t pml4_phys, uint64_t virt, uint64_t phys,
  * @return 0 on success
  */
 int vmm_unmap_page(uint64_t pml4_phys, uint64_t virt);
+int vmm_unmap_pages(uint64_t pml4_phys, uint64_t virt, size_t count);
+int vmm_unmap_pages_and_get_phys(uint64_t pml4_phys, uint64_t virt,
+                                 uint64_t *phys_list, size_t count);
 
 /**
  * Get the physical address mapped to a virtual address.
