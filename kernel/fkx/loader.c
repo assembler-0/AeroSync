@@ -333,11 +333,11 @@ int fkx_init_module_class(fkx_module_class_t module_class) {
   }
 
   if (count == 0) {
-    printk(FKX_CLASS "No modules found for class %d\n", module_class);
+    printk(KERN_DEBUG FKX_CLASS "No modules found for class %d\n", module_class);
     return 0;
   }
 
-  printk(FKX_CLASS "Initializing %d modules in class %d\n", count, module_class);
+  printk(KERN_DEBUG FKX_CLASS "Initializing %d modules in class %d\n", count, module_class);
 
   // Second pass: initialize all modules in this class
   current_mod = g_module_class_heads[module_class];
@@ -346,7 +346,7 @@ int fkx_init_module_class(fkx_module_class_t module_class) {
 
   while (current_mod) {
     if (!current_mod->initialized && current_mod->info->init) {
-      printk(FKX_CLASS "Initializing module '%s' in class %d\n", current_mod->info->name, module_class);
+      printk(KERN_DEBUG FKX_CLASS "Initializing module '%s' in class %d\n", current_mod->info->name, module_class);
 
       int ret = current_mod->info->init(&g_fkx_api);
       if (ret != 0) {
@@ -361,7 +361,7 @@ int fkx_init_module_class(fkx_module_class_t module_class) {
     current_mod = current_mod->next;
   }
 
-  printk(FKX_CLASS "%d/%d modules in class %d initialized successfully\n",
+  printk(KERN_DEBUG FKX_CLASS "%d/%d modules in class %d initialized successfully\n",
          initialized_count, count, module_class);
 
   return (error_count == 0) ? 0 : -1;

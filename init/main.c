@@ -236,7 +236,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     for (size_t i = 0; i < module_request.response->module_count; i++) {
       struct limine_file *m =
           module_request.response->modules[i];
-      printk(FKX_CLASS "  [%zu] %s @ %p (%lu bytes)\n",
+      printk(KERN_DEBUG FKX_CLASS "  [%zu] %s @ %p (%lu bytes)\n",
              i, m->path, m->address, m->size);
 
       // Attempt to load as FKX module
@@ -245,7 +245,12 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
       }
     }
   } else {
-    printk(INITRD_CLASS "No initrd module found.\n");
+    printk(KERN_NOTICE FKX_CLASS "no FKX module found"
+      ", you probably do not want this"
+      ", this build of VoidFrameX does not have "
+      "any built-in hardware drivers"
+      ", expect exponential lack of hardware support.\n"
+    );
   }
 
   fkx_init_module_class(FKX_PRINTK_CLASS);

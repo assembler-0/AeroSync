@@ -41,11 +41,12 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="APIC as a module">
+    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="Bit of README.md">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/tsc.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/tsc.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/arch/x64/tsc.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/tsc.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/kernel/version.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/version.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/fkx/loader.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/fkx/loader.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tools/limine.conf.in" beforeDir="false" afterPath="$PROJECT_DIR$/tools/limine.conf.in" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -145,7 +146,7 @@
   }
 }</component>
   <component name="RecapUselessUpdatesCounter">
-    <option name="suspendCountdown" value="1" />
+    <option name="suspendCountdown" value="0" />
   </component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
@@ -281,7 +282,7 @@
       <workItem from="1766572035477" duration="335000" />
       <workItem from="1766572878778" duration="2007000" />
       <workItem from="1766624616392" duration="9000" />
-      <workItem from="1766645665586" duration="1095000" />
+      <workItem from="1766645665586" duration="3035000" />
     </task>
     <task id="LOCAL-00001" summary="Mutexes and FKX spec">
       <option name="closed" value="true" />
@@ -307,7 +308,23 @@
       <option name="project" value="LOCAL" />
       <updated>1766645708902</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="TSC early calibrate">
+      <option name="closed" value="true" />
+      <created>1766646804276</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1766646804276</updated>
+    </task>
+    <task id="LOCAL-00005" summary="Bit of README.md">
+      <option name="closed" value="true" />
+      <created>1766647062913</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1766647062913</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -326,7 +343,9 @@
     <MESSAGE value="CMake sources" />
     <MESSAGE value="slab shit" />
     <MESSAGE value="APIC as a module" />
-    <option name="LAST_COMMIT_MESSAGE" value="APIC as a module" />
+    <MESSAGE value="TSC early calibrate" />
+    <MESSAGE value="Bit of README.md" />
+    <option name="LAST_COMMIT_MESSAGE" value="Bit of README.md" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>
