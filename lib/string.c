@@ -19,6 +19,7 @@
  */
 
 #include <lib/string.h>
+#include <kernel/fkx/fkx.h>
 
 bool is_word_boundary(char c) {
   return c == ' ' || c == '\t' || c == '\n' || c == '\0';
@@ -350,3 +351,13 @@ int memcmp(const void *s1, const void *s2, const size_t n) {
   }
   return 0;
 }
+EXPORT_SYMBOL(memset);
+EXPORT_SYMBOL(memcpy);
+EXPORT_SYMBOL(memmove);
+EXPORT_SYMBOL(memcmp);
+EXPORT_SYMBOL(strlen);
+EXPORT_SYMBOL(strcpy);
+EXPORT_SYMBOL(strcmp);
+EXPORT_SYMBOL(strncmp);
+EXPORT_SYMBOL(strncpy);
+EXPORT_SYMBOL(strnlen);

@@ -1,63 +1,47 @@
-/// SPDX-License-Identifier: GPL-2.0-only
+///SPDX-License-Identifier: GPL-2.0-only
 /**
  * VoidFrameX monolithic kernel
  *
  * @file drivers/uart/serial.c
  * @brief serial UART printk backend
  * @copyright (C) 2025 assembler-0
- *
- * This file is part of the VoidFrameX kernel.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <kernel/fkx/fkx.h>
 #include <drivers/uart/serial.h>
+#include <arch/x64/io.h>
+#include <lib/string.h>
 
 // Serial port register offsets
-#define SERIAL_DATA_REG     0  // Data register (DLAB=0)
-#define SERIAL_IER_REG      1  // Interrupt Enable Register (DLAB=0)
-#define SERIAL_DIVISOR_LOW  0  // Divisor low byte (DLAB=1)
-#define SERIAL_DIVISOR_HIGH 1  // Divisor high byte (DLAB=1)
-#define SERIAL_FIFO_REG     2  // FIFO Control Register
-#define SERIAL_LCR_REG      3  // Line Control Register
-#define SERIAL_MCR_REG      4  // Modem Control Register
-#define SERIAL_LSR_REG      5  // Line Status Register
-#define SERIAL_MSR_REG      6  // Modem Status Register
+#define SERIAL_DATA_REG     0
+#define SERIAL_IER_REG      1
+#define SERIAL_DIVISOR_LOW  0
+#define SERIAL_DIVISOR_HIGH 1
+#define SERIAL_FIFO_REG     2
+#define SERIAL_LCR_REG      3
+#define SERIAL_MCR_REG      4
+#define SERIAL_LSR_REG      5
+#define SERIAL_MSR_REG      6
 
-// Line Control Register bits
-#define SERIAL_LCR_DLAB     0x80  // Divisor Latch Access Bit
-#define SERIAL_LCR_8BITS    0x03  // 8 data bits
-#define SERIAL_LCR_1STOP    0x00  // 1 stop bit
-#define SERIAL_LCR_NOPARITY 0x00  // No parity
+#define SERIAL_LCR_DLAB     0x80
+#define SERIAL_LCR_8BITS    0x03
+#define SERIAL_LCR_1STOP    0x00
+#define SERIAL_LCR_NOPARITY 0x00
 
-// Line Status Register bits
-#define SERIAL_LSR_DATA_READY    0x01  // Data available
-#define SERIAL_LSR_TRANSMIT_EMPTY 0x20 // Transmit buffer empty
-#define SERIAL_LSR_IDLE          0x40  // Transmitter idle
+#define SERIAL_LSR_DATA_READY    0x01
+#define SERIAL_LSR_TRANSMIT_EMPTY 0x20
 
-// FIFO Control Register bits
 #define SERIAL_FIFO_ENABLE      0x01
 #define SERIAL_FIFO_CLEAR_RX    0x02
 #define SERIAL_FIFO_CLEAR_TX    0x04
 #define SERIAL_FIFO_TRIGGER_14  0xC0
 
-// Modem Control Register bits
 #define SERIAL_MCR_DTR          0x01
 #define SERIAL_MCR_RTS          0x02
 #define SERIAL_MCR_OUT2         0x08
 
 static uint16_t serial_port = COM1;
 static int serial_initialized = 0;
-
-static const struct fkx_kernel_api *kapi = NULL;
 
 int serial_init_standard(void *unused) {
   (void)unused;
@@ -70,8 +54,7 @@ int serial_init_standard(void *unused) {
 
 static void serial_cleanup(void) {
     if (serial_initialized) {
-        // Disable interrupts
-        kapi->outb(serial_port + SERIAL_IER_REG, 0x00);
+        outb(serial_port + SERIAL_IER_REG, 0x00);
     }
 }
 
@@ -94,212 +77,75 @@ const printk_backend_t* serial_get_backend(void) {
 }
 
 static int serial_lsr_sane(uint16_t base) {
-    uint8_t lsr = kapi->inb(base + 5);
-
-    /* Bits 6–7 are reserved on real UARTs */
+    uint8_t lsr = inb(base + 5);
     if (lsr == 0xFF || lsr == 0x00)
         return 0;
-
     return 1;
 }
 
-
 int serial_port_exists(uint16_t base) {
-    uint8_t old = kapi->inb(base + 7);
-
-    kapi->outb(base + 7, 0xA5);
-    if (kapi->inb(base + 7) != 0xA5)
-        goto fallback;
-
-    kapi->outb(base + 7, 0x5A);
-    if (kapi->inb(base + 7) != 0x5A)
-        goto fallback;
-
-    kapi->outb(base + 7, old);
+    uint8_t old = inb(base + 7);
+    outb(base + 7, 0xA5);
+    if (inb(base + 7) != 0xA5) goto fallback;
+    outb(base + 7, 0x5A);
+    if (inb(base + 7) != 0x5A) goto fallback;
+    outb(base + 7, old);
     return 1;
-
 fallback:
-    kapi->outb(base + 7, old);
+    outb(base + 7, old);
     return serial_lsr_sane(base);
 }
 
-/**
- * Probe all standard COM ports and return the first available one
- * Returns the base port address, or 0 if none found
- */
 int serial_probe(void) {
     uint16_t ports[] = {COM1, COM2, COM3, COM4};
-    
     for (int i = 0; i < 4; i++) {
-        if (serial_port_exists(ports[i])) {
-           return 1;
-        }
-    }
-    
-    return 0; // No serial ports found
-}
-
-int serial_init(void) {
-    int result = serial_init_port(COM1);
-    return result;
-}
-
-int serial_init_port(uint16_t port) {
-    serial_port = port;
-
-    // Disable all interrupts
-    kapi->outb(port + SERIAL_IER_REG, 0x00);
-
-    // Enable DLAB to set baud rate
-    kapi->outb(port + SERIAL_LCR_REG, SERIAL_LCR_DLAB);
-
-    // Set divisor to 3 (38400 baud)
-    kapi->outb(port + SERIAL_DIVISOR_LOW, 0x03);
-    kapi->outb(port + SERIAL_DIVISOR_HIGH, 0x00);
-
-    // Configure: 8 bits, no parity, 1 stop bit
-    kapi->outb(port + SERIAL_LCR_REG, SERIAL_LCR_8BITS | SERIAL_LCR_NOPARITY | SERIAL_LCR_1STOP);
-
-    // Enable and configure FIFO
-    kapi->outb(port + SERIAL_FIFO_REG, SERIAL_FIFO_ENABLE | SERIAL_FIFO_CLEAR_RX |
-         SERIAL_FIFO_CLEAR_TX | SERIAL_FIFO_TRIGGER_14);
-
-    // Enable DTR, RTS, and OUT2
-    kapi->outb(port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2);
-
-    // Test serial chip (loopback test)
-    kapi->outb(port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2 | 0x10);
-    kapi->outb(port + SERIAL_DATA_REG, 0xAE);
-
-    if (kapi->inb(port + SERIAL_DATA_REG) != 0xAE) {
-        return -2; // Serial chip failed
-    }
-
-    // Restore normal operation
-    kapi->outb(port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2);
-
-    serial_initialized = 1;
-    return 0; // Success
-}
-
-int serial_transmit_empty(void) {
-    if (!serial_initialized) return 0;
-    return kapi->inb(serial_port + SERIAL_LSR_REG) & SERIAL_LSR_TRANSMIT_EMPTY;
-}
-
-int serial_data_available(void) {
-    if (!serial_initialized) return 0;
-    return kapi->inb(serial_port + SERIAL_LSR_REG) & SERIAL_LSR_DATA_READY;
-}
-
-void serial_write_char(const char a) {
-    if (!serial_initialized) return;
-
-    // Timeout counter to prevent infinite loops
-    int timeout = 65536;
-
-    // If newline, emit CR first, then LF
-    if (a == '\n') {
-        while (!serial_transmit_empty() && --timeout > 0);
-        if (timeout <= 0) return;
-        kapi->outb(serial_port + SERIAL_DATA_REG, '\r');
-        timeout = 65536; // Reset timeout
-    }
-
-    while (!serial_transmit_empty() && --timeout > 0);
-    if (timeout <= 0) return;
-
-    kapi->outb(serial_port + SERIAL_DATA_REG, a);
-}
-
-int serial_read_char(void) {
-    if (!serial_initialized) return -1;
-
-    if (!serial_data_available()) {
-        return -1; // No data available
-    }
-
-    return kapi->inb(serial_port + SERIAL_DATA_REG);
-}
-
-int serial_write(const char* str) {
-    if (!str || !serial_initialized) return -1;
-
-    for (int i = 0; str[i] != '\0'; i++) {
-        serial_write_char(str[i]);
+        if (serial_port_exists(ports[i])) return 1;
     }
     return 0;
 }
 
-void serial_write_hex(uint64_t value) {
+int serial_init(void) {
+    return serial_init_port(COM1);
+}
+
+int serial_init_port(uint16_t port) {
+    serial_port = port;
+    outb(port + SERIAL_IER_REG, 0x00);
+    outb(port + SERIAL_LCR_REG, SERIAL_LCR_DLAB);
+    outb(port + SERIAL_DIVISOR_LOW, 0x03);
+    outb(port + SERIAL_DIVISOR_HIGH, 0x00);
+    outb(port + SERIAL_LCR_REG, SERIAL_LCR_8BITS | SERIAL_LCR_NOPARITY | SERIAL_LCR_1STOP);
+    outb(port + SERIAL_FIFO_REG, SERIAL_FIFO_ENABLE | SERIAL_FIFO_CLEAR_RX | SERIAL_FIFO_CLEAR_TX | SERIAL_FIFO_TRIGGER_14);
+    outb(port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2);
+    outb(port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2 | 0x10);
+    outb(port + SERIAL_DATA_REG, 0xAE);
+    if (inb(port + SERIAL_DATA_REG) != 0xAE) return -2;
+    outb(port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2);
+    serial_initialized = 1;
+    return 0;
+}
+
+int serial_transmit_empty(void) {
+    if (!serial_initialized) return 0;
+    return inb(serial_port + SERIAL_LSR_REG) & SERIAL_LSR_TRANSMIT_EMPTY;
+}
+
+void serial_write_char(const char a) {
     if (!serial_initialized) return;
-
-    const char hex[] = "0123456789ABCDEF";
-    char buffer[17];
-    buffer[16] = '\0';
-
-    for (int i = 15; i >= 0; i--) {
-        buffer[15-i] = hex[(value >> (i * 4)) & 0xF];
+    int timeout = 65536;
+    if (a == '\n') {
+        while (!serial_transmit_empty() && --timeout > 0);
+        if (timeout <= 0) return;
+        outb(serial_port + SERIAL_DATA_REG, '\r');
+        timeout = 65536;
     }
-
-    serial_write(buffer);
+    while (!serial_transmit_empty() && --timeout > 0);
+    if (timeout <= 0) return;
+    outb(serial_port + SERIAL_DATA_REG, a);
 }
 
-void serial_write_dec(uint64_t value) {
-    if (!serial_initialized) return;
-
-    if (value == 0) {
-        serial_write_char('0');
-        return;
-    }
-
-    char buffer[21]; // Max digits for uint64_t
-    int pos = 0;
-
-    while (value > 0) {
-        buffer[pos++] = '0' + (value % 10);
-        value /= 10;
-    }
-
-    // Reverse the string
-    for (int i = pos - 1; i >= 0; i--) {
-        serial_write_char(buffer[i]);
-    }
-}
-
-// Read a line from serial (with basic line editing)
-int serial_readline(char* buffer, int max_length) {
-    if (!buffer || !serial_initialized || max_length <= 0) return -1;
-
-    int pos = 0;
-    int c;
-
-    while (pos < max_length - 1) {
-        c = serial_read_char();
-        if (c < 0) continue; // No data, keep waiting
-
-        if (c == '\r' || c == '\n') {
-            serial_write_char('\n'); // Echo newline
-            break;
-        } else if (c == '\b' || c == 0x7F) { // Backspace or DEL
-            if (pos > 0) {
-                pos--;
-                serial_write("\b \b"); // Erase character on terminal
-            }
-        } else if (c >= 32 && c < 127) { // Printable characters
-            buffer[pos++] = c;
-            serial_write_char(c); // Echo character
-        }
-    }
-
-    buffer[pos] = '\0';
-    return pos;
-}
-
-static int serial_mod_init(const struct fkx_kernel_api *api) {
-  if (!api) return -1;
-  kapi = api;
-  kapi->printk_register_backend(serial_get_backend());
+static int serial_mod_init() {
+  printk_register_backend(serial_get_backend());
   return 0;
 }
 
@@ -307,7 +153,7 @@ FKX_MODULE_DEFINE(
   serial,
   "0.0.1",
   "assembler-0",
-  "Simple Linear Framebuffer Graphics Module",
+  "Serial UART Module",
   0,
   FKX_PRINTK_CLASS,
   serial_mod_init,

@@ -8,6 +8,7 @@
 #include <lib/string.h>
 #include <lib/printk.h>
 #include <kernel/panic.h>
+#include <kernel/fkx/fkx.h>
 
 static kmem_cache_t *kmalloc_caches[9];  // 8, 16, 32... 2048
 static kmem_cache_t *cache_cache;        // Cache for kmem_cache_t structures
@@ -240,3 +241,5 @@ void kfree(void *ptr) {
     slab_page_t *slab = get_slab_from_obj(ptr);
     kmem_cache_free(slab->cache, ptr);
 }
+EXPORT_SYMBOL(kmalloc);
+EXPORT_SYMBOL(kfree);

@@ -22,6 +22,7 @@
 #include <arch/x64/tsc.h>
 #include <kernel/classes.h>
 #include <lib/printk.h>
+#include <kernel/fkx/fkx.h>
 
 static uint64_t tsc_freq = 0;
 static uint64_t tsc_boot_offset = 0;
@@ -98,3 +99,9 @@ void tsc_delay(uint64_t ns) {
 }
 
 void tsc_delay_ms(uint64_t ms) { tsc_delay(ms * 1000000ULL); }
+EXPORT_SYMBOL(rdtsc);
+EXPORT_SYMBOL(rdtscp);
+EXPORT_SYMBOL(tsc_freq_get);
+EXPORT_SYMBOL(tsc_recalibrate_with_freq);
+EXPORT_SYMBOL(tsc_delay);
+EXPORT_SYMBOL(get_time_ns);

@@ -23,6 +23,7 @@
 #include <drivers/apic/xapic.h>
 #include <kernel/classes.h>
 #include <kernel/fkx/fkx.h>
+#include <mm/vmalloc.h>
 
 // --- Register Definitions ---
 
@@ -49,8 +50,6 @@
 #define APIC_BASE_MSR 0x1B
 #define APIC_BASE_MSR_ENABLE 0x800
 
-extern struct fkx_kernel_api *ic_kapi; 
-
 // --- Globals ---
 volatile uint32_t *xapic_lapic_base = NULL;
 static spinlock_t xapic_ipi_lock;
@@ -76,11 +75,11 @@ uint32_t xapic_get_id_raw(void) {
 // --- xAPIC Functions ---
 
 static int xapic_init_lapic(void) {
-  uint64_t lapic_base_msr = ic_kapi->rdmsr(APIC_BASE_MSR);
+  uint64_t lapic_base_msr = rdmsr(APIC_BASE_MSR);
 
   if (xapic_lapic_base) {
     // Already mapped by BSP or another CPU, just enable for this core
-    ic_kapi->wrmsr(APIC_BASE_MSR, lapic_base_msr | APIC_BASE_MSR_ENABLE);
+    wrmsr(APIC_BASE_MSR, lapic_base_msr | APIC_BASE_MSR_ENABLE);
     xapic_write(XAPIC_SVR, 0x1FF); // 0xFF vector + bit 8 enabled
     xapic_write(XAPIC_TPR, 0);     // Accept all interrupts
     return 1;
@@ -94,24 +93,24 @@ static int xapic_init_lapic(void) {
       // Accessed via global from apic.c (extern in xapic.h)
       if (xapic_madt_parsed && xapic_madt_lapic_override_phys) {
     lapic_phys_base = (uint64_t)xapic_madt_lapic_override_phys;
-    ic_kapi->printk(KERN_DEBUG APIC_CLASS "LAPIC base overridden by MADT: 0x%llx\n",
+    printk(KERN_DEBUG APIC_CLASS "LAPIC base overridden by MADT: 0x%llx\n",
            lapic_phys_base);
   }
 
-  ic_kapi->printk(KERN_DEBUG APIC_CLASS "LAPIC Physical Base: 0x%llx\n", lapic_phys_base);
+  printk(KERN_DEBUG APIC_CLASS "LAPIC Physical Base: 0x%llx\n", lapic_phys_base);
 
   // Map the LAPIC into virtual memory
-  xapic_lapic_base = (volatile uint32_t *)ic_kapi->viomap(lapic_phys_base, PAGE_SIZE);
+  xapic_lapic_base = (volatile uint32_t *)viomap(lapic_phys_base, PAGE_SIZE);
 
   if (!xapic_lapic_base) {
-    ic_kapi->printk(KERN_ERR APIC_CLASS "Failed to map LAPIC MMIO.\n");
+    printk(KERN_ERR APIC_CLASS "Failed to map LAPIC MMIO.\n");
     return 0;
   }
 
-  ic_kapi->printk(KERN_DEBUG APIC_CLASS "LAPIC Mapped at: 0x%llx\n", (uint64_t)xapic_lapic_base);
+  printk(KERN_DEBUG APIC_CLASS "LAPIC Mapped at: 0x%llx\n", (uint64_t)xapic_lapic_base);
 
   // Enable the LAPIC
-  ic_kapi->wrmsr(APIC_BASE_MSR, lapic_base_msr | APIC_BASE_MSR_ENABLE);
+  wrmsr(APIC_BASE_MSR, lapic_base_msr | APIC_BASE_MSR_ENABLE);
 
   // Add a small delay to ensure APIC is ready before register access
   // Different emulators have different timing requirements
@@ -122,13 +121,13 @@ static int xapic_init_lapic(void) {
   // Verify that we can read the version register to confirm APIC is working
   uint32_t version = xapic_read(XAPIC_VER);
   if (version == 0 || version == 0xFFFFFFFF) {
-    ic_kapi->printk(KERN_ERR APIC_CLASS
+    printk(KERN_ERR APIC_CLASS
            "APIC not responding after enable (version: 0x%x)\n",
            version);
     return 0;
   }
 
-  ic_kapi->printk(KERN_DEBUG APIC_CLASS "LAPIC Version: 0x%x\n", version);
+  printk(KERN_DEBUG APIC_CLASS "LAPIC Version: 0x%x\n", version);
 
   // Set Spurious Interrupt Vector (0xFF) and enable APIC (bit 8)
   xapic_write(XAPIC_SVR, 0x1FF);
@@ -145,15 +144,15 @@ static void xapic_send_eoi_op(uint32_t irn) {
 
 static void xapic_send_ipi_op(uint32_t dest_apic_id, uint8_t vector,
                               uint32_t delivery_mode) {
-  irq_flags_t flags = ic_kapi->spinlock_lock_irqsave(&xapic_ipi_lock);
+  irq_flags_t flags = spinlock_lock_irqsave(&xapic_ipi_lock);
 
   // Wait for previous IPI to be delivered (ICR idle)
   uint32_t timeout = 100000;
   while (xapic_read(XAPIC_ICR_LOW) & (1 << 12)) {
     if (--timeout == 0) {
-      ic_kapi->printk(KERN_ERR APIC_CLASS "ICR stuck busy before send (dest: %u)\n",
+      printk(KERN_ERR APIC_CLASS "ICR stuck busy before send (dest: %u)\n",
              dest_apic_id);
-      ic_kapi->spinlock_unlock_irqrestore(&xapic_ipi_lock, flags);
+      spinlock_unlock_irqrestore(&xapic_ipi_lock, flags);
       return;
     }
     cpu_relax();
@@ -173,14 +172,14 @@ static void xapic_send_ipi_op(uint32_t dest_apic_id, uint8_t vector,
   timeout = 100000; // ~1 second timeout
   while (xapic_read(XAPIC_ICR_LOW) & (1 << 12)) {
     if (--timeout == 0) {
-      ic_kapi->printk(KERN_ERR APIC_CLASS "IPI delivery timeout to APIC ID %u\n",
+      printk(KERN_ERR APIC_CLASS "IPI delivery timeout to APIC ID %u\n",
              dest_apic_id);
       break;
     }
     cpu_relax();
   }
 
-  ic_kapi->spinlock_unlock_irqrestore(&xapic_ipi_lock, flags);
+  spinlock_unlock_irqrestore(&xapic_ipi_lock, flags);
 }
 
 static void xapic_timer_set_frequency_op(uint32_t ticks_per_target) {
@@ -200,7 +199,7 @@ static void xapic_timer_set_frequency_op(uint32_t ticks_per_target) {
   uint32_t lvt_timer = 32 | (1 << 17) | (0 << 16); // Vector 32, Periodic mode, Unmasked
   xapic_write(XAPIC_LVT_TIMER, lvt_timer);
 
-  ic_kapi->printk(KERN_DEBUG APIC_CLASS "Timer configured: LVT=0x%x, Ticks=%u, Div=0x3\n", lvt_timer,
+  printk(KERN_DEBUG APIC_CLASS "Timer configured: LVT=0x%x, Ticks=%u, Div=0x3\n", lvt_timer,
          ticks_per_target);
 }
 
@@ -213,8 +212,8 @@ static void xapic_shutdown_op(void) {
   xapic_write(XAPIC_SVR, svr & ~(1 << 8));
 
   // 4. Optionally disable via MSR (APIC Global Enable)
-  uint64_t lapic_base_msr = ic_kapi->rdmsr(APIC_BASE_MSR);
-  ic_kapi->wrmsr(APIC_BASE_MSR, lapic_base_msr & ~APIC_BASE_MSR_ENABLE);
+  uint64_t lapic_base_msr = rdmsr(APIC_BASE_MSR);
+  wrmsr(APIC_BASE_MSR, lapic_base_msr & ~APIC_BASE_MSR_ENABLE);
 }
 
 const struct apic_ops xapic_ops = {

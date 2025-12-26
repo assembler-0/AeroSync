@@ -37,9 +37,11 @@
 #include <limine/limine.h>
 #include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/paging.h>
+#include <kernel/fkx/fkx.h>
 
 // Global HHDM offset
 uint64_t g_hhdm_offset = 0;
+EXPORT_SYMBOL(g_hhdm_offset);
 
 // Dynamic bitmap pointer - allocated during init
 static unsigned long *pmm_bitmap = NULL;
@@ -453,3 +455,8 @@ void pmm_free_pages(uint64_t phys_addr, size_t count) {
 pmm_stats_t * pmm_get_stats(void) {
   return (pmm_stats_t*)(&pmm_stats);
 }
+#include <kernel/fkx/fkx.h>
+EXPORT_SYMBOL(pmm_virt_to_phys);
+EXPORT_SYMBOL(pmm_phys_to_virt);
+EXPORT_SYMBOL(pmm_alloc_page);
+EXPORT_SYMBOL(pmm_free_page);

@@ -24,6 +24,7 @@
 #include <lib/printk.h>
 #include <kernel/sysintf/ic.h>
 #include <kernel/panic.h>
+#include <kernel/fkx/fkx.h>
 
 #define MAX_CONTROLLERS 8
 
@@ -42,6 +43,7 @@ void ic_register_controller(const interrupt_controller_interface_t* controller) 
            controller->type, controller->priority);
     registered_controllers[num_registered_controllers++] = controller;
 }
+EXPORT_SYMBOL(ic_register_controller);
 
 interrupt_controller_t ic_install(void) {
     const interrupt_controller_interface_t* selected = NULL;

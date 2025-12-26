@@ -1,25 +1,18 @@
-/// SPDX-License-Identifier: GPL-2.0-only
+///SPDX-License-Identifier: GPL-2.0-only
 /**
  * VoidFrameX monolithic kernel
  *
  * @file drivers/apic/pic.c
  * @brief Legacy PIC interrupt controller driver
  * @copyright (C) 2025 assembler-0
- *
- * This file is part of the VoidFrameX kernel.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
-#include <kernel/classes.h>
+#include <kernel/classes.h> 
 #include <kernel/fkx/fkx.h>
+#include <kernel/sysintf/ic.h>
+#include <arch/x64/io.h>
+#include <drivers/timer/pit.h>
+#include <lib/printk.h>
 
 #define PIC1_COMMAND 0x20
 #define PIC1_DATA 0x21
@@ -30,17 +23,11 @@
 #define ICW1_INIT 0x10
 #define ICW4_8086 0x01
 
-extern struct fkx_kernel_api *ic_kapi;
-
 static uint16_t s_irq_mask = 0xFFFF; // All masked initially
 
-// pit_set_frequency is now in drivers/timer/pit.c
-// But pic_interface expects a callback.
-
-// Helper to write the cached mask to the PICs
 static void pic_write_mask() {
-  ic_kapi->outb(PIC1_DATA, s_irq_mask & 0xFF);
-  ic_kapi->outb(PIC2_DATA, (s_irq_mask >> 8) & 0xFF);
+  outb(PIC1_DATA, s_irq_mask & 0xFF);
+  outb(PIC2_DATA, (s_irq_mask >> 8) & 0xFF);
 }
 
 void pic_mask_all(void) {
@@ -64,50 +51,39 @@ void pic_disable_irq(uint8_t irq_line) {
 
 void pic_send_eoi(uint32_t interrupt_number) {
   if (interrupt_number >= 40)
-    ic_kapi->outb(PIC2_COMMAND, 0x20);
-  ic_kapi->outb(PIC1_COMMAND, 0x20);
+    outb(PIC2_COMMAND, 0x20);
+  outb(PIC1_COMMAND, 0x20);
 }
 
 int pic_install(void) {
-  ic_kapi->printk(KERN_NOTICE PIC_CLASS "PIC drivers does not come with builtin PIT timer");
-  // Standard initialization sequence
-  ic_kapi->outb(PIC1_COMMAND, ICW1_INIT | ICW1_ICW4);
-  ic_kapi->outb(PIC2_COMMAND, ICW1_INIT | ICW1_ICW4);
+  printk(KERN_NOTICE PIC_CLASS "PIC drivers does not come with builtin PIT timer\n");
+  
+  outb(PIC1_COMMAND, ICW1_INIT | ICW1_ICW4);
+  outb(PIC2_COMMAND, ICW1_INIT | ICW1_ICW4);
+  outb(PIC1_DATA, 0x20); 
+  outb(PIC2_DATA, 0x28); 
+  outb(PIC1_DATA, 4); 
+  outb(PIC2_DATA, 2); 
+  outb(PIC1_DATA, ICW4_8086);
+  outb(PIC2_DATA, ICW4_8086);
 
-  // Remap PIC vectors to 0x20-0x2F
-  ic_kapi->outb(PIC1_DATA, 0x20); // Master PIC vector offset
-
-  ic_kapi->outb(PIC2_DATA, 0x28); // Slave PIC vector offset
-
-  // Configure cascade
-  ic_kapi->outb(PIC1_DATA, 4); // Tell Master PIC about slave at IRQ2
-
-  ic_kapi->outb(PIC2_DATA, 2); // Tell Slave PIC its cascade identity
-
-  // Set 8086 mode
-  ic_kapi->outb(PIC1_DATA, ICW4_8086);
-
-  ic_kapi->outb(PIC2_DATA, ICW4_8086);
-
-
-  // Indicate success
   return 1;
 }
 
 int pic_probe(void) {
-  return 1; // Assume PIC is always present
+  return 1; 
 }
 
 static void pic_shutdown(void) {
     pic_mask_all();
-    ic_kapi->printk(PIC_CLASS "PIC shut down.\n");
+    printk(PIC_CLASS "PIC shut down.\n");
 }
 
 static const interrupt_controller_interface_t pic_interface = {
     .type = INTC_PIC,
     .probe = pic_probe,
     .install = pic_install,
-    .timer_set = NULL,
+    .timer_set = pit_set_frequency,
     .enable_irq = pic_enable_irq,
     .disable_irq = pic_disable_irq,
     .send_eoi = pic_send_eoi,

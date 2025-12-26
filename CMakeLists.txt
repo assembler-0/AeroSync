@@ -69,6 +69,7 @@ include(fkx)
 include(lib/linearfb/linearfb.cmake)
 include(drivers/uart/uart.cmake)
 include(drivers/apic/ic.cmake)
+include(drivers/pci/pci.cmake)
 include(drivers/timer/timer.cmake)
 
 # ============================================================================

@@ -46,6 +46,28 @@
 #define FKX_SUCCESS          0
 // use errno.h!
 
+/**
+ * Kernel Symbol structure
+ */
+struct fkx_symbol {
+    uintptr_t addr;
+    const char *name;
+};
+
+/**
+ * EXPORT_SYMBOL - Export a symbol to the global kernel symbol table
+ *
+ * This macro places symbol information into a dedicated section that
+ * the FKX loader can parse.
+ */
+#define EXPORT_SYMBOL(sym) \
+    static const char __fkx_sym_name_##sym[] = #sym; \
+    __attribute__((section("fkx_ksymtab"), used)) \
+    const struct fkx_symbol __fkx_sym_##sym = { \
+        .addr = (uintptr_t)&sym, \
+        .name = __fkx_sym_name_##sym \
+    }
+
 typedef enum {
   FKX_PRINTK_CLASS,
   FKX_DRIVER_CLASS,
@@ -63,134 +85,9 @@ struct fkx_module_info;
 /**
  * Module entry point signature
  *
- * @param api Pointer to kernel API table
  * @return FKX_SUCCESS on success, negative error code on failure
  */
-typedef int (*fkx_entry_fn)(const struct fkx_kernel_api *api);
-
-/**
- * Kernel API Table
- *
- * Contains function pointers to kernel services available to FKX modules.
- * The kernel guarantees this structure remains valid for the lifetime of
- * the system.
- */
-struct fkx_kernel_api {
-  uint32_t version; /* API version (FKX_API_VERSION) */
-  uint32_t reserved;
-
-  /* Memory management */
-  void *   (*kmalloc)(size_t size);
-  void     (*kfree)(void *ptr);
-  void *   (*vmalloc)(size_t size);
-  void *   (*vmalloc_exec)(size_t size);
-  void     (*vfree)(void *ptr);
-  void *   (*viomap)(uintptr_t phys_addr, size_t size);
-  void *   (*viomap_wc)(uintptr_t phys_addr, size_t size);
-  void     (*viounmap)(void *addr);
-  int      (*vmm_map_page)(uint64_t pml4_phys, uint64_t virt, uint64_t phys,
-                         uint64_t flags);
-  int      (*vmm_unmap_page)(uint64_t pml4_phys, uint64_t virt);
-  uint64_t (*vmm_virt_to_phys)(uint64_t pml4_phys, uint64_t virt);
-  void     (*vmm_switch_pml4)(uint64_t pml4_phys);
-
-  /* Memory operations */
-  void * (*memset)(void *dest, int c, size_t n);
-  void * (*memcpy)(void *dest, const void *src, size_t n);
-  void * (*memmove)(void *dest, const void *src, size_t n);
-  int    (*memcmp)(const void *s1, const void *s2, size_t n);
-
-  /* String operations */
-  int    (*strlen)(const char *s);
-  void   (*strcpy)(char *dest, const char *src);
-  int    (*strcmp)(const char *s1, const char *s2);
-
-  /* Logging/debug */
-  int  (*printk)(const char *fmt, ...);
-  int  (*snprintf)(char *buf, size_t size, const char *fmt, ...);
-  void (*panic)(const char *msg);
-
-  /* Physical memory */
-  uint64_t  (*pmm_alloc_page)(void);
-  void      (*pmm_free_page)(uint64_t phys_addr);
-  uint64_t  (*pmm_alloc_pages)(size_t count);
-  void      (*pmm_free_pages)(uint64_t phys_addr, size_t count);
-  void *    (*pmm_phys_to_virt)(uintptr_t phys_addr);
-  uintptr_t (*pmm_virt_to_phys)(void *virt_addr);
-
-  /* I/O operations */
-  uint8_t  (*inb)(uint16_t port);
-  uint16_t (*inw)(uint16_t port);
-  uint32_t (*inl)(uint16_t port);
-  void     (*outb)(uint16_t port, uint8_t value);
-  void     (*outw)(uint16_t port, uint16_t value);
-  void     (*outl)(uint16_t port, uint32_t value);
-
-  /* MSR access */
-  uint64_t (*rdmsr)(uint32_t msr);
-  void     (*wrmsr)(uint32_t msr, uint64_t value);
-
-  /* CPU specific */
-  irq_flags_t (*save_irq_flags)(void);
-  void        (*restore_irq_flags)(irq_flags_t flags);
-  void        (*cpuid)(uint32_t leaf, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx);
-  void        (*cpuid_count)(uint32_t leaf, uint32_t subleaf, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx);
-
-  /* Timing */
-  void     (*ndelay)(uint64_t usec);
-  void     (*udelay)(uint64_t msec);
-  void     (*mdelay)(uint64_t msec);
-  void     (*sdelay)(uint64_t sec);
-  uint64_t (*get_time_ns)(void);
-  uint64_t (*rdtsc)(void);
-  void     (*time_register_source)(const time_source_t *source);
-  void     (*tsc_recalibrate_with_freq)(uint64_t new_freq);
-  uint64_t (*tsc_freq_get)(void);
-
-  /* Interrupt controlling */
-  void     (*ic_register_controller)(const interrupt_controller_interface_t *controller);
-  void     (*ic_shutdown_controller)(void);
-  void     (*ic_enable_irq)(uint8_t irq_line);
-  void     (*ic_disable_irq)(uint8_t irq_line);
-  void     (*ic_send_eoi)(uint32_t interrupt_number);
-  void     (*ic_set_timer)(uint32_t frequency_hz);
-  uint32_t (*ic_get_frequency)(void);
-  void     (*ic_send_ipi)(uint8_t dest_apic_id, uint8_t vector, uint32_t delivery_mode);
-  interrupt_controller_t (*ic_get_controller_type)(void);
-
-  /* Limine Resources */
-  volatile struct limine_framebuffer_request* (*get_framebuffer_request)(void);
-
-  /* printk framework */
-  void (*printk_register_backend)(const printk_backend_t *backend);
-
-  int  (*printk_set_sink)(const char *backend_name);
-  void (*printk_shutdown)(void);
-
-  /* synchronization */
-  void (*spinlock_init)(volatile int *lock);
-  void (*spinlock_lock)(volatile int *lock);
-  void (*spinlock_unlock)(volatile int *lock);
-  irq_flags_t (*spinlock_lock_irqsave)(volatile int *lock);
-  void (*spinlock_unlock_irqrestore)(volatile int *lock, irq_flags_t flags);
-
-  void  (*mutex_init)(mutex_t *m);
-  void  (*mutex_lock)(mutex_t *m);
-  void  (*mutex_unlock)(mutex_t *m);
-  int   (*mutex_trylock)(mutex_t *m);
-  int   (*mutex_is_locked)(mutex_t *m);
-
-  /* uACPI interface */
-  uacpi_status (*uacpi_table_find_by_signature)(
-    const uacpi_char *signature_string, struct uacpi_table *out_table
-  );
-  uacpi_status (*uacpi_for_each_subtable)(
-    struct acpi_sdt_hdr *hdr, size_t hdr_size,
-    uacpi_subtable_iteration_callback cb, void *user
-  );
-  uacpi_status (*uacpi_table_unref)(uacpi_table *tbl);
-  const uacpi_char *(*uacpi_status_to_string)(uacpi_status st);
-};
+typedef int (*fkx_entry_fn)(void);
 
 /**
  * Module Information Structure
@@ -263,9 +160,33 @@ struct fkx_module_info {
 int fkx_load_image(void *data, size_t size);
 
 /**
+ * Lookup a symbol in the global kernel symbol table
+ *
+ * @param name Name of the symbol
+ * @return Address of the symbol or 0 if not found
+ */
+uintptr_t fkx_lookup_symbol(const char *name);
+
+/**
+ * Register a new symbol in the global kernel symbol table
+ *
+ * @param addr Address of the symbol
+ * @param name Name of the symbol
+ * @return 0 on success, error code otherwise
+ */
+int fkx_register_symbol(uintptr_t addr, const char *name);
+
+/**
  * Initialize all modules of a specific class
  *
  * @param module_class The class of modules to initialize
  * @return FKX_SUCCESS on success, error code otherwise
  */
 int fkx_init_module_class(fkx_module_class_t module_class);
+
+/**
+ * Finalize loading of all modules (resolve dependencies and relocations)
+ * 
+ * @return FKX_SUCCESS on success, error code otherwise
+ */
+int fkx_finalize_loading(void);

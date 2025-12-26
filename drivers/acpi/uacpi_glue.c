@@ -707,3 +707,8 @@ uacpi_status uacpi_kernel_initialize(uacpi_init_level current_init_lvl) {
 void uacpi_kernel_deinitialize(void) {
   // Cleanup
 }
+#include <kernel/fkx/fkx.h>
+EXPORT_SYMBOL(uacpi_table_find_by_signature);
+EXPORT_SYMBOL(uacpi_status_to_string);
+EXPORT_SYMBOL(uacpi_table_unref);
+EXPORT_SYMBOL(uacpi_for_each_subtable);

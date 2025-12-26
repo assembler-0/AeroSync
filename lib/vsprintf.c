@@ -44,6 +44,7 @@
 #include <kernel/types.h>
 #include <lib/vsprintf.h>
 #include <stdarg.h>
+#include <kernel/fkx/fkx.h>
 
 
 // 'ntoa' conversion buffer size, this must be big enough to hold one converted
@@ -522,3 +523,5 @@ int snprintf(char* buffer, size_t size, const char* format, ...) {
     va_end(args);
     return result;
 }
+EXPORT_SYMBOL(snprintf);
+EXPORT_SYMBOL(vsnprintf);

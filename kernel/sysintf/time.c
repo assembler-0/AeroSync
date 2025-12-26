@@ -24,6 +24,7 @@
 #include <kernel/classes.h>
 #include <kernel/panic.h>
 #include <lib/printk.h>
+#include <kernel/fkx/fkx.h>
 
 #define MAX_TIME_SOURCES 8
 
@@ -159,8 +160,8 @@ int time_calibrate_tsc_system(void) {
   uint64_t target_ticks = freq / 20; // 50ms
 
   while (1) {
-    uint64_t current = current_time_source->read_counter();
-    if ((current - start_counter) >= target_ticks)
+    uint64_t current_source = current_time_source->read_counter();
+    if ((current_source - start_counter) >= target_ticks)
       break; // Assumes simple monotonic up-counter
     cpu_relax();
   }
@@ -174,3 +175,7 @@ int time_calibrate_tsc_system(void) {
   tsc_recalibrate_with_freq(tsc_freq);
   return 0;
 }
+EXPORT_SYMBOL(time_register_source);
+EXPORT_SYMBOL(time_init);
+EXPORT_SYMBOL(time_wait_ns);
+EXPORT_SYMBOL(time_calibrate_tsc_system);

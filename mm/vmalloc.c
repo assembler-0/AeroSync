@@ -295,3 +295,7 @@ void viounmap(void *addr) {
     uint64_t vaddr_aligned = (uint64_t)addr & PAGE_MASK;
     vfree((void *)vaddr_aligned);
 }
+#include <kernel/fkx/fkx.h>
+EXPORT_SYMBOL(viomap_wc);
+EXPORT_SYMBOL(viomap);
+EXPORT_SYMBOL(viounmap);

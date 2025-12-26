@@ -76,6 +76,12 @@ SECTIONS
         *(.rodata.str*)   /* String literals first */
         *(.rodata)        /* Regular rodata */
         *(.rodata.*)
+        
+        . = ALIGN(8);
+        _fkx_ksymtab_start = .;
+        KEEP(*(fkx_ksymtab))
+        _fkx_ksymtab_end = .;
+
         . = ALIGN(PAGE_SIZE);
         _rodata_end = .;
     } :rodata

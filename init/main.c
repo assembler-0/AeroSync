@@ -132,6 +132,7 @@ static struct task_struct bsp_task __aligned(16);
 volatile struct limine_framebuffer_request* get_framebuffer_request(void) {
   return &framebuffer_request;
 }
+EXPORT_SYMBOL(get_framebuffer_request);
 
 int process(void *data) {
   while (1) {
@@ -240,6 +241,10 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
         printk(FKX_CLASS "Successfully loaded module: %s\n", m->path);
       }
     }
+    
+    if (fkx_finalize_loading() != 0) {
+      printk(KERN_ERR FKX_CLASS "Failed to finalize module loading\n");
+    }
   } else {
     printk(KERN_NOTICE FKX_CLASS "no FKX module found/loaded"
       ", you probably do not want this"
@@ -286,6 +291,9 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   } else {
     printk(KERN_CLASS "TSC calibrated successfully.\n");
   }
+
+  // Initialize generic driver modules (e.g., PCI)
+  fkx_init_module_class(FKX_DRIVER_CLASS);
 
   sched_init();
   sched_init_task(&bsp_task);

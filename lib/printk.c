@@ -25,6 +25,7 @@
 #include <lib/printk.h>
 #include <lib/vsprintf.h>
 #include <lib/string.h>
+#include <kernel/fkx/fkx.h>
 
 #define MAX_PRINTK_BACKENDS 8
 
@@ -154,3 +155,9 @@ int printk(const char *fmt, ...) {
   va_end(args);
   return ret;
 }
+
+EXPORT_SYMBOL(printk);
+
+EXPORT_SYMBOL(printk_register_backend);
+EXPORT_SYMBOL(printk_set_sink);
+EXPORT_SYMBOL(printk_shutdown);

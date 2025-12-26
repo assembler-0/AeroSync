@@ -1,4 +1,4 @@
-/// SPDX-License-Identifier: GPL-2.0-only
+///SPDX-License-Identifier: GPL-2.0-only
 /**
  * VoidFrameX monolithic kernel
  *
@@ -23,8 +23,7 @@
 #include <kernel/classes.h>
 #include <kernel/fkx/fkx.h>
 #include <uacpi/acpi.h>
-
-extern struct fkx_kernel_api *ic_kapi;
+#include <mm/vmalloc.h>
 
 static volatile uint32_t *ioapic_base = NULL;
 
@@ -45,18 +44,18 @@ static uint32_t ioapic_read(uint8_t reg) {
 
 int ioapic_init(uint64_t phys_addr) {
     // Map the I/O APIC into virtual memory.
-    ioapic_base = (volatile uint32_t *)ic_kapi->viomap(phys_addr, PAGE_SIZE);
+    ioapic_base = (volatile uint32_t *)viomap(phys_addr, PAGE_SIZE);
 
     if (!ioapic_base) {
-        ic_kapi->printk(KERN_ERR APIC_CLASS "Failed to map I/O APIC MMIO.\n");
+        printk(KERN_ERR APIC_CLASS "Failed to map I/O APIC MMIO.\n");
         return 0;
     }
 
-    ic_kapi->printk(KERN_DEBUG APIC_CLASS "IOAPIC Mapped at: 0x%llx (Phys: 0x%llx)\n", (uint64_t)ioapic_base, phys_addr);
+    printk(KERN_DEBUG APIC_CLASS "IOAPIC Mapped at: 0x%llx (Phys: 0x%llx)\n", (uint64_t)ioapic_base, phys_addr);
 
     // Read the I/O APIC version to verify it's working
     uint32_t version_reg = ioapic_read(IOAPIC_REG_VER);
-    ic_kapi->printk(KERN_DEBUG APIC_CLASS "IOAPIC Version: 0x%x\n", version_reg);
+    printk(KERN_DEBUG APIC_CLASS "IOAPIC Version: 0x%x\n", version_reg);
 
     return 1;
 }
