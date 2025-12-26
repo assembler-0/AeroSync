@@ -33,6 +33,7 @@
 ///@section Core Kernel
 #define KERN_CLASS "[SYS::CORE] "         // Generic kernel core messages
 #define PANIC_CLASS "[SYS::PANIC] "       // Kernel panics (Fatal errors)
+#define FAULT_CLASS "[SYS::FAULT] "
 #define SYSCALL_CLASS "[SYS::CALL] "      // System call entry/exit tracing
 #define TIME_CLASS "[SYS::TIME] "         // RTC, PIT, HPET, System Clock
 #define ATOMIC_CLASS "[SYS::ATOMIC] "     // Atomic operations

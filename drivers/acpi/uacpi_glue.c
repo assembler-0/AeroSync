@@ -699,7 +699,7 @@ uacpi_status uacpi_kernel_initialize(uacpi_init_level current_init_lvl) {
     spinlock_init(&work_lock);
     // Start worker thread
     kthread_run(
-        kthread_create(acpi_worker_thread, NULL, DEFAULT_PRIO, "acpi_worker"));
+        kthread_create(acpi_worker_thread, NULL, "acpi_worker"));
   }
   return UACPI_STATUS_OK;
 }

@@ -27,6 +27,31 @@
 #include <linux/rbtree.h>
 #include <mm/vma.h>
 
+#define NS_PER_MS 1000000ULL
+#define SCHED_LATENCY (6 * NS_PER_MS)
+#define SCHED_MIN_GRANULARITY_NS (750000ULL)
+#define SCHED_WAKEUP_GRANULARITY_NS (1000000ULL)
+
+/*
+ * Calculate the ideal slice for a task.
+ * slice = latency * (task_weight / total_weight)
+ */
+static uint64_t sched_slice(struct rq *rq, struct sched_entity *se) {
+  uint64_t slice = SCHED_LATENCY;
+
+  if (rq->nr_running > SCHED_LATENCY / SCHED_MIN_GRANULARITY_NS) {
+    slice = (uint64_t)rq->nr_running * SCHED_MIN_GRANULARITY_NS;
+  }
+
+  if (rq->load.weight > 0) {
+    unsigned __int128 prod =
+        (unsigned __int128)slice * (unsigned __int128)se->load.weight;
+    slice = (uint64_t)(prod / (unsigned __int128)rq->load.weight);
+  }
+
+  return slice;
+}
+
 /*
  * This table maps nice values (-20 to 19) to their corresponding load weights.
  * prio_to_weight[20] corresponds to nice 0 (NICE_0_LOAD).
@@ -64,9 +89,10 @@ static void update_min_vruntime(struct rq *rq) {
   uint64_t vruntime = rq->min_vruntime;
 
   /*
-   * If there is a current task, start with its vruntime.
+   * If there is a current task, start with its vruntime if it is NOT the idle task.
+   * Tasks in the fair class have se.on_rq = 1.
    */
-  if (rq->curr)
+  if (rq->curr && rq->curr->se.on_rq)
     vruntime = rq->curr->se.vruntime;
 
   /*
@@ -75,7 +101,7 @@ static void update_min_vruntime(struct rq *rq) {
   if (rq->rb_leftmost) {
     struct sched_entity *se =
         rb_entry(rq->rb_leftmost, struct sched_entity, run_node);
-    if (!rq->curr)
+    if (!rq->curr || !rq->curr->se.on_rq)
       vruntime = se->vruntime;
     else if (se->vruntime < vruntime)
       vruntime = se->vruntime;
@@ -166,6 +192,10 @@ void update_curr(struct rq *rq) {
   // Reset exec_start_ns for the next period
   curr->se.exec_start_ns = now_ns;
 
+  /* Update exponential moving average of the runqueue load */
+  // avg = (avg * 7 + instant) / 8
+  rq->avg_load = ((rq->avg_load << 3) - rq->avg_load + rq->load.weight) >> 3;
+
   /* Update the runqueue's min_vruntime to track progress */
   update_min_vruntime(rq);
 }
@@ -208,46 +238,64 @@ static void place_entity(struct rq *rq, struct sched_entity *se, int initial) {
 void task_tick_fair(struct rq *rq, struct task_struct *curr) {
   update_curr(rq);
 
+  if (curr == rq->idle) {
+    if (rq->nr_running > 0)
+      set_need_resched();
+    return;
+  }
+
+  if (rq->nr_running <= 1)
+    return;
+
+  uint64_t slice = sched_slice(rq, &curr->se);
+  uint64_t delta_exec =
+      curr->se.sum_exec_runtime - curr->se.prev_sum_exec_runtime;
+
   /*
-   * If the current task is running and on the runqueue, we might need to re-insert it
-   * into the tree to maintain order if its vruntime has grown larger
-   * than others. However, we should only do this if the task is still running
-   * (not about to be descheduled).
+   * If the current task has consumed more than its ideal slice,
+   * or if there is another task with a significantly smaller vruntime,
+   * signal for a reschedule.
    */
-  if (curr->se.on_rq && rq->curr == curr) {
-    __dequeue_entity(rq, &curr->se);
-    __enqueue_entity(rq, &curr->se);
+  if (delta_exec > slice) {
+    set_need_resched();
+    return;
+  }
+
+  if (rq->rb_leftmost) {
+    struct sched_entity *se =
+        rb_entry(rq->rb_leftmost, struct sched_entity, run_node);
+    if (curr->se.vruntime > se->vruntime + SCHED_WAKEUP_GRANULARITY_NS) {
+      set_need_resched();
+    }
+  }
+}
+
+void put_prev_task_fair(struct rq *rq, struct task_struct *prev) {
+  if (prev->se.on_rq) {
+    /* If the task is still runnable, put it back into the tree */
+    __enqueue_entity(rq, &prev->se);
   }
 }
 
 struct task_struct *pick_next_task_fair(struct rq *rq) {
-  /* Prefer the cached leftmost, but validate/fallback to a fresh rb_first() */
   struct rb_node *n = rq->rb_leftmost;
 
   if (!n) {
     n = rb_first(&rq->tasks_timeline);
-    rq->rb_leftmost = n; /* refresh cache */
   }
 
-  /* Walk from leftmost forward until we find a valid on-rq task */
-  for (; n; n = rb_next(n)) {
-    struct sched_entity *se = rb_entry(n, struct sched_entity, run_node);
-    if (!se->on_rq)
-      continue; /* skip nodes that are not on the rq (defensive)	*/
-
-    struct task_struct *t = container_of(se, struct task_struct, se);
-    /* Skip tasks that are not runnable */
-    if (t->state != TASK_RUNNING)
-      continue;
-
-    /* Found a runnable task */
-    rq->rb_leftmost = n; /* update cache to this valid node */
-    return t;
+  if (!n) {
+    return NULL;
   }
 
-  /* No runnable task found */
-  rq->rb_leftmost = NULL;
-  return NULL;
+  struct sched_entity *se = rb_entry(n, struct sched_entity, run_node);
+  struct task_struct *p = container_of(se, struct task_struct, se);
+
+  /* Dequeue from tree while running */
+  __dequeue_entity(rq, se);
+
+  p->se.prev_sum_exec_runtime = p->se.sum_exec_runtime;
+  return p;
 }
 
 /*
@@ -273,9 +321,13 @@ void dequeue_task(struct rq *rq, struct task_struct *p, int flags) {
     }
   }
 
+  if (p != rq->curr) {
+    __dequeue_entity(rq, &p->se);
+  }
+
   p->se.on_rq = 0;
   rq->nr_running--;
-  __dequeue_entity(rq, &p->se);
+  rq->load.weight -= p->se.load.weight;
 }
 
 /*
@@ -301,7 +353,11 @@ void enqueue_task(struct rq *rq, struct task_struct *p, int flags) {
 
   p->se.on_rq = 1;
   rq->nr_running++;
-  __enqueue_entity(rq, &p->se);
+  rq->load.weight += p->se.load.weight;
+
+  if (p != rq->curr) {
+    __enqueue_entity(rq, &p->se);
+  }
 }
 
 void activate_task(struct rq *rq, struct task_struct *p) {
@@ -309,5 +365,5 @@ void activate_task(struct rq *rq, struct task_struct *p) {
 }
 
 void deactivate_task(struct rq *rq, struct task_struct *p) {
-  dequeue_task(rq, p, DEQUEUE_SKIP_NORM);
+  dequeue_task(rq, p, 0);
 }

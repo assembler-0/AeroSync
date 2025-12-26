@@ -122,7 +122,7 @@ int log_try_init_async(void) {
   if (klog_async_enabled)
     return 1;
   // If scheduler isn't available or kthread creation fails, return 0.
-  struct task_struct *t = kthread_create(klogd_thread, NULL, 5, "kthread/klogd");
+  struct task_struct *t = kthread_create(klogd_thread, NULL, "kthread/klogd");
   if (!t)
     return 0;
   kthread_run(t);
@@ -339,7 +339,7 @@ void log_init_async(void) {
     spinlock_unlock_irqrestore(&klog_lock, f);
   }
 
-  struct task_struct *t = kthread_create(klogd_thread, NULL, 5, "kthread/klogd");
+  struct task_struct *t = kthread_create(klogd_thread, NULL, "kthread/klogd");
   if (t) {
     kthread_run(t);
     klogd_task = t;

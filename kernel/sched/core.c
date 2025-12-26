@@ -28,6 +28,7 @@
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>
 #include <kernel/wait.h>
+#include <kernel/panic.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <linux/container_of.h>
@@ -51,9 +52,28 @@ static struct task_struct per_cpu_idle_tasks[MAX_CPUS];
 // Preemption flag per CPU
 static volatile int need_resched[MAX_CPUS];
 
-// Global scheduler lock for operations that span multiple runqueues (e.g.,
-// migration)
-spinlock_t __rq_lock = 0; // Initialize unlocked
+void set_need_resched(void) {
+  need_resched[cpu_id()] = 1;
+}
+
+void double_rq_lock(struct rq *rq1, struct rq *rq2) {
+  if (rq1 == rq2) {
+    spinlock_lock(&rq1->lock);
+  } else if (rq1 < rq2) {
+    spinlock_lock(&rq1->lock);
+    spinlock_lock(&rq2->lock);
+  } else {
+    spinlock_lock(&rq2->lock);
+    spinlock_lock(&rq1->lock);
+  }
+}
+
+void double_rq_unlock(struct rq *rq1, struct rq *rq2) {
+  spinlock_unlock(&rq1->lock);
+  if (rq1 != rq2) {
+    spinlock_unlock(&rq2->lock);
+  }
+}
 
 extern void deactivate_task(struct rq *rq, struct task_struct *p);
 extern void activate_task(struct rq *rq, struct task_struct *p);
@@ -95,11 +115,18 @@ void move_task_to_rq(struct task_struct *task, int dest_cpu) {
     return;
   }
 
-  irq_flags_t flags = spinlock_lock_irqsave(&__rq_lock);
+  struct rq *src_rq = &per_cpu_runqueues[task->cpu];
+  struct rq *dest_rq = &per_cpu_runqueues[dest_cpu];
+
+  irq_flags_t flags = save_irq_flags();
+  cpu_cli();
+
+  double_rq_lock(src_rq, dest_rq);
 
   __move_task_to_rq_locked(task, dest_cpu);
 
-  spinlock_unlock_irqrestore(&__rq_lock, flags);
+  double_rq_unlock(src_rq, dest_rq);
+  restore_irq_flags(flags);
 }
 
 static void switch_mm(struct mm_struct *prev, struct mm_struct *next,
@@ -118,15 +145,14 @@ static void switch_mm(struct mm_struct *prev, struct mm_struct *next,
  * Scheduler Initialization
  */
 void sched_init(void) {
-  int i;
-  for (i = 0; i < MAX_CPUS; i++) {
+  pid_allocator_init();
+  
+  memset(per_cpu_runqueues, 0, sizeof(per_cpu_runqueues));
+  memset(current_tasks, 0, sizeof(current_tasks));
+
+  for (int i = 0; i < MAX_CPUS; i++) {
     struct rq *rq = &per_cpu_runqueues[i];
-    rq->lock = 0; // Init spinlock
-    rq->nr_running = 0;
     rq->tasks_timeline = RB_ROOT;
-    rq->rb_leftmost = NULL; // Initialize new field
-    rq->clock = 0;
-    rq->min_vruntime = 0;
   }
 
   printk(SCHED_CLASS "CFS scheduler initialized for %d logical CPUs slots.\n",
@@ -219,6 +245,38 @@ static void finish_task_switch(struct task_struct *prev) {
   }
 }
 
+void set_task_nice(struct task_struct *p, int nice) {
+  if (nice < MIN_NICE)
+    nice = MIN_NICE;
+  if (nice > MAX_NICE)
+    nice = MAX_NICE;
+
+  if (p->nice == nice)
+    return;
+
+  struct rq *rq = &per_cpu_runqueues[p->cpu];
+  irq_flags_t flags = spinlock_lock_irqsave(&rq->lock);
+
+  // Update runtime before changing weight to be fair
+  if (rq->curr == p) {
+    update_curr(rq);
+  }
+
+  int queued = p->se.on_rq;
+  if (queued) {
+    deactivate_task(rq, p);
+  }
+
+  p->nice = nice;
+  p->se.load.weight = prio_to_weight[nice + NICE_TO_PRIO_OFFSET];
+
+  if (queued) {
+    activate_task(rq, p);
+  }
+
+  spinlock_unlock_irqrestore(&rq->lock, flags);
+}
+
 /*
  * The main schedule function
  */
@@ -229,18 +287,30 @@ void schedule(void) {
   irq_flags_t flags = spinlock_lock_irqsave(&rq->lock);
   prev_task = rq->curr;
 
+  if (prev_task) {
+    update_curr(rq);
+    put_prev_task_fair(rq, prev_task);
+  }
+
   // Pick next task
   next_task = pick_next_task_fair(rq);
 
   if (!next_task) {
     next_task = rq->idle;
+    // Idle task is never in the tree, so no need to dequeue it in pick_next_task_fair
+    // and no need to enqueue it in put_prev_task_fair (handled by on_rq or special cases)
   }
+
+  if (!next_task) {
+    panic("schedule(): next_task is NULL (rq->idle)");
+  }
+
+  next_task->se.exec_start_ns = get_time_ns();
+  next_task->se.prev_sum_exec_runtime = next_task->se.sum_exec_runtime;
 
   if (prev_task != next_task) {
     rq->curr = next_task;
     set_current(next_task);
-    next_task->se.exec_start_ns =
-        get_time_ns(); // Update exec_start_ns for the new task
 
     // Handle address space switching
     if (next_task->mm) {
@@ -283,54 +353,55 @@ static void load_balance(void) {
   unsigned long total_cpus = smp_get_cpu_count();
   int overloaded_cpu = -1;
   int underloaded_cpu = -1;
-  unsigned int max_running = 0;
-  unsigned int min_running = UINT32_MAX; // Max value
+  unsigned long max_load = 0;
+  unsigned long min_load = ~0UL;
 
   if (total_cpus <= 1) {
     return; // No need to load balance on a single CPU
   }
 
-  /* Find overloaded and underloaded CPUs (best-effort; no per-rq locks here) */
+  /* Find overloaded and underloaded CPUs based on average load */
   for (unsigned int i = 0; i < total_cpus; i++) {
     struct rq *rq = &per_cpu_runqueues[i];
-    if (rq->nr_running > max_running) {
-      max_running = rq->nr_running;
+    unsigned long load = rq->avg_load;
+    if (load > max_load) {
+      max_load = load;
       overloaded_cpu = (signed)i;
     }
-    if (rq->nr_running < min_running) {
-      min_running = rq->nr_running;
+    if (load < min_load) {
+      min_load = load;
       underloaded_cpu = (signed)i;
     }
   }
 
   /* Only act on a significant imbalance */
   if (overloaded_cpu == -1 || underloaded_cpu == -1 ||
-      (max_running - min_running <= 1)) {
+      (max_load - min_load <= NICE_0_LOAD)) {
     return;
   }
-  /* Acquire global migration lock first (consistent lock order) */
-  irq_flags_t gflags = spinlock_lock_irqsave(&__rq_lock);
 
   struct rq *src_rq = &per_cpu_runqueues[overloaded_cpu];
   struct rq *dst_rq = &per_cpu_runqueues[underloaded_cpu];
 
-  /* Acquire source runqueue lock to inspect the rbtree safely */
-  irq_flags_t src_flags = spinlock_lock_irqsave(&src_rq->lock);
+  irq_flags_t flags = save_irq_flags();
+  cpu_cli();
+  double_rq_lock(src_rq, dst_rq);
 
-  /* Find leftmost node (start of least-recently-run). Walk forward to find a
-     suitable candidate (not idle, on_rq, and not the currently running task). */
-  struct rb_node *n = src_rq->tasks_timeline.rb_node;
-  if (n) {
-    while (n->rb_left)
-      n = n->rb_left;
+  /* Re-evaluate imbalance under locks */
+  if (src_rq->avg_load - dst_rq->avg_load <= NICE_0_LOAD) {
+    double_rq_unlock(src_rq, dst_rq);
+    restore_irq_flags(flags);
+    return;
   }
 
+  /* Find a candidate task on the source runqueue */
+  struct rb_node *n = src_rq->rb_leftmost ? src_rq->rb_leftmost : rb_first(&src_rq->tasks_timeline);
   struct task_struct *candidate = NULL;
+
   for (; n; n = rb_next(n)) {
     struct sched_entity *se = rb_entry(n, struct sched_entity, run_node);
     struct task_struct *t = container_of(se, struct task_struct, se);
 
-    /* Skip idle task, currently running task, or entities not on the rq */
     if (t == src_rq->idle || t == src_rq->curr)
       continue;
     if (!se->on_rq)
@@ -340,75 +411,20 @@ static void load_balance(void) {
     break;
   }
 
-  if (!candidate) {
-    /* Nothing to migrate from this source */
-    spinlock_unlock_irqrestore(&src_rq->lock, src_flags);
-    spinlock_unlock_irqrestore(&__rq_lock, gflags);
-    return;
+  if (candidate) {
+    __move_task_to_rq_locked(candidate, underloaded_cpu);
+    printk(KERN_DEBUG SCHED_CLASS "Migrated task %p (PID: %d) from CPU %d to %d (load: %lu -> %lu)\n", 
+           candidate, candidate->pid, overloaded_cpu, underloaded_cpu, max_load, min_load);
+    
+    double_rq_unlock(src_rq, dst_rq);
+    restore_irq_flags(flags);
+    
+    /* Signal destination CPU to reschedule */
+    reschedule_cpu(underloaded_cpu);
+  } else {
+    double_rq_unlock(src_rq, dst_rq);
+    restore_irq_flags(flags);
   }
-
-  /* Acquire destination lock while still holding source lock and global lock.
-     Lock order: __rq_lock -> src_rq->lock -> dst_rq->lock */
-  irq_flags_t dst_flags = spinlock_lock_irqsave(&dst_rq->lock);
-
-  /* Re-evaluate imbalance under locks. If no longer significant, abort. */
-  if ((int)src_rq->nr_running - (int)dst_rq->nr_running <= 1) {
-    /* No longer imbalanced */
-    spinlock_unlock_irqrestore(&dst_rq->lock, dst_flags);
-    spinlock_unlock_irqrestore(&src_rq->lock, src_flags);
-    spinlock_unlock_irqrestore(&__rq_lock, gflags);
-    return;
-  }
-
-  /* Re-scan src runqueue under locks for a valid candidate (fresh view) */
-  {
-    struct rb_node *m = src_rq->rb_leftmost ? src_rq->rb_leftmost : rb_first(&src_rq->tasks_timeline);
-    struct task_struct *fresh = NULL;
-    for (; m; m = rb_next(m)) {
-      struct sched_entity *se = rb_entry(m, struct sched_entity, run_node);
-      struct task_struct *t = container_of(se, struct task_struct, se);
-      if (t == src_rq->idle || t == src_rq->curr)
-        continue;
-      if (!se->on_rq)
-        continue;
-      fresh = t;
-      break;
-    }
-
-    if (!fresh) {
-      /* Nothing to migrate */
-      spinlock_unlock_irqrestore(&dst_rq->lock, dst_flags);
-      spinlock_unlock_irqrestore(&src_rq->lock, src_flags);
-      spinlock_unlock_irqrestore(&__rq_lock, gflags);
-      return;
-    }
-
-    /* Update candidate with the fresh one */
-    candidate = fresh;
-  }
-
-  /* Re-check candidate validity under locks */
-  if (candidate->cpu != overloaded_cpu || candidate == src_rq->idle ||
-      candidate == src_rq->curr || !candidate->se.on_rq) {
-    /* race happened, abort migration */
-    spinlock_unlock_irqrestore(&dst_rq->lock, dst_flags);
-    spinlock_unlock_irqrestore(&src_rq->lock, src_flags);
-    spinlock_unlock_irqrestore(&__rq_lock, gflags);
-    return;
-  }
-
-  /* Perform migration while locks are held */
-  __move_task_to_rq_locked(candidate, underloaded_cpu);
-  printk(KERN_DEBUG SCHED_CLASS "Migrated task %p (PID: %d) from CPU %d to %d\n", candidate,
-         candidate->pid, overloaded_cpu, underloaded_cpu);
-
-  /* Signal destination CPU to reschedule */
-  reschedule_cpu(underloaded_cpu);
-
-  /* Release locks in reverse order */
-  spinlock_unlock_irqrestore(&dst_rq->lock, dst_flags);
-  spinlock_unlock_irqrestore(&src_rq->lock, src_flags);
-  spinlock_unlock_irqrestore(&__rq_lock, gflags);
 }
 
 #define LOAD_BALANCE_INTERVAL_TICKS 100
@@ -432,9 +448,6 @@ void __hot scheduler_tick(void) {
   if (rq->clock % LOAD_BALANCE_INTERVAL_TICKS == 0) {
     load_balance();
   }
-
-  // Set preemption flag
-  need_resched[cpu_id()] = 1;
 
   spinlock_unlock((volatile int *)&rq->lock);
 }
@@ -462,7 +475,7 @@ void sched_init_task(struct task_struct *initial_task) {
   initial_task->se.on_rq = 0;
   initial_task->state = TASK_RUNNING;
   initial_task->se.exec_start_ns = get_time_ns(); // Initialize exec_start_ns
-  initial_task->nice = 0; // Default nice value for initial task
+  initial_task->nice = MAX_NICE; // Default nice value for idle task
   initial_task->se.load.weight =
       prio_to_weight[initial_task->nice + NICE_TO_PRIO_OFFSET];
 

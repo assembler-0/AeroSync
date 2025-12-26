@@ -95,7 +95,6 @@ extern struct mm_struct init_mm;
 
 /* Test VMA functionality */
 void vma_test(void);
-void vmm_stress_test(void);
 
 /* VMA Cache for performance */
 void vma_cache_init(void);

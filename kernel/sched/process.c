@@ -24,6 +24,7 @@
 #include <arch/x64/smp.h>
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>
+#include <lib/id_alloc.h>
 #include <lib/string.h>
 #include <mm/slab.h>
 #include <mm/vma.h>
@@ -46,14 +47,21 @@ extern void ret_from_kernel_thread(void);
 extern void vmm_dump_entry(uint64_t pml4_phys, uint64_t virt);
 extern uint64_t g_kernel_pml4;
 
-static pid_t next_pid = 1;
-static spinlock_t pid_lock = 0;
+struct ida pid_ida;
+
+void pid_allocator_init(void) {
+  ida_init(&pid_ida, 32768);
+  // Reserve PID 0 for the idle task if necessary, though ida_alloc usually starts from 0
+  // In Linux, PID 0 is idle, PID 1 is init.
+  ida_alloc(&pid_ida); // Allocate 0
+}
 
 static pid_t alloc_pid(void) {
-  spinlock_lock(&pid_lock);
-  pid_t pid = next_pid++;
-  spinlock_unlock(&pid_lock);
-  return pid;
+  return ida_alloc(&pid_ida);
+}
+
+static void release_pid(pid_t pid) {
+  ida_free(&pid_ida, pid);
 }
 
 // Defined in switch.S
@@ -79,7 +87,7 @@ void __used kthread_entry_stub(int (*threadfn)(void *data), void *data) {
 }
 
 struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
-                                   int nice_value, const char *namefmt, ...) {
+                                   const char *namefmt, ...) {
   // Allocate task_struct using slab allocator
   struct task_struct *ts = alloc_task_struct();
   if (!ts)
@@ -99,12 +107,7 @@ struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
   ts->mm = NULL;
   ts->active_mm = &init_mm;
 
-  ts->nice = nice_value;
-  // Clamp nice value to valid range
-  if (ts->nice < MIN_NICE)
-    ts->nice = MIN_NICE;
-  if (ts->nice > MAX_NICE)
-    ts->nice = MAX_NICE;
+  ts->nice = NICE_DEFAULT;
 
   // Calculate load weight based on nice value
   ts->se.load.weight =
@@ -174,6 +177,8 @@ struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
 
   ts->thread.rsp = (uint64_t)sp;
 
+  ts->cpu = cpu_id();
+
   return ts;
 }
 
@@ -181,7 +186,7 @@ void kthread_run(struct task_struct *k) {
   if (!k)
     return;
 
-  struct rq *rq = this_rq();
+  struct rq *rq = &per_cpu_runqueues[k->cpu];
   unsigned long flags = spinlock_lock_irqsave((volatile int *)&rq->lock);
 
   activate_task(rq, k);
@@ -202,6 +207,10 @@ void free_task_struct(struct task_struct *task) {
 void free_task(struct task_struct *task) {
   if (!task)
     return;
+
+  if (task->pid >= 0) {
+    release_pid(task->pid);
+  }
 
   if (task->stack) {
     vfree(task->stack);

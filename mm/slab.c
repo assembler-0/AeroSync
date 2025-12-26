@@ -1,5 +1,7 @@
 #include <arch/x64/smp.h>
 #include <mm/slab.h>
+#include <mm/vmalloc.h>
+#include <arch/x64/mm/layout.h>
 #include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/paging.h>
 #include <kernel/classes.h>
@@ -218,7 +220,7 @@ void slab_init(void) {
 }
 
 void *kmalloc(size_t size) {
-    if (size > SLAB_MAX_SIZE) return NULL; // Should call vmalloc
+    if (size > SLAB_MAX_SIZE) return vmalloc(size);
     for (int i = 0; i < 9; i++) {
         if (size <= kmalloc_caches[i]->size) 
             return kmem_cache_alloc(kmalloc_caches[i]);
@@ -228,6 +230,13 @@ void *kmalloc(size_t size) {
 
 void kfree(void *ptr) {
     if (!ptr) return;
+    
+    uint64_t addr = (uint64_t)ptr;
+    if (addr >= VMALLOC_VIRT_BASE && addr < VMALLOC_VIRT_END) {
+        vfree(ptr);
+        return;
+    }
+
     slab_page_t *slab = get_slab_from_obj(ptr);
     kmem_cache_free(slab->cache, ptr);
 }

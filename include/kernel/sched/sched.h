@@ -121,15 +121,24 @@ struct task_struct {
 
   char comm[16]; // Command name
   int cpu;       // The CPU this task is currently running on/assigned to
+  int preempt_count; 
 };
+
+/* Preemption Control */
+void preempt_disable(void);
+void preempt_enable(void);
+void preempt_enable_no_resched(void);
 
 /* Global scheduler functions */
 void schedule(void);
+void set_need_resched(void);
 void sched_init(void);
 void sched_init_task(struct task_struct *initial_task);
 void sched_init_ap(void);
 void scheduler_tick(void);
 void check_preempt(void);
+
+void set_task_nice(struct task_struct *p, int nice);
 
 /* Task state management functions */
 void task_sleep(void);
@@ -144,29 +153,38 @@ extern struct task_struct *get_current(void);
 extern struct task_struct *switch_to(struct task_struct *prev,
                                      struct task_struct *next);
 
-/* Global scheduler lock for SMP operations (e.g., task migration) */
-extern spinlock_t __rq_lock;
-
-extern int cpu_id(void); // Declared globally now
+extern int cpu_id(void);
 
 /* CPU Specific runqueue */
 struct rq {
   spinlock_t lock;
   unsigned int nr_running;
+  struct load_weight load;      /* Instantaneous load weight */
+  unsigned long avg_load;       /* Exponential Moving Average of load */
+  
   struct rb_root tasks_timeline;
   struct rb_node *rb_leftmost; /* Cache for leftmost node */
   struct task_struct *curr;
   struct task_struct *idle;
   uint64_t clock;
   uint64_t min_vruntime;
-  uint64_t last_tick_ns; /* Last time scheduler_tick updated in nanoseconds */
+  uint64_t last_tick_ns;
 };
+
+/* Lock two runqueues in a stable order to prevent deadlocks */
+void double_rq_lock(struct rq *rq1, struct rq *rq2);
+void double_rq_unlock(struct rq *rq1, struct rq *rq2);
+
+/* Global scheduler functions */
 
 /* Per-CPU Runqueue Access */
 /* This will need to be hooked up to your per-cpu data system */
 // DECLARE_PER_CPU(struct rq, int runqueues);
 
 /* Internal scheduler functions used by other scheduler modules */
-extern void deactivate_task(struct rq *rq, struct task_struct *p);
 extern void activate_task(struct rq *rq, struct task_struct *p);
+extern void deactivate_task(struct rq *rq, struct task_struct *p);
 extern void update_curr(struct rq *rq);
+extern void put_prev_task_fair(struct rq *rq, struct task_struct *prev);
+extern struct task_struct *pick_next_task_fair(struct rq *rq);
+extern void task_tick_fair(struct rq *rq, struct task_struct *curr);

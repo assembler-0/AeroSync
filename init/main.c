@@ -127,7 +127,7 @@ __attribute__((
 __attribute__((used, section(".limine_requests_end"))) static volatile uint64_t
     limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
 
-static struct task_struct bsp_task;
+static struct task_struct bsp_task __aligned(16);
 
 volatile struct limine_framebuffer_request* get_framebuffer_request(void) {
   return &framebuffer_request;
@@ -135,7 +135,7 @@ volatile struct limine_framebuffer_request* get_framebuffer_request(void) {
 
 int process(void *data) {
   while (1) {
-    cpu_hlt();
+    check_preempt();
   }
 }
 
@@ -225,7 +225,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   // Verify VMA Implementation
   vma_test();
-  vmm_stress_test();
 
   if (module_request.response) {
     printk(KERN_DEBUG FKX_CLASS "Found %lu modules, \n",
@@ -288,13 +287,13 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     printk(KERN_CLASS "TSC calibrated successfully.\n");
   }
 
+  sched_init();
+  sched_init_task(&bsp_task);
+
   if (ic_type == INTC_APIC)
     smp_init();
   crc32_init();
   vfs_init();
-
-  sched_init();
-  sched_init_task(&bsp_task);
 
   printk_init_async();
   
@@ -305,7 +304,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   cpu_sti();
 
-  while (1) {
+  while (true) {
     check_preempt();
     cpu_hlt();
   }

@@ -22,6 +22,7 @@
 #include <arch/x64/mm/paging.h>
 #include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/vmm.h>
+#include <kernel/classes.h>
 #include <kernel/panic.h>
 #include <kernel/sched/sched.h> // For current task
 #include <lib/printk.h>
@@ -66,12 +67,12 @@ void do_page_fault(cpu_regs *regs) {
 
     if (write_fault && !(vma->vm_flags & VM_WRITE)) {
       spinlock_unlock(&mm->mmap_lock);
-      printk(KERN_ERR "Page Fault: Write violation at %llx\n", cr2);
+      printk(KERN_ERR FAULT_CLASS  "Page Fault: Write violation at %llx\n", cr2);
       goto signal_segv;
     }
     if (exec_fault && !(vma->vm_flags & VM_EXEC)) {
       spinlock_unlock(&mm->mmap_lock);
-      printk(KERN_ERR "Page Fault: Exec violation at %llx\n", cr2);
+      printk(KERN_ERR FAULT_CLASS  "Page Fault: Exec violation at %llx\n", cr2);
       goto signal_segv;
     }
 
@@ -79,7 +80,7 @@ void do_page_fault(cpu_regs *regs) {
     uint64_t phys = pmm_alloc_page();
     if (!phys) {
       spinlock_unlock(&mm->mmap_lock);
-      printk(KERN_ERR "OOM during demand paging for %llx\n", cr2);
+      printk(KERN_ERR FAULT_CLASS  "OOM during demand paging for %llx\n", cr2);
       goto kernel_panic;
     }
 
@@ -101,7 +102,7 @@ void do_page_fault(cpu_regs *regs) {
 
 signal_segv:
   if (user_mode) {
-    printk(KERN_ERR "Segmentation Fault at %llx (User)\n", cr2);
+    printk(KERN_ERR FAULT_CLASS  "Segmentation Fault at %llx (User)\n", cr2);
     // TODO: sys_exit or signal
     // For now, just panic/kill to be safe
     panic_exception(regs);
@@ -109,6 +110,6 @@ signal_segv:
   }
 
 kernel_panic:
-  printk(KERN_EMERG "Kernel Page Fault at %llx\n", cr2);
+  printk(KERN_EMERG FAULT_CLASS "Kernel Page Fault at %llx\n", cr2);
   panic_exception(regs);
 }
