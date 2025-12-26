@@ -28,8 +28,41 @@
 #include <linux/container_of.h>
 #include <linux/list.h>
 #include <linux/rbtree.h>
+#include <linux/rbtree_augmented.h>
 #include <mm/slab.h>
 #include <mm/vma.h>
+
+/* ========================================================================
+ * RB-Tree Augmentation (Gap Tracking)
+ * ======================================================================== */
+
+static inline uint64_t vma_compute_gap(struct vm_area_struct *vma) {
+  struct vm_area_struct *prev = vma_prev(vma);
+  if (!prev) {
+      // Gap between start of address space and this VMA
+      return vma->vm_start;
+  }
+  return vma->vm_start - prev->vm_end;
+}
+
+static uint64_t vma_rb_compute_max_gap(struct vm_area_struct *vma) {
+  uint64_t max_gap = vma_compute_gap(vma);
+  uint64_t cur;
+
+  if (vma->vm_rb.rb_left) {
+    cur = rb_entry(vma->vm_rb.rb_left, struct vm_area_struct, vm_rb)->vm_rb_max_gap;
+    if (cur > max_gap) max_gap = cur;
+  }
+  if (vma->vm_rb.rb_right) {
+    cur = rb_entry(vma->vm_rb.rb_right, struct vm_area_struct, vm_rb)->vm_rb_max_gap;
+    if (cur > max_gap) max_gap = cur;
+  }
+  return max_gap;
+}
+
+RB_DECLARE_CALLBACKS_MAX(static, vma_gap_callbacks,
+                         struct vm_area_struct, vm_rb,
+                         uint64_t, vm_rb_max_gap, vma_rb_compute_max_gap)
 
 /* ========================================================================
  * VMA Cache - Fast allocation using SLAB
@@ -148,6 +181,9 @@ struct mm_struct *mm_create(void) {
 
   // Copy kernel space (higher half, entries 256-511)
   uint64_t *kernel_pml4_virt = (uint64_t *)pmm_phys_to_virt(g_kernel_pml4);
+  
+  // Copy higher half (entries 256-511). In x86_64, the root table (PML4 or PML5)
+  // always splits the address space in half at index 256.
   memcpy(pml4_virt + 256, kernel_pml4_virt + 256, 256 * sizeof(uint64_t));
 
   mm->pml4 = (uint64_t *)pml4_phys;
@@ -320,8 +356,12 @@ struct vm_area_struct *vma_find(struct mm_struct *mm, uint64_t addr) {
   if (!mm)
     return NULL;
 
-  node = mm->mm_rb.rb_node;
+  /* Check cache first (O(1) optimization) */
+  vma = mm->mmap_cache;
+  if (vma && addr >= vma->vm_start && addr < vma->vm_end)
+      return vma;
 
+  node = mm->mm_rb.rb_node;
   while (node) {
     vma = rb_entry(node, struct vm_area_struct, vm_rb);
 
@@ -330,6 +370,7 @@ struct vm_area_struct *vma_find(struct mm_struct *mm, uint64_t addr) {
     } else if (addr >= vma->vm_end) {
       node = node->rb_right;
     } else {
+      mm->mmap_cache = vma; /* Update cache */
       return vma;
     }
   }
@@ -401,12 +442,13 @@ int vma_insert(struct mm_struct *mm, struct vm_area_struct *vma) {
 
   vma->vm_mm = mm;
   rb_link_node(&vma->vm_rb, parent, new);
-  rb_insert_color(&vma->vm_rb, &mm->mm_rb);
+  rb_insert_augmented(&vma->vm_rb, &mm->mm_rb, &vma_gap_callbacks);
 
   /* Insert into sorted list */
   __vma_link_list(mm, vma);
 
   mm->map_count++;
+  mm->mmap_cache = vma;
 
   return 0;
 }
@@ -415,8 +457,11 @@ void vma_remove(struct mm_struct *mm, struct vm_area_struct *vma) {
   if (!mm || !vma)
     return;
 
+  if (mm->mmap_cache == vma)
+      mm->mmap_cache = NULL;
+
   /* Remove from RB-tree */
-  rb_erase(&vma->vm_rb, &mm->mm_rb);
+  rb_erase_augmented(&vma->vm_rb, &mm->mm_rb, &vma_gap_callbacks);
   RB_CLEAR_NODE(&vma->vm_rb);
 
   /* Remove from list */
@@ -694,80 +739,74 @@ uint64_t vma_find_free_region(struct mm_struct *mm, size_t size,
 uint64_t vma_find_free_region_aligned(struct mm_struct *mm, size_t size,
                                       uint64_t alignment, uint64_t range_start,
                                       uint64_t range_end) {
-  struct vm_area_struct *vma;
-  uint64_t current_addr, aligned_addr;
+  struct rb_node *node;
+  uint64_t user_limit = vmm_get_max_user_address();
 
   if (!mm || size == 0)
     return 0;
+
+  if (range_end == 0) {
+      range_end = user_limit;
+  }
+
   if (range_start >= range_end)
     return 0;
 
-  /* Align size and addresses */
   size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-  range_start = (range_start + alignment - 1) & ~(alignment - 1);
 
-  if (range_end - range_start < size)
-    return 0;
-
-  current_addr = range_start;
-
-  if (list_empty(&mm->mmap_list)) {
-    if (range_end - current_addr >= size)
-      return current_addr;
-    return 0;
+  node = mm->mm_rb.rb_node;
+  if (!node) {
+      uint64_t addr = (range_start + alignment - 1) & ~(alignment - 1);
+      if (addr + size <= range_end) return addr;
+      return 0;
   }
 
   /* 
-   * Optimization: Find the first VMA that could possibly be after our start.
-   * This avoids scanning potentially thousands of VMAs at the start of the address space.
+   * Extreme Performance Search:
+   * We use the vm_rb_max_gap to find the first fit in O(log N).
    */
-  struct rb_node *node = mm->mm_rb.rb_node;
-  struct vm_area_struct *first_search = NULL;
-  
+  struct vm_area_struct *best_vma = NULL;
+  node = mm->mm_rb.rb_node;
+
   while (node) {
-      struct vm_area_struct *tmp = rb_entry(node, struct vm_area_struct, vm_rb);
-      if (tmp->vm_end > range_start) {
-          first_search = tmp;
+      struct vm_area_struct *vma = rb_entry(node, struct vm_area_struct, vm_rb);
+      struct vm_area_struct *prev = vma_prev(vma);
+      uint64_t prev_end = prev ? prev->vm_end : 0;
+      if (prev_end < range_start) prev_end = range_start;
+
+      uint64_t gap_start = (prev_end + alignment - 1) & ~(alignment - 1);
+      
+      // Can we fit before this VMA?
+      if (vma->vm_start > gap_start && vma->vm_start - gap_start >= size) {
+          best_vma = vma;
+          node = node->rb_left; // Try to find an earlier gap
+          continue;
+      }
+
+      // If not, check if the left subtree has any potential gaps
+      if (node->rb_left && rb_entry(node->rb_left, struct vm_area_struct, vm_rb)->vm_rb_max_gap >= size) {
           node = node->rb_left;
       } else {
+          // Check right subtree
           node = node->rb_right;
       }
   }
 
-  /* If we found no VMA ending after range_start, the entire range from current_addr is free */
-  if (!first_search) {
-      if (range_end - current_addr >= size)
-          return current_addr;
-      return 0;
+  if (best_vma) {
+      struct vm_area_struct *prev = vma_prev(best_vma);
+      uint64_t prev_end = prev ? prev->vm_end : 0;
+      if (prev_end < range_start) prev_end = range_start;
+      return (prev_end + alignment - 1) & ~(alignment - 1);
   }
 
-  // Iterate through VMAs starting from the first potential gap
-  struct list_head *pos = &first_search->vm_list;
+  /* Check final gap (after the last VMA) */
+  struct rb_node *last_node = mm->mm_rb.rb_node;
+  while (last_node->rb_right) last_node = last_node->rb_right;
+  struct vm_area_struct *last_vma = rb_entry(last_node, struct vm_area_struct, vm_rb);
   
-  while (pos != &mm->mmap_list) {
-    vma = list_entry(pos, struct vm_area_struct, vm_list);
-    
-    if (vma->vm_start >= range_end)
-      break;
-
-    aligned_addr = (current_addr + alignment - 1) & ~(alignment - 1);
-
-    if (vma->vm_start > aligned_addr) {
-      uint64_t gap = vma->vm_start - aligned_addr;
-      if (gap >= size && aligned_addr + size <= range_end)
-        return aligned_addr;
-    }
-
-    current_addr = vma->vm_end;
-    if (current_addr < range_start) current_addr = range_start;
-    
-    pos = pos->next;
-  }
-
-  /* Check tail gap */
-  aligned_addr = (current_addr + alignment - 1) & ~(alignment - 1);
-  if (aligned_addr < range_end && range_end - aligned_addr >= size)
-    return aligned_addr;
+  uint64_t addr = (last_vma->vm_end + alignment - 1) & ~(alignment - 1);
+  if (addr + size <= range_end)
+      return addr;
 
   return 0;
 }
@@ -816,7 +855,8 @@ void vma_dump(struct mm_struct *mm) {
   if (!mm)
     return;
 
-  printk(VMA_CLASS "=== VMA Dump for MM: %p ===\n", mm);
+  printk(VMA_CLASS "=== VMA Dump for MM: %p (%d-level paging) ===\n", mm, vmm_get_paging_levels());
+  printk(VMA_CLASS "Canonical High Base: %016llx\n", vmm_get_canonical_high_base());
   printk(VMA_CLASS "Total VMAs: %d, Total VM: %llu KB\n", mm->map_count,
          mm_total_size(mm) / 1024);
   printk(VMA_CLASS "Code: [%llx - %llx], Data: [%llx - %llx]\n", mm->start_code,

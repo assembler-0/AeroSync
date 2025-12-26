@@ -28,6 +28,8 @@ project(VoidFrameX
 )
 enable_language(ASM_NASM)
 
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
 execute_process(
         COMMAND git describe --tags --dirty --always
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -325,8 +327,8 @@ if(QEMU_SYSTEM_X86_64)
     add_custom_target(run
         COMMAND ${QEMU_SYSTEM_X86_64}
         -M pc,hpet=on
-        -cpu max
-        -enable-kvm
+        -cpu max,+la57
+        -accel tcg
         -no-reboot -no-shutdown
         -m 1G
         -smp 4

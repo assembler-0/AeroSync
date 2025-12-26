@@ -28,6 +28,7 @@
 #define MAX_INTERRUPTS 256
 
 extern void irq_sched_ipi_handler(void);
+extern void do_page_fault(cpu_regs *regs);
 
 static irq_handler_t irq_handlers[MAX_INTERRUPTS];
 
@@ -40,6 +41,10 @@ void irq_uninstall_handler(uint8_t vector) { irq_handlers[vector] = NULL; }
 void __used __hot irq_common_stub(cpu_regs *regs) {
   // CPU exceptions are vectors 0-31
   if (regs->interrupt_number < IRQ_BASE_VECTOR) {
+    if (regs->interrupt_number == 14) {
+      do_page_fault(regs);
+      return;
+    }
     panic_exception(regs);
   }
 

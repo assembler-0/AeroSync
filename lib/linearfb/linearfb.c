@@ -41,6 +41,19 @@ static int linearfb_init(volatile struct limine_framebuffer_request *fb_req) {
   if (!fb_req || !fb_req->response || fb_req->response->framebuffer_count == 0)
     return -1;
   fb = fb_req->response->framebuffers[0];
+
+  // Remap framebuffer to Write-Combining (WC) for performance
+  if (kapi && kapi->viomap_wc && kapi->pmm_virt_to_phys) {
+      size_t size = fb->height * fb->pitch;
+      uint64_t phys = kapi->pmm_virt_to_phys(fb->address);
+      if (phys) {
+          void *wc_addr = kapi->viomap_wc(phys, size);
+          if (wc_addr) {
+              fb->address = wc_addr;
+          }
+      }
+  }
+
   // Update console cols/rows if font is ready
   if (fb && font_glyph_w && font_glyph_h) {
     console_cols = fb->width / font_glyph_w;

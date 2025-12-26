@@ -143,3 +143,4 @@
  *  UTILITIES & LIBRARIES
  * ========================================================================= */
 #define TEST_CLASS "[SYS::TEST] " // Unit tests running inside kernel
+#define DEBUG_CLASS "[SYS::DEBUG] "

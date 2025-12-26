@@ -17,6 +17,9 @@ typedef struct {
   bool avx;
   bool avx2;
   bool avx512f;
+  bool pat;
+  bool la57;
+  bool nx;
 } cpu_features_t;
 
 void cpu_features_init(void);

@@ -51,21 +51,23 @@ static void smp_ap_entry(struct limine_mp_info *info) {
   // Switch to kernel page table
   vmm_switch_pml4(g_kernel_pml4);
 
+  // Initialize APIC for this AP IMMEDIATELY so we can get our CPU ID
+  // and use per-CPU caches in kmalloc()
+  ic_ap_init();
+
   // Enable per-CPU features (SSE, AVX, etc.)
   cpu_features_init_ap();
 
   // Basic per-CPU init for APs
   printk(KERN_DEBUG SMP_CLASS "CPU LAPIC ID %u starting up...\n", info->lapic_id);
 
+  ic_set_timer(IC_DEFAULT_TICK);
+
   // Initialize GDT and TSS for this AP
   gdt_init_ap();
 
   // Load IDT for this CPU
   idt_load(&g_IdtPtr);
-
-  // Initialize APIC for this AP
-  ic_ap_init();
-  ic_set_timer(IC_DEFAULT_TICK);
 
   // Also increment the atomic counter for consistency with other code
   __atomic_fetch_add(&cpus_online, 1, __ATOMIC_RELEASE);
@@ -112,7 +114,7 @@ void smp_init(void) {
   int expected_aps = (int)(cpu_count > 0 ? (cpu_count - 1) : 0);
   init_wait_counter(&ap_startup_counter, 0, expected_aps);
 
-  // Initialize per_cpu_apic_id array
+  // Initialize per_cpu_apic_id array FIRST, before waking any APs
   uint64_t max_init = cpu_count < MAX_CPUS ? cpu_count : MAX_CPUS;
   if (cpu_count > MAX_CPUS) {
     printk(KERN_WARNING SMP_CLASS
@@ -124,28 +126,27 @@ void smp_init(void) {
     per_cpu_apic_id[i] = cpu->lapic_id;
   }
 
-  // Iterate over CPUs and wake them up
+  // Ensure per_cpu_apic_id is visible to all CPUs before waking them
+  __atomic_thread_fence(__ATOMIC_RELEASE);
+
+  // Set smp_initialized = 1 NOW, so APs can use their own caches from the start!
+  smp_initialized = 1;
+
+  // NOW iterate over CPUs and wake them up
   for (uint64_t i = 0; i < cpu_count; i++) {
     struct limine_mp_info *cpu = mp_response->cpus[i];
 
     if (cpu->lapic_id == bsp_lapic_id) {
-      // This is the BSP (us)
       continue;
     }
 
-    // Send the AP to our entry point
-    // Limine handles the trampoline for us!
     printk(KERN_DEBUG SMP_CLASS "Waking up CPU LAPIC ID: %u\n", cpu->lapic_id);
     __atomic_store_n(&cpu->goto_address, smp_ap_entry, __ATOMIC_RELEASE);
   }
 
-  // Wait until all APs have reported online using wait counter
   wait_counter_wait(&ap_startup_counter);
-
-  // Release APs to enable interrupts and proceed
   __atomic_store_n(&smp_start_barrier, 1, __ATOMIC_RELEASE);
 
-  smp_initialized = 1;
   printk(SMP_CLASS "%d APs online.\n", cpus_online);
 }
 

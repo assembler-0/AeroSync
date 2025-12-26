@@ -32,6 +32,10 @@ extern const struct fkx_kernel_api *timer_kapi;
 static uint32_t global_pit_frequency = IC_DEFAULT_TICK; // Default
 static uint16_t pit_reload_value = 0;
 
+static void pit_io_wait(void) {
+    timer_kapi->outb(0x80, 0);
+}
+
 void pit_set_frequency(uint32_t frequency) {
   if (frequency == 0)
     frequency = 100; // Safe default
@@ -52,7 +56,9 @@ void pit_set_frequency(uint32_t frequency) {
   // Mode 2 (Rate Generator), Binary, Channel 0
   // 00 11 010 0 -> 0x34
   timer_kapi->outb(PIT_CMD_PORT, 0x34);
+  pit_io_wait();
   timer_kapi->outb(PIT_CH0_PORT, divisor & 0xFF);
+  pit_io_wait();
   timer_kapi->outb(PIT_CH0_PORT, (divisor >> 8) & 0xFF);
 
   timer_kapi->restore_irq_flags(flags);
@@ -71,13 +77,17 @@ static void pit_wait_internal(uint32_t ms) {
 
     // Mode 0: Interrupt on Terminal Count
     timer_kapi->outb(PIT_CMD_PORT, 0x30);
+    pit_io_wait();
     timer_kapi->outb(PIT_CH0_PORT, count & 0xFF);
+    pit_io_wait();
     timer_kapi->outb(PIT_CH0_PORT, (count >> 8) & 0xFF);
 
     while (1) {
       // Latch Counter 0
       timer_kapi->outb(PIT_CMD_PORT, 0x00);
+      pit_io_wait();
       uint8_t lo = timer_kapi->inb(PIT_CH0_PORT);
+      pit_io_wait();
       uint8_t hi = timer_kapi->inb(PIT_CH0_PORT);
       uint16_t current_val = ((uint16_t)hi << 8) | lo;
 

@@ -1,3 +1,4 @@
 *build*
 *cache*
 include/kernel/version.h
+.venv

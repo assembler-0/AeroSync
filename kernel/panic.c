@@ -23,8 +23,11 @@
 #include <compiler.h>
 #include <kernel/classes.h>
 #include <lib/printk.h>
+#include <kernel/spinlock.h>
 
 #define PANIC KERN_EMERG PANIC_CLASS
+
+static spinlock_t lock = 0;
 
 void __exit __noinline __noreturn __sysv_abi panic_early() {
     system_hlt();
@@ -38,6 +41,7 @@ void __exit __noinline __noreturn __sysv_abi panic(const char *msg) {
 }
 
 void __exit __noinline __noreturn __sysv_abi panic_exception(cpu_regs *regs) {
+    spinlock_lock(&lock);
     char exception[256];
     get_exception_as_str(exception, regs->interrupt_number);
 
@@ -86,7 +90,7 @@ void __exit __noinline __noreturn __sysv_abi panic_exception(cpu_regs *regs) {
 
     printk(PANIC"----------------------------------------------------------"
                     "----------------------\n");
-
+    spinlock_unlock(&lock);
     system_hlt();
     __unreachable();
 }

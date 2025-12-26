@@ -25,6 +25,9 @@ struct __aligned(sizeof(long)) vm_area_struct {
   uint64_t vm_start; /* Our start address within vm_mm */
   uint64_t vm_end;   /* The first byte after our end address within vm_mm */
 
+  /* For Augmented RB-Tree gap tracking */
+  uint64_t vm_rb_max_gap;
+
   /* Linked list of VMAs sorted by address */
   struct list_head vm_list;
 
@@ -39,6 +42,7 @@ struct __aligned(sizeof(long)) vm_area_struct {
  */
 struct mm_struct {
   struct rb_root mm_rb;        /* Root of the VMA Red-Black Tree */
+  struct vm_area_struct *mmap_cache; /* Last found VMA (O(1) optimization) */
   struct list_head mmap_list; /* List of VMAs */
 
   uint64_t *pml4; /* Physical address of the top-level page table */

@@ -86,6 +86,7 @@ struct fkx_kernel_api {
   void *   (*vmalloc_exec)(size_t size);
   void     (*vfree)(void *ptr);
   void *   (*viomap)(uintptr_t phys_addr, size_t size);
+  void *   (*viomap_wc)(uintptr_t phys_addr, size_t size);
   void     (*viounmap)(void *addr);
   int      (*vmm_map_page)(uint64_t pml4_phys, uint64_t virt, uint64_t phys,
                          uint64_t flags);

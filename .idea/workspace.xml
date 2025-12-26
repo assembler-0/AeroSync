@@ -42,15 +42,30 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="SLUB allocator">
+    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="vmalloc() enhancements">
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/VoidFrameX.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/VoidFrameX.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/CMakeLists.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x64/features/features.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/features/features.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x64/irq/irq.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/irq/irq.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/arch/x64/mm/vmm.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/vmm.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/drivers/uart/serial.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/uart/serial.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x64/smp.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/smp.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/drivers/timer/pit.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/timer/pit.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/arch/x64/features/features.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/features/features.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/arch/x64/mm/paging.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/mm/paging.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/include/arch/x64/mm/vmm.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/mm/vmm.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/kernel/classes.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/classes.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/kernel/fkx/fkx.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/fkx/fkx.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/kernel/version.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/version.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/include/mm/mm_types.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/mm_types.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/mm/vma.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/vma.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/include/mm/vmalloc.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/vmalloc.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/slab.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/slab.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/fkx/loader.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/fkx/loader.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/panic.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/panic.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/linearfb/linearfb.c" beforeDir="false" afterPath="$PROJECT_DIR$/lib/linearfb/linearfb.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mm/vma.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vma.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mm/vmalloc.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vmalloc.c" afterDir="false" />
     </list>
@@ -63,6 +78,7 @@
     <option name="formatViaClangd" value="false" />
   </component>
   <component name="EmbeddingIndexingInfo">
+    <option name="cachedIndexableFilesCount" value="365" />
     <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
   </component>
   <component name="ExecutionTargetManager" SELECTED_TARGET="CMakeBuildProfile:Release" />
@@ -147,6 +163,7 @@
     &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
     &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
     &quot;org.rust.first.attach.projects&quot;: &quot;true&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable&quot;,
     &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
@@ -168,6 +185,11 @@
     </key>
   </component>
   <component name="RunManager" selected="CMake Application.vmw-run">
+    <configuration default="true" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true">
+      <method v="2">
+        <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="bochs-run" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="VoidFrameX" TARGET_NAME="bochs-run" CONFIG_NAME="Release">
       <method v="2">
         <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
@@ -294,7 +316,12 @@
       <workItem from="1766624616392" duration="9000" />
       <workItem from="1766645665586" duration="5862000" />
       <workItem from="1766654933291" duration="4189000" />
-      <workItem from="1766659347260" duration="9000" />
+      <workItem from="1766659347260" duration="5461000" />
+      <workItem from="1766723176618" duration="2020000" />
+      <workItem from="1766725375138" duration="353000" />
+      <workItem from="1766725845393" duration="310000" />
+      <workItem from="1766727113672" duration="2335000" />
+      <workItem from="1766729635179" duration="222000" />
     </task>
     <task id="LOCAL-00001" summary="Mutexes and FKX spec">
       <option name="closed" value="true" />
@@ -368,7 +395,15 @@
       <option name="project" value="LOCAL" />
       <updated>1766657869875</updated>
     </task>
-    <option name="localTasksCounter" value="10" />
+    <task id="LOCAL-00010" summary="vmalloc() enhancements">
+      <option name="closed" value="true" />
+      <created>1766659393569</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1766659393569</updated>
+    </task>
+    <option name="localTasksCounter" value="11" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -393,7 +428,8 @@
     <MESSAGE value="sysintf" />
     <MESSAGE value="HPET driver separation" />
     <MESSAGE value="SLUB allocator" />
-    <option name="LAST_COMMIT_MESSAGE" value="SLUB allocator" />
+    <MESSAGE value="vmalloc() enhancements" />
+    <option name="LAST_COMMIT_MESSAGE" value="vmalloc() enhancements" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

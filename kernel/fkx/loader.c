@@ -41,6 +41,7 @@ static struct fkx_kernel_api g_fkx_api = {
   .vmalloc_exec = vmalloc_exec,
   .vfree = vfree,
   .viomap = viomap,
+  .viomap_wc = viomap_wc,
   .viounmap = viounmap,
   .vmm_map_page = vmm_map_page,
   .vmm_unmap_page = vmm_unmap_page,

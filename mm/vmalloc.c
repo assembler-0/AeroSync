@@ -3,19 +3,8 @@
  * VoidFrameX monolithic kernel
  *
  * @file mm/vmalloc.c
- * @brief Kernel virtual memory allocation implementation
+ * @brief Kernel virtual memory allocation implementation (Huge Page Aware)
  * @copyright (C) 2025 assembler-0
- *
- * This file is part of the VoidFrameX kernel.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <printk.h>
@@ -33,15 +22,35 @@
 
 /*
  * Internal helper to map physical pages to a VMA.
- * Uses bulk mapping if possible, otherwise falls back to slow path.
+ * Now supports Huge Page (2MB) mappings.
  */
 static int vmalloc_map_pages(struct vm_area_struct *vma, uint64_t vmm_flags) {
     size_t count = vma_pages(vma);
     uint64_t virt_start = vma->vm_start;
     
-    // Try to use bulk mapping if the list fits in a slab (up to 256 pages / 1MB)
+    if (vma->vm_flags & VM_HUGE) {
+        // Huge Page Path (2MB)
+        size_t huge_count = count / 512;
+        for (size_t i = 0; i < huge_count; i++) {
+            uint64_t phys = pmm_alloc_pages(512); // Allocate 2MB contiguous
+            if (!phys || vmm_map_huge_page(g_kernel_pml4, virt_start + i * VMM_PAGE_SIZE_2M, 
+                                           phys, vmm_flags | PTE_PRESENT, VMM_PAGE_SIZE_2M) < 0) {
+                if (phys) pmm_free_pages(phys, 512);
+                // Rollback
+                for (size_t j = 0; j < i; j++) {
+                    uint64_t v = virt_start + j * VMM_PAGE_SIZE_2M;
+                    uint64_t p = vmm_virt_to_phys(g_kernel_pml4, v);
+                    vmm_unmap_page(g_kernel_pml4, v);
+                    if (p) pmm_free_pages(p, 512);
+                }
+                return -1;
+            }
+        }
+        return 0;
+    }
+
+    // Standard 4KB Path
     uint64_t *phys_list = kmalloc(count * sizeof(uint64_t));
-    
     if (phys_list) {
         for (size_t i = 0; i < count; i++) {
             phys_list[i] = pmm_alloc_page();
@@ -59,12 +68,11 @@ static int vmalloc_map_pages(struct vm_area_struct *vma, uint64_t vmm_flags) {
         }
         kfree(phys_list);
     } else {
-        // Slow Path: Page-by-page mapping (for very large allocations > 1MB)
+        // Slow Path: Page-by-page mapping
         for (size_t i = 0; i < count; i++) {
             uint64_t phys = pmm_alloc_page();
             if (!phys || vmm_map_page(g_kernel_pml4, virt_start + i * PAGE_SIZE, phys, vmm_flags | PTE_PRESENT) < 0) {
                 if (phys) pmm_free_page(phys);
-                // Rollback previously mapped pages in this VMA
                 for (size_t j = 0; j < i; j++) {
                     uint64_t v = virt_start + j * PAGE_SIZE;
                     uint64_t p = vmm_virt_to_phys(g_kernel_pml4, v);
@@ -91,6 +99,17 @@ static void vmalloc_unmap_pages(struct vm_area_struct *vma) {
         return;
     }
 
+    if (vma->vm_flags & VM_HUGE) {
+        size_t huge_count = count / 512;
+        for (size_t i = 0; i < huge_count; i++) {
+            uint64_t v = virt + i * VMM_PAGE_SIZE_2M;
+            uint64_t p = vmm_virt_to_phys(g_kernel_pml4, v);
+            vmm_unmap_page(g_kernel_pml4, v);
+            if (p) pmm_free_pages(p, 512);
+        }
+        return;
+    }
+
     uint64_t *phys_list = kmalloc(count * sizeof(uint64_t));
     if (phys_list) {
         vmm_unmap_pages_and_get_phys(g_kernel_pml4, virt, phys_list, count);
@@ -99,7 +118,6 @@ static void vmalloc_unmap_pages(struct vm_area_struct *vma) {
         }
         kfree(phys_list);
     } else {
-        // Slow path: unmap and free one by one
         for (size_t i = 0; i < count; i++) {
             uint64_t v = virt + i * PAGE_SIZE;
             uint64_t p = vmm_virt_to_phys(g_kernel_pml4, v);
@@ -113,12 +131,20 @@ static void *__vmalloc_internal(size_t size, uint64_t vma_flags, uint64_t vmm_fl
     if (size == 0) return NULL;
 
     size = PAGE_ALIGN_UP(size);
+    
+    // Opportunistically use 2MB Huge Pages for allocations >= 2MB
+    uint64_t alignment = PAGE_SIZE;
+    if (size >= VMM_PAGE_SIZE_2M) {
+        alignment = VMM_PAGE_SIZE_2M;
+        size = (size + VMM_PAGE_SIZE_2M - 1) & ~(VMM_PAGE_SIZE_2M - 1);
+        vma_flags |= VM_HUGE;
+    }
 
     spinlock_lock(&init_mm.mmap_lock);
 
-    uint64_t virt_start = vma_find_free_region(&init_mm, size, 
-                                               VMALLOC_VIRT_BASE, 
-                                               VMALLOC_VIRT_END);
+    uint64_t virt_start = vma_find_free_region_aligned(&init_mm, size, alignment, 
+                                                       VMALLOC_VIRT_BASE, 
+                                                       VMALLOC_VIRT_END);
 
     if (virt_start == 0) {
         spinlock_unlock(&init_mm.mmap_lock);
@@ -216,7 +242,48 @@ void *viomap(uint64_t phys_addr, size_t size) {
 
     vmm_map_pages(g_kernel_pml4, virt_start, phys_start, 
                  page_aligned_size / PAGE_SIZE,
-                 PTE_PRESENT | PTE_RW | PTE_PCD | PTE_PWT);
+                 PTE_PRESENT | PTE_RW | VMM_CACHE_UC);
+
+    spinlock_unlock(&init_mm.mmap_lock);
+    __asm__ volatile("mfence" ::: "memory");
+
+    return (void *)(virt_start + offset);
+}
+
+void *viomap_wc(uint64_t phys_addr, size_t size) {
+    if (size == 0) return NULL;
+    
+    uint64_t offset = phys_addr & ~PAGE_MASK;
+    uint64_t phys_start = phys_addr & PAGE_MASK;
+    size_t page_aligned_size = PAGE_ALIGN_UP(size + offset);
+
+    spinlock_lock(&init_mm.mmap_lock);
+
+    uint64_t virt_start = vma_find_free_region(&init_mm, page_aligned_size, 
+                                               VMALLOC_VIRT_BASE, 
+                                               VMALLOC_VIRT_END);
+    
+    if (!virt_start) {
+        spinlock_unlock(&init_mm.mmap_lock);
+        return NULL;
+    }
+
+    struct vm_area_struct *vma = vma_create(virt_start, virt_start + page_aligned_size, 
+                                            VM_READ | VM_WRITE | VM_IO | VM_CACHE_WC);
+    if (!vma) {
+        spinlock_unlock(&init_mm.mmap_lock);
+        return NULL;
+    }
+
+    if (vma_insert(&init_mm, vma) < 0) {
+        vma_free(vma);
+        spinlock_unlock(&init_mm.mmap_lock);
+        return NULL;
+    }
+
+    vmm_map_pages(g_kernel_pml4, virt_start, phys_start, 
+                 page_aligned_size / PAGE_SIZE,
+                 PTE_PRESENT | PTE_RW | VMM_CACHE_WC);
 
     spinlock_unlock(&init_mm.mmap_lock);
     __asm__ volatile("mfence" ::: "memory");

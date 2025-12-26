@@ -18,6 +18,15 @@
 #define VM_DONTEXPAND 0x00040000 /* Cannot expand with mremap */
 #define VM_LOCKED 0x00100000     /* Pages are locked */
 #define VM_PFNMAP 0x00400000     /* Physical frame number mapping */
+#define VM_HUGE   0x00800000     /* VMA is backed by huge pages */
+
+/* Cache Policy Flags */
+#define VM_CACHE_WB 0x00000000
+#define VM_CACHE_WT 0x01000000
+#define VM_CACHE_UC 0x02000000
+#define VM_CACHE_WC 0x03000000
+#define VM_CACHE_WP 0x04000000
+#define VM_CACHE_MASK 0x0F000000
 
 /* VMA merge flags */
 #define VMA_MERGE_PREV 0x1
@@ -86,6 +95,7 @@ extern struct mm_struct init_mm;
 
 /* Test VMA functionality */
 void vma_test(void);
+void vmm_stress_test(void);
 
 /* VMA Cache for performance */
 void vma_cache_init(void);

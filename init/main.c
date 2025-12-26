@@ -30,8 +30,6 @@
 #include <drivers/acpi/power.h>
 #include <kernel/sysintf/ic.h>
 #include <drivers/qemu/debugcon/debugcon.h>
-#include <drivers/timer/hpet.h>
-#include <drivers/timer/pit.h>
 #include <kernel/sysintf/time.h>
 #include <fs/vfs.h>
 #include <kernel/classes.h>
@@ -47,7 +45,6 @@
 #include <limine/limine.h>
 #include <mm/slab.h>
 #include <mm/vma.h>
-#include <mm/vmalloc.h>
 #include <uacpi/uacpi.h>
 
 // Set Limine Request Start Marker
@@ -78,7 +75,7 @@ __attribute__((
         ".limine_requests"))) static volatile struct limine_paging_mode_request
     paging_request = {.id = LIMINE_PAGING_MODE_REQUEST_ID,
                       .revision = 0,
-                      .mode = LIMINE_PAGING_MODE_X86_64_4LVL};
+                      .mode = LIMINE_PAGING_MODE_X86_64_5LVL};
 
 // Request HHDM (Higher Half Direct Map)
 __attribute__((
@@ -153,13 +150,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   printk_auto_configure(NULL, 0);
   tsc_calibrate_early();
 
-  // check if we recived 4-level paging mode
-  if (!paging_request.response ||
-      paging_request.response->mode != LIMINE_PAGING_MODE_X86_64_4LVL) {
-    panic(KERN_CLASS
-          "4-level paging mode not enabled or paging mode request not found");
-  }
-
   printk(KERN_CLASS "VoidFrameX (R) v%s - %s\n", VOIDFRAMEX_VERSION,
          VOIDFRAMEX_COMPILER_VERSION);
   printk(KERN_CLASS "copyright (C) 2025 assembler-0\n");
@@ -191,6 +181,12 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
                : "(unknown)");
   }
 
+  if (paging_request.response) {
+    printk(KERN_CLASS "system pagination level: %d\n",
+           vmm_get_paging_levels()
+    );
+  }
+
   if (cmdline_request.response) {
     /* Register known options and parse the executable command-line provided by
      * the bootloader (via Limine). Using static storage in the cmdline parser
@@ -214,9 +210,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     panic(KERN_CLASS "memmap/HHDM not available");
   }
 
-  gdt_init();
-  idt_install();
-
   pmm_init(memmap_request.response, hhdm_request.response->offset);
 
   vmm_init();
@@ -227,8 +220,12 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   mm_init(&init_mm);
   init_mm.pml4 = (uint64_t *)pmm_phys_to_virt(g_kernel_pml4);
 
+  gdt_init();
+  idt_install();
+
   // Verify VMA Implementation
   vma_test();
+  vmm_stress_test();
 
   if (module_request.response) {
     printk(KERN_DEBUG FKX_CLASS "Found %lu modules, \n",
@@ -300,7 +297,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   sched_init_task(&bsp_task);
 
   printk_init_async();
-
+  
   printk(KERN_CLASS "VoidFrameX initialization complete, starting init...\n");
 
   if (!process_spawn(process, NULL, "v-pxs"))
