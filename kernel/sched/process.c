@@ -30,12 +30,12 @@
 #include <mm/vma.h>
 #include <mm/vmalloc.h>
 #include <vsprintf.h>
+#include <kernel/fkx/fkx.h>
 
 /*
  * Process/Thread Management
  */
 
-extern void activate_task(struct rq *rq, struct task_struct *p);
 extern struct rq per_cpu_runqueues[];
 extern struct rq *this_rq(void);
 
@@ -45,7 +45,6 @@ extern char _rodata_start[];
 extern void ret_from_kernel_thread(void);
 
 extern void vmm_dump_entry(uint64_t pml4_phys, uint64_t virt);
-extern uint64_t g_kernel_pml4;
 
 struct ida pid_ida;
 
@@ -181,6 +180,7 @@ struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
 
   return ts;
 }
+EXPORT_SYMBOL(kthread_create);
 
 void kthread_run(struct task_struct *k) {
   if (!k)
@@ -193,6 +193,7 @@ void kthread_run(struct task_struct *k) {
 
   spinlock_unlock_irqrestore((volatile int *)&rq->lock, flags);
 }
+EXPORT_SYMBOL(kthread_run);
 
 struct task_struct *alloc_task_struct(void) {
   return kmalloc(sizeof(struct task_struct));
@@ -340,6 +341,7 @@ struct task_struct *process_spawn(int (*entry)(void *), void *data,
   wake_up_new_task(ts);
   return ts;
 }
+EXPORT_SYMBOL(process_spawn);
 
 pid_t sys_fork(void) {
   struct task_struct *curr = get_current();

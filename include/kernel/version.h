@@ -14,7 +14,8 @@
 #define VOIDFRAMEX_ABI_LEVEL_STR "0"
 #define VOIDFRAMEX_CODENAME "Invariant"
 
-#define VOIDFRAMEX_VERSION "1.0.1-" VOIDFRAMEX_CODENAME "+branch.v1.0.1-29-g90871fb-dirty.dev+abi." VOIDFRAMEX_ABI_LEVEL_STR
+#define VOIDFRAMEX_VERSION "1.0.1-" VOIDFRAMEX_CODENAME "+branch.v1.0.1-30-g1d12936-dirty.dev+abi." VOIDFRAMEX_ABI_LEVEL_STR
+#define VOIDFRAMEX_VERSION_LEAN "1.0.1-" VOIDFRAMEX_CODENAME
 
 #define VOIDFRAMEX_COMPILER_VERSION __VERSION__
 #define VOIDFRAMEX_DESCRIPTION "A modern monolithic operating system kernel designed for performance and modularity."

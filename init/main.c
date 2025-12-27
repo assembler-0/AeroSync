@@ -98,7 +98,8 @@ __attribute__((
     used,
     section(".limine_requests"))) static volatile struct limine_module_request
     module_request = {.id = LIMINE_MODULE_REQUEST_ID,
-                      .revision = 0}; // New module request
+                      .revision = 0
+    }; // New module request
 
 __attribute__((used, section(".limine_requests"))) static volatile struct
     limine_bootloader_info_request bootloader_info_request = {
@@ -311,6 +312,8 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   if (!process_spawn(process, NULL, "v-pxs"))
     panic(KERN_CLASS "attempted to kill init, nothing to do.");
+
+  fkx_init_module_class(FKX_GENERIC_CLASS);
 
   cpu_sti();
 

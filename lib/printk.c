@@ -82,13 +82,13 @@ void printk_init_async(void) {
   log_init_async();
 }
 
-int printk_set_sink(const char *backend_name) {
+int printk_set_sink(const char *backend_name, bool cleanup) {
   if (!backend_name) printk_shutdown();
 
   for (int i = 0; i < num_registered_backends; i++) {
     const printk_backend_t *b = registered_backends[i];
     if (b && b->name && strcmp(b->name, backend_name) == 0) {
-      if (active_backend && active_backend->cleanup) {
+      if (active_backend && active_backend->cleanup && cleanup) {
         // null dereference check - not all backends implement cleanup
         active_backend->cleanup();
       }
@@ -114,13 +114,15 @@ const printk_backend_t *printk_auto_select_backend(const char *not) {
   const printk_backend_t *best = NULL;
   for (int i = 0; i < num_registered_backends; i++) {
     const printk_backend_t *b = registered_backends[i];
-    if (b && b->name && strcmp(b->name, not) == 0 || b == active_backend) {
+    if (!b) continue;
+
+    if ((not && b->name && strcmp(b->name, not) == 0) || b == active_backend) {
       continue;
     }
-    if (b && (!best || b->priority > best->priority))
+    if (!best || b->priority > best->priority)
       best = b;
   }
-  return best ? best : NULL;
+  return best;
 }
 EXPORT_SYMBOL(printk_auto_select_backend);
 

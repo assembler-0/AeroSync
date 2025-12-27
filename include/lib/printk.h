@@ -27,6 +27,8 @@ static int generic_backend_init(void *payload) { (void)payload; return 0; }
 int printk(const char *fmt, ...);
 int vprintk(const char *fmt, va_list args);
 
+#define PRINTK_LOG_OR_NO_LOG(b) (b ? b->name : NULL)
+
 // Initialize printing subsystem
 void printk_register_backend(const printk_backend_t *backend);
 
@@ -39,8 +41,9 @@ void printk_auto_configure(void *payload, int reinit);
 /**
  * @function printk_set_sink(1) - change printk backend
  * @param backend_name backend name, disable printk if recived NULL
+ * @param cleanup clean up status
  */
-int printk_set_sink(const char *backend_name);
+int printk_set_sink(const char *backend_name, bool cleanup);
 void printk_shutdown(void);
 
 /**
