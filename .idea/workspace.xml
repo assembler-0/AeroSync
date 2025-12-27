@@ -43,15 +43,17 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="EXPORT_SYMBOL()">
+    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="Paging and Buddy system for PMM">
+      <change afterPath="$PROJECT_DIR$/include/kernel/sysintf/panic.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/sysintf/panic.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/mm/pmm.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/pmm.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/drivers/uart/serial.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/uart/serial.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/arch/x64/mm/pmm.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/mm/pmm.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/classes.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/classes.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/types.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/types.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/kernel/fkx/fkx.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/fkx/fkx.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/kernel/panic.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/panic.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/include/kernel/version.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/version.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/fkx/ksymtab.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/fkx/ksymtab.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/lib/printk.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/lib/printk.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/panic.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/panic.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/printk.c" beforeDir="false" afterPath="$PROJECT_DIR$/lib/printk.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -62,7 +64,7 @@
     <option name="formatViaClangd" value="false" />
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="379" />
+    <option name="cachedIndexableFilesCount" value="381" />
     <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
   </component>
   <component name="ExecutionTargetManager" SELECTED_TARGET="CMakeBuildProfile:Release" />
@@ -166,11 +168,6 @@
     </key>
   </component>
   <component name="RunManager" selected="CMake Application.vmw-run">
-    <configuration default="true" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true">
-      <method v="2">
-        <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
-      </method>
-    </configuration>
     <configuration name="bochs-run" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="VoidFrameX" TARGET_NAME="bochs-run" CONFIG_NAME="Release">
       <method v="2">
         <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
@@ -314,6 +311,7 @@
       <workItem from="1766749662228" duration="1689000" />
       <workItem from="1766751653887" duration="2347000" />
       <workItem from="1766806418059" duration="1136000" />
+      <workItem from="1766814736231" duration="325000" />
     </task>
     <task id="LOCAL-00001" summary="Mutexes and FKX spec">
       <option name="closed" value="true" />
@@ -411,7 +409,15 @@
       <option name="project" value="LOCAL" />
       <updated>1766746667152</updated>
     </task>
-    <option name="localTasksCounter" value="13" />
+    <task id="LOCAL-00013" summary="Paging and Buddy system for PMM">
+      <option name="closed" value="true" />
+      <created>1766811981439</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1766811981439</updated>
+    </task>
+    <option name="localTasksCounter" value="14" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -439,7 +445,8 @@
     <MESSAGE value="vmalloc() enhancements" />
     <MESSAGE value="Fault handler, race condition fixed" />
     <MESSAGE value="EXPORT_SYMBOL()" />
-    <option name="LAST_COMMIT_MESSAGE" value="EXPORT_SYMBOL()" />
+    <MESSAGE value="Paging and Buddy system for PMM" />
+    <option name="LAST_COMMIT_MESSAGE" value="Paging and Buddy system for PMM" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

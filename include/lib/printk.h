@@ -31,13 +31,24 @@ int vprintk(const char *fmt, va_list args);
 void printk_register_backend(const printk_backend_t *backend);
 
 /**
- * @funtion printk_auto_configure(2) - setup registered printk backedns
+ * @function printk_auto_configure(2) - setup registered printk backedns
  * @param payload payload passed to init()
  * @param reinit status to check if
  */
 void printk_auto_configure(void *payload, int reinit);
+/**
+ * @function printk_set_sink(1) - change printk backend
+ * @param backend_name backend name, disable printk if recived NULL
+ */
 int printk_set_sink(const char *backend_name);
 void printk_shutdown(void);
+
+/**
+ * @function printk_auto_select_backend(1) - select best backend
+ * @param not exclude backend name
+ * @exception printk_auto_select_backend will never return the current active backend
+ */
+const printk_backend_t *printk_auto_select_backend(const char *not);
 // Enable asynchronous printk logging (spawns background consumer thread).
 void printk_init_async(void);
 

@@ -143,6 +143,8 @@ int process(void *data) {
 // TODO: MAKE ALL HARDWARE DRIVER A SEPARATE MODULE!!
 
 void __init __noreturn __noinline __sysv_abi start_kernel(void) {
+  panic_register_handler(get_builtin_panic_ops());
+
   if (LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision) == false) {
     panic_early();
   }

@@ -70,6 +70,7 @@ struct fkx_symbol {
 
 typedef enum {
   FKX_PRINTK_CLASS,
+  FKX_PANIC_HANDLER_CLASS,
   FKX_DRIVER_CLASS,
   FKX_IC_CLASS,
   FKX_TIMER_CLASS,

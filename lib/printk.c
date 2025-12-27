@@ -40,6 +40,7 @@ void printk_register_backend(const printk_backend_t *backend) {
   }
   registered_backends[num_registered_backends++] = backend;
 }
+EXPORT_SYMBOL(printk_register_backend);
 
 void printk_auto_configure(void *payload, const int reinit) {
   const printk_backend_t *best = NULL;
@@ -82,7 +83,7 @@ void printk_init_async(void) {
 }
 
 int printk_set_sink(const char *backend_name) {
-  if (!backend_name) return -1;
+  if (!backend_name) printk_shutdown();
 
   for (int i = 0; i < num_registered_backends; i++) {
     const printk_backend_t *b = registered_backends[i];
@@ -107,6 +108,21 @@ int printk_set_sink(const char *backend_name) {
   }
   return -1; // Not found
 }
+EXPORT_SYMBOL(printk_set_sink);
+
+const printk_backend_t *printk_auto_select_backend(const char *not) {
+  const printk_backend_t *best = NULL;
+  for (int i = 0; i < num_registered_backends; i++) {
+    const printk_backend_t *b = registered_backends[i];
+    if (b && b->name && strcmp(b->name, not) == 0 || b == active_backend) {
+      continue;
+    }
+    if (b && (!best || b->priority > best->priority))
+      best = b;
+  }
+  return best ? best : NULL;
+}
+EXPORT_SYMBOL(printk_auto_select_backend);
 
 void printk_shutdown(void) {
   if (active_backend && active_backend->cleanup) {
@@ -115,6 +131,7 @@ void printk_shutdown(void) {
   active_backend = NULL;
   log_set_console_sink(NULL);
 }
+EXPORT_SYMBOL(printk_shutdown);
 
 static const char *parse_level_prefix(const char *fmt, int *level_io) {
   // Safety check for null or too-short strings
@@ -155,9 +172,4 @@ int printk(const char *fmt, ...) {
   va_end(args);
   return ret;
 }
-
 EXPORT_SYMBOL(printk);
-
-EXPORT_SYMBOL(printk_register_backend);
-EXPORT_SYMBOL(printk_set_sink);
-EXPORT_SYMBOL(printk_shutdown);
