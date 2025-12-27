@@ -154,7 +154,7 @@ void serial_write_char(const char a) {
     outb(serial_port + SERIAL_DATA_REG, a);
 }
 
-static int serial_mod_init() {
+int serial_mod_init(void) {
   printk_register_backend(serial_get_backend());
   return 0;
 }

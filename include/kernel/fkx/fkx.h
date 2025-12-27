@@ -80,7 +80,6 @@ typedef enum {
 } fkx_module_class_t;
 
 /* Forward declarations */
-struct fkx_kernel_api;
 struct fkx_module_info;
 
 /**

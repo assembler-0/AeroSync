@@ -122,7 +122,7 @@ void pci_enumerate_bus(uint8_t bus) {
 }
 EXPORT_SYMBOL(pci_enumerate_bus);
 
-static int pci_init() {
+int pci_mod_init(void) {
     printk( PCI_CLASS "Initializing PCI Port I/O\n");
     pci_register_ops(&pci_port_io_ops);
     return 0;
@@ -135,6 +135,6 @@ FKX_MODULE_DEFINE(
     "PCI Bus Driver",
     0,
     FKX_DRIVER_CLASS,
-    pci_init,
+    pci_mod_init,
     NULL
 );

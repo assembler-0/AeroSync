@@ -12,7 +12,7 @@
 #include <kernel/fkx/fkx.h>
 #include <kernel/sysintf/time.h>
 
-int timer_mod_init() {
+int timer_mod_init(void) {
   time_register_source(hpet_get_time_source());
   time_register_source(pit_get_time_source());
   return 0;

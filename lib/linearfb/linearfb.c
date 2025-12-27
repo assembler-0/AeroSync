@@ -585,7 +585,7 @@ int linearfb_load_font(const linearfb_font_t *font, const uint32_t count) {
 }
 EXPORT_SYMBOL(linearfb_load_font);
 
-static int linearfb_mod_init() {
+int linearfb_mod_init(void) {
   extern volatile struct limine_framebuffer_request *get_framebuffer_request(void);
   framebuffer_request = get_framebuffer_request();
   printk_register_backend(linearfb_get_backend());

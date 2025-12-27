@@ -12,7 +12,7 @@
 #include <drivers/apic/apic.h>
 #include <kernel/sysintf/ic.h>
 
-int ic_mod_init() {
+int ic_mod_init(void) {
   ic_register_controller(apic_get_driver());
   ic_register_controller(pic_get_driver());
   return 0;

@@ -105,7 +105,7 @@ static int splash_thread_fn(void *data) {
   return 0;
 }
 
-static int splash_init(void) {
+int splash_mod_init(void) {
   // Use helpers to select a different backend for printk
   // We want to avoid using linearfb for printk so we can draw our splash
   const printk_backend_t *fallback = printk_auto_select_backend("linearfb");
