@@ -45,20 +45,9 @@
   <component name="ChangeListManager">
     <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="panic sysintf and printk helpers (splash update)">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/CMakeLists.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/irq/irq.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/irq/irq.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/mm/fault.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/fault.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/arch/x64/mm/pmm.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/pmm.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/mm/vmm.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/vmm.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/arch/x64/mm/vmm.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/mm/vmm.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/kernel/atomic.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/atomic.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/include/kernel/version.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/version.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/mm/mm_types.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/mm_types.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/mm/page.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/page.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/fkx/loader.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/fkx/loader.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/sysintf/panic.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/sysintf/panic.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/vma.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vma.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/vmalloc.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vmalloc.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -69,7 +58,7 @@
     <option name="formatViaClangd" value="false" />
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="383" />
+    <option name="cachedIndexableFilesCount" value="314" />
     <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
   </component>
   <component name="ExecutionTargetManager" SELECTED_TARGET="CMakeBuildProfile:Release" />
@@ -176,9 +165,9 @@
     </key>
   </component>
   <component name="RunManager" selected="CMake Application.vmw-run">
-    <configuration default="true" type="CLionExternalRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true">
+    <configuration default="true" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true">
       <method v="2">
-        <option name="CLION.EXTERNAL.BUILD" enabled="true" />
+        <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
       </method>
     </configuration>
     <configuration name="bochs-run" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="VoidFrameX" TARGET_NAME="bochs-run" CONFIG_NAME="Release">
@@ -367,6 +356,7 @@
       </method>
     </configuration>
     <list>
+      <item itemvalue="CMake Application.splash" />
       <item itemvalue="CMake Application.bochs-run" />
       <item itemvalue="CMake Application.bootdir" />
       <item itemvalue="CMake Application.dump" />
@@ -423,6 +413,7 @@
       <workItem from="1766820752296" duration="980000" />
       <workItem from="1766822087219" duration="7000" />
       <workItem from="1766822531895" duration="11000" />
+      <workItem from="1766836663883" duration="1289000" />
     </task>
     <task id="LOCAL-00001" summary="Mutexes and FKX spec">
       <option name="closed" value="true" />

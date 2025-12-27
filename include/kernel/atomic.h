@@ -56,3 +56,23 @@ static inline int atomic_cmpxchg(atomic_t *v, int old, int new) {
 static inline int atomic_xchg(atomic_t *v, int new) {
     return __atomic_exchange_n(&v->counter, new, __ATOMIC_SEQ_CST);
 }
+
+typedef struct {
+    volatile long counter;
+} atomic_long_t;
+
+static inline long atomic_long_read(const atomic_long_t *v) {
+    return __atomic_load_n(&v->counter, __ATOMIC_RELAXED);
+}
+
+static inline void atomic_long_set(atomic_long_t *v, long i) {
+    __atomic_store_n(&v->counter, i, __ATOMIC_RELAXED);
+}
+
+static inline void atomic_long_add(long i, atomic_long_t *v) {
+    __atomic_add_fetch(&v->counter, i, __ATOMIC_SEQ_CST);
+}
+
+static inline void atomic_long_sub(long i, atomic_long_t *v) {
+    __atomic_sub_fetch(&v->counter, i, __ATOMIC_SEQ_CST);
+}
