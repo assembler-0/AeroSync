@@ -20,9 +20,11 @@
 
 #include <arch/x64/cpu.h>
 #include <arch/x64/irq.h>
+#include <arch/x64/mm/tlb.h>
 #include <kernel/sysintf/ic.h>
 #include <kernel/panic.h>
 #include <kernel/sched/sched.h>
+#include <lib/printk.h>
 
 #define IRQ_BASE_VECTOR 32
 #define MAX_INTERRUPTS 256
@@ -49,12 +51,22 @@ void __used __hot irq_common_stub(cpu_regs *regs) {
   }
 
   // Only send EOI for hardware interrupts and IPIs, not for exceptions
-  if (regs->interrupt_number >= IRQ_BASE_VECTOR) {
+  if (regs->interrupt_number >= IRQ_BASE_VECTOR && regs->interrupt_number < MAX_INTERRUPTS) {
     ic_send_eoi(regs->interrupt_number);
+  }
+
+  if (regs->interrupt_number >= MAX_INTERRUPTS) {
+      printk(KERN_ERR "Spurious interrupt with invalid vector: %llu\n", regs->interrupt_number);
+      return;
   }
 
   if (regs->interrupt_number == IRQ_SCHED_IPI_VECTOR) {
     irq_sched_ipi_handler();
+    return;
+  }
+
+  if (regs->interrupt_number == TLB_FLUSH_IPI_VECTOR) {
+    vmm_tlb_flush_all_local();
     return;
   }
 

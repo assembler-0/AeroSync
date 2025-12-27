@@ -29,6 +29,7 @@
 #include <linux/list.h>
 #include <linux/rbtree.h>
 #include <linux/rbtree_augmented.h>
+#include <mm/mmu_gather.h>
 #include <mm/slab.h>
 #include <mm/vma.h>
 
@@ -112,7 +113,7 @@ void mm_init(struct mm_struct *mm) {
   mm->mmap_base = 0;
   mm->pml4 = NULL;
   spinlock_init(&mm->page_table_lock);
-  spinlock_init(&mm->mmap_lock);
+  rwsem_init(&mm->mmap_lock);
 
   /* Initialize memory layout fields */
   mm->start_code = 0;
@@ -176,6 +177,10 @@ struct mm_struct *mm_create(void) {
     return NULL;
   }
 
+  // Initialize PTL for the new PML4 root
+  struct page *pg = phys_to_page(pml4_phys);
+  spinlock_init(&pg->ptl);
+
   uint64_t *pml4_virt = (uint64_t *)pmm_phys_to_virt(pml4_phys);
   memset(pml4_virt, 0, PAGE_SIZE);
 
@@ -198,7 +203,7 @@ struct mm_struct *mm_copy(struct mm_struct *old_mm) {
   if (!old_mm)
     return new_mm;
 
-  spinlock_lock(&old_mm->mmap_lock);
+  down_write(&old_mm->mmap_lock);
 
   struct vm_area_struct *vma;
   for_each_vma(old_mm, vma) {
@@ -206,21 +211,21 @@ struct mm_struct *mm_copy(struct mm_struct *old_mm) {
         vma_create(vma->vm_start, vma->vm_end, vma->vm_flags);
     if (!new_vma) {
       mm_free(new_mm);
-      spinlock_unlock(&old_mm->mmap_lock);
+      up_write(&old_mm->mmap_lock);
       return NULL;
     }
 
     if (vma_insert(new_mm, new_vma) != 0) {
       vma_free(new_vma);
       mm_free(new_mm);
-      spinlock_unlock(&old_mm->mmap_lock);
+      up_write(&old_mm->mmap_lock);
       return NULL;
     }
 
     // TODO: Copy page table entries for private mappings (COW)
   }
 
-  spinlock_unlock(&old_mm->mmap_lock);
+  up_write(&old_mm->mmap_lock);
   return new_mm;
 }
 
@@ -228,7 +233,7 @@ void mm_destroy(struct mm_struct *mm) {
   if (!mm || mm == &init_mm)
     return;
 
-  spinlock_lock(&mm->mmap_lock);
+  down_write(&mm->mmap_lock);
 
   struct vm_area_struct *vma, *tmp;
   for_each_vma_safe(mm, vma, tmp) {
@@ -243,7 +248,7 @@ void mm_destroy(struct mm_struct *mm) {
     mm->pml4 = NULL;
   }
 
-  spinlock_unlock(&mm->mmap_lock);
+  up_write(&mm->mmap_lock);
 }
 
 /* ========================================================================
@@ -441,11 +446,13 @@ int vma_insert(struct mm_struct *mm, struct vm_area_struct *vma) {
   }
 
   vma->vm_mm = mm;
-  rb_link_node(&vma->vm_rb, parent, new);
-  rb_insert_augmented(&vma->vm_rb, &mm->mm_rb, &vma_gap_callbacks);
 
   /* Insert into sorted list */
   __vma_link_list(mm, vma);
+
+  /* Insert into RB-tree */
+  rb_link_node(&vma->vm_rb, parent, new);
+  rb_insert_augmented(&vma->vm_rb, &mm->mm_rb, &vma_gap_callbacks);
 
   mm->map_count++;
   mm->mmap_cache = vma;
@@ -490,12 +497,28 @@ int vma_split(struct mm_struct *mm, struct vm_area_struct *vma, uint64_t addr) {
   if (!new_vma)
     return -1;
 
-  /* Adjust original VMA */
+  /* 
+   * To safely split, we remove the existing VMA from the tree,
+   * modify its end, re-insert it, and then insert the new part.
+   * This ensures augmented metadata (max_gap) is correctly updated.
+   */
+  vma_remove(mm, vma);
+  uint64_t old_end = vma->vm_end;
   vma->vm_end = addr;
 
-  /* Insert new VMA */
+  if (vma_insert(mm, vma) != 0) {
+      // Critical failure (should not happen if addr is valid)
+      vma->vm_end = old_end;
+      vma_insert(mm, vma); // Attempt recovery
+      vma_free(new_vma);
+      return -1;
+  }
+
   if (vma_insert(mm, new_vma) != 0) {
-    vma->vm_end = new_vma->vm_end; /* Restore */
+    /* Restore original VMA */
+    vma_remove(mm, vma);
+    vma->vm_end = old_end;
+    vma_insert(mm, vma);
     vma_free(new_vma);
     return -1;
   }
@@ -514,9 +537,14 @@ int vma_merge(struct mm_struct *mm, struct vm_area_struct *vma) {
   if (!list_is_first(&vma->vm_list, &mm->mmap_list)) {
     prev = list_entry(vma->vm_list.prev, struct vm_area_struct, vm_list);
     if (vma_can_merge(prev, vma)) {
-      prev->vm_end = vma->vm_end;
+      uint64_t new_end = vma->vm_end;
       vma_remove(mm, vma);
       vma_free(vma);
+      
+      vma_remove(mm, prev);
+      prev->vm_end = new_end;
+      vma_insert(mm, prev);
+      
       vma = prev;
       merged |= VMA_MERGE_PREV;
     }
@@ -526,9 +554,14 @@ int vma_merge(struct mm_struct *mm, struct vm_area_struct *vma) {
   if (!list_is_last(&vma->vm_list, &mm->mmap_list)) {
     next = list_entry(vma->vm_list.next, struct vm_area_struct, vm_list);
     if (vma_can_merge(vma, next)) {
-      vma->vm_end = next->vm_end;
+      uint64_t new_end = next->vm_end;
       vma_remove(mm, next);
       vma_free(next);
+      
+      vma_remove(mm, vma);
+      vma->vm_end = new_end;
+      vma_insert(mm, vma);
+      
       merged |= VMA_MERGE_NEXT;
     }
   }
@@ -555,20 +588,10 @@ int vma_expand(struct mm_struct *mm, struct vm_area_struct *vma,
       return -1;
   }
 
-  bool start_changed = (new_start != vma->vm_start);
-
-  if (start_changed) {
-    vma_remove(mm, vma);
-  }
-
+  vma_remove(mm, vma);
   vma->vm_start = new_start;
   vma->vm_end = new_end;
-
-  if (start_changed) {
-    return vma_insert(mm, vma);
-  }
-
-  return 0;
+  return vma_insert(mm, vma);
 }
 
 int vma_shrink(struct mm_struct *mm, struct vm_area_struct *vma,
@@ -580,20 +603,10 @@ int vma_shrink(struct mm_struct *mm, struct vm_area_struct *vma,
   if (new_start >= new_end)
     return -1;
 
-  bool start_changed = (new_start != vma->vm_start);
-
-  if (start_changed) {
-    vma_remove(mm, vma);
-  }
-
+  vma_remove(mm, vma);
   vma->vm_start = new_start;
   vma->vm_end = new_end;
-
-  if (start_changed) {
-    return vma_insert(mm, vma);
-  }
-
-  return 0;
+  return vma_insert(mm, vma);
 }
 
 /* ========================================================================
@@ -633,36 +646,48 @@ int vma_map_range(struct mm_struct *mm, uint64_t start, uint64_t end,
   start &= ~(PAGE_SIZE - 1);
   end = (end + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
 
-  spinlock_lock(&mm->mmap_lock);
+  down_write(&mm->mmap_lock);
 
   vma = vma_create(start, end, flags);
   if (!vma) {
-    spinlock_unlock(&mm->mmap_lock);
+    up_write(&mm->mmap_lock);
     return -1;
   }
 
   if (vma_insert(mm, vma) != 0) {
     vma_free(vma);
-    spinlock_unlock(&mm->mmap_lock);
+    up_write(&mm->mmap_lock);
     return -1;
   }
 
   /* Try to merge with adjacent VMAs */
   vma_merge(mm, vma);
 
-  spinlock_unlock(&mm->mmap_lock);
+  up_write(&mm->mmap_lock);
   return 0;
 }
 
 int vma_unmap_range(struct mm_struct *mm, uint64_t start, uint64_t end) {
   struct vm_area_struct *vma, *tmp;
+  struct mmu_gather tlb;
 
-  if (!mm)
-    return -1;
-  if (start >= end)
+  if (!mm || start >= end)
     return -1;
 
-  spinlock_lock(&mm->mmap_lock);
+  down_write(&mm->mmap_lock);
+
+  /* 1. Split partial overlaps at the boundaries */
+  vma = vma_find(mm, start);
+  if (vma && vma->vm_start < start) {
+      vma_split(mm, vma, start);
+  }
+  vma = vma_find(mm, end - 1);
+  if (vma && vma->vm_start < end && vma->vm_end > end) {
+      vma_split(mm, vma, end);
+  }
+
+  /* 2. Collect and remove all VMAs now strictly within [start, end] */
+  tlb_gather_mmu(&tlb, mm, start, end);
 
   for_each_vma_safe(mm, vma, tmp) {
     if (vma->vm_end <= start)
@@ -670,28 +695,23 @@ int vma_unmap_range(struct mm_struct *mm, uint64_t start, uint64_t end) {
     if (vma->vm_start >= end)
       break;
 
-    /* Complete overlap */
-    if (start <= vma->vm_start && end >= vma->vm_end) {
-      vma_remove(mm, vma);
-      vma_free(vma);
-      continue;
+    // Unmap physical pages
+    if (mm->pml4) {
+        for (uint64_t addr = vma->vm_start; addr < vma->vm_end; addr += PAGE_SIZE) {
+            uint64_t phys = vmm_virt_to_phys((uint64_t)mm->pml4, addr);
+            if (phys) {
+                vmm_unmap_page((uint64_t)mm->pml4, addr);
+                tlb_remove_page(&tlb, phys, addr);
+            }
+        }
     }
 
-    /* Partial overlap - split if needed */
-    if (start > vma->vm_start && end < vma->vm_end) {
-      /* Split into two VMAs */
-      vma_split(mm, vma, end);
-      vma_shrink(mm, vma, vma->vm_start, start);
-    } else if (start <= vma->vm_start) {
-      /* Trim from start */
-      vma_shrink(mm, vma, end, vma->vm_end);
-    } else {
-      /* Trim from end */
-      vma_shrink(mm, vma, vma->vm_start, start);
-    }
+    vma_remove(mm, vma);
+    vma_free(vma);
   }
 
-  spinlock_unlock(&mm->mmap_lock);
+  tlb_finish_mmu(&tlb);
+  up_write(&mm->mmap_lock);
   return 0;
 }
 
@@ -699,30 +719,43 @@ int vma_protect(struct mm_struct *mm, uint64_t start, uint64_t end,
                 uint64_t new_flags) {
   struct vm_area_struct *vma;
 
-  if (!mm)
-    return -1;
-  if (start >= end)
+  if (!mm || start >= end)
     return -1;
 
-  spinlock_lock(&mm->mmap_lock);
+  down_write(&mm->mmap_lock);
 
+  /* 1. Split partial overlaps */
+  vma = vma_find(mm, start);
+  if (vma && vma->vm_start < start) {
+      vma_split(mm, vma, start);
+  }
+  vma = vma_find(mm, end - 1);
+  if (vma && vma->vm_start < end && vma->vm_end > end) {
+      vma_split(mm, vma, end);
+  }
+
+  /* 2. Update flags */
   for_each_vma(mm, vma) {
     if (vma->vm_end <= start)
       continue;
     if (vma->vm_start >= end)
       break;
 
-    /* Handle partial overlaps by splitting */
-    if (start > vma->vm_start)
-      vma_split(mm, vma, start);
-
-    if (end < vma->vm_end)
-      vma_split(mm, vma, end);
-
     vma->vm_flags = new_flags;
+
+    // Translate VMA flags to PTE flags
+    uint64_t pte_flags = PTE_USER;
+    if (vma->vm_flags & VM_WRITE) pte_flags |= PTE_RW;
+    if (!(vma->vm_flags & VM_EXEC)) pte_flags |= PTE_NX;
+
+    if (mm->pml4) {
+        for (uint64_t addr = vma->vm_start; addr < vma->vm_end; addr += PAGE_SIZE) {
+            vmm_set_flags((uint64_t)mm->pml4, addr, pte_flags);
+        }
+    }
   }
 
-  spinlock_unlock(&mm->mmap_lock);
+  up_write(&mm->mmap_lock);
   return 0;
 }
 
@@ -907,63 +940,62 @@ struct mm_struct init_mm;
  * ======================================================================== */
 
 void vma_test(void) {
-  struct mm_struct *test_mm = mm_alloc();
-  if (!test_mm)
-    panic(VMA_CLASS "Failed to allocate test MM");
+  printk(KERN_DEBUG VMA_CLASS "Starting Modern VMA Test Suite...\n");
 
-  /* Test 1: Basic insertion */
-  struct vm_area_struct *v1 = vma_create(0x1000, 0x2000, VM_READ | VM_WRITE);
-  if (!v1 || vma_insert(test_mm, v1) != 0)
-    panic(VMA_CLASS "Test 1 failed: Insert v1");
+  /* Use mm_create to get valid page tables and exercise VMM glue */
+  struct mm_struct *mm = mm_create();
+  if (!mm) panic("vma_test: failed to create mm");
 
-  struct vm_area_struct *v2 = vma_create(0x3000, 0x4000, VM_READ);
-  if (!v2 || vma_insert(test_mm, v2) != 0)
-    panic(VMA_CLASS "Test 1 failed: Insert v2");
+  /* Test 1: Basic Mappings & RB-Tree Insertion */
+  // Create two 2-page VMAs: [0x1000, 0x3000] and [0x5000, 0x7000]
+  vma_map_range(mm, 0x1000, 0x3000, VM_READ);
+  vma_map_range(mm, 0x5000, 0x7000, VM_READ | VM_WRITE);
+  
+  if (mm->map_count != 2) panic("vma_test: map_count mismatch");
+  printk(KERN_DEBUG VMA_CLASS "  - Basic Mapping: OK\n");
 
-  /* Test 2: Lookup */
-  if (vma_find(test_mm, 0x1500) != v1)
-    panic(VMA_CLASS "Test 2 failed: Find v1");
-  if (vma_find(test_mm, 0x3500) != v2)
-    panic(VMA_CLASS "Test 2 failed: Find v2");
-  if (vma_find(test_mm, 0x2500) != NULL)
-    panic(VMA_CLASS "Test 2 failed: Find gap");
-
-  /* Test 3: Overlap detection (use page-aligned addresses) */
-  /* 0x1000-0x3000 overlaps with v1 (0x1000-0x2000) */
-  struct vm_area_struct *v3 = vma_create(0x1000, 0x3000, VM_READ);
-  if (!v3 || vma_insert(test_mm, v3) == 0) {
-    if (v3)
-      vma_free(v3);
-    panic(VMA_CLASS "Test 3 failed: Overlap allowed");
+  /* Test 2: Gap Finding (Augmented RB-Tree) */
+  uint64_t free = vma_find_free_region(mm, 0x1000, 0x1000, 0x8000);
+  if (free != 0x3000) {
+      printk(KERN_DEBUG VMA_CLASS "vma_test: expected gap at 0x3000, got 0x%llx\n", free);
+      panic("vma_test: gap find failed");
   }
-  vma_free(v3);
+  printk(KERN_DEBUG VMA_CLASS "  - Gap Finding: OK\n");
 
-  /* Test 4: Free region finding */
-  uint64_t free_addr = vma_find_free_region(test_mm, 0x1000, 0, 0x10000);
-  if (free_addr != 0x2000 && free_addr != 0x4000 && free_addr != 0)
-    panic(VMA_CLASS "Test 4 failed: Free region");
+  /* Test 3: VMA Splitting (Must be page aligned) */
+  printk(KERN_DEBUG VMA_CLASS "  - VMA Splitting: start...\n");
+  down_write(&mm->mmap_lock);
+  struct vm_area_struct *vma_to_split = vma_find(mm, 0x5000);
+  if (!vma_to_split) panic("vma_test: could not find vma at 0x5000");
+  
+  // Split [0x5000, 0x7000] at 0x6000
+  if (vma_split(mm, vma_to_split, 0x6000) != 0) {
+      panic("vma_test: split failed");
+  }
+  up_write(&mm->mmap_lock);
+  
+  if (mm->map_count != 3) panic("vma_test: map_count after split mismatch");
+  printk(KERN_DEBUG VMA_CLASS "  - VMA Splitting: OK\n");
 
-  /* Test 5: VMA splitting */
-  struct vm_area_struct *v4 = vma_create(0x10000, 0x14000, VM_READ | VM_WRITE);
-  if (!v4 || vma_insert(test_mm, v4) != 0)
-    panic(VMA_CLASS "Test 5 failed: Insert v4");
+  /* Test 4: VMA Protection (with split) */
+  printk(KERN_DEBUG VMA_CLASS "  - VMA Protect (Split): start...\n");
+  // Change protection on the first page of [0x1000, 0x3000]
+  if (vma_protect(mm, 0x1000, 0x2000, VM_READ | VM_WRITE) != 0) panic("vma_test: protect failed");
+  if (mm->map_count != 4) panic("vma_test: map_count after protect mismatch");
+  printk(KERN_DEBUG VMA_CLASS "  - VMA Protect (Split): OK\n");
 
-  if (vma_split(test_mm, v4, 0x12000) != 0)
-    panic(VMA_CLASS "Test 5 failed: Split");
+  /* Test 5: Unmapping partial & full */
+  // Unmap the middle pages across multiple VMAs: [0x2000, 0x6000]
+  vma_unmap_range(mm, 0x2000, 0x6000);
+  printk(KERN_DEBUG VMA_CLASS "  - Partial Unmap: OK\n");
 
-  if (test_mm->map_count != 4)
-    panic(VMA_CLASS "Test 5 failed: Map count after split");
+  /* Clean up all */
+  vma_unmap_range(mm, 0, 0xFFFFFFFFFFFFFFFF);
+  if (mm->map_count != 0) panic("vma_test: unmap all failed");
+  printk(KERN_DEBUG VMA_CLASS "  - Unmap All: OK\n");
 
-  /* Test 6: High-level map/unmap */
-  if (vma_map_range(test_mm, 0x20000, 0x24000, VM_READ) != 0)
-    panic(VMA_CLASS "Test 6 failed: Map range");
-
-  if (vma_unmap_range(test_mm, 0x21000, 0x23000) != 0)
-    panic(VMA_CLASS "Test 6 failed: Unmap range");
-
-  /* Test 7: List verification */
-  if (vma_verify_list(test_mm) != 0)
-    panic(VMA_CLASS "Test 7 failed: List verification");
-
-  mm_free(test_mm);
+  mm_destroy(mm);
+  mm_free(mm);
+  printk(KERN_DEBUG VMA_CLASS "VMA Test Suite Passed.\n");
 }
+

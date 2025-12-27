@@ -45,22 +45,14 @@ void panic_handler_install() {
     if (!b)
       continue;
 
-    if (b->init() != 0)
-      continue;
-
     if (!best || b->prio > best->prio)
       best = b;
   }
 
   if (!best) {
-    printk(KERN_ERR KERN_CLASS "no active panic backend\n");
     active_backend = NULL;
     return;
   }
-
-  printk(KERN_INFO KERN_CLASS
-         "panic backend selected: %s (prio=%d)\n",
-         best->name, best->prio);
   active_backend = best;
 }
 

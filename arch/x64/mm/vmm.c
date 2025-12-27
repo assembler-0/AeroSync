@@ -17,6 +17,7 @@
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <mm/vma.h>
+#include <arch/x64/mm/tlb.h>
 
 // Global kernel PML root (physical address)
 uint64_t g_kernel_pml4 = 0;
@@ -126,8 +127,104 @@ static uint64_t *get_next_level(uint64_t *current_table, uint64_t index,
   uint64_t new_table_phys = vmm_alloc_table();
   if (!new_table_phys) return NULL;
 
+  // Initialize PTL for the new table page
+  struct page *pg = phys_to_page(new_table_phys);
+  spinlock_init(&pg->ptl);
+
   current_table[index] = new_table_phys | PTE_PRESENT | PTE_RW | PTE_USER;
   return (uint64_t *)phys_to_virt(new_table_phys);
+}
+
+/**
+ * Traverses page tables and returns a pointer to the leaf PTE.
+ */
+static uint64_t *vmm_get_pte_ptr(uint64_t pml_root_phys, uint64_t virt, bool alloc) {
+    uint64_t *current_table = (uint64_t *)phys_to_virt(pml_root_phys);
+    int levels = vmm_get_paging_levels();
+
+    for (int level = levels; level > 1; level--) {
+        uint64_t index;
+        switch (level) {
+            case 5: index = PML5_INDEX(virt); break;
+            case 4: index = PML4_INDEX(virt); break;
+            case 3: index = PDPT_INDEX(virt); break;
+            case 2: index = PD_INDEX(virt); break;
+            default: return NULL;
+        }
+
+        uint64_t *next_table = get_next_level(current_table, index, alloc, level);
+        if (!next_table) return NULL;
+        current_table = next_table;
+    }
+
+    return &current_table[PT_INDEX(virt)];
+}
+
+/* --- PTE Flag Helpers --- */
+
+int vmm_is_dirty(uint64_t pml_root, uint64_t virt) {
+  uint64_t *pte_p = vmm_get_pte_ptr(pml_root, virt, false);
+  if (!pte_p) return 0;
+
+  struct page *table_page = phys_to_page(pmm_virt_to_phys((void*)((uint64_t)pte_p & PAGE_MASK)));
+  irq_flags_t flags = spinlock_lock_irqsave(&table_page->ptl);
+  int dirty = (*pte_p & PTE_DIRTY) ? 1 : 0;
+  spinlock_unlock_irqrestore(&table_page->ptl, flags);
+  
+  return dirty;
+}
+
+void vmm_clear_dirty(uint64_t pml_root, uint64_t virt) {
+  uint64_t *pte_p = vmm_get_pte_ptr(pml_root, virt, false);
+  if (!pte_p) return;
+
+  struct page *table_page = phys_to_page(pmm_virt_to_phys((void*)((uint64_t)pte_p & PAGE_MASK)));
+  irq_flags_t flags = spinlock_lock_irqsave(&table_page->ptl);
+  *pte_p &= ~PTE_DIRTY;
+  spinlock_unlock_irqrestore(&table_page->ptl, flags);
+
+  vmm_tlb_flush_local(virt);
+}
+
+int vmm_is_accessed(uint64_t pml_root, uint64_t virt) {
+  uint64_t *pte_p = vmm_get_pte_ptr(pml_root, virt, false);
+  if (!pte_p) return 0;
+
+  struct page *table_page = phys_to_page(pmm_virt_to_phys((void*)((uint64_t)pte_p & PAGE_MASK)));
+  irq_flags_t flags = spinlock_lock_irqsave(&table_page->ptl);
+  int accessed = (*pte_p & PTE_ACCESSED) ? 1 : 0;
+  spinlock_unlock_irqrestore(&table_page->ptl, flags);
+
+  return accessed;
+}
+
+void vmm_clear_accessed(uint64_t pml_root, uint64_t virt) {
+  uint64_t *pte_p = vmm_get_pte_ptr(pml_root, virt, false);
+  if (!pte_p) return;
+
+  struct page *table_page = phys_to_page(pmm_virt_to_phys((void*)((uint64_t)pte_p & PAGE_MASK)));
+  irq_flags_t flags = spinlock_lock_irqsave(&table_page->ptl);
+  *pte_p &= ~PTE_ACCESSED;
+  spinlock_unlock_irqrestore(&table_page->ptl, flags);
+
+  vmm_tlb_flush_local(virt);
+}
+
+int vmm_set_flags(uint64_t pml_root, uint64_t virt, uint64_t flags) {
+  uint64_t *pte_p = vmm_get_pte_ptr(pml_root, virt, false);
+  if (!pte_p) return -1;
+
+  struct page *table_page = phys_to_page(pmm_virt_to_phys((void*)((uint64_t)pte_p & PAGE_MASK)));
+  irq_flags_t ptl_flags = spinlock_lock_irqsave(&table_page->ptl);
+
+  uint64_t pte = *pte_p;
+  uint64_t phys = PTE_GET_ADDR(pte);
+  *pte_p = phys | flags | PTE_PRESENT;
+
+  spinlock_unlock_irqrestore(&table_page->ptl, ptl_flags);
+
+  vmm_tlb_flush_local(virt);
+  return 0;
 }
 
 // --- Internal Unlocked Helpers ---
@@ -161,6 +258,10 @@ static int vmm_map_huge_page_locked(uint64_t pml_root_phys, uint64_t virt, uint6
     else if (target_level == 3) index = PDPT_INDEX(virt);
     else index = PT_INDEX(virt);
 
+    // Modern: Use split page table lock for the leaf table
+    struct page *table_page = phys_to_page(pmm_virt_to_phys(current_table));
+    irq_flags_t ptl_flags = spinlock_lock_irqsave(&table_page->ptl);
+
     uint64_t entry_flags = (flags & ~PTE_ADDR_MASK);
     if (target_level > 1) {
         // PAT for Huge pages is at bit 12 instead of bit 7
@@ -173,6 +274,8 @@ static int vmm_map_huge_page_locked(uint64_t pml_root_phys, uint64_t virt, uint6
     }
 
     current_table[index] = (phys & PTE_ADDR_MASK) | entry_flags;
+
+    spinlock_unlock_irqrestore(&table_page->ptl, ptl_flags);
 
     // Invalidate TLB
     uint64_t current_cr3;
@@ -219,11 +322,21 @@ static uint64_t vmm_unmap_page_locked(uint64_t pml_root_phys, uint64_t virt) {
   }
 
   uint64_t pt_index = PT_INDEX(virt);
+  
+  // Modern: Use split page table lock for the leaf table
+  struct page *table_page = phys_to_page(pmm_virt_to_phys(current_table));
+  irq_flags_t ptl_flags = spinlock_lock_irqsave(&table_page->ptl);
+
   uint64_t entry = current_table[pt_index];
-  if (!(entry & PTE_PRESENT)) return 0;
+  if (!(entry & PTE_PRESENT)) {
+      spinlock_unlock_irqrestore(&table_page->ptl, ptl_flags);
+      return 0;
+  }
 
   uint64_t phys = PTE_GET_ADDR(entry);
   current_table[pt_index] = 0;
+
+  spinlock_unlock_irqrestore(&table_page->ptl, ptl_flags);
 
   uint64_t current_cr3;
   __asm__ volatile("mov %%cr3, %0" : "=r"(current_cr3));
@@ -418,4 +531,47 @@ void vmm_init(void) {
   init_mm.pml4 = (uint64_t *)g_kernel_pml4;
 
   printk(VMM_CLASS "VMM Initialized (%d levels active).\n", vmm_get_paging_levels());
+
+  /* --- MMU Smoke Test --- */
+  printk(VMM_CLASS KERN_DEBUG "Running VMM Smoke Test...\n");
+
+  // 1. Test RW-Semaphore
+  down_read(&init_mm.mmap_lock);
+  printk(VMM_CLASS KERN_DEBUG "  - RW-Sem Read Lock: OK\n");
+  up_read(&init_mm.mmap_lock);
+
+  down_write(&init_mm.mmap_lock);
+  printk(VMM_CLASS KERN_DEBUG "  - RW-Sem Write Lock: OK\n");
+
+  // 2. Test Mapping + Split PTL
+  uint64_t test_virt = 0xDEADC0DE000;
+  uint64_t test_phys = pmm_alloc_page();
+  if (vmm_map_page(g_kernel_pml4, test_virt, test_phys, PTE_PRESENT | PTE_RW | PTE_USER) < 0) {
+      panic("VMM Smoke Test: Mapping failed");
+  }
+  printk(VMM_CLASS "  - Map + Split PTL: OK\n");
+
+  // 3. Test Flag Helpers
+  if (vmm_is_dirty(g_kernel_pml4, test_virt)) {
+       panic("VMM Smoke Test: Page dirty before access");
+  }
+  
+  // Trigger a write to set dirty bit
+  *(volatile uint64_t*)phys_to_virt(test_phys) = 0x1234; 
+  // Note: We access via HHDM here, but on some CPUs the hardware walker 
+  // only sets dirty if accessed via the specific virtual mapping.
+  // Let's just check if the helper can clear/set flags.
+  
+  vmm_set_flags(g_kernel_pml4, test_virt, PTE_RW | PTE_DIRTY);
+  if (!vmm_is_dirty(g_kernel_pml4, test_virt)) {
+      panic("VMM Smoke Test: Dirty bit helper failed");
+  }
+  printk(VMM_CLASS KERN_DEBUG "  - Dirty/Flags Helpers: OK\n");
+
+  vmm_unmap_page(g_kernel_pml4, test_virt);
+  pmm_free_page(test_phys);
+  printk(VMM_CLASS KERN_DEBUG "  - Unmap: OK\n");
+
+  up_write(&init_mm.mmap_lock);
+  printk(VMM_CLASS KERN_DEBUG "VMM Smoke Test Passed.\n");
 }

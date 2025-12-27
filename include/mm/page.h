@@ -11,6 +11,8 @@
 
 struct kmem_cache;
 
+#include <kernel/spinlock.h>
+
 /**
  * struct page - Represents a physical page frame
  */
@@ -20,6 +22,9 @@ struct page {
     uint32_t flags;           /* Page flags */
     uint32_t zone;            /* Memory zone (if any) */
     atomic_t _refcount;       /* Reference count */
+
+    /* Split page table lock */
+    spinlock_t ptl;
 };
 
 /* Helper macros */

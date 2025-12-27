@@ -145,6 +145,7 @@ int process(void *data) {
 
 void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   panic_register_handler(get_builtin_panic_ops());
+  panic_handler_install();
 
   if (LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision) == false) {
     panic_early();
@@ -220,15 +221,8 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   slab_init();
 
-  // Initialize the kernel's virtual memory address space manager
-  mm_init(&init_mm);
-  init_mm.pml4 = (uint64_t *)pmm_phys_to_virt(g_kernel_pml4);
-
   gdt_init();
   idt_install();
-
-  // Verify VMA Implementation
-  vma_test();
 
   if (module_request.response) {
     printk(KERN_DEBUG FKX_CLASS "Found %lu modules, \n",
@@ -244,7 +238,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
         printk(FKX_CLASS "Successfully loaded module: %s\n", m->path);
       }
     }
-    
+
     if (fkx_finalize_loading() != 0) {
       printk(KERN_ERR FKX_CLASS "Failed to finalize module loading\n");
     }
@@ -294,6 +288,8 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   } else {
     printk(KERN_CLASS "TSC calibrated successfully.\n");
   }
+
+  vma_test();
 
   // Initialize generic driver modules (e.g., PCI)
   fkx_init_module_class(FKX_DRIVER_CLASS);

@@ -103,6 +103,15 @@ int vmm_unmap_pages_and_get_phys(uint64_t pml4_phys, uint64_t virt,
 uint64_t vmm_virt_to_phys(uint64_t pml4_phys, uint64_t virt);
 
 /**
+ * Modern VMM functions
+ */
+int vmm_set_flags(uint64_t pml4_phys, uint64_t virt, uint64_t flags);
+int vmm_is_dirty(uint64_t pml4_phys, uint64_t virt);
+void vmm_clear_dirty(uint64_t pml4_phys, uint64_t virt);
+int vmm_is_accessed(uint64_t pml4_phys, uint64_t virt);
+void vmm_clear_accessed(uint64_t pml4_phys, uint64_t virt);
+
+/**
  * Switch the active Page Table (CR3).
  *
  * @param pml4_phys Physical address of the new PML4

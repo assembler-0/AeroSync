@@ -225,6 +225,7 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
         INIT_LIST_HEAD(&mem_map[i].list);
         mem_map[i].flags = PG_reserved;
         mem_map[i].order = 0;
+        spinlock_init(&mem_map[i].ptl);
     }
 
     // Initialize free area lists

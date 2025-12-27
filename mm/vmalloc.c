@@ -140,37 +140,37 @@ static void *__vmalloc_internal(size_t size, uint64_t vma_flags, uint64_t vmm_fl
         vma_flags |= VM_HUGE;
     }
 
-    spinlock_lock(&init_mm.mmap_lock);
+    down_write(&init_mm.mmap_lock);
 
     uint64_t virt_start = vma_find_free_region_aligned(&init_mm, size, alignment, 
                                                        VMALLOC_VIRT_BASE, 
                                                        VMALLOC_VIRT_END);
 
     if (virt_start == 0) {
-        spinlock_unlock(&init_mm.mmap_lock);
+        up_write(&init_mm.mmap_lock);
         return NULL;
     }
 
     struct vm_area_struct *vma = vma_create(virt_start, virt_start + size, vma_flags);
     if (!vma) {
-        spinlock_unlock(&init_mm.mmap_lock);
+        up_write(&init_mm.mmap_lock);
         return NULL;
     }
 
     if (vma_insert(&init_mm, vma) < 0) {
         vma_free(vma);
-        spinlock_unlock(&init_mm.mmap_lock);
+        up_write(&init_mm.mmap_lock);
         return NULL;
     }
 
     if (vmalloc_map_pages(vma, vmm_flags) < 0) {
         vma_remove(&init_mm, vma);
         vma_free(vma);
-        spinlock_unlock(&init_mm.mmap_lock);
+        up_write(&init_mm.mmap_lock);
         return NULL;
     }
 
-    spinlock_unlock(&init_mm.mmap_lock);
+    up_write(&init_mm.mmap_lock);
     return (void *)virt_start;
 }
 
@@ -194,18 +194,18 @@ void vfree(void *addr) {
     uint64_t vaddr = (uint64_t)addr;
     if (vaddr < VMALLOC_VIRT_BASE || vaddr >= VMALLOC_VIRT_END) return;
 
-    spinlock_lock(&init_mm.mmap_lock);
+    down_write(&init_mm.mmap_lock);
 
     struct vm_area_struct *vma = vma_find(&init_mm, vaddr);
     if (!vma || vma->vm_start != vaddr) {
-        spinlock_unlock(&init_mm.mmap_lock);
+        up_write(&init_mm.mmap_lock);
         return;
     }
 
     vma_remove(&init_mm, vma);
     vmalloc_unmap_pages(vma);
 
-    spinlock_unlock(&init_mm.mmap_lock);
+    up_write(&init_mm.mmap_lock);
     vma_free(vma);
 }
 
@@ -216,27 +216,27 @@ void *viomap(uint64_t phys_addr, size_t size) {
     uint64_t phys_start = phys_addr & PAGE_MASK;
     size_t page_aligned_size = PAGE_ALIGN_UP(size + offset);
 
-    spinlock_lock(&init_mm.mmap_lock);
+    down_write(&init_mm.mmap_lock);
 
     uint64_t virt_start = vma_find_free_region(&init_mm, page_aligned_size, 
                                                VMALLOC_VIRT_BASE, 
                                                VMALLOC_VIRT_END);
     
     if (!virt_start) {
-        spinlock_unlock(&init_mm.mmap_lock);
+        up_write(&init_mm.mmap_lock);
         return NULL;
     }
 
     struct vm_area_struct *vma = vma_create(virt_start, virt_start + page_aligned_size, 
                                             VM_READ | VM_WRITE | VM_IO);
     if (!vma) {
-        spinlock_unlock(&init_mm.mmap_lock);
+        up_write(&init_mm.mmap_lock);
         return NULL;
     }
 
     if (vma_insert(&init_mm, vma) < 0) {
         vma_free(vma);
-        spinlock_unlock(&init_mm.mmap_lock);
+        up_write(&init_mm.mmap_lock);
         return NULL;
     }
 
@@ -244,7 +244,7 @@ void *viomap(uint64_t phys_addr, size_t size) {
                  page_aligned_size / PAGE_SIZE,
                  PTE_PRESENT | PTE_RW | VMM_CACHE_UC);
 
-    spinlock_unlock(&init_mm.mmap_lock);
+    up_write(&init_mm.mmap_lock);
     __asm__ volatile("mfence" ::: "memory");
 
     return (void *)(virt_start + offset);
@@ -257,27 +257,27 @@ void *viomap_wc(uint64_t phys_addr, size_t size) {
     uint64_t phys_start = phys_addr & PAGE_MASK;
     size_t page_aligned_size = PAGE_ALIGN_UP(size + offset);
 
-    spinlock_lock(&init_mm.mmap_lock);
+    down_write(&init_mm.mmap_lock);
 
     uint64_t virt_start = vma_find_free_region(&init_mm, page_aligned_size, 
                                                VMALLOC_VIRT_BASE, 
                                                VMALLOC_VIRT_END);
     
     if (!virt_start) {
-        spinlock_unlock(&init_mm.mmap_lock);
+        up_write(&init_mm.mmap_lock);
         return NULL;
     }
 
     struct vm_area_struct *vma = vma_create(virt_start, virt_start + page_aligned_size, 
                                             VM_READ | VM_WRITE | VM_IO | VM_CACHE_WC);
     if (!vma) {
-        spinlock_unlock(&init_mm.mmap_lock);
+        up_write(&init_mm.mmap_lock);
         return NULL;
     }
 
     if (vma_insert(&init_mm, vma) < 0) {
         vma_free(vma);
-        spinlock_unlock(&init_mm.mmap_lock);
+        up_write(&init_mm.mmap_lock);
         return NULL;
     }
 
@@ -285,7 +285,7 @@ void *viomap_wc(uint64_t phys_addr, size_t size) {
                  page_aligned_size / PAGE_SIZE,
                  PTE_PRESENT | PTE_RW | VMM_CACHE_WC);
 
-    spinlock_unlock(&init_mm.mmap_lock);
+    up_write(&init_mm.mmap_lock);
     __asm__ volatile("mfence" ::: "memory");
 
     return (void *)(virt_start + offset);

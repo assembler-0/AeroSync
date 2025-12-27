@@ -371,7 +371,6 @@ int fkx_init_module_class(fkx_module_class_t module_class) {
   }
 
   if (count == 0) {
-    printk(KERN_DEBUG FKX_CLASS "No modules found for class %d\n", module_class);
     return 0;
   }
 

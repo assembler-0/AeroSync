@@ -28,8 +28,6 @@ project(VoidFrameX
 )
 enable_language(ASM_NASM)
 
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
-
 execute_process(
         COMMAND git describe --tags --dirty --always
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -67,7 +65,7 @@ include(lib/uACPI/uacpi.cmake)
 include(source)
 include(fkx)
 include(lib/linearfb/linearfb.cmake)
-include(drivers/misc/splash.cmake)
+#include(drivers/misc/splash.cmake)
 include(drivers/uart/uart.cmake)
 include(drivers/apic/ic.cmake)
 include(drivers/pci/pci.cmake)

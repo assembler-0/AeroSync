@@ -57,7 +57,7 @@ void do_page_fault(cpu_regs *regs) {
   }
 
   // Try to find VMA covering this address
-  spinlock_lock(&mm->mmap_lock);
+  down_read(&mm->mmap_lock);
   struct vm_area_struct *vma = vma_find(mm, cr2);
 
   if (vma && cr2 >= vma->vm_start && cr2 < vma->vm_end) {
@@ -66,12 +66,12 @@ void do_page_fault(cpu_regs *regs) {
     bool exec_fault = (error_code & PF_INSTR);
 
     if (write_fault && !(vma->vm_flags & VM_WRITE)) {
-      spinlock_unlock(&mm->mmap_lock);
+      up_read(&mm->mmap_lock);
       printk(KERN_ERR FAULT_CLASS  "Page Fault: Write violation at %llx\n", cr2);
       goto signal_segv;
     }
     if (exec_fault && !(vma->vm_flags & VM_EXEC)) {
-      spinlock_unlock(&mm->mmap_lock);
+      up_read(&mm->mmap_lock);
       printk(KERN_ERR FAULT_CLASS  "Page Fault: Exec violation at %llx\n", cr2);
       goto signal_segv;
     }
@@ -79,7 +79,7 @@ void do_page_fault(cpu_regs *regs) {
     // Demand Paging: Allocate a physical page
     uint64_t phys = pmm_alloc_page();
     if (!phys) {
-      spinlock_unlock(&mm->mmap_lock);
+      up_read(&mm->mmap_lock);
       printk(KERN_ERR FAULT_CLASS  "OOM during demand paging for %llx\n", cr2);
       goto kernel_panic;
     }
@@ -95,10 +95,10 @@ void do_page_fault(cpu_regs *regs) {
     // Use the PML4 from the MM struct
     uint64_t pml4_phys = (uint64_t) mm->pml4;
     vmm_map_page(pml4_phys, cr2 & PAGE_MASK, phys, flags);
-    spinlock_unlock(&mm->mmap_lock);
+    up_read(&mm->mmap_lock);
     return; // Retry instruction
   }
-  spinlock_unlock(&mm->mmap_lock);
+  up_read(&mm->mmap_lock);
 
 signal_segv:
   if (user_mode) {

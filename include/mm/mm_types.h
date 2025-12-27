@@ -36,6 +36,8 @@ struct __aligned(sizeof(long)) vm_area_struct {
   /* TODO: Backing store/file pointers will go here */
 };
 
+#include <kernel/rw_semaphore.h>
+
 /*
  * mm_struct
  * Represents the entire address space of a task.
@@ -47,8 +49,8 @@ struct mm_struct {
 
   uint64_t *pml4; /* Physical address of the top-level page table */
 
-  spinlock_t page_table_lock; /* Protects page table modifications */
-  spinlock_t mmap_lock;       /* Protects VMA list/tree modifications */
+  spinlock_t page_table_lock; /* Protects page table modifications (fallback) */
+  struct rw_semaphore mmap_lock; /* Protects VMA list/tree modifications */
 
   int map_count; /* Number of VMAs */
 
