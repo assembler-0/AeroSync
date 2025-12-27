@@ -91,7 +91,7 @@
  *  DEVICE DRIVERS
  * ========================================================================= */
 ///@section Bus Drivers
-#define PCI_CLASS "[DRV::PCI] " // PCI/PCIe Bus enumeration
+#define PCI_CLASS "[S-SYS::PCI] " /// @note PCI IS NOT A DRIVER! ITS MORE OF A SUBSYSTEM!
 #define USB_CLASS "[DRV::USB] " // USB Stack (UHCI/EHCI/XHCI)
 
 ///@section Storage Drivers
@@ -131,10 +131,9 @@
  *  NETWORKING STACK
  * ========================================================================= */
 #define NET_CLASS "[NET::CORE] " // Generic Network Stack
-#define NIC_CLASS                                                              \
-  "[NET::NIC] " // Network Interface Card Driver (e1000, rtl8139)
+#define NIC_CLASS "[NET::NIC] " // Network Interface Card Driver (e1000, rtl8139)
 #define ETH_CLASS "[NET::ETH] "   // Ethernet Layer (L2)
-#define IP_CLASS "[NET::IPV4] "   // IPv4/IPv6 Layer (L3)
+#define IP_CLASS "[NET::IP] "   // IPv4/IPv6 Layer (L3)
 #define ARP_CLASS "[NET::ARP] "   // ARP Protocol
 #define TCP_CLASS "[NET::TCP] "   // TCP Protocol (L4)
 #define UDP_CLASS "[NET::UDP] "   // UDP Protocol (L4)

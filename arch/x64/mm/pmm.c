@@ -3,7 +3,7 @@
  * VoidFrameX monolithic kernel
  *
  * @file arch/x64/mm/pmm.c
- * @brief Physical Memory Manager (PMM) implementation
+ * @brief High performance PMM
  * @copyright (C) 2025 assembler-0
  *
  * This file is part of the VoidFrameX kernel.
@@ -18,14 +18,6 @@
  * GNU General Public License for more details.
  */
 
-/**
- * Physical Memory Manager (PMM)
- *
- * Dynamic bitmap allocator that automatically detects memory size
- * and allocates bitmap from available memory. No hardcoded limits.
- * Parses Limine memory map and provides page allocation services.
- */
-
 #include <compiler.h>
 #include <arch/x64/cpu.h>
 #include <drivers/uart/serial.h>
@@ -33,19 +25,25 @@
 #include <kernel/spinlock.h>
 #include <lib/printk.h>
 #include <lib/string.h>
-#include <lib/bitmap.h>
 #include <limine/limine.h>
 #include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/paging.h>
 #include <kernel/fkx/fkx.h>
+#include <mm/page.h>
+#include <linux/container_of.h>
 
 // Global HHDM offset
 uint64_t g_hhdm_offset = 0;
 EXPORT_SYMBOL(g_hhdm_offset);
 
-// Dynamic bitmap pointer - allocated during init
-static unsigned long *pmm_bitmap = NULL;
-static uint64_t pmm_bitmap_size_words = 0;
+// Buddy system structures
+struct free_area {
+    struct list_head free_list;
+    unsigned long nr_free;
+};
+
+static struct free_area free_area[MAX_ORDER];
+struct page *mem_map = NULL;
 static uint64_t pmm_max_pages = 0;
 
 // PMM state
@@ -53,410 +51,320 @@ static volatile pmm_stats_t pmm_stats __aligned(16);
 static spinlock_t pmm_lock = 0;
 static bool pmm_initialized = false;
 
-// First free page hint for faster allocation
-static uint64_t pmm_first_free_page = 0;
-
-// Helper: Mark page as used
-static inline void pmm_mark_used(uint64_t page) {
-  if (page < pmm_max_pages) {
-    set_bit(page, pmm_bitmap);
-  }
+// Helper: Get order for a given number of pages
+static inline unsigned int get_order(size_t count) {
+    if (count <= 1) return 0;
+    return 64 - __builtin_clzll(count - 1);
 }
 
-// Helper: Mark page as free
-static inline void pmm_mark_free(uint64_t page) {
-  if (page < pmm_max_pages) {
-    clear_bit(page, pmm_bitmap);
-  }
+// Helper: Get page from PFN
+static inline struct page *pfn_to_page(uint64_t pfn) {
+    if (unlikely(pfn >= pmm_max_pages)) return NULL;
+    return &mem_map[pfn];
 }
 
-// Helper: Test if page is used
-static inline bool pmm_is_used(uint64_t page) {
-  if (page >= pmm_max_pages)
-    return true; // Out of range = used
-  return test_bit(page, pmm_bitmap);
+// Check if a page can be a buddy for another at a given order
+static inline bool page_is_buddy(struct page *page, unsigned int order) {
+    if (PageBuddy(page) && page->order == order)
+        return true;
+    return false;
 }
 
-// Convert Limine memory type to string
-static const char *memtype_to_string(uint64_t type) {
-  switch (type) {
-  case LIMINE_MEMMAP_USABLE:
-    return "Usable";
-  case LIMINE_MEMMAP_RESERVED:
-    return "Reserved";
-  case LIMINE_MEMMAP_ACPI_RECLAIMABLE:
-    return "ACPI Reclaimable";
-  case LIMINE_MEMMAP_ACPI_NVS:
-    return "ACPI NVS";
-  case LIMINE_MEMMAP_BAD_MEMORY:
-    return "Bad Memory";
-  case LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE:
-    return "Bootloader Reclaimable";
-  case LIMINE_MEMMAP_EXECUTABLE_AND_MODULES:
-    return "Kernel/Modules";
-  case LIMINE_MEMMAP_FRAMEBUFFER:
-    return "Framebuffer";
-  case LIMINE_MEMMAP_ACPI_TABLES:
-    return "ACPI Tables";
-  default:
-    return "Unknown";
-  }
+/**
+ * __free_pages_core - Core buddy system free/merge function
+ * @pfn: Page frame number to free
+ * @order: Order of the block being freed
+ */
+static void __free_pages_core(uint64_t pfn, unsigned int order) {
+    uint64_t buddy_pfn;
+    uint64_t combined_pfn;
+    struct page *page, *buddy;
+
+    page = &mem_map[pfn];
+    ClearPageReserved(page);
+
+    while (order < MAX_ORDER - 1) {
+        buddy_pfn = pfn ^ (1 << order);
+        if (buddy_pfn >= pmm_max_pages)
+            break;
+
+        buddy = &mem_map[buddy_pfn];
+        if (!page_is_buddy(buddy, order))
+            break;
+
+        /* Found a free buddy of the same order, merge them */
+        list_del(&buddy->list);
+        free_area[order].nr_free--;
+        ClearPageBuddy(buddy);
+
+        combined_pfn = buddy_pfn & pfn;
+        pfn = combined_pfn;
+        page = &mem_map[pfn];
+        order++;
+    }
+
+    SetPageBuddy(page);
+    page->order = order;
+    list_add(&page->list, &free_area[order].free_list);
+    free_area[order].nr_free++;
 }
 
-// Find suitable memory region for bitmap
-static struct limine_memmap_entry *find_bitmap_location(
+/**
+ * pmm_alloc_pages_buddy - Allocate a power-of-two block of pages
+ * @order: Desired order (2^order pages)
+ */
+static struct page *pmm_alloc_pages_buddy(unsigned int order) {
+    unsigned int current_order;
+    struct page *page;
+
+    for (current_order = order; current_order < MAX_ORDER; current_order++) {
+        if (list_empty(&free_area[current_order].free_list))
+            continue;
+
+        /* Found a block in this order list */
+        page = list_first_entry(&free_area[current_order].free_list, struct page, list);
+        list_del(&page->list);
+        free_area[current_order].nr_free--;
+        ClearPageBuddy(page);
+
+        /* Split the block until we reach the desired order */
+        while (current_order > order) {
+            current_order--;
+            struct page *buddy = &page[1 << current_order];
+            buddy->order = current_order;
+            SetPageBuddy(buddy);
+            list_add(&buddy->list, &free_area[current_order].free_list);
+            free_area[current_order].nr_free++;
+        }
+
+        page->order = order;
+        return page;
+    }
+
+    return NULL;
+}
+
+// Find suitable memory region for mem_map array
+static struct limine_memmap_entry *find_memmap_location(
     struct limine_memmap_response *memmap, uint64_t required_bytes) {
 
-  struct limine_memmap_entry *best_region = NULL;
-  uint64_t best_size = 0;
+    struct limine_memmap_entry *best_region = NULL;
+    uint64_t best_size = 0;
 
-  // Find the largest usable region that can fit the bitmap
-  for (uint64_t i = 0; i < memmap->entry_count; i++) {
-    struct limine_memmap_entry *entry = memmap->entries[i];
+    for (uint64_t i = 0; i < memmap->entry_count; i++) {
+        struct limine_memmap_entry *entry = memmap->entries[i];
+        if (entry->type != LIMINE_MEMMAP_USABLE) continue;
 
-    if (entry->type != LIMINE_MEMMAP_USABLE) {
-      continue;
+        uint64_t aligned_base = PAGE_ALIGN_UP(entry->base);
+        uint64_t aligned_end = PAGE_ALIGN_DOWN(entry->base + entry->length);
+        if (aligned_end <= aligned_base) continue;
+
+        uint64_t available = aligned_end - aligned_base;
+        if (available >= required_bytes && available > best_size) {
+            best_size = available;
+            best_region = entry;
+        }
     }
-
-    uint64_t aligned_base = PAGE_ALIGN_UP(entry->base);
-    uint64_t aligned_end = PAGE_ALIGN_DOWN(entry->base + entry->length);
-
-    if (aligned_end <= aligned_base) {
-      continue;
-    }
-
-    uint64_t available = aligned_end - aligned_base;
-
-    // Need at least required_bytes
-    if (available >= required_bytes && available > best_size) {
-      best_size = available;
-      best_region = entry;
-    }
-  }
-
-  return best_region;
+    return best_region;
 }
 
 int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
-  struct limine_memmap_response *memmap =
-      (struct limine_memmap_response *)memmap_response_ptr;
+    struct limine_memmap_response *memmap = (struct limine_memmap_response *)memmap_response_ptr;
 
-  if (!memmap || memmap->entry_count == 0) {
-    printk(PMM_CLASS "Error: Invalid memory map\n");
-    return -1;
-  }
-
-  g_hhdm_offset = hhdm_offset;
-
-  printk(KERN_DEBUG PMM_CLASS "Initializing with HHDM offset: 0x%llx\n", hhdm_offset);
-  printk(KERN_DEBUG PMM_CLASS "Memory map has %llu entries\n", memmap->entry_count);
-
-  // First pass: Find highest physical address to determine bitmap size
-  uint64_t highest_addr = 0;
-  uint64_t total_usable_bytes = 0;
-
-  for (uint64_t i = 0; i < memmap->entry_count; i++) {
-    struct limine_memmap_entry *entry = memmap->entries[i];
-    uint64_t end = entry->base + entry->length;
-
-    if (end > highest_addr) {
-      highest_addr = end;
+    if (!memmap || memmap->entry_count == 0) {
+        printk(PMM_CLASS "Error: Invalid memory map\n");
+        return -1;
     }
 
-    if (entry->type == LIMINE_MEMMAP_USABLE) {
-      uint64_t aligned_base = PAGE_ALIGN_UP(entry->base);
-      uint64_t aligned_end = PAGE_ALIGN_DOWN(end);
-      if (aligned_end > aligned_base) {
-        total_usable_bytes += aligned_end - aligned_base;
-      }
-    }
-  }
+    g_hhdm_offset = hhdm_offset;
+    printk(KERN_DEBUG PMM_CLASS "Initializing Buddy System PMM with HHDM offset: 0x%llx\n", hhdm_offset);
 
-  printk(KERN_DEBUG PMM_CLASS "Detected highest address: 0x%llx\n", highest_addr);
-  printk(PMM_CLASS "Total usable memory: %llu MB\n",
-         total_usable_bytes / (1024 * 1024));
+    // Pass 1: Determine total memory and highest address
+    uint64_t highest_addr = 0;
+    uint64_t total_usable_bytes = 0;
 
-  // Calculate bitmap size based on highest address
-  pmm_max_pages = PHYS_TO_PFN(highest_addr);
-  if (highest_addr & (PAGE_SIZE - 1)) {
-    pmm_max_pages++; // Round up if not page-aligned
-  }
+    for (uint64_t i = 0; i < memmap->entry_count; i++) {
+        struct limine_memmap_entry *entry = memmap->entries[i];
+        uint64_t end = entry->base + entry->length;
 
-  pmm_bitmap_size_words = (pmm_max_pages + BITS_PER_LONG - 1) / BITS_PER_LONG;
-  uint64_t bitmap_bytes = pmm_bitmap_size_words * sizeof(unsigned long);
-  uint64_t bitmap_bytes_aligned = PAGE_ALIGN_UP(bitmap_bytes);
+        // Only calculate highest address from regions we might actually use
+        // to avoid mem_map explosion if there is a huge gap before high MMIO
+        if (entry->type == LIMINE_MEMMAP_USABLE ||
+            entry->type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE ||
+            entry->type == LIMINE_MEMMAP_EXECUTABLE_AND_MODULES) {
+            if (end > highest_addr) highest_addr = end;
+        }
 
-  printk(KERN_DEBUG PMM_CLASS "Max pages: %llu\n", pmm_max_pages);
-  printk(KERN_DEBUG PMM_CLASS "Bitmap size: %llu bytes (%llu pages)\n",
-         bitmap_bytes, bitmap_bytes_aligned / PAGE_SIZE);
-
-  // Find memory region for bitmap
-  struct limine_memmap_entry *bitmap_region =
-      find_bitmap_location(memmap, bitmap_bytes_aligned);
-
-  if (!bitmap_region) {
-    printk(PMM_CLASS "Error: Cannot find suitable memory for bitmap\n");
-    return -1;
-  }
-
-  // Allocate bitmap at beginning of chosen region
-  uint64_t bitmap_phys = PAGE_ALIGN_UP(bitmap_region->base);
-  pmm_bitmap = (unsigned long *)pmm_phys_to_virt(bitmap_phys);
-
-  printk(KERN_DEBUG PMM_CLASS "Bitmap allocated at phys: 0x%llx, virt: %p\n",
-         bitmap_phys, pmm_bitmap);
-
-  // Initialize bitmap - mark all pages as used initially
-  memset(pmm_bitmap, 0xFF, bitmap_bytes);
-
-  // Initialize stats
-  memset((void *)&pmm_stats, 0, sizeof(pmm_stats));
-  pmm_stats.bitmap_pages = bitmap_bytes_aligned / PAGE_SIZE;
-  pmm_stats.bitmap_size = bitmap_bytes;
-
-  // Second pass: Mark usable pages as free
-  uint64_t total_free_pages = 0;
-  uint64_t bitmap_start_page = PHYS_TO_PFN(bitmap_phys);
-  uint64_t bitmap_end_page = bitmap_start_page + pmm_stats.bitmap_pages;
-
-  for (uint64_t i = 0; i < memmap->entry_count; i++) {
-    struct limine_memmap_entry *entry = memmap->entries[i];
-
-    if (entry->type != LIMINE_MEMMAP_USABLE) {
-      continue;
+        if (entry->type == LIMINE_MEMMAP_USABLE) {
+            uint64_t aligned_base = PAGE_ALIGN_UP(entry->base);
+            uint64_t aligned_end = PAGE_ALIGN_DOWN(end);
+            if (aligned_end > aligned_base) total_usable_bytes += aligned_end - aligned_base;
+        }
     }
 
-    uint64_t aligned_base = PAGE_ALIGN_UP(entry->base);
-    uint64_t aligned_end = PAGE_ALIGN_DOWN(entry->base + entry->length);
+    pmm_max_pages = PHYS_TO_PFN(PAGE_ALIGN_UP(highest_addr));
+    uint64_t memmap_size = pmm_max_pages * sizeof(struct page);
+    uint64_t memmap_pages = PAGE_ALIGN_UP(memmap_size) / PAGE_SIZE;
 
-    if (aligned_end <= aligned_base) {
-      continue;
+    printk(KERN_DEBUG PMM_CLASS "Max PFN: %llu, Memmap size: %llu KB (%llu pages)\n",
+           pmm_max_pages, memmap_size / 1024, memmap_pages);
+
+    // Find location for mem_map array
+    struct limine_memmap_entry *mm_region = find_memmap_location(memmap, PAGE_ALIGN_UP(memmap_size));
+    if (!mm_region) {
+        printk(PMM_CLASS "Error: Cannot find suitable memory for mem_map\n");
+        return -1;
     }
 
-    uint64_t start_page = PHYS_TO_PFN(aligned_base);
-    uint64_t end_page = PHYS_TO_PFN(aligned_end);
+    uint64_t mm_phys = PAGE_ALIGN_UP(mm_region->base);
+    mem_map = (struct page *)pmm_phys_to_virt(mm_phys);
+    memset(mem_map, 0, memmap_size);
 
-    if (end_page > pmm_max_pages) {
-      end_page = pmm_max_pages;
+    // Initialize all pages as reserved initially
+    for (uint64_t i = 0; i < pmm_max_pages; i++) {
+        INIT_LIST_HEAD(&mem_map[i].list);
+        mem_map[i].flags = PG_reserved;
+        mem_map[i].order = 0;
     }
 
-    // Mark pages as free, but skip bitmap region
-    for (uint64_t page = start_page; page < end_page; page++) {
-      // Don't free bitmap pages
-      if (page >= bitmap_start_page && page < bitmap_end_page) {
-        continue;
-      }
-
-      pmm_mark_free(page);
-      total_free_pages++;
-
-      // Update first free hint
-      if (pmm_first_free_page == 0 || page < pmm_first_free_page) {
-        pmm_first_free_page = page;
-      }
+    // Initialize free area lists
+    for (int i = 0; i < MAX_ORDER; i++) {
+        INIT_LIST_HEAD(&free_area[i].free_list);
+        free_area[i].nr_free = 0;
     }
-  }
 
-  pmm_stats.total_pages = total_free_pages + pmm_stats.bitmap_pages;
-  pmm_stats.free_pages = total_free_pages;
-  pmm_stats.used_pages = pmm_stats.bitmap_pages; // Bitmap is already used
-  pmm_stats.total_bytes = total_usable_bytes;
-  pmm_stats.highest_address = highest_addr;
+    // Pass 2: Populate buddy system with usable memory
+    uint64_t mm_start_pfn = PHYS_TO_PFN(mm_phys);
+    uint64_t mm_end_pfn = mm_start_pfn + memmap_pages;
+    uint64_t usable_pages = 0;
 
-  pmm_initialized = true;
+    for (uint64_t i = 0; i < memmap->entry_count; i++) {
+        struct limine_memmap_entry *entry = memmap->entries[i];
+        if (entry->type != LIMINE_MEMMAP_USABLE) continue;
 
-  printk(PMM_CLASS "PMM initialized successfully\n");
-  printk(PMM_CLASS "Total pages: %llu (%llu MB)\n",
-         pmm_stats.total_pages,
-         (pmm_stats.total_pages * PAGE_SIZE) / (1024 * 1024));
-  printk(PMM_CLASS "Free pages: %llu (%llu MB)\n",
-         pmm_stats.free_pages,
-         (pmm_stats.free_pages * PAGE_SIZE) / (1024 * 1024));
-  printk(KERN_DEBUG PMM_CLASS "Bitmap overhead: %llu pages (%llu KB)\n",
-         pmm_stats.bitmap_pages,
-         (pmm_stats.bitmap_pages * PAGE_SIZE) / 1024);
+        uint64_t start_pfn = PHYS_TO_PFN(PAGE_ALIGN_UP(entry->base));
+        uint64_t end_pfn = PHYS_TO_PFN(PAGE_ALIGN_DOWN(entry->base + entry->length));
 
-  return 0;
+        for (uint64_t pfn = start_pfn; pfn < end_pfn; pfn++) {
+            // Reserve page 0 (Null address protection and legacy BIOS compatibility)
+            if (pfn == 0) continue;
+
+            // Skip mem_map itself
+            if (pfn >= mm_start_pfn && pfn < mm_end_pfn) continue;
+            
+            __free_pages_core(pfn, 0);
+            usable_pages++;
+        }
+    }
+
+    // Initialize statistics
+    pmm_stats.total_pages = usable_pages + memmap_pages;
+    pmm_stats.free_pages = usable_pages;
+    pmm_stats.used_pages = memmap_pages;
+    pmm_stats.total_bytes = total_usable_bytes;
+    pmm_stats.highest_address = highest_addr;
+    pmm_stats.memmap_pages = memmap_pages;
+    pmm_stats.memmap_size = memmap_size;
+
+    pmm_initialized = true;
+
+    printk(PMM_CLASS "Buddy System PMM initialized successfully\n");
+    printk(PMM_CLASS "Total memory: %llu MB, Free: %llu MB\n",
+           (pmm_stats.total_pages * PAGE_SIZE) / (1024 * 1024),
+           (pmm_stats.free_pages * PAGE_SIZE) / (1024 * 1024));
+
+    return 0;
 }
 
 uint64_t pmm_alloc_page(void) {
-  if (!pmm_initialized) {
-    return 0;
-  }
+    return pmm_alloc_pages(1);
+}
 
-  irq_flags_t flags = spinlock_lock_irqsave(&pmm_lock);
+uint64_t pmm_alloc_pages(size_t count) {
+    if (unlikely(!pmm_initialized || count == 0)) return 0;
 
-  // Start search from hint
-  uint64_t start = pmm_first_free_page;
+    unsigned int order = get_order(count);
+    if (unlikely(order >= MAX_ORDER)) {
+        printk(KERN_ERR PMM_CLASS "Requested allocation too large: %zu pages\n", count);
+        return 0;
+    }
 
-  // Use generic bitmap to find first free page
-  int page = find_next_zero_bit(pmm_bitmap, pmm_max_pages, start);
-  if (page >= pmm_max_pages) {
-    // Wrap around and search from beginning
-    page = find_first_zero_bit(pmm_bitmap, start);
-  }
+    irq_flags_t flags = spinlock_lock_irqsave(&pmm_lock);
+    struct page *page = pmm_alloc_pages_buddy(order);
+    
+    if (unlikely(!page)) {
+        spinlock_unlock_irqrestore(&pmm_lock, flags);
+        printk(KERN_CRIT PMM_CLASS "Out of physical memory (order %u)\n", order);
+        return 0;
+    }
 
-  if (page < pmm_max_pages) {
-    pmm_mark_used(page);
-    pmm_stats.free_pages--;
-    pmm_stats.used_pages++;
+    uint64_t pfn = page_to_pfn(page);
+    uint64_t allocated_pages = 1UL << order;
+    
+    pmm_stats.free_pages -= allocated_pages;
+    pmm_stats.used_pages += allocated_pages;
 
-    // Update hint to next potential free page
-    pmm_first_free_page = page + 1;
-    if (pmm_first_free_page >= pmm_max_pages) {
-      pmm_first_free_page = 0;
+    /* Sophisticated: Return extra pages to buddy system if we allocated a larger block than needed */
+    if (allocated_pages > count) {
+        uint64_t extra_start_pfn = pfn + count;
+        uint64_t extra_pages_count = allocated_pages - count;
+
+        for (uint64_t i = 0; i < extra_pages_count; i++) {
+            __free_pages_core(extra_start_pfn + i, 0);
+            pmm_stats.free_pages++;
+            pmm_stats.used_pages--;
+        }
     }
 
     spinlock_unlock_irqrestore(&pmm_lock, flags);
 
-    // Zero the page before returning
-    void *virt = pmm_phys_to_virt(PFN_TO_PHYS(page));
-    memset(virt, 0, PAGE_SIZE);
+    uint64_t phys = PFN_TO_PHYS(pfn);
+    void *virt = pmm_phys_to_virt(phys);
+    memset(virt, 0, count * PAGE_SIZE);
 
-    return PFN_TO_PHYS(page);
-  }
-
-  spinlock_unlock_irqrestore(&pmm_lock, flags);
-
-  printk(KERN_CRIT PMM_CLASS "Warning: Out of physical memory!\n");
-  printk(KERN_CRIT PMM_CLASS "Free: %llu, Used: %llu, Total: %llu\n",
-         pmm_stats.free_pages, pmm_stats.used_pages, pmm_stats.total_pages);
-  return 0;
-}
-
-uint64_t pmm_alloc_pages(size_t count) {
-  if (!pmm_initialized || count == 0) {
-    return 0;
-  }
-
-  if (count == 1) {
-    return pmm_alloc_page();
-  }
-
-  // Quick check if we have enough free pages at all
-  if (pmm_stats.free_pages < count) {
-    printk(KERN_CRIT PMM_CLASS
-           "Warning: Not enough memory (%llu free, %zu requested)\n",
-           pmm_stats.free_pages, count);
-    return 0;
-  }
-
-  irq_flags_t flags = spinlock_lock_irqsave(&pmm_lock);
-
-  // Search for contiguous free pages
-  for (uint64_t page = pmm_first_free_page;
-       page + count <= pmm_max_pages; page++) {
-
-    bool found = true;
-
-    // Check if 'count' contiguous pages are free
-    for (size_t i = 0; i < count; i++) {
-      if (pmm_is_used(page + i)) {
-        found = false;
-        page += i; // Skip ahead past this used page
-        break;
-      }
-    }
-
-    if (found) {
-      // Mark all pages as used
-      for (size_t i = 0; i < count; i++) {
-        pmm_mark_used(page + i);
-      }
-
-      pmm_stats.free_pages -= count;
-      pmm_stats.used_pages += count;
-
-      // Update hint
-      if (page == pmm_first_free_page) {
-        pmm_first_free_page = page + count;
-        if (pmm_first_free_page >= pmm_max_pages) {
-          pmm_first_free_page = 0;
-        }
-      }
-
-      spinlock_unlock_irqrestore(&pmm_lock, flags);
-
-      // Zero all pages
-      void *virt = pmm_phys_to_virt(PFN_TO_PHYS(page));
-      memset(virt, 0, count * PAGE_SIZE);
-
-      return PFN_TO_PHYS(page);
-    }
-  }
-
-  spinlock_unlock_irqrestore(&pmm_lock, flags);
-
-  printk(KERN_CRIT PMM_CLASS
-         "Warning: Cannot allocate %zu contiguous pages\n", count);
-  printk(KERN_CRIT PMM_CLASS "Free: %llu (fragmented)\n",
-         pmm_stats.free_pages);
-  return 0;
+    return phys;
 }
 
 void pmm_free_page(uint64_t phys_addr) {
-  pmm_free_pages(phys_addr, 1);
+    pmm_free_pages(phys_addr, 1);
 }
 
 void pmm_free_pages(uint64_t phys_addr, size_t count) {
-  if (!pmm_initialized || count == 0) {
-    return;
-  }
+    if (unlikely(!pmm_initialized || count == 0)) return;
 
-  // Validate address is page-aligned
-  if (phys_addr & (PAGE_SIZE - 1)) {
-    printk(KERN_ERR PMM_CLASS
-           "Error: Attempted to free unaligned address 0x%llx\n",
-           phys_addr);
-    return;
-  }
-
-  uint64_t start_page = PHYS_TO_PFN(phys_addr);
-
-  if (start_page >= pmm_max_pages) {
-    printk(KERN_ERR PMM_CLASS
-           "Error: Free address 0x%llx out of range (max page: %llu)\n",
-           phys_addr, pmm_max_pages);
-    return;
-  }
-
-  if (start_page + count > pmm_max_pages) {
-    printk(KERN_ERR PMM_CLASS
-           "Error: Free range exceeds max pages (page %llu + %zu > %llu)\n",
-           start_page, count, pmm_max_pages);
-    return;
-  }
-
-  irq_flags_t flags = spinlock_lock_irqsave(&pmm_lock);
-
-  for (size_t i = 0; i < count; i++) {
-    uint64_t page = start_page + i;
-
-    if (!pmm_is_used(page)) {
-      printk(KERN_ERR PMM_CLASS
-             "Warning: Double-free detected at page 0x%llx (phys: 0x%llx)\n",
-             page, PFN_TO_PHYS(page));
-      continue;
+    if (unlikely(phys_addr & (PAGE_SIZE - 1))) {
+        printk(KERN_ERR PMM_CLASS "Freeing unaligned address 0x%llx\n", phys_addr);
+        return;
     }
 
-    pmm_mark_free(page);
-    pmm_stats.free_pages++;
-    pmm_stats.used_pages--;
+    uint64_t pfn = PHYS_TO_PFN(phys_addr);
+    irq_flags_t flags = spinlock_lock_irqsave(&pmm_lock);
 
-    // Update hint if this page is lower
-    if (page < pmm_first_free_page) {
-      pmm_first_free_page = page;
+    for (size_t i = 0; i < count; i++) {
+        uint64_t curr_pfn = pfn + i;
+        if (unlikely(curr_pfn >= pmm_max_pages)) break;
+
+        struct page *page = &mem_map[curr_pfn];
+        if (unlikely(PageBuddy(page))) {
+            printk(KERN_ERR PMM_CLASS "Double-free detected at PFN 0x%llx\n", curr_pfn);
+            continue;
+        }
+
+        __free_pages_core(curr_pfn, 0);
+        pmm_stats.free_pages++;
+        pmm_stats.used_pages--;
     }
-  }
 
-  spinlock_unlock_irqrestore(&pmm_lock, flags);
+    spinlock_unlock_irqrestore(&pmm_lock, flags);
 }
 
-pmm_stats_t * pmm_get_stats(void) {
-  return (pmm_stats_t*)(&pmm_stats);
+pmm_stats_t *pmm_get_stats(void) {
+    return (pmm_stats_t *)(&pmm_stats);
 }
-#include <kernel/fkx/fkx.h>
+
 EXPORT_SYMBOL(pmm_virt_to_phys);
 EXPORT_SYMBOL(pmm_phys_to_virt);
 EXPORT_SYMBOL(pmm_alloc_page);
 EXPORT_SYMBOL(pmm_free_page);
+EXPORT_SYMBOL(pmm_alloc_pages);
+EXPORT_SYMBOL(pmm_free_pages);

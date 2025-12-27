@@ -391,7 +391,7 @@ if(VBOXMANAGE)
          --ioapic on
          --rtcuseutc on
          --chipset piix3
-         --firmware bios
+         --firmware efi64
          --graphicscontroller vmsvga
          --audio none
          --usb off

@@ -1,3 +1,4 @@
+#include <kernel/classes.h>
 #include <kernel/fkx/fkx.h>
 #include <lib/string.h>
 #include <mm/slab.h>
@@ -40,7 +41,7 @@ int fkx_register_symbol(uintptr_t addr, const char *name) {
 
     // Check if symbol already exists
     if (fkx_lookup_symbol(name)) {
-        printk(KERN_WARNING "FKX: Symbol %s already registered, skipping\n", name);
+        printk(KERN_WARNING FKX_CLASS "Symbol %s already registered, skipping\n", name);
         return -1;
     }
 
