@@ -24,20 +24,21 @@
 #include <arch/x64/idt/idt.h>
 #include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/vmm.h>
+#include <arch/x64/percpu.h>
 #include <arch/x64/smp.h>
 #include <compiler.h>
 #include <crypto/crc32.h>
 #include <drivers/acpi/power.h>
-#include <kernel/sysintf/ic.h>
 #include <drivers/qemu/debugcon/debugcon.h>
-#include <kernel/sysintf/time.h>
 #include <fs/vfs.h>
 #include <kernel/classes.h>
 #include <kernel/cmdline.h>
+#include <kernel/fkx/fkx.h>
 #include <kernel/panic.h>
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>
-#include <kernel/fkx/fkx.h>
+#include <kernel/sysintf/ic.h>
+#include <kernel/sysintf/time.h>
 #include <kernel/types.h>
 #include <kernel/version.h>
 #include <lib/log.h>
@@ -99,8 +100,7 @@ __attribute__((
     used,
     section(".limine_requests"))) static volatile struct limine_module_request
     module_request = {.id = LIMINE_MODULE_REQUEST_ID,
-                      .revision = 0
-    }; // New module request
+                      .revision = 0}; // New module request
 
 __attribute__((used, section(".limine_requests"))) static volatile struct
     limine_bootloader_info_request bootloader_info_request = {
@@ -131,7 +131,7 @@ __attribute__((used, section(".limine_requests_end"))) static volatile uint64_t
 
 static struct task_struct bsp_task __aligned(16);
 
-volatile struct limine_framebuffer_request* get_framebuffer_request(void) {
+volatile struct limine_framebuffer_request *get_framebuffer_request(void) {
   return &framebuffer_request;
 }
 EXPORT_SYMBOL(get_framebuffer_request);
@@ -140,6 +140,25 @@ int process(void *data) {
   while (1) {
     check_preempt();
   }
+}
+
+DEFINE_PER_CPU(int, test_var);
+
+void test_percpu_system(void) {
+  int cpu = smp_get_id();
+  int val = 0xDEADBEEF + cpu;
+
+  printk(KERN_INFO "Testing per-cpu system on CPU %d\n", cpu);
+
+  this_cpu_write(test_var, val);
+
+  int read_back = this_cpu_read(test_var);
+  if (read_back != val) {
+    printk(KERN_ERR "Per-CPU test failed! Wrote %x, read %x\n", val, read_back);
+    panic("Per-CPU test failed");
+  }
+
+  printk(KERN_INFO "Per-CPU test passed on CPU %d (val=%x)\n", cpu, read_back);
 }
 
 // TODO: MAKE ALL HARDWARE DRIVER A SEPARATE MODULE!!
@@ -188,9 +207,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   }
 
   if (paging_request.response) {
-    printk(KERN_CLASS "system pagination level: %d\n",
-           vmm_get_paging_levels()
-    );
+    printk(KERN_CLASS "system pagination level: %d\n", vmm_get_paging_levels());
   }
 
   if (cmdline_request.response) {
@@ -221,6 +238,11 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   vmm_init();
 
   slab_init();
+  setup_per_cpu_areas();
+  smp_prepare_boot_cpu();
+  pmm_init_cpu();
+  test_percpu_system();
+
   slab_test();
   vmalloc_test();
   vma_test();
@@ -233,10 +255,9 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
            module_request.response->module_count);
 
     for (size_t i = 0; i < module_request.response->module_count; i++) {
-      struct limine_file *m =
-          module_request.response->modules[i];
-      printk(KERN_DEBUG FKX_CLASS "  [%zu] %s @ %p (%lu bytes)\n",
-             i, m->path, m->address, m->size);
+      struct limine_file *m = module_request.response->modules[i];
+      printk(KERN_DEBUG FKX_CLASS "  [%zu] %s @ %p (%lu bytes)\n", i, m->path,
+             m->address, m->size);
 
       if (fkx_load_image(m->address, m->size) == 0) {
         printk(FKX_CLASS "Successfully loaded module: %s\n", m->path);
@@ -247,12 +268,12 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
       printk(KERN_ERR FKX_CLASS "Failed to finalize module loading\n");
     }
   } else {
-    printk(KERN_NOTICE FKX_CLASS "no FKX module found/loaded"
-      ", you probably do not want this"
-      ", this build of VoidFrameX does not have "
-      "any built-in hardware drivers"
-      ", expect exponential lack of hardware support.\n"
-    );
+    printk(KERN_NOTICE FKX_CLASS
+           "no FKX module found/loaded"
+           ", you probably do not want this"
+           ", this build of VoidFrameX does not have "
+           "any built-in hardware drivers"
+           ", expect exponential lack of hardware support.\n");
   }
 
   fkx_init_module_class(FKX_PRINTK_CLASS);
@@ -293,7 +314,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     printk(KERN_CLASS "TSC calibrated successfully.\n");
   }
 
-
   // Initialize generic driver modules (e.g., PCI)
   fkx_init_module_class(FKX_DRIVER_CLASS);
 
@@ -306,7 +326,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   vfs_init();
 
   printk_init_async();
-  
+
   printk(KERN_CLASS "VoidFrameX initialization complete, starting init...\n");
 
   if (!process_spawn(process, NULL, "v-pxs"))

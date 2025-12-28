@@ -36,6 +36,11 @@ typedef struct {
   uint64_t memmap_size;     // Size of mem_map array in bytes
 } pmm_stats_t;
 
+#include <mm/zone.h>
+
+/* Per-CPU page cache for order-0 pages */
+/* Defined in mm/zone.h */
+
 /**
  * Initialize the physical memory manager.
  * Must be called early in kernel initialization.
@@ -45,6 +50,12 @@ typedef struct {
  * @return 0 on success, negative on error
  */
 int pmm_init(void *memmap_response, uint64_t hhdm_offset);
+
+/**
+ * Initialize per-CPU PMM state (PCP list).
+ * Must be called on each CPU after per-CPU area setup.
+ */
+void pmm_init_cpu(void);
 
 /**
  * Allocate a single physical page.
@@ -81,7 +92,7 @@ void pmm_free_pages(uint64_t phys_addr, size_t count);
  *
  * @return Pointer to stats structure
  */
-pmm_stats_t * pmm_get_stats(void);
+pmm_stats_t *pmm_get_stats(void);
 
 /**
  * Convert physical address to virtual address using HHDM.
@@ -114,17 +125,17 @@ static inline uint64_t pmm_virt_to_phys(void *virt_addr) {
 }
 
 static inline struct page *phys_to_page(uint64_t phys) {
-    return &mem_map[PHYS_TO_PFN(phys)];
+  return &mem_map[PHYS_TO_PFN(phys)];
 }
 
 static inline uint64_t page_to_pfn(struct page *page) {
-    return (uint64_t)(page - mem_map);
+  return (uint64_t)(page - mem_map);
 }
 
 static inline struct page *virt_to_page(void *addr) {
-    return phys_to_page(pmm_virt_to_phys(addr));
+  return phys_to_page(pmm_virt_to_phys(addr));
 }
 
 static inline void *page_address(struct page *page) {
-    return pmm_phys_to_virt(PFN_TO_PHYS((uint64_t)(page - mem_map)));
+  return pmm_phys_to_virt(PFN_TO_PHYS((uint64_t)(page - mem_map)));
 }

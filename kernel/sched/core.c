@@ -20,15 +20,16 @@
 
 #include <arch/x64/cpu.h>
 #include <arch/x64/mm/vmm.h>
+#include <arch/x64/percpu.h>
 #include <arch/x64/smp.h>
 #include <arch/x64/tsc.h>      // Added for get_time_ns
 #include <drivers/apic/apic.h> // Added for IPI functions
-#include <kernel/sysintf/ic.h>
 #include <kernel/classes.h>
+#include <kernel/panic.h>
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>
+#include <kernel/sysintf/ic.h>
 #include <kernel/wait.h>
-#include <kernel/panic.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <linux/container_of.h>
@@ -40,21 +41,19 @@
  * Scheduler Core Implementation
  */
 
-// Simple fixed-size runqueue array for now (per CPU)
-struct rq per_cpu_runqueues[MAX_CPUS];
+// Per-CPU runqueue
+DEFINE_PER_CPU(struct rq, runqueues);
 
-// Current task per CPU (lookup table)
-static struct task_struct *current_tasks[MAX_CPUS];
+// Current task per CPU
+DEFINE_PER_CPU(struct task_struct *, current_task);
 
 // Idle task per CPU
-static struct task_struct per_cpu_idle_tasks[MAX_CPUS];
+DEFINE_PER_CPU(struct task_struct, idle_task);
 
 // Preemption flag per CPU
-static volatile int need_resched[MAX_CPUS];
+DEFINE_PER_CPU(int, need_resched);
 
-void set_need_resched(void) {
-  need_resched[cpu_id()] = 1;
-}
+void set_need_resched(void) { this_cpu_write(need_resched, 1); }
 
 void double_rq_lock(struct rq *rq1, struct rq *rq2) {
   if (rq1 == rq2) {
@@ -87,18 +86,18 @@ int cpu_id(void) {
   return (int)smp_get_id();
 }
 
-struct rq *this_rq(void) { return &per_cpu_runqueues[cpu_id()]; }
+struct rq *this_rq(void) { return this_cpu_ptr(runqueues); }
 
-struct task_struct *get_current(void) { return current_tasks[cpu_id()]; }
+struct task_struct *get_current(void) { return this_cpu_read(current_task); }
 
-void set_current(struct task_struct *t) { current_tasks[cpu_id()] = t; }
+void set_current(struct task_struct *t) { this_cpu_write(current_task, t); }
 
 void set_task_cpu(struct task_struct *task, int cpu) { task->cpu = cpu; }
 
 // Internal migration helper - caller must hold __rq_lock
 static void __move_task_to_rq_locked(struct task_struct *task, int dest_cpu) {
-  struct rq *src_rq = &per_cpu_runqueues[task->cpu];
-  struct rq *dest_rq = &per_cpu_runqueues[dest_cpu];
+  struct rq *src_rq = per_cpu_ptr(runqueues, task->cpu);
+  struct rq *dest_rq = per_cpu_ptr(runqueues, dest_cpu);
 
   deactivate_task(src_rq, task);
   set_task_cpu(task, dest_cpu);
@@ -115,8 +114,8 @@ void move_task_to_rq(struct task_struct *task, int dest_cpu) {
     return;
   }
 
-  struct rq *src_rq = &per_cpu_runqueues[task->cpu];
-  struct rq *dest_rq = &per_cpu_runqueues[dest_cpu];
+  struct rq *src_rq = per_cpu_ptr(runqueues, task->cpu);
+  struct rq *dest_rq = per_cpu_ptr(runqueues, dest_cpu);
 
   irq_flags_t flags = save_irq_flags();
   cpu_cli();
@@ -146,12 +145,11 @@ static void switch_mm(struct mm_struct *prev, struct mm_struct *next,
  */
 void sched_init(void) {
   pid_allocator_init();
-  
-  memset(per_cpu_runqueues, 0, sizeof(per_cpu_runqueues));
-  memset(current_tasks, 0, sizeof(current_tasks));
+
+  // Per-CPU variables are zero-initialized by setup_per_cpu_areas
 
   for (int i = 0; i < MAX_CPUS; i++) {
-    struct rq *rq = &per_cpu_runqueues[i];
+    struct rq *rq = per_cpu_ptr(runqueues, i);
     rq->tasks_timeline = RB_ROOT;
   }
 
@@ -205,7 +203,7 @@ void task_sleep(void) {
  * @task: Task to wake up
  */
 void task_wake_up(struct task_struct *task) {
-  struct rq *rq = &per_cpu_runqueues[task->cpu];
+  struct rq *rq = per_cpu_ptr(runqueues, task->cpu);
 
   irq_flags_t flags = spinlock_lock_irqsave(&rq->lock);
 
@@ -227,7 +225,7 @@ void task_wake_up_all(void) {
   // For now, we'll implement a simple version
   int cpu;
   for (cpu = 0; cpu < smp_get_cpu_count(); cpu++) {
-    struct rq *rq = &per_cpu_runqueues[cpu];
+    struct rq *rq = per_cpu_ptr(runqueues, cpu);
     // Wake up any sleeping tasks on this CPU
     // Implementation would depend on how tasks are tracked when sleeping
   }
@@ -254,7 +252,7 @@ void set_task_nice(struct task_struct *p, int nice) {
   if (p->nice == nice)
     return;
 
-  struct rq *rq = &per_cpu_runqueues[p->cpu];
+  struct rq *rq = per_cpu_ptr(runqueues, p->cpu);
   irq_flags_t flags = spinlock_lock_irqsave(&rq->lock);
 
   // Update runtime before changing weight to be fair
@@ -297,8 +295,9 @@ void schedule(void) {
 
   if (!next_task) {
     next_task = rq->idle;
-    // Idle task is never in the tree, so no need to dequeue it in pick_next_task_fair
-    // and no need to enqueue it in put_prev_task_fair (handled by on_rq or special cases)
+    // Idle task is never in the tree, so no need to dequeue it in
+    // pick_next_task_fair and no need to enqueue it in put_prev_task_fair
+    // (handled by on_rq or special cases)
   }
 
   if (!next_task) {
@@ -339,14 +338,14 @@ void schedule(void) {
 
 // Function to signal a remote CPU to reschedule
 void reschedule_cpu(int cpu) {
-  ic_send_ipi(per_cpu_apic_id[cpu], IRQ_SCHED_IPI_VECTOR,
+  ic_send_ipi(*per_cpu_ptr(cpu_apic_id, cpu), IRQ_SCHED_IPI_VECTOR,
               APIC_DELIVERY_MODE_FIXED);
 }
 
 // Handler for the scheduler IPI
 void irq_sched_ipi_handler(void) {
-  need_resched[cpu_id()] = 1; // Signal that a reschedule is needed
-  // No EOI here, irq_common_stub handles it
+  this_cpu_write(need_resched, 1); // Signal that a reschedule is needed
+                                   // No EOI here, irq_common_stub handles it
 }
 
 static void load_balance(void) {
@@ -362,7 +361,7 @@ static void load_balance(void) {
 
   /* Find overloaded and underloaded CPUs based on average load */
   for (unsigned int i = 0; i < total_cpus; i++) {
-    struct rq *rq = &per_cpu_runqueues[i];
+    struct rq *rq = per_cpu_ptr(runqueues, i);
     unsigned long load = rq->avg_load;
     if (load > max_load) {
       max_load = load;
@@ -380,8 +379,8 @@ static void load_balance(void) {
     return;
   }
 
-  struct rq *src_rq = &per_cpu_runqueues[overloaded_cpu];
-  struct rq *dst_rq = &per_cpu_runqueues[underloaded_cpu];
+  struct rq *src_rq = per_cpu_ptr(runqueues, overloaded_cpu);
+  struct rq *dst_rq = per_cpu_ptr(runqueues, underloaded_cpu);
 
   irq_flags_t flags = save_irq_flags();
   cpu_cli();
@@ -395,7 +394,8 @@ static void load_balance(void) {
   }
 
   /* Find a candidate task on the source runqueue */
-  struct rb_node *n = src_rq->rb_leftmost ? src_rq->rb_leftmost : rb_first(&src_rq->tasks_timeline);
+  struct rb_node *n = src_rq->rb_leftmost ? src_rq->rb_leftmost
+                                          : rb_first(&src_rq->tasks_timeline);
   struct task_struct *candidate = NULL;
 
   for (; n; n = rb_next(n)) {
@@ -413,12 +413,14 @@ static void load_balance(void) {
 
   if (candidate) {
     __move_task_to_rq_locked(candidate, underloaded_cpu);
-    printk(KERN_DEBUG SCHED_CLASS "Migrated task %p (PID: %d) from CPU %d to %d (load: %lu -> %lu)\n", 
-           candidate, candidate->pid, overloaded_cpu, underloaded_cpu, max_load, min_load);
-    
+    printk(KERN_DEBUG SCHED_CLASS
+           "Migrated task %p (PID: %d) from CPU %d to %d (load: %lu -> %lu)\n",
+           candidate, candidate->pid, overloaded_cpu, underloaded_cpu, max_load,
+           min_load);
+
     double_rq_unlock(src_rq, dst_rq);
     restore_irq_flags(flags);
-    
+
     /* Signal destination CPU to reschedule */
     reschedule_cpu(underloaded_cpu);
   } else {
@@ -456,8 +458,8 @@ void __hot scheduler_tick(void) {
  * Check if preemption is needed and schedule if safe
  */
 void check_preempt(void) {
-  if (need_resched[cpu_id()]) {
-    need_resched[cpu_id()] = 0;
+  if (this_cpu_read(need_resched)) {
+    this_cpu_write(need_resched, 0);
     schedule();
   }
 }
@@ -486,7 +488,7 @@ void sched_init_task(struct task_struct *initial_task) {
 
 void sched_init_ap(void) {
   int cpu = cpu_id();
-  struct task_struct *idle = &per_cpu_idle_tasks[cpu];
+  struct task_struct *idle = per_cpu_ptr(idle_task, cpu);
 
   memset(idle, 0, sizeof(*idle));
   snprintf(idle->comm, sizeof(idle->comm), "idle/%d", cpu);

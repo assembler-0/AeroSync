@@ -113,6 +113,19 @@ SECTIONS
         _data_end = .;
     } :data
 
+    /*
+     * Per-CPU data section (part of data segment).
+     * Linked normally at high address.
+     * GS_BASE will be adjusted to point to (alloc_ptr - _percpu_start).
+     */
+    . = ALIGN(PAGE_SIZE);
+    _percpu_start = .;
+    .percpu : {
+        *(.percpu .percpu.*)
+        . = ALIGN(PAGE_SIZE);
+        _percpu_end = .;
+    } :data
+
     /* Uninitialized data - read-write, zero-initialized */
     .bss (NOLOAD) :
     {
@@ -124,6 +137,8 @@ SECTIONS
         . = ALIGN(PAGE_SIZE);
         _bss_end = .;
     } :bss
+
+
 
     /* Kernel end marker */
     . = ALIGN(PAGE_SIZE);

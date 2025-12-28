@@ -22,10 +22,12 @@
 #include <arch/x64/features/features.h>
 #include <arch/x64/gdt/gdt.h>
 #include <arch/x64/idt/idt.h>
+#include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/vmm.h>
+#include <arch/x64/percpu.h>
 #include <arch/x64/smp.h>
-#include <kernel/sysintf/ic.h>
 #include <kernel/classes.h>
+#include <kernel/sysintf/ic.h>
 #include <kernel/wait.h>
 #include <lib/printk.h>
 #include <limine/limine.h>
@@ -44,12 +46,33 @@ static struct wait_counter ap_startup_counter;
 static int smp_initialized = 0;
 
 // Global array to map logical CPU ID to physical APIC ID
-int per_cpu_apic_id[MAX_CPUS];
+// Global array to map logical CPU ID to physical APIC ID
+// Per-CPU APIC ID
+DEFINE_PER_CPU(int, cpu_apic_id);
+
+DEFINE_PER_CPU(int, cpu_number);
 
 // The entry point for Application Processors (APs)
 static void smp_ap_entry(struct limine_mp_info *info) {
   // Switch to kernel page table
   vmm_switch_pml4(g_kernel_pml4);
+
+  // Find our logical ID (we can't use smp_get_id yet as GS base is not set)
+  int cpu_id = 0;
+  for (int i = 0; i < smp_get_cpu_count(); i++) {
+    if (*per_cpu_ptr(cpu_apic_id, i) == (int)info->lapic_id) {
+      cpu_id = i;
+      break;
+    }
+  }
+
+  // Set GS Base to point to per-cpu area
+  wrmsr(MSR_GS_BASE, __per_cpu_offset[cpu_id]);
+  // Initialize cpu_number for this CPU
+  this_cpu_write(cpu_number, cpu_id);
+
+  // Initialize per-cpu PMM cache
+  pmm_init_cpu();
 
   // Initialize APIC for this AP IMMEDIATELY so we can get our CPU ID
   // and use per-CPU caches in kmalloc()
@@ -59,7 +82,8 @@ static void smp_ap_entry(struct limine_mp_info *info) {
   cpu_features_init_ap();
 
   // Basic per-CPU init for APs
-  printk(KERN_DEBUG SMP_CLASS "CPU LAPIC ID %u starting up...\n", info->lapic_id);
+  printk(KERN_DEBUG SMP_CLASS "CPU LAPIC ID %u starting up...\n",
+         info->lapic_id);
 
   ic_set_timer(IC_DEFAULT_TICK);
 
@@ -95,20 +119,33 @@ static void smp_ap_entry(struct limine_mp_info *info) {
   }
 }
 
-void smp_init(void) {
+void smp_parse_topology(void) {
   struct limine_mp_response *mp_response = mp_request.response;
 
   if (!mp_response) {
-    printk(KERN_WARNING SMP_CLASS "Limine MP response not found. Single core mode.\n");
+    printk(KERN_WARNING SMP_CLASS
+           "Limine MP response not found. Single core mode.\n");
     cpu_count = 1;
     return;
   }
 
   cpu_count = mp_response->cpu_count;
+}
+
+void smp_init(void) {
+  if (cpu_count == 0) {
+    smp_parse_topology();
+  }
+
+  struct limine_mp_response *mp_response = mp_request.response;
+
+  if (cpu_count == 1) {
+    return;
+  }
   uint64_t bsp_lapic_id = mp_response->bsp_lapic_id;
 
-  printk(KERN_DEBUG SMP_CLASS "Detected %llu CPUs. BSP LAPIC ID: %u\n", cpu_count,
-         (uint32_t)bsp_lapic_id);
+  printk(KERN_DEBUG SMP_CLASS "Detected %llu CPUs. BSP LAPIC ID: %u\n",
+         cpu_count, (uint32_t)bsp_lapic_id);
 
   // Initialize the wait counter for AP startup
   int expected_aps = (int)(cpu_count > 0 ? (cpu_count - 1) : 0);
@@ -123,13 +160,14 @@ void smp_init(void) {
   }
   for (uint64_t i = 0; i < max_init; i++) {
     struct limine_mp_info *cpu = mp_response->cpus[i];
-    per_cpu_apic_id[i] = cpu->lapic_id;
+    *per_cpu_ptr(cpu_apic_id, i) = cpu->lapic_id;
   }
 
   // Ensure per_cpu_apic_id is visible to all CPUs before waking them
   __atomic_thread_fence(__ATOMIC_RELEASE);
 
-  // Set smp_initialized = 1 NOW, so APs can use their own caches from the start!
+  // Set smp_initialized = 1 NOW, so APs can use their own caches from the
+  // start!
   smp_initialized = 1;
 
   // NOW iterate over CPUs and wake them up
@@ -150,20 +188,17 @@ void smp_init(void) {
   printk(SMP_CLASS "%d APs online.\n", cpus_online);
 }
 
+void smp_prepare_boot_cpu(void) {
+  // BSP is always CPU 0
+  this_cpu_write(cpu_number, 0);
+}
+
 uint64_t smp_get_cpu_count(void) { return cpu_count; }
 
 int smp_is_active() { return smp_initialized; }
 
 uint64_t smp_get_id(void) {
-  // Use Local APIC ID
-  uint8_t lapic_id = ic_lapic_get_id();
-
-  // Find logical ID from physical APIC ID
-  for (uint64_t i = 0; i < cpu_count; i++) {
-    if (per_cpu_apic_id[i] == (int)lapic_id) {
-      return i;
-    }
-  }
-
-  return 0; // Fallback to 0
+  // If GS is set up, this is fast O(1)
+  // We assume GS is set up early enough (in setup_per_cpu_areas for BSP)
+  return this_cpu_read(cpu_number);
 }

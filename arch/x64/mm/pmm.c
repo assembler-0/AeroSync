@@ -18,19 +18,24 @@
  * GNU General Public License for more details.
  */
 
+#include <arch/x64/mm/pmm.h>
+#include <arch/x64/percpu.h>
 #include <compiler.h>
+#include <kernel/classes.h>
+#include <kernel/fkx/fkx.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <limine/limine.h>
-#include <arch/x64/mm/pmm.h>
-#include <kernel/classes.h>
-#include <mm/zone.h>
+#include <linux/container_of.h>
+#include <linux/list.h>
 #include <mm/gfp.h>
-#include <kernel/fkx/fkx.h>
+#include <mm/zone.h>
 
 // Global HHDM offset
 uint64_t g_hhdm_offset = 0;
 EXPORT_SYMBOL(g_hhdm_offset);
+
+DEFINE_PER_CPU(struct per_cpu_pages, pcp_pages);
 
 struct page *mem_map = NULL;
 uint64_t pmm_max_pages = 0;
@@ -39,18 +44,21 @@ static bool pmm_initialized = false;
 static pmm_stats_t pmm_stats;
 
 // Find suitable memory region for mem_map array
-static struct limine_memmap_entry *find_memmap_location(
-  struct limine_memmap_response *memmap, uint64_t required_bytes) {
+static struct limine_memmap_entry *
+find_memmap_location(struct limine_memmap_response *memmap,
+                     uint64_t required_bytes) {
   struct limine_memmap_entry *best_region = NULL;
   uint64_t best_size = 0;
 
   for (uint64_t i = 0; i < memmap->entry_count; i++) {
     struct limine_memmap_entry *entry = memmap->entries[i];
-    if (entry->type != LIMINE_MEMMAP_USABLE) continue;
+    if (entry->type != LIMINE_MEMMAP_USABLE)
+      continue;
 
     uint64_t aligned_base = PAGE_ALIGN_UP(entry->base);
     uint64_t aligned_end = PAGE_ALIGN_DOWN(entry->base + entry->length);
-    if (aligned_end <= aligned_base) continue;
+    if (aligned_end <= aligned_base)
+      continue;
 
     uint64_t available = aligned_end - aligned_base;
     if (available >= required_bytes && available > best_size) {
@@ -72,9 +80,9 @@ static void register_zone_pages(uint64_t start_pfn, uint64_t end_pfn) {
   uint64_t pfn;
 
   // We simply register pages to the allocator.
-  // The allocator's __free_pages will handle zone finding if we set up zones correctly.
-  // But we need to set up zone boundaries first in free_area_init logic.
-  // For now, let's just initialize the zones with rough boundaries.
+  // The allocator's __free_pages will handle zone finding if we set up zones
+  // correctly. But we need to set up zone boundaries first in free_area_init
+  // logic. For now, let's just initialize the zones with rough boundaries.
 
   // Actually, we should iterate and set up zone start/end PFNs.
   // But for simplicity, we just add pages.
@@ -82,12 +90,13 @@ static void register_zone_pages(uint64_t start_pfn, uint64_t end_pfn) {
   for (pfn = start_pfn; pfn < end_pfn; pfn++) {
     struct page *page = &mem_map[pfn];
     ClearPageReserved(page); // It was reserved during mem_map init
-    __free_pages(page, 0); // Free to buddy
+    __free_pages(page, 0);   // Free to buddy
   }
 }
 
 int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
-  struct limine_memmap_response *memmap = (struct limine_memmap_response *) memmap_response_ptr;
+  struct limine_memmap_response *memmap =
+      (struct limine_memmap_response *)memmap_response_ptr;
 
   if (!memmap || memmap->entry_count == 0) {
     printk(KERN_ERR PMM_CLASS "Invalid memory map\n");
@@ -108,7 +117,8 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
     if (entry->type == LIMINE_MEMMAP_USABLE ||
         entry->type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE ||
         entry->type == LIMINE_MEMMAP_EXECUTABLE_AND_MODULES) {
-      if (end > highest_addr) highest_addr = end;
+      if (end > highest_addr)
+        highest_addr = end;
     }
 
     if (entry->type == LIMINE_MEMMAP_USABLE) {
@@ -123,14 +133,15 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
   uint64_t memmap_size = pmm_max_pages * sizeof(struct page);
 
   // Allocate mem_map
-  struct limine_memmap_entry *mm_region = find_memmap_location(memmap, PAGE_ALIGN_UP(memmap_size));
+  struct limine_memmap_entry *mm_region =
+      find_memmap_location(memmap, PAGE_ALIGN_UP(memmap_size));
   if (!mm_region) {
     printk(KERN_ERR PMM_CLASS "Failed to allocate mem_map\n");
     return -1;
   }
 
   uint64_t mm_phys = PAGE_ALIGN_UP(mm_region->base);
-  mem_map = (struct page *) pmm_phys_to_virt(mm_phys);
+  mem_map = (struct page *)pmm_phys_to_virt(mm_phys);
   memset(mem_map, 0, memmap_size);
 
   // Init all pages as Reserved
@@ -140,6 +151,23 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
     mem_map[i].order = 0;
     spinlock_init(&mem_map[i].ptl);
   }
+
+  // Init PCP list for BSP (and others when they boot? No, per-cpu area is
+  // zeroed/copied) We need to INIT_LIST_HEAD for pcp list. Since per-cpu area
+  // is dynamically allocated, we should ideally init it there. But for now, we
+  // can init on first use or here for BSP? Per-cpu area is set up in main.c ->
+  // setup_per_cpu_areas. We can't access other CPU's per-cpu data easily
+  // without manual offset math.
+  //
+  // Strategy: The per-cpu setup code copies static data.
+  // If we initialize the static variable, it gets copied!
+  // BUT LIST_HEAD points to itself. Copying it breaks the pointer (it will
+  // point to static, not new area).
+  //
+  // FIX: We need a per-cpu initialization hook for PMM.
+  // OR: INIT_LIST_HEAD on first access or in setup_per_cpu_areas?
+  //
+  // Let's add pmm_init_cpu() to be called from start_kernel/smp_call.
 
   // Initialize allocator zones
   free_area_init();
@@ -158,7 +186,8 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
   managed_zones[ZONE_DMA32].present_pages = 0;
 
   managed_zones[ZONE_NORMAL].zone_start_pfn = 1048576;
-  managed_zones[ZONE_NORMAL].spanned_pages = pmm_max_pages > 1048576 ? pmm_max_pages - 1048576 : 0;
+  managed_zones[ZONE_NORMAL].spanned_pages =
+      pmm_max_pages > 1048576 ? pmm_max_pages - 1048576 : 0;
   managed_zones[ZONE_NORMAL].present_pages = 0;
 
   // Pass 2: Feed free pages to allocator
@@ -167,16 +196,20 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
 
   for (uint64_t i = 0; i < memmap->entry_count; i++) {
     struct limine_memmap_entry *entry = memmap->entries[i];
-    if (entry->type != LIMINE_MEMMAP_USABLE) continue;
+    if (entry->type != LIMINE_MEMMAP_USABLE)
+      continue;
 
     uint64_t start_pfn = PHYS_TO_PFN(PAGE_ALIGN_UP(entry->base));
-    uint64_t end_pfn = PHYS_TO_PFN(PAGE_ALIGN_DOWN(entry->base + entry->length));
+    uint64_t end_pfn =
+        PHYS_TO_PFN(PAGE_ALIGN_DOWN(entry->base + entry->length));
 
     // Exclude 0 page
-    if (start_pfn == 0) start_pfn = 1;
+    if (start_pfn == 0)
+      start_pfn = 1;
 
     for (uint64_t pfn = start_pfn; pfn < end_pfn; pfn++) {
-      if (pfn >= mm_start_pfn && pfn < mm_end_pfn) continue;
+      if (pfn >= mm_start_pfn && pfn < mm_end_pfn)
+        continue;
 
       // Register page
       struct page *page = &mem_map[pfn];
@@ -196,7 +229,8 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
         z_idx = ZONE_NORMAL;
       }
 
-      if (z) z->present_pages++;
+      if (z)
+        z->present_pages++;
       page->zone = z_idx;
 
       __free_pages(page, 0);
@@ -219,7 +253,7 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
   if (!p1) {
     printk(KERN_ERR PMM_CLASS "Smoke test failed (alloc 1)\n");
   } else {
-    uint64_t *v1 = (uint64_t *) pmm_phys_to_virt(p1);
+    uint64_t *v1 = (uint64_t *)pmm_phys_to_virt(p1);
     *v1 = 0xDEADBEEFCAFEBABE;
     if (*v1 != 0xDEADBEEFCAFEBABE) {
       printk(KERN_ERR PMM_CLASS "Smoke test failed (read/write 1)\n");
@@ -234,12 +268,15 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
   if (!p2) {
     printk(KERN_ERR PMM_CLASS "Smoke test failed (alloc 4)\n");
   } else {
-    // Verify alignment (Order 2 requires 16KB alignment usually, but buddy guarantees natural alignment of block)
+    // Verify alignment (Order 2 requires 16KB alignment usually, but buddy
+    // guarantees natural alignment of block)
     if (p2 & (PAGE_SIZE * 4 - 1)) {
-      printk(KERN_WARNING PMM_CLASS "Alloc 4 alignment check warning (0x%llx)\n", p2);
+      printk(KERN_WARNING PMM_CLASS
+             "Alloc 4 alignment check warning (0x%llx)\n",
+             p2);
     }
 
-    uint64_t *v2 = (uint64_t *) pmm_phys_to_virt(p2);
+    uint64_t *v2 = (uint64_t *)pmm_phys_to_virt(p2);
     v2[0] = 0xAAAAAAAA;
     v2[512 * 3] = 0xBBBBBBBB; // Write to 4th page
 
@@ -256,12 +293,30 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
   return 0;
 }
 
-uint64_t pmm_alloc_page(void) {
-  return pmm_alloc_pages(1);
-}
+uint64_t pmm_alloc_page(void) { return pmm_alloc_pages(1); }
 
 uint64_t pmm_alloc_pages(size_t count) {
-  if (!pmm_initialized) return 0;
+  if (!pmm_initialized)
+    return 0;
+
+  // Optimize order-0 allocation with PCP
+  if (count == 1 && percpu_ready()) {
+    irq_flags_t flags = save_irq_flags();
+    struct per_cpu_pages *pcp = this_cpu_ptr(pcp_pages);
+
+    if (pcp->count > 0) {
+      struct page *page = list_first_entry(&pcp->list, struct page, list);
+      list_del(&page->list);
+      pcp->count--;
+      restore_irq_flags(flags);
+      return PFN_TO_PHYS((uint64_t)(page - mem_map));
+    }
+
+    // Refill batch
+    // For now simple refill 1 page from global
+    // TODO: Implement batch refill
+    restore_irq_flags(flags);
+  }
 
   // Calculate order
   unsigned int order = 0;
@@ -270,38 +325,61 @@ uint64_t pmm_alloc_pages(size_t count) {
   }
 
   struct page *page = alloc_pages(GFP_KERNEL, order);
-  if (!page) return 0;
+  if (!page)
+    return 0;
 
   return PFN_TO_PHYS((uint64_t)(page - mem_map));
 }
 
-void pmm_free_page(uint64_t phys_addr) {
-  pmm_free_pages(phys_addr, 1);
-}
+void pmm_free_page(uint64_t phys_addr) { pmm_free_pages(phys_addr, 1); }
 
 void pmm_free_pages(uint64_t phys_addr, size_t count) {
-  if (!pmm_initialized) return;
+  if (!pmm_initialized)
+    return;
 
   uint64_t pfn = PHYS_TO_PFN(phys_addr);
   struct page *page = &mem_map[pfn];
 
   // We assume count is 2^order.
   // Use existing free_pages wrapper which infers order? No, user passes count.
-  // If count is not power of 2, we might have issues if we allocated it as power of 2.
-  // But pmm_alloc_pages calculates order.
-  // So we should calculate order here too.
+  // If count is not power of 2, we might have issues if we allocated it as
+  // power of 2. But pmm_alloc_pages calculates order. So we should calculate
+  // order here too.
 
   unsigned int order = 0;
   if (count > 1) {
     order = 64 - __builtin_clzll(count - 1);
   }
 
+  // Optimize order-0 free with PCP
+  if (order == 0 && percpu_ready()) {
+    irq_flags_t flags = save_irq_flags();
+    struct per_cpu_pages *pcp = this_cpu_ptr(pcp_pages);
+
+    // If full (arbitrary limit for now 32), flush to global
+    // Note: In real impl we would flush batch
+    if (pcp->count >= 32) {
+      __free_pages(page, 0);
+    } else {
+      list_add(&page->list, &pcp->list);
+      pcp->count++;
+    }
+    restore_irq_flags(flags);
+    return;
+  }
+
   __free_pages(page, order);
 }
 
-pmm_stats_t *pmm_get_stats(void) {
-  return &pmm_stats;
+void pmm_init_cpu(void) {
+  struct per_cpu_pages *pcp = this_cpu_ptr(pcp_pages);
+  INIT_LIST_HEAD(&pcp->list);
+  pcp->count = 0;
+  pcp->high = 32;
+  pcp->batch = 8;
 }
+
+pmm_stats_t *pmm_get_stats(void) { return &pmm_stats; }
 
 EXPORT_SYMBOL(pmm_virt_to_phys);
 EXPORT_SYMBOL(pmm_phys_to_virt);

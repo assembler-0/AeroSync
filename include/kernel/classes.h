@@ -29,6 +29,7 @@
 #define FPU_CLASS "[SYS::FPU] " // Floating Point / SSE / AVX contexts
 #define HPET_CLASS "[SYS::HPET] " // High Precision Event Timer
 #define TIME_CLASS "[SYS::TIME] " // Unified timer subsystem
+#define PERCPU_CLASS "[SYS::PCPU] " // Per-CPU data
 
 ///@section Core Kernel
 #define KERN_CLASS "[SYS::CORE] "         // Generic kernel core messages

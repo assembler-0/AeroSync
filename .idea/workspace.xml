@@ -353,13 +353,18 @@
       </method>
     </configuration>
     <list>
-      <item itemvalue="CMake Application.splash" />
       <item itemvalue="CMake Application.bochs-run" />
       <item itemvalue="CMake Application.bootdir" />
       <item itemvalue="CMake Application.dump" />
+      <item itemvalue="CMake Application.ic" />
       <item itemvalue="CMake Application.iso" />
-      <item itemvalue="CMake Application.run" />
+      <item itemvalue="CMake Application.linearfb" />
+      <item itemvalue="CMake Application.pci" />
       <item itemvalue="CMake Application.run-bios" />
+      <item itemvalue="CMake Application.run" />
+      <item itemvalue="CMake Application.splash" />
+      <item itemvalue="CMake Application.timer" />
+      <item itemvalue="CMake Application.uart" />
       <item itemvalue="CMake Application.vbox-create-vm" />
       <item itemvalue="CMake Application.vbox-delete-vm" />
       <item itemvalue="CMake Application.vbox-run" />
@@ -367,11 +372,6 @@
       <item itemvalue="CMake Application.vmw-run" />
       <item itemvalue="CMake Application.vmw-setup" />
       <item itemvalue="CMake Application.voidframex.krnl" />
-      <item itemvalue="CMake Application.ic" />
-      <item itemvalue="CMake Application.linearfb" />
-      <item itemvalue="CMake Application.pci" />
-      <item itemvalue="CMake Application.timer" />
-      <item itemvalue="CMake Application.uart" />
     </list>
   </component>
   <component name="RustProjectSettings">
@@ -413,6 +413,7 @@
       <workItem from="1766836663883" duration="1289000" />
       <workItem from="1766875582922" duration="6214000" />
       <workItem from="1766882320538" duration="1639000" />
+      <workItem from="1766903538116" duration="3000" />
     </task>
     <task id="LOCAL-00001" summary="Mutexes and FKX spec">
       <option name="closed" value="true" />

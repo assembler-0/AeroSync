@@ -1,5 +1,6 @@
 #pragma once
 
+#include <arch/x64/percpu.h>
 #include <kernel/spinlock.h>
 #include <kernel/types.h>
 #include <linux/list.h>
@@ -78,7 +79,7 @@ struct sched_entity {
  */
 extern const unsigned int prio_to_weight[40];
 
-extern int per_cpu_apic_id[MAX_CPUS];
+DECLARE_PER_CPU(int, cpu_apic_id);
 
 struct task_struct {
   volatile long state;
@@ -121,7 +122,7 @@ struct task_struct {
 
   char comm[16]; // Command name
   int cpu;       // The CPU this task is currently running on/assigned to
-  int preempt_count; 
+  int preempt_count;
 };
 
 /* Preemption Control */
@@ -159,9 +160,9 @@ extern int cpu_id(void);
 struct rq {
   spinlock_t lock;
   unsigned int nr_running;
-  struct load_weight load;      /* Instantaneous load weight */
-  unsigned long avg_load;       /* Exponential Moving Average of load */
-  
+  struct load_weight load; /* Instantaneous load weight */
+  unsigned long avg_load;  /* Exponential Moving Average of load */
+
   struct rb_root tasks_timeline;
   struct rb_node *rb_leftmost; /* Cache for leftmost node */
   struct task_struct *curr;

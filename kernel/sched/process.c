@@ -21,7 +21,9 @@
 #include <arch/x64/mm/paging.h>
 #include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/vmm.h>
+#include <arch/x64/percpu.h>
 #include <arch/x64/smp.h>
+#include <kernel/fkx/fkx.h>
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>
 #include <lib/id_alloc.h>
@@ -30,13 +32,12 @@
 #include <mm/vma.h>
 #include <mm/vmalloc.h>
 #include <vsprintf.h>
-#include <kernel/fkx/fkx.h>
 
 /*
  * Process/Thread Management
  */
 
-extern struct rq per_cpu_runqueues[];
+DECLARE_PER_CPU(struct rq, runqueues);
 extern struct rq *this_rq(void);
 
 extern char _text_start[];
@@ -50,18 +51,14 @@ struct ida pid_ida;
 
 void pid_allocator_init(void) {
   ida_init(&pid_ida, 32768);
-  // Reserve PID 0 for the idle task if necessary, though ida_alloc usually starts from 0
-  // In Linux, PID 0 is idle, PID 1 is init.
+  // Reserve PID 0 for the idle task if necessary, though ida_alloc usually
+  // starts from 0 In Linux, PID 0 is idle, PID 1 is init.
   ida_alloc(&pid_ida); // Allocate 0
 }
 
-static pid_t alloc_pid(void) {
-  return ida_alloc(&pid_ida);
-}
+static pid_t alloc_pid(void) { return ida_alloc(&pid_ida); }
 
-static void release_pid(pid_t pid) {
-  ida_free(&pid_ida, pid);
-}
+static void release_pid(pid_t pid) { ida_free(&pid_ida, pid); }
 
 // Defined in switch.S
 struct task_struct *__switch_to(struct thread_struct *prev,
@@ -186,7 +183,7 @@ void kthread_run(struct task_struct *k) {
   if (!k)
     return;
 
-  struct rq *rq = &per_cpu_runqueues[k->cpu];
+  struct rq *rq = per_cpu_ptr(runqueues, k->cpu);
   unsigned long flags = spinlock_lock_irqsave((volatile int *)&rq->lock);
 
   activate_task(rq, k);
@@ -223,7 +220,7 @@ void free_task(struct task_struct *task) {
 
 void wake_up_new_task(struct task_struct *p) {
   p->state = TASK_RUNNING;
-  struct rq *rq = &per_cpu_runqueues[p->cpu];
+  struct rq *rq = per_cpu_ptr(runqueues, p->cpu);
 
   irq_flags_t flags = spinlock_lock_irqsave(&rq->lock);
   activate_task(rq, p);
@@ -303,8 +300,9 @@ struct task_struct *process_spawn(int (*entry)(void *), void *data,
   int best_cpu = 0;
   unsigned int min_running = 0xFFFFFFFF;
   for (int i = 0; i < smp_get_cpu_count(); i++) {
-    if (per_cpu_runqueues[i].nr_running < min_running) {
-      min_running = per_cpu_runqueues[i].nr_running;
+    struct rq *rq = per_cpu_ptr(runqueues, i);
+    if (rq->nr_running < min_running) {
+      min_running = rq->nr_running;
       best_cpu = i;
     }
   }
@@ -325,7 +323,7 @@ struct task_struct *process_spawn(int (*entry)(void *), void *data,
   ts->thread.rsp = (uint64_t)sp;
 
   // Initialize scheduler entity with proper values
-  ts->se.vruntime = 0;  // Start with 0 vruntime for fairness
+  ts->se.vruntime = 0;      // Start with 0 vruntime for fairness
   ts->se.exec_start_ns = 0; // Will be set when scheduled
   ts->se.sum_exec_runtime = 0;
   ts->se.prev_sum_exec_runtime = 0;
