@@ -76,7 +76,7 @@ static void set_tss_gate(int num, uint64_t base, uint64_t limit) {
 }
 
 void gdt_init(void) {
-  printk(GDT_CLASS "Initializing GDT (BSP)\n");
+  printk(KERN_DEBUG GDT_CLASS "Initializing GDT (BSP)\n");
   struct gdt_ptr gdt_ptr;
   gdt_ptr.limit = (sizeof(struct gdt_entry) * 7) - 1;
   gdt_ptr.base = (uint64_t)(struct gdt_entry *)this_cpu_ptr(gdt_entries);
@@ -100,7 +100,7 @@ void gdt_init(void) {
 
   gdt_flush(&gdt_ptr);
   tss_flush();
-  printk(GDT_CLASS "GDT initialized\n");
+  printk(KERN_DEBUG GDT_CLASS "GDT initialized\n");
 }
 
 void gdt_init_ap(void) {

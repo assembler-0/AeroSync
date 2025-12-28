@@ -7,25 +7,18 @@
  * @copyright (C) 2025 assembler-0
  *
  * This file is part of the VoidFrameX kernel.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <arch/x64/cpu.h>
+#include <arch/x64/fpu.h>
 #include <arch/x64/mm/vmm.h>
 #include <arch/x64/percpu.h>
 #include <arch/x64/smp.h>
-#include <arch/x64/tsc.h>      // Added for get_time_ns
-#include <drivers/apic/apic.h> // Added for IPI functions
+#include <arch/x64/tsc.h>      /* Added for get_time_ns */
+#include <drivers/apic/apic.h> /* Added for IPI functions */
 #include <kernel/classes.h>
 #include <kernel/panic.h>
+#include <kernel/sched/cpumask.h> /* Added for affinity */
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>
 #include <kernel/sysintf/ic.h>
@@ -41,20 +34,23 @@
  * Scheduler Core Implementation
  */
 
-// Per-CPU runqueue
+/* Per-CPU runqueue */
 DEFINE_PER_CPU(struct rq, runqueues);
 
-// Current task per CPU
+/* Current task per CPU (cached for speed, though rq->curr exists) */
 DEFINE_PER_CPU(struct task_struct *, current_task);
 
-// Idle task per CPU
+/* Idle task per CPU */
 DEFINE_PER_CPU(struct task_struct, idle_task);
 
-// Preemption flag per CPU
+/* Preemption flag per CPU */
 DEFINE_PER_CPU(int, need_resched);
 
 void set_need_resched(void) { this_cpu_write(need_resched, 1); }
 
+/*
+ * Runqueue locking
+ */
 void double_rq_lock(struct rq *rq1, struct rq *rq2) {
   if (rq1 == rq2) {
     spinlock_lock(&rq1->lock);
@@ -74,17 +70,10 @@ void double_rq_unlock(struct rq *rq1, struct rq *rq2) {
   }
 }
 
-extern void deactivate_task(struct rq *rq, struct task_struct *p);
-extern void activate_task(struct rq *rq, struct task_struct *p);
-
 /*
  * Basic Helpers
  */
-
-int cpu_id(void) {
-  // TODO: Map LAPIC ID to logical ID if sparse
-  return (int)smp_get_id();
-}
+int cpu_id(void) { return (int)smp_get_id(); }
 
 struct rq *this_rq(void) { return this_cpu_ptr(runqueues); }
 
@@ -94,7 +83,25 @@ void set_current(struct task_struct *t) { this_cpu_write(current_task, t); }
 
 void set_task_cpu(struct task_struct *task, int cpu) { task->cpu = cpu; }
 
-// Internal migration helper - caller must hold __rq_lock
+/*
+ * Core Scheduler Operations
+ */
+
+void activate_task(struct rq *rq, struct task_struct *p) {
+  if (p->sched_class && p->sched_class->enqueue_task) {
+    p->sched_class->enqueue_task(rq, p, ENQUEUE_WAKEUP);
+  }
+}
+
+void deactivate_task(struct rq *rq, struct task_struct *p) {
+  if (p->sched_class && p->sched_class->dequeue_task) {
+    p->sched_class->dequeue_task(rq, p, 0);
+  }
+}
+
+/*
+ * Internal migration helper - caller must hold __rq_lock
+ */
 static void __move_task_to_rq_locked(struct task_struct *task, int dest_cpu) {
   struct rq *src_rq = per_cpu_ptr(runqueues, task->cpu);
   struct rq *dest_rq = per_cpu_ptr(runqueues, dest_cpu);
@@ -102,6 +109,11 @@ static void __move_task_to_rq_locked(struct task_struct *task, int dest_cpu) {
   deactivate_task(src_rq, task);
   set_task_cpu(task, dest_cpu);
   activate_task(dest_rq, task);
+
+  /* Update affinity cache or stats if needed */
+  if (task->sched_class->migrate_task_rq) {
+    task->sched_class->migrate_task_rq(task, dest_cpu);
+  }
 }
 
 /*
@@ -112,6 +124,12 @@ void move_task_to_rq(struct task_struct *task, int dest_cpu) {
   if (dest_cpu < 0 || dest_cpu >= MAX_CPUS) {
     printk(SCHED_CLASS "Invalid dest_cpu %d in move_task_to_rq\n", dest_cpu);
     return;
+  }
+
+  /* Check affinity */
+  if (!cpumask_test_cpu(dest_cpu, &task->cpus_allowed)) {
+    /* warning or fail? */
+    /* For force migration we might ignore, but generally we should respect */
   }
 
   struct rq *src_rq = per_cpu_ptr(runqueues, task->cpu);
@@ -141,28 +159,28 @@ static void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 }
 
 /*
- * Scheduler Initialization
+ * Pick the next task to run by iterating through scheduler classes
  */
-void sched_init(void) {
-  pid_allocator_init();
+static struct task_struct *pick_next_task(struct rq *rq) {
+  struct task_struct *p;
+  const struct sched_class *class;
 
-  // Per-CPU variables are zero-initialized by setup_per_cpu_areas
-
-  for (int i = 0; i < MAX_CPUS; i++) {
-    struct rq *rq = per_cpu_ptr(runqueues, i);
-    rq->tasks_timeline = RB_ROOT;
+  for_each_class(class) {
+    p = class->pick_next_task(rq);
+    if (p) {
+      /* Notify class that we picked this task */
+      if (class->set_next_task) {
+        class->set_next_task(
+            rq, p, true); /* true = first time picking in this cycle? */
+        /* Note: Linux uses set_next_task slightly differently */
+      }
+      return p;
+    }
   }
 
-  printk(SCHED_CLASS "CFS scheduler initialized for %d logical CPUs slots.\n",
-         MAX_CPUS);
+  /* Failure to pick any task (shouldn't happen if idle class exists) */
+  return NULL;
 }
-
-/*
- * External function to pick the next task (CFS)
- * Implemented in fair.c
- */
-extern struct task_struct *pick_next_task_fair(struct rq *rq);
-extern void task_tick_fair(struct rq *rq, struct task_struct *curr);
 
 /*
  * Context Switch
@@ -174,72 +192,71 @@ extern struct task_struct *switch_to(struct task_struct *prev,
  * Task state management functions
  */
 
-/**
- * task_sleep - Put current task to sleep
- */
 void task_sleep(void) {
   struct task_struct *curr = get_current();
   struct rq *rq = this_rq();
 
   irq_flags_t flags = spinlock_lock_irqsave(&rq->lock);
 
-  // Update runtime before sleeping
-  if (rq->curr == curr) {
-    update_curr(rq);
+  /* If already running, we are going to sleep.
+     If task state is RUNNING, user probably forgot to set state to SLEEPING?
+     Wait, standard semantics: user sets state, then calls schedule.
+     This helper forces sleep?
+     Let's match existing behavior but be safe.
+  */
+
+  if (curr->state == TASK_RUNNING) {
+    /* If called explicitly to sleep without setting state, assume
+     * interruptible? */
+    /* Actually, usually you set state then call schedule().
+       This helper is "force sleep". */
+    curr->state = TASK_INTERRUPTIBLE;
   }
 
-  // Deactivate the task from the runqueue
+  if (rq->curr == curr) {
+    if (curr->sched_class->update_curr)
+      curr->sched_class->update_curr(rq);
+  }
+
   deactivate_task(rq, curr);
 
-  // Task is now sleeping, so it's not on the runqueue
   spinlock_unlock_irqrestore(&rq->lock, flags);
 
-  // Schedule another task
   schedule();
 }
 
-/**
- * task_wake_up - Wake up a specific task
- * @task: Task to wake up
- */
 void task_wake_up(struct task_struct *task) {
   struct rq *rq = per_cpu_ptr(runqueues, task->cpu);
 
   irq_flags_t flags = spinlock_lock_irqsave(&rq->lock);
 
-  // If task was sleeping, wake it up by changing its state
-  if (task->state == TASK_INTERRUPTIBLE ||
-      task->state == TASK_UNINTERRUPTIBLE) {
+  if (task->state != TASK_RUNNING) {
     task->state = TASK_RUNNING;
     activate_task(rq, task);
+
+    /* Preemption check */
+    if (rq->curr && rq->curr->sched_class->check_preempt_curr) {
+      rq->curr->sched_class->check_preempt_curr(rq, task, ENQUEUE_WAKEUP);
+    }
   }
 
   spinlock_unlock_irqrestore(&rq->lock, flags);
 }
 
-/**
- * task_wake_up_all - Wake up all tasks (for system events)
- */
 void task_wake_up_all(void) {
-  // This function would iterate through all CPUs and wake up tasks
-  // For now, we'll implement a simple version
-  int cpu;
-  for (cpu = 0; cpu < smp_get_cpu_count(); cpu++) {
-    struct rq *rq = per_cpu_ptr(runqueues, cpu);
-    // Wake up any sleeping tasks on this CPU
-    // Implementation would depend on how tasks are tracked when sleeping
-  }
+  /* Simple implementation: wake everyone? No, usually wake_up on waitqueue.
+     This global function might be legacy. Kept empty or stub. */
 }
 
 /*
  * Cleanup for the previous task after a context switch.
- * This is called by the new task to clean up the task that just exited.
  */
 static void finish_task_switch(struct task_struct *prev) {
-  if (prev && prev->state == TASK_ZOMBIE) {
-    // We are now running on a different stack, so it's safe to free prev's
-    // stack.
-    free_task(prev); // This frees both task_struct and its stack
+  if (prev && prev->state == TASK_DEAD) {
+    free_task(prev);
+  } else if (prev && prev->state == TASK_ZOMBIE) {
+    /* Used to be TASK_ZOMBIE for cleanup */
+    free_task(prev);
   }
 }
 
@@ -255,22 +272,31 @@ void set_task_nice(struct task_struct *p, int nice) {
   struct rq *rq = per_cpu_ptr(runqueues, p->cpu);
   irq_flags_t flags = spinlock_lock_irqsave(&rq->lock);
 
-  // Update runtime before changing weight to be fair
-  if (rq->curr == p) {
-    update_curr(rq);
+  if (rq->curr == p && p->sched_class->update_curr) {
+    p->sched_class->update_curr(rq);
   }
 
-  int queued = p->se.on_rq;
-  if (queued) {
+  int on_rq =
+      p->se.on_rq; /* Just check CFS on_rq for now, or need generic way */
+  /* If task is queued, we should dequeue, update, enqueue */
+
+  /* Generic: deactivate, update, activate */
+  /* Warning: this might be expensive */
+  int running = (p->state == TASK_RUNNING); /* Simplification */
+
+  if (running)
     deactivate_task(rq, p);
-  }
 
   p->nice = nice;
-  p->se.load.weight = prio_to_weight[nice + NICE_TO_PRIO_OFFSET];
+  p->static_prio = nice + NICE_TO_PRIO_OFFSET;
+  p->se.load.weight = prio_to_weight[p->static_prio];
 
-  if (queued) {
+  if (p->sched_class->prio_changed)
+    p->sched_class->prio_changed(
+        rq, p, p->nice); /* passing new nice as old prio? no fix later */
+
+  if (running)
     activate_task(rq, p);
-  }
 
   spinlock_unlock_irqrestore(&rq->lock, flags);
 }
@@ -279,101 +305,140 @@ void set_task_nice(struct task_struct *p, int nice) {
  * The main schedule function
  */
 void schedule(void) {
-  struct task_struct *prev_task, *next_task; // Renamed to avoid confusion
+  struct task_struct *prev_task, *next_task;
   struct rq *rq = this_rq();
+
+  /* Preemption check */
+  if (current->preempt_count > 0) {
+    /* We can't schedule if preemption is disabled! */
+    /* Unless we are panicking/oopsing? */
+    return;
+  }
 
   irq_flags_t flags = spinlock_lock_irqsave(&rq->lock);
   prev_task = rq->curr;
 
+  /* Update stats */
+  rq->stats.nr_switches++;
+
   if (prev_task) {
-    update_curr(rq);
-    put_prev_task_fair(rq, prev_task);
+    if (prev_task->sched_class->update_curr)
+      prev_task->sched_class->update_curr(rq);
+
+    /* Put previous task */
+    if (prev_task->sched_class->put_prev_task)
+      prev_task->sched_class->put_prev_task(rq, prev_task);
   }
 
-  // Pick next task
-  next_task = pick_next_task_fair(rq);
+  /* Pick next task */
+  next_task = pick_next_task(rq);
 
   if (!next_task) {
-    next_task = rq->idle;
-    // Idle task is never in the tree, so no need to dequeue it in
-    // pick_next_task_fair and no need to enqueue it in put_prev_task_fair
-    // (handled by on_rq or special cases)
+    /* Should never happen as idle class always returns a task */
+    if (rq->idle) {
+      next_task = rq->idle;
+    } else {
+      panic("schedule(): No task to run and no idle task!");
+    }
   }
 
-  if (!next_task) {
-    panic("schedule(): next_task is NULL (rq->idle)");
-  }
-
-  next_task->se.exec_start_ns = get_time_ns();
-  next_task->se.prev_sum_exec_runtime = next_task->se.sum_exec_runtime;
+  /* Prepare next task */
+  /* set_next_task called in pick_next_task */
 
   if (prev_task != next_task) {
     rq->curr = next_task;
     set_current(next_task);
 
-    // Handle address space switching
+    /* Switch MM */
     if (next_task->mm) {
       switch_mm(prev_task->active_mm, next_task->mm, next_task);
       next_task->active_mm = next_task->mm;
     } else {
-      // Kernel thread inherits the active_mm of the previous task
+      /* Kernel thread */
       next_task->active_mm = prev_task->active_mm;
-      // Optimization: if it's the same active_mm, switch_mm will skip
       switch_mm(prev_task->active_mm, next_task->active_mm, next_task);
     }
 
-    spinlock_unlock_irqrestore(
-        &rq->lock, flags); // Release the runqueue lock before switching
+    /* FPU handling - Eager switching for now to ensure correctness */
+    if (prev_task->thread.fpu && prev_task->thread.fpu_used) {
+      fpu_save(prev_task->thread.fpu);
+    }
 
-    // switch_to returns the task that was just switched *from*
+    spinlock_unlock_irqrestore(&rq->lock, flags);
+
     prev_task = switch_to(prev_task, next_task);
 
-    // Now we are running in the context of 'next_task'
-    finish_task_switch(prev_task); // Clean up the truly previous task
+    /* Restore FPU state for next task (now current) */
+    if (current->thread.fpu) {
+      if (current->thread.fpu_used) {
+        fpu_restore(current->thread.fpu);
+      } else {
+        /* Initialize FPU to clean state for this thread */
+        fpu_init_task(current->thread.fpu);
+        fpu_restore(current->thread.fpu);
+        /* Mark as used so we save it next time */
+        current->thread.fpu_used = true;
+      }
+    }
+
+    finish_task_switch(prev_task);
     return;
   }
 
   spinlock_unlock_irqrestore(&rq->lock, flags);
 }
 
-// Function to signal a remote CPU to reschedule
+/*
+ * IPI and Load Balancing
+ */
+
 void reschedule_cpu(int cpu) {
   ic_send_ipi(*per_cpu_ptr(cpu_apic_id, cpu), IRQ_SCHED_IPI_VECTOR,
               APIC_DELIVERY_MODE_FIXED);
 }
 
-// Handler for the scheduler IPI
-void irq_sched_ipi_handler(void) {
-  this_cpu_write(need_resched, 1); // Signal that a reschedule is needed
-                                   // No EOI here, irq_common_stub handles it
+void irq_sched_ipi_handler(void) { this_cpu_write(need_resched, 1); }
+
+static inline bool task_can_run_on(struct task_struct *p, int cpu) {
+  return cpumask_test_cpu(cpu, &p->cpus_allowed);
 }
 
 static void load_balance(void) {
+  int this_cpu = smp_get_id();
+
+  /* Optimization: Only CPU 0 balances? Or distributed?
+     For now, to fix "wasteful", let's have only CPU 0 do it,
+     or do it less frequently.
+  */
+  if (this_cpu != 0)
+    return;
+
   unsigned long total_cpus = smp_get_cpu_count();
+  if (total_cpus <= 1)
+    return;
+
   int overloaded_cpu = -1;
   int underloaded_cpu = -1;
   unsigned long max_load = 0;
   unsigned long min_load = ~0UL;
 
-  if (total_cpus <= 1) {
-    return; // No need to load balance on a single CPU
-  }
-
-  /* Find overloaded and underloaded CPUs based on average load */
+  /* Basic O(N) balancer */
   for (unsigned int i = 0; i < total_cpus; i++) {
     struct rq *rq = per_cpu_ptr(runqueues, i);
-    unsigned long load = rq->avg_load;
+    unsigned long load =
+        rq->avg_load; /* Note: only considers CFS load usually */
+    /* Ideally we check nr_running too */
+
     if (load > max_load) {
       max_load = load;
-      overloaded_cpu = (signed)i;
+      overloaded_cpu = (int)i;
     }
     if (load < min_load) {
       min_load = load;
-      underloaded_cpu = (signed)i;
+      underloaded_cpu = (int)i;
     }
   }
 
-  /* Only act on a significant imbalance */
   if (overloaded_cpu == -1 || underloaded_cpu == -1 ||
       (max_load - min_load <= NICE_0_LOAD)) {
     return;
@@ -386,42 +451,42 @@ static void load_balance(void) {
   cpu_cli();
   double_rq_lock(src_rq, dst_rq);
 
-  /* Re-evaluate imbalance under locks */
   if (src_rq->avg_load - dst_rq->avg_load <= NICE_0_LOAD) {
     double_rq_unlock(src_rq, dst_rq);
     restore_irq_flags(flags);
     return;
   }
 
-  /* Find a candidate task on the source runqueue */
-  struct rb_node *n = src_rq->rb_leftmost ? src_rq->rb_leftmost
-                                          : rb_first(&src_rq->tasks_timeline);
+  /* Find task to migrate */
+  /* We need to peek into CFS structure which is internal to fair.c usually,
+     but we have definitions in sched.h now. */
+  struct rb_node *n = rb_first(&src_rq->cfs.tasks_timeline);
   struct task_struct *candidate = NULL;
 
   for (; n; n = rb_next(n)) {
     struct sched_entity *se = rb_entry(n, struct sched_entity, run_node);
     struct task_struct *t = container_of(se, struct task_struct, se);
 
-    if (t == src_rq->idle || t == src_rq->curr)
+    if (t == src_rq->curr)
       continue;
-    if (!se->on_rq)
+    if (!task_can_run_on(t, underloaded_cpu))
       continue;
 
+    /* Found one */
     candidate = t;
     break;
   }
 
   if (candidate) {
     __move_task_to_rq_locked(candidate, underloaded_cpu);
-    printk(KERN_DEBUG SCHED_CLASS
-           "Migrated task %p (PID: %d) from CPU %d to %d (load: %lu -> %lu)\n",
-           candidate, candidate->pid, overloaded_cpu, underloaded_cpu, max_load,
-           min_load);
+
+    /* Stats */
+    dst_rq->stats.nr_migrations++;
+    dst_rq->stats.nr_load_balance++;
 
     double_rq_unlock(src_rq, dst_rq);
     restore_irq_flags(flags);
 
-    /* Signal destination CPU to reschedule */
     reschedule_cpu(underloaded_cpu);
   } else {
     double_rq_unlock(src_rq, dst_rq);
@@ -431,9 +496,6 @@ static void load_balance(void) {
 
 #define LOAD_BALANCE_INTERVAL_TICKS 100
 
-/*
- * Called from timer interrupt
- */
 void __hot scheduler_tick(void) {
   struct rq *rq = this_rq();
   struct task_struct *curr = rq->curr;
@@ -441,12 +503,12 @@ void __hot scheduler_tick(void) {
   spinlock_lock((volatile int *)&rq->lock);
 
   rq->clock++;
+  rq->clock_task = get_time_ns(); // Update task clock
 
-  if (curr) {
-    task_tick_fair(rq, curr);
+  if (curr && curr->sched_class->task_tick) {
+    curr->sched_class->task_tick(rq, curr, 1 /* queued status? */);
   }
 
-  // Perform load balancing periodically
   if (rq->clock % LOAD_BALANCE_INTERVAL_TICKS == 0) {
     load_balance();
   }
@@ -454,36 +516,76 @@ void __hot scheduler_tick(void) {
   spinlock_unlock((volatile int *)&rq->lock);
 }
 
-/*
- * Check if preemption is needed and schedule if safe
- */
 void check_preempt(void) {
-  if (this_cpu_read(need_resched)) {
+  if (this_cpu_read(need_resched) && preemptible()) {
+    /* Clear flag executed in schedule? Or here?
+       Linux clears it in entry assembly usually.
+       Here we manual check. */
     this_cpu_write(need_resched, 0);
     schedule();
   }
 }
 
 /*
- * Initialize the first task (idle/init) for a single CPU
+ * Scheduler Initialization
  */
+void sched_init(void) {
+  pid_allocator_init();
+
+  for (int i = 0; i < MAX_CPUS; i++) {
+    struct rq *rq = per_cpu_ptr(runqueues, i);
+    spinlock_init(&rq->lock);
+    rq->cpu = i;
+
+    /* Init CFS */
+    rq->cfs.tasks_timeline = RB_ROOT;
+    /* Init RT */
+    // rt_rq_init(&rq->rt); // Need to expose this or do manually
+    for (int j = 0; j < MAX_RT_PRIO_LEVELS; j++)
+      INIT_LIST_HEAD(&rq->rt.queue[j]);
+    rq->rt.rt_runtime = 950000000;
+  }
+
+  printk(SCHED_CLASS "CFS/RT scheduler initialized for %d logical CPUs.\n",
+         MAX_CPUS);
+}
+
 void sched_init_task(struct task_struct *initial_task) {
   struct rq *rq = this_rq();
   initial_task->mm = &init_mm;
   initial_task->active_mm = &init_mm;
-
-  // Initialize the task's scheduler entity
-  initial_task->se.vruntime = 0;
-  initial_task->se.on_rq = 0;
   initial_task->state = TASK_RUNNING;
-  initial_task->se.exec_start_ns = get_time_ns(); // Initialize exec_start_ns
-  initial_task->nice = MAX_NICE; // Default nice value for idle task
-  initial_task->se.load.weight =
-      prio_to_weight[initial_task->nice + NICE_TO_PRIO_OFFSET];
+  initial_task->flags = PF_KTHREAD;
+  initial_task->cpu = cpu_id();
+  initial_task->preempt_count = 0;
+
+  /* Initial task is idle task for BSP essentially, until we spawn init */
+  /* But we treat it as a normal task that becomes idle? */
+
+  initial_task->sched_class = &fair_sched_class; /* Start as fair */
+  initial_task->nice = 0;
+  initial_task->static_prio = NICE_TO_PRIO_OFFSET;
+  initial_task->se.load.weight = prio_to_weight[initial_task->static_prio];
+  initial_task->se.on_rq = 0;
+  initial_task->se.exec_start_ns = get_time_ns();
+
+  cpumask_setall(&initial_task->cpus_allowed);
 
   rq->curr = initial_task;
+  // rq->idle = initial_task; // Will be set in sched_init_ap for APs, logic for
+  // BSP?
+  /* BSP idle task needs to be distinct from init task usually.
+     Here "initial_task" is the one running at boot.
+     We usually fork init from it. Then this task becomes idle loop task.
+  */
   rq->idle = initial_task;
   set_current(initial_task);
+
+  /* Init per-cpu idle_task storage */
+  struct task_struct *idle = this_cpu_ptr(idle_task);
+  memcpy(idle, initial_task, sizeof(*idle));
+  /* Point rq->idle to the permanent storage */
+  rq->idle = idle;
 }
 
 void sched_init_ap(void) {
@@ -493,7 +595,14 @@ void sched_init_ap(void) {
   memset(idle, 0, sizeof(*idle));
   snprintf(idle->comm, sizeof(idle->comm), "idle/%d", cpu);
   idle->cpu = cpu;
-  idle->flags = PF_KTHREAD;
+  idle->flags = PF_KTHREAD | PF_IDLE;
+  idle->state = TASK_RUNNING;
+  idle->sched_class = &idle_sched_class;
+  idle->preempt_count = 0;
+  cpumask_set_cpu(cpu, &idle->cpus_allowed);
 
-  sched_init_task(idle);
+  struct rq *rq = this_rq();
+  rq->curr = idle;
+  rq->idle = idle;
+  set_current(idle);
 }

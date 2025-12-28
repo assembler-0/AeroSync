@@ -18,6 +18,7 @@
  * GNU General Public License for more details.
  */
 
+#include <arch/x64/fpu.h>
 #include <arch/x64/cpu.h>
 #include <arch/x64/features/features.h>
 #include <arch/x64/gdt/gdt.h>
@@ -317,6 +318,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   // Initialize generic driver modules (e.g., PCI)
   fkx_init_module_class(FKX_DRIVER_CLASS);
 
+  fpu_init();
   sched_init();
   sched_init_task(&bsp_task);
 

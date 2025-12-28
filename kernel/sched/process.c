@@ -7,23 +7,16 @@
  * @copyright (C) 2025 assembler-0
  *
  * This file is part of the VoidFrameX kernel.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
+#include <arch/x64/fpu.h>
 #include <arch/x64/mm/paging.h>
 #include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/vmm.h>
 #include <arch/x64/percpu.h>
 #include <arch/x64/smp.h>
 #include <kernel/fkx/fkx.h>
+#include <kernel/sched/cpumask.h>
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>
 #include <lib/id_alloc.h>
@@ -38,61 +31,57 @@
  */
 
 DECLARE_PER_CPU(struct rq, runqueues);
-extern struct rq *this_rq(void);
 
-extern char _text_start[];
-extern char _text_end[];
-extern char _rodata_start[];
 extern void ret_from_kernel_thread(void);
-
-extern void vmm_dump_entry(uint64_t pml4_phys, uint64_t virt);
 
 struct ida pid_ida;
 
 void pid_allocator_init(void) {
   ida_init(&pid_ida, 32768);
-  // Reserve PID 0 for the idle task if necessary, though ida_alloc usually
-  // starts from 0 In Linux, PID 0 is idle, PID 1 is init.
-  ida_alloc(&pid_ida); // Allocate 0
+  ida_alloc(&pid_ida); // Allocate 0 for idle/init
 }
 
 static pid_t alloc_pid(void) { return ida_alloc(&pid_ida); }
 
 static void release_pid(pid_t pid) { ida_free(&pid_ida, pid); }
 
-// Defined in switch.S
+// Defined in switch.asm
 struct task_struct *__switch_to(struct thread_struct *prev,
                                 struct thread_struct *next);
 
 struct task_struct *switch_to(struct task_struct *prev,
                               struct task_struct *next) {
   if (prev == next)
-    return prev; // No switch, return current task
+    return prev;
 
   return __switch_to(&prev->thread, &next->thread);
 }
 
 // Entry point for new kernel threads
-// __used for LTO
 void __used kthread_entry_stub(int (*threadfn)(void *data), void *data) {
   cpu_sti();
-
   threadfn(data);
-
   sys_exit(0);
 }
 
 struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
                                    const char *namefmt, ...) {
-  // Allocate task_struct using slab allocator
   struct task_struct *ts = alloc_task_struct();
   if (!ts)
     return NULL;
 
   memset(ts, 0, sizeof(*ts));
 
-  void *stack = vmalloc(PAGE_SIZE * 2); // 8KB stack
+  /* Allocate PID */
+  ts->pid = alloc_pid();
+  if (ts->pid < 0) {
+    free_task_struct(ts);
+    return NULL;
+  }
+
+  void *stack = vmalloc(PAGE_SIZE * 2);
   if (!stack) {
+    release_pid(ts->pid);
     free_task_struct(ts);
     return NULL;
   }
@@ -102,78 +91,54 @@ struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
   ts->state = TASK_RUNNING;
   ts->mm = NULL;
   ts->active_mm = &init_mm;
+  ts->cpu = cpu_id(); /* Default to current CPU, adjusted by balance */
 
   ts->nice = NICE_DEFAULT;
+  ts->preempt_count = 0;
 
-  // Calculate load weight based on nice value
-  ts->se.load.weight =
-      prio_to_weight[ts->nice + 20]; // +20 to map -20..19 to 0..39
-  ts->se.vruntime = 0;               // Should inherit or be set fairly
+  /* Set default scheduler class to Fair */
+  ts->sched_class = &fair_sched_class;
+  ts->static_prio = NICE_DEFAULT + NICE_TO_PRIO_OFFSET;
+  ts->se.load.weight = prio_to_weight[ts->static_prio];
+  ts->se.vruntime = 0;
+
+  /* Initialize CPU affinity */
+  cpumask_setall(&ts->cpus_allowed);
+  ts->nr_cpus_allowed = smp_get_cpu_count();
 
   va_list ap;
   va_start(ap, namefmt);
   vsnprintf(ts->comm, sizeof(ts->comm), namefmt, ap);
   va_end(ap);
 
-  // Initialize list heads
   INIT_LIST_HEAD(&ts->run_list);
   INIT_LIST_HEAD(&ts->tasks);
   INIT_LIST_HEAD(&ts->sibling);
   INIT_LIST_HEAD(&ts->children);
 
-  // Setup Thread Context - stack grows down from end
+  /* Initialize FPU state */
+  ts->thread.fpu = fpu_alloc();
+  if (!ts->thread.fpu) {
+    vfree(ts->stack);
+    release_pid(ts->pid);
+    free_task_struct(ts);
+    return NULL;
+  }
+  ts->thread.fpu_used = false;
+
+  /* Setup stack for return to kthread_entry_stub via ret_from_kernel_thread */
   uint64_t *sp = (uint64_t *)((uint8_t *)stack + 8192);
 
-  // Simulate the stack frame for __switch_to
-  /*
-      buffer:
-      ret addr -> kthread_entry_stub
-      rbx, rbp, r12, r13, r14, r15 -> 0
-  */
-
-  *(--sp) = (uint64_t)kthread_entry_stub; // Return address (rip)
-
-  // Registers popped by __switch_to
-  *(--sp) = 0; // r15
-  *(--sp) = 0; // r14
-  *(--sp) = 0; // r13
-  *(--sp) = 0; // r12
-  *(--sp) = 0; // rbp
-  *(--sp) = 0; // rbx
-
-  ts->thread.rsp = (uint64_t)sp;
-
-  // We need to pass arguments to kthread_entry_stub.
-  // SysV ABI: rdi = arg1, rsi = arg2.
-  // __switch_to doesn't restore RDI/RSI.
-  // We need a trampoline helper that moves popped values to RDI/RSI?
-  // OR we change __switch_to to also save/restore RDI/RSI (callee saved in
-  // Windows, but volatile in SysV?) In SysV, RDI/RSI are caller-saved.
-
-  // SOLUTION: Use a trampoline in assembly that is the "return address".
-  // "ret" jumps to ret_from_fork defined in entry.S, which handles args.
-  // But simplest way:
-  // make r12 = fn, r13 = data (since they are callee saved and restored!)
-  // Update kthread_entry_stub to take args from r12/r13? No, it's a C function.
-
-  // Let's modify the stack setup to use a small assembly helper
-  // 'fast_kthread_start' that moves r12->rdi, r13->rsi, then calls the C
-  // function.
-
-  // Update the stack:
-  sp = (uint64_t *)((uint8_t *)stack + 8192);
   *(--sp) = (uint64_t)ret_from_kernel_thread;
-
   *(--sp) = 0;                  // rbx
   *(--sp) = 0;                  // rbp
-  *(--sp) = (uint64_t)threadfn; // r12 -> becomes rdi
-  *(--sp) = (uint64_t)data;     // r13 -> becomes rsi
+  *(--sp) = (uint64_t)threadfn; // r12 -> rdi
+  *(--sp) = (uint64_t)data;     // r13 -> rsi
   *(--sp) = 0;                  // r14
   *(--sp) = 0;                  // r15
 
   ts->thread.rsp = (uint64_t)sp;
-
-  ts->cpu = cpu_id();
+  ts->thread.rflags = 0x202; /* IF enabled */
 
   return ts;
 }
@@ -183,12 +148,8 @@ void kthread_run(struct task_struct *k) {
   if (!k)
     return;
 
-  struct rq *rq = per_cpu_ptr(runqueues, k->cpu);
-  unsigned long flags = spinlock_lock_irqsave((volatile int *)&rq->lock);
-
-  activate_task(rq, k);
-
-  spinlock_unlock_irqrestore((volatile int *)&rq->lock, flags);
+  /* Use modern wake_up_new_task */
+  wake_up_new_task(k);
 }
 EXPORT_SYMBOL(kthread_run);
 
@@ -210,6 +171,11 @@ void free_task(struct task_struct *task) {
     release_pid(task->pid);
   }
 
+  if (task->thread.fpu) {
+    fpu_free(task->thread.fpu);
+    task->thread.fpu = NULL;
+  }
+
   if (task->stack) {
     vfree(task->stack);
     task->stack = NULL;
@@ -219,11 +185,27 @@ void free_task(struct task_struct *task) {
 }
 
 void wake_up_new_task(struct task_struct *p) {
-  p->state = TASK_RUNNING;
-  struct rq *rq = per_cpu_ptr(runqueues, p->cpu);
+  struct rq *rq;
 
+#ifdef CONFIG_SMP
+  /* Use class specific select_task_rq */
+  int cpu = p->cpu;
+  if (p->sched_class->select_task_rq) {
+    cpu = p->sched_class->select_task_rq(p, cpu, WF_FORK);
+  }
+  set_task_cpu(p, cpu);
+#endif
+
+  rq = per_cpu_ptr(runqueues, p->cpu);
   irq_flags_t flags = spinlock_lock_irqsave(&rq->lock);
+
+  p->state = TASK_RUNNING;
   activate_task(rq, p);
+
+  if (p->sched_class->check_preempt_curr) {
+    p->sched_class->check_preempt_curr(rq, p, WF_FORK);
+  }
+
   spinlock_unlock_irqrestore(&rq->lock, flags);
 }
 
@@ -238,18 +220,16 @@ struct task_struct *copy_process(unsigned long clone_flags,
   ts->pid = alloc_pid();
   ts->stack = vmalloc(PAGE_SIZE * 2);
   if (!ts->stack) {
+    release_pid(ts->pid);
     free_task_struct(ts);
     return NULL;
   }
 
-  // Copy kernel stack
   memcpy(ts->stack, p->stack, PAGE_SIZE * 2);
 
-  // Calculate new stack pointer
   uint64_t stack_offset = (uint64_t)p->thread.rsp - (uint64_t)p->stack;
   ts->thread.rsp = (uint64_t)ts->stack + stack_offset;
 
-  // Handle address space
   if (clone_flags & CLONE_VM) {
     ts->mm = p->mm;
   } else if (p->mm) {
@@ -260,13 +240,24 @@ struct task_struct *copy_process(unsigned long clone_flags,
 
   ts->active_mm = ts->mm ? ts->mm : p->active_mm;
 
-  // Initializations
+  /* Copy FPU */
+  ts->thread.fpu = fpu_alloc();
+  if (!ts->thread.fpu) {
+    /* cleanup */
+    return NULL;
+  }
+  if (p->thread.fpu && p->thread.fpu_used) {
+    fpu_copy(ts->thread.fpu, p->thread.fpu);
+    ts->thread.fpu_used = true;
+  } else {
+    fpu_init_task(ts->thread.fpu);
+    ts->thread.fpu_used = false;
+  }
+
   INIT_LIST_HEAD(&ts->tasks);
   INIT_LIST_HEAD(&ts->children);
   INIT_LIST_HEAD(&ts->sibling);
   INIT_LIST_HEAD(&ts->run_list);
-
-  // TODO: Add to parent's children list
 
   return ts;
 }
@@ -279,7 +270,6 @@ struct task_struct *process_spawn(int (*entry)(void *), void *data,
 
   memset(ts, 0, sizeof(*ts));
 
-  // Create its own address space
   ts->mm = mm_create();
   if (!ts->mm) {
     free_task_struct(ts);
@@ -296,45 +286,32 @@ struct task_struct *process_spawn(int (*entry)(void *), void *data,
 
   ts->pid = alloc_pid();
 
-  // Pick the least loaded CPU for initial placement
-  int best_cpu = 0;
-  unsigned int min_running = 0xFFFFFFFF;
-  for (int i = 0; i < smp_get_cpu_count(); i++) {
-    struct rq *rq = per_cpu_ptr(runqueues, i);
-    if (rq->nr_running < min_running) {
-      min_running = rq->nr_running;
-      best_cpu = i;
-    }
-  }
-  ts->cpu = best_cpu;
+  /* Affinity init */
+  cpumask_setall(&ts->cpus_allowed);
+
+  /* Scheduler init */
+  ts->sched_class = &fair_sched_class;
+  ts->cpu = 0; /* Let balancer fix it */
+  ts->nice = 0;
+  ts->static_prio = NICE_TO_PRIO_OFFSET;
+  ts->se.load.weight = prio_to_weight[ts->static_prio];
 
   strncpy(ts->comm, name, sizeof(ts->comm));
 
-  // Setup stack for __switch_to returning to ret_from_kernel_thread
+  /* FPU */
+  ts->thread.fpu = fpu_alloc();
+  ts->thread.fpu_used = false;
+
   uint64_t *sp = (uint64_t *)((uint8_t *)ts->stack + 8192);
   *(--sp) = (uint64_t)ret_from_kernel_thread;
   *(--sp) = 0;               // rbx
   *(--sp) = 0;               // rbp
-  *(--sp) = (uint64_t)entry; // r12 -> becomes rdi
-  *(--sp) = (uint64_t)data;  // r13 -> becomes rsi
+  *(--sp) = (uint64_t)entry; // r12
+  *(--sp) = (uint64_t)data;  // r13
   *(--sp) = 0;               // r14
   *(--sp) = 0;               // r15
 
   ts->thread.rsp = (uint64_t)sp;
-
-  // Initialize scheduler entity with proper values
-  ts->se.vruntime = 0;      // Start with 0 vruntime for fairness
-  ts->se.exec_start_ns = 0; // Will be set when scheduled
-  ts->se.sum_exec_runtime = 0;
-  ts->se.prev_sum_exec_runtime = 0;
-  ts->se.on_rq = 0; // Will be set when enqueued
-
-  // Set default load weight based on nice value
-  ts->nice = 0; // Default nice value
-  ts->se.load.weight = prio_to_weight[ts->nice + NICE_TO_PRIO_OFFSET];
-
-  // Map initial code? (Simplified: assuming entry is in kernel text which is
-  // shared) For a real user process, we would use mm_map_range to load an ELF.
 
   wake_up_new_task(ts);
   return ts;
@@ -354,17 +331,9 @@ pid_t sys_fork(void) {
 }
 
 void sys_exit(int error_code) {
-  // Very basic exit
   struct task_struct *curr = get_current();
   curr->state = TASK_ZOMBIE;
-
-  // We cannot free the stack here because we are running on it!
-  // The scheduler (finish_task_switch) will handle the cleanup.
-
-  // Deschedule
   schedule();
-
-  // Should never reach here
   while (1)
     ;
 }

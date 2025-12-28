@@ -99,8 +99,10 @@ long prepare_to_wait(wait_queue_head_t *wq_head, wait_queue_t *wait,
                      int state) {
   irq_flags_t flags = spinlock_lock_irqsave(&wq_head->lock);
 
-  // Add ourselves to the wait queue
-  add_wait_queue(wq_head, wait);
+  // Add ourselves to the wait queue if not already there
+  if (list_empty(&wait->entry)) {
+    add_wait_queue(wq_head, wait);
+  }
 
   // Set the task state to sleep
   struct task_struct *curr = get_current();
