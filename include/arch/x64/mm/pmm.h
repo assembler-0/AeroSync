@@ -3,13 +3,9 @@
 #include <kernel/types.h>
 #include <mm/page.h>
 
-#include "paging.h"
+#include <arch/x64/mm/paging.h>
 
 #define MAX_ORDER 11
-
-// Align macros
-#define PAGE_ALIGN_DOWN(addr) ((addr) & PAGE_MASK)
-#define PAGE_ALIGN_UP(addr) (((addr) + PAGE_SIZE - 1) & PAGE_MASK)
 
 // Convert between addresses and page frame numbers
 #define PHYS_TO_PFN(addr) ((addr) >> PAGE_SHIFT)

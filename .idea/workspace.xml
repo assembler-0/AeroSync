@@ -43,17 +43,13 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="ubsan for modules">
+    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="SLUB rework">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/mm/vmm.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/vmm.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/mm/page.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/page.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/mm/slab.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/slab.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/mm/vma.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/vma.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/arch/x64/mm/paging.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/mm/paging.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/arch/x64/mm/pmm.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/mm/pmm.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/mm/vmalloc.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/vmalloc.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/mmu_gather.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/mmu_gather.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/page_alloc.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/page_alloc.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/slab.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/slab.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/vma.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vma.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mm/vmalloc.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vmalloc.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -357,18 +353,13 @@
       </method>
     </configuration>
     <list>
+      <item itemvalue="CMake Application.splash" />
       <item itemvalue="CMake Application.bochs-run" />
       <item itemvalue="CMake Application.bootdir" />
       <item itemvalue="CMake Application.dump" />
-      <item itemvalue="CMake Application.ic" />
       <item itemvalue="CMake Application.iso" />
-      <item itemvalue="CMake Application.linearfb" />
-      <item itemvalue="CMake Application.pci" />
-      <item itemvalue="CMake Application.run-bios" />
       <item itemvalue="CMake Application.run" />
-      <item itemvalue="CMake Application.splash" />
-      <item itemvalue="CMake Application.timer" />
-      <item itemvalue="CMake Application.uart" />
+      <item itemvalue="CMake Application.run-bios" />
       <item itemvalue="CMake Application.vbox-create-vm" />
       <item itemvalue="CMake Application.vbox-delete-vm" />
       <item itemvalue="CMake Application.vbox-run" />
@@ -376,6 +367,11 @@
       <item itemvalue="CMake Application.vmw-run" />
       <item itemvalue="CMake Application.vmw-setup" />
       <item itemvalue="CMake Application.voidframex.krnl" />
+      <item itemvalue="CMake Application.ic" />
+      <item itemvalue="CMake Application.linearfb" />
+      <item itemvalue="CMake Application.pci" />
+      <item itemvalue="CMake Application.timer" />
+      <item itemvalue="CMake Application.uart" />
     </list>
   </component>
   <component name="RustProjectSettings">
@@ -416,7 +412,7 @@
       <workItem from="1766822531895" duration="11000" />
       <workItem from="1766836663883" duration="1289000" />
       <workItem from="1766875582922" duration="6214000" />
-      <workItem from="1766882320538" duration="6000" />
+      <workItem from="1766882320538" duration="1639000" />
     </task>
     <task id="LOCAL-00001" summary="Mutexes and FKX spec">
       <option name="closed" value="true" />
@@ -538,7 +534,15 @@
       <option name="project" value="LOCAL" />
       <updated>1766876723600</updated>
     </task>
-    <option name="localTasksCounter" value="16" />
+    <task id="LOCAL-00016" summary="SLUB rework">
+      <option name="closed" value="true" />
+      <created>1766882331572</created>
+      <option name="number" value="00016" />
+      <option name="presentableId" value="LOCAL-00016" />
+      <option name="project" value="LOCAL" />
+      <updated>1766882331572</updated>
+    </task>
+    <option name="localTasksCounter" value="17" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -569,7 +573,8 @@
     <MESSAGE value="Paging and Buddy system for PMM" />
     <MESSAGE value="panic sysintf and printk helpers (splash update)" />
     <MESSAGE value="ubsan for modules" />
-    <option name="LAST_COMMIT_MESSAGE" value="ubsan for modules" />
+    <MESSAGE value="SLUB rework" />
+    <option name="LAST_COMMIT_MESSAGE" value="SLUB rework" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

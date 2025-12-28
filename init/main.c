@@ -45,6 +45,7 @@
 #include <limine/limine.h>
 #include <mm/slab.h>
 #include <mm/vma.h>
+#include <mm/vmalloc.h>
 #include <uacpi/uacpi.h>
 
 // Set Limine Request Start Marker
@@ -221,6 +222,8 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   slab_init();
   slab_test();
+  vmalloc_test();
+  vma_test();
 
   gdt_init();
   idt_install();
@@ -290,7 +293,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     printk(KERN_CLASS "TSC calibrated successfully.\n");
   }
 
-  vma_test();
 
   // Initialize generic driver modules (e.g., PCI)
   fkx_init_module_class(FKX_DRIVER_CLASS);

@@ -8,6 +8,10 @@
 #define PAGE_SIZE_2M (2UL * 1024 * 1024)
 #define PAGE_SIZE_1G (1UL * 1024 * 1024 * 1024)
 
+// Alignment Macros
+#define PAGE_ALIGN_DOWN(x) ((x) & PAGE_MASK)
+#define PAGE_ALIGN_UP(x)   (((x) + PAGE_SIZE - 1) & PAGE_MASK)
+
 // Table Indices
 #define PML5_INDEX(virt) (((virt) >> 48) & 0x1FF)
 #define PML4_INDEX(virt) (((virt) >> 39) & 0x1FF)

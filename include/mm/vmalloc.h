@@ -26,33 +26,23 @@ void *vmalloc_exec(size_t size);
 void vfree(void *addr);
 
 /*
-
  * Maps a specific physical address range to the vmalloc region.
-
  * Useful for mapping MMIO/Framebuffer regions.
-
  */
-
 void *viomap(uint64_t phys_addr, size_t size);
 
-
-
 /*
-
  * Maps a specific physical address range using Write-Combining (WC).
-
  * Ideal for framebuffers.
-
  */
-
 void *viomap_wc(uint64_t phys_addr, size_t size);
 
-
+/*
+ * Unmaps an IO mapping.
+ */
+void viounmap(void *addr);
 
 /*
-
- * Unmaps an IO mapping.
-
+ * Do a stress test, panics if failed
  */
-
-void viounmap(void *addr);
+void vmalloc_test(void);
