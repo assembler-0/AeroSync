@@ -25,6 +25,7 @@
 #include <kernel/spinlock.h>
 #include <kernel/panic.h>
 #include <arch/x64/cpu.h>
+#include <kernel/classes.h>
 #include <linux/list.h>
 #include <linux/container_of.h>
 #include <mm/gfp.h>
@@ -53,7 +54,7 @@ extern uint64_t pmm_max_pages;
 static void check_page_sanity(struct page *page, int order) {
     if (PageBuddy(page)) {
         char buf[64];
-        snprintf(buf, sizeof(buf), "Bad page state: PageBuddy set in alloc path (pfn %llu)", (uint64_t)(page - mem_map));
+        snprintf(buf, sizeof(buf), PMM_CLASS "Bad page state: PageBuddy set in alloc path (pfn %llu)", (uint64_t)(page - mem_map));
         panic(buf);
     }
     if (page->order != 0 && page->order != order) {
@@ -191,6 +192,13 @@ struct page *alloc_pages(gfp_t gfp_mask, unsigned int order) {
         }
     }
 
+    printk(KERN_ERR PMM_CLASS "failed to allocate order %u from zones up to %d\n", order, start_zone);
+    for (int i = 0; i < MAX_NR_ZONES; i++) {
+        z = &managed_zones[i];
+        if (!z->present_pages) continue;
+        printk(KERN_ERR PMM_CLASS "  Zone %s: %lu pages present\n", z->name, z->present_pages);
+    }
+
     return NULL;
 }
 
@@ -199,7 +207,7 @@ void __free_pages(struct page *page, unsigned int order) {
 
     if (PageBuddy(page)) {
         char buf[64];
-        snprintf(buf, sizeof(buf), "Double free of page %p", page);
+        snprintf(buf, sizeof(buf), PMM_CLASS "Double free of page %p", page);
         panic(buf);
     }
     

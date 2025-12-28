@@ -106,6 +106,10 @@ void mm_init(struct mm_struct *mm) {
   if (!mm)
     return;
 
+  if (mm->map_count > 0 || mm->mm_rb.rb_node != NULL) {
+      return;
+  }
+
   memset(mm, 0, sizeof(struct mm_struct));
   mm->mm_rb = RB_ROOT;
   INIT_LIST_HEAD(&mm->mmap_list);
@@ -143,6 +147,7 @@ struct mm_struct *mm_alloc(void) {
   }
 
   if (mm) {
+    memset(mm, 0, sizeof(struct mm_struct));
     mm_init(mm);
   }
 
@@ -319,13 +324,22 @@ struct vm_area_struct *vma_create(uint64_t start, uint64_t end,
 
 static void __vma_link_list(struct mm_struct *mm, struct vm_area_struct *vma) {
   struct vm_area_struct *curr;
+  struct list_head *pos;
 
   if (list_empty(&mm->mmap_list)) {
     list_add(&vma->vm_list, &mm->mmap_list);
     return;
   }
 
-  for_each_vma(mm, curr) {
+  // UBSAN protection: Check for corrupted list head
+  if (!mm->mmap_list.next) {
+      INIT_LIST_HEAD(&mm->mmap_list);
+      list_add(&vma->vm_list, &mm->mmap_list);
+      return;
+  }
+
+  list_for_each(pos, &mm->mmap_list) {
+    curr = list_entry(pos, struct vm_area_struct, vm_list);
     if (curr->vm_start > vma->vm_start) {
       list_add_tail(&vma->vm_list, &curr->vm_list);
       return;
@@ -428,8 +442,9 @@ int vma_insert(struct mm_struct *mm, struct vm_area_struct *vma) {
     return -1;
 
   /* Check for overlap */
-  if (vma_find_intersection(mm, vma->vm_start, vma->vm_end))
+  if (vma_find_intersection(mm, vma->vm_start, vma->vm_end)) {
     return -1;
+  }
 
   /* Insert into RB-tree */
   new = &mm->mm_rb.rb_node;
@@ -803,6 +818,15 @@ uint64_t vma_find_free_region_aligned(struct mm_struct *mm, size_t size,
 
   while (node) {
       struct vm_area_struct *vma = rb_entry(node, struct vm_area_struct, vm_rb);
+      
+      // Optimization: If the current VMA starts at or before the range_start,
+      // then it and its entire left subtree are effectively "before" the search range.
+      // We must look to the right.
+      if (vma->vm_start <= range_start) {
+          node = node->rb_right;
+          continue;
+      }
+
       struct vm_area_struct *prev = vma_prev(vma);
       uint64_t prev_end = prev ? prev->vm_end : 0;
       if (prev_end < range_start) prev_end = range_start;
@@ -817,6 +841,11 @@ uint64_t vma_find_free_region_aligned(struct mm_struct *mm, size_t size,
       }
 
       // If not, check if the left subtree has any potential gaps
+      // We only go left if the left subtree has a gap big enough AND
+      // we haven't already ruled it out (which the <= range_start check handles partially,
+      // but we also need to ensure we don't chase gaps that are strictly below range_start).
+      // Since we pruned nodes <= range_start, 'vma' is > range_start.
+      // The left subtree contains nodes < vma->vm_start. Some might be >= range_start.
       if (node->rb_left && rb_entry(node->rb_left, struct vm_area_struct, vm_rb)->vm_rb_max_gap >= size) {
           node = node->rb_left;
       } else {
@@ -834,10 +863,17 @@ uint64_t vma_find_free_region_aligned(struct mm_struct *mm, size_t size,
 
   /* Check final gap (after the last VMA) */
   struct rb_node *last_node = mm->mm_rb.rb_node;
-  while (last_node->rb_right) last_node = last_node->rb_right;
-  struct vm_area_struct *last_vma = rb_entry(last_node, struct vm_area_struct, vm_rb);
+  while (last_node && last_node->rb_right) last_node = last_node->rb_right;
   
-  uint64_t addr = (last_vma->vm_end + alignment - 1) & ~(alignment - 1);
+  uint64_t addr;
+  if (last_node) {
+      struct vm_area_struct *last_vma = rb_entry(last_node, struct vm_area_struct, vm_rb);
+      addr = (last_vma->vm_end + alignment - 1) & ~(alignment - 1);
+      if (addr < range_start) addr = (range_start + alignment - 1) & ~(alignment - 1);
+  } else {
+      addr = (range_start + alignment - 1) & ~(alignment - 1);
+  }
+
   if (addr + size <= range_end)
       return addr;
 
@@ -888,7 +924,7 @@ void vma_dump(struct mm_struct *mm) {
   if (!mm)
     return;
 
-  printk(VMA_CLASS "=== VMA Dump for MM: %p (%d-level paging) ===\n", mm, vmm_get_paging_levels());
+  printk(VMA_CLASS "[--- VMA Dump for MM: %p (%d-level paging) ---]\n", mm, vmm_get_paging_levels());
   printk(VMA_CLASS "Canonical High Base: %016llx\n", vmm_get_canonical_high_base());
   printk(VMA_CLASS "Total VMAs: %d, Total VM: %llu KB\n", mm->map_count,
          mm_total_size(mm) / 1024);
@@ -898,8 +934,6 @@ void vma_dump(struct mm_struct *mm) {
          mm->start_stack);
 
   for_each_vma(mm, vma) { vma_dump_single(vma); }
-
-  printk(VMA_CLASS "=== End VMA Dump ===\n");
 }
 
 /* ========================================================================
@@ -940,7 +974,7 @@ struct mm_struct init_mm;
  * ======================================================================== */
 
 void vma_test(void) {
-  printk(KERN_DEBUG VMA_CLASS "Starting Modern VMA Test Suite...\n");
+  printk(KERN_DEBUG VMA_CLASS "Starting VMA Test Suite...\n");
 
   /* Use mm_create to get valid page tables and exercise VMM glue */
   struct mm_struct *mm = mm_create();

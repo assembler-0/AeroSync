@@ -106,7 +106,19 @@ void vma_cache_free(struct vm_area_struct *vma);
 #define vma_size(vma) ((vma)->vm_end - (vma)->vm_start)
 
 #define for_each_vma(mm, vma)                                                  \
-  list_for_each_entry(vma, &(mm)->mmap_list, vm_list)
+  for (struct list_head *__pos = (mm)->mmap_list.next;                         \
+       __pos != &(mm)->mmap_list &&                                            \
+           ({                                                                  \
+             vma = list_entry(__pos, struct vm_area_struct, vm_list);          \
+             1;                                                                \
+           });                                                                 \
+       __pos = __pos->next)
 
 #define for_each_vma_safe(mm, vma, tmp)                                        \
-  list_for_each_entry_safe(vma, tmp, &(mm)->mmap_list, vm_list)
+  for (struct list_head *__pos = (mm)->mmap_list.next, *__n = __pos->next;     \
+       __pos != &(mm)->mmap_list &&                                            \
+           ({                                                                  \
+             vma = list_entry(__pos, struct vm_area_struct, vm_list);          \
+             1;                                                                \
+           });                                                                 \
+       __pos = __n, __n = __pos->next)

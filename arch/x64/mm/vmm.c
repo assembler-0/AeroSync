@@ -533,15 +533,15 @@ void vmm_init(void) {
   printk(VMM_CLASS "VMM Initialized (%d levels active).\n", vmm_get_paging_levels());
 
   /* --- MMU Smoke Test --- */
-  printk(VMM_CLASS KERN_DEBUG "Running VMM Smoke Test...\n");
+  printk(KERN_DEBUG VMM_CLASS "Running VMM Smoke Test...\n");
 
   // 1. Test RW-Semaphore
   down_read(&init_mm.mmap_lock);
-  printk(VMM_CLASS KERN_DEBUG "  - RW-Sem Read Lock: OK\n");
+  printk(KERN_DEBUG VMM_CLASS "  - RW-Sem Read Lock: OK\n");
   up_read(&init_mm.mmap_lock);
 
   down_write(&init_mm.mmap_lock);
-  printk(VMM_CLASS KERN_DEBUG "  - RW-Sem Write Lock: OK\n");
+  printk(KERN_DEBUG VMM_CLASS "  - RW-Sem Write Lock: OK\n");
 
   // 2. Test Mapping + Split PTL
   uint64_t test_virt = 0xDEADC0DE000;
@@ -549,7 +549,7 @@ void vmm_init(void) {
   if (vmm_map_page(g_kernel_pml4, test_virt, test_phys, PTE_PRESENT | PTE_RW | PTE_USER) < 0) {
       panic("VMM Smoke Test: Mapping failed");
   }
-  printk(VMM_CLASS "  - Map + Split PTL: OK\n");
+  printk(KERN_DEBUG VMM_CLASS "  - Map + Split PTL: OK\n");
 
   // 3. Test Flag Helpers
   if (vmm_is_dirty(g_kernel_pml4, test_virt)) {
@@ -566,12 +566,12 @@ void vmm_init(void) {
   if (!vmm_is_dirty(g_kernel_pml4, test_virt)) {
       panic("VMM Smoke Test: Dirty bit helper failed");
   }
-  printk(VMM_CLASS KERN_DEBUG "  - Dirty/Flags Helpers: OK\n");
+  printk(KERN_DEBUG VMM_CLASS "  - Dirty/Flags Helpers: OK\n");
 
   vmm_unmap_page(g_kernel_pml4, test_virt);
   pmm_free_page(test_phys);
-  printk(VMM_CLASS KERN_DEBUG "  - Unmap: OK\n");
+  printk(KERN_DEBUG VMM_CLASS "  - Unmap: OK\n");
 
   up_write(&init_mm.mmap_lock);
-  printk(VMM_CLASS KERN_DEBUG "VMM Smoke Test Passed.\n");
+  printk(KERN_DEBUG VMM_CLASS "VMM Smoke Test Passed.\n");
 }

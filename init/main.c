@@ -220,6 +220,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   vmm_init();
 
   slab_init();
+  slab_test();
 
   gdt_init();
   idt_install();
