@@ -42,11 +42,12 @@ execute_process(
         OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-set(VOIDFRAMEX_ABI_LEVEL "0")
+set(VOIDFRAMEX_ABI_LEVEL "0" CACHE STRING "VoidFrameX ABI level")
 set(VOIDFRAMEX_CODENAME "Invariant" CACHE STRING "VoidFrameX codename")
 configure_file(
         ${CMAKE_CURRENT_SOURCE_DIR}/include/kernel/version.h.in
         ${CMAKE_CURRENT_SOURCE_DIR}/include/kernel/version.h
+        @ONLY
 )
 
 # ============================================================================
@@ -54,7 +55,6 @@ configure_file(
 # ============================================================================
 list(APPEND CMAKE_MODULE_PATH
         "${CMAKE_SOURCE_DIR}/cmake"
-        "${CMAKE_SOURCE_DIR}/lib"
 )
 
 include(cache)
@@ -65,7 +65,7 @@ include(lib/uACPI/uacpi.cmake)
 include(source)
 include(fkx)
 include(lib/linearfb/linearfb.cmake)
-#include(drivers/misc/splash.cmake)
+# include(drivers/misc/splash.cmake)
 include(drivers/uart/uart.cmake)
 include(drivers/apic/ic.cmake)
 include(drivers/pci/pci.cmake)

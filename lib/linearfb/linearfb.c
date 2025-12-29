@@ -112,12 +112,12 @@ void linearfb_console_get_cursor(uint32_t *col, uint32_t *row) {
 }
 
 uint32_t linearfb_make_color(uint8_t r, uint8_t g, uint8_t b) {
-    return (0xFF << 24) | (r << 16) | (g << 8) | b;
+    return (0xFFU << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
 }
 EXPORT_SYMBOL(linearfb_make_color);
 
 uint32_t linearfb_make_color_rgba(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
-    return (a << 24) | (r << 16) | (g << 8) | b;
+    return ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
 }
 EXPORT_SYMBOL(linearfb_make_color_rgba);
 
@@ -205,7 +205,7 @@ void linearfb_put_pixel_blend(uint32_t x, uint32_t y, uint32_t color) {
     uint32_t g = (((color >> 8) & 0xFF) * alpha + ((bg >> 8) & 0xFF) * (255 - alpha)) >> 8;
     uint32_t b = ((color & 0xFF) * alpha + (bg & 0xFF) * (255 - alpha)) >> 8;
 
-    linearfb_put_pixel(x, y, (0xFF << 24) | (r << 16) | (g << 8) | b);
+    linearfb_put_pixel(x, y, (0xFFU << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | b);
 }
 EXPORT_SYMBOL(linearfb_put_pixel_blend);
 

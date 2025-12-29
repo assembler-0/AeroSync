@@ -128,6 +128,6 @@ FKX_MODULE_DEFINE(
   "System Splash Boot Screen",
   0,
   FKX_GENERIC_CLASS,
-  splash_init,
+  splash_mod_init,
   splash_deps
 );

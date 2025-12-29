@@ -342,6 +342,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     check_preempt();
     cpu_hlt();
   }
-
+  
   __unreachable();
 }
