@@ -12,6 +12,10 @@
 
 VoidFrameX is a monolithic, higher-half, 64-bit x86_64 kernel (a KERNEL!, NOT AN OS!) built for modern systems. It is designed with a focus on a clean architecture and draws inspiration from the Linux kernel for many of its subsystems.
 
+## Contributors
+
+- All contributors are listed [here!](CONTRIBUTORS.md)
+
 ## Status
 
 | Platform                            | Status                                                                             | Performance |
