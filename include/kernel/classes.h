@@ -11,6 +11,7 @@
 ///@section Boot & Initialization
 #define BOOT_CLASS "[SYS::BOOT] " // Bootloader info, multiboot parsing
 #define ACPI_CLASS "[SYS::ACPI] " // ACPI table parsing (RSDP, MADT, FADT)
+#define ACPI_BUTTON_CLASS "[ACPI::BTN] " // ACPI Power/Sleep button handling
 #define HAL_CLASS "[SYS::HAL] "   // Hardware Abstraction Layer generic
 
 ///@section CPU & Interrupts
@@ -28,15 +29,18 @@
 #define FPU_CLASS "[SYS::FPU] " // Floating Point / SSE / AVX contexts
 #define HPET_CLASS "[SYS::HPET] " // High Precision Event Timer
 #define TIME_CLASS "[SYS::TIME] " // Unified timer subsystem
+#define PERCPU_CLASS "[SYS::PCPU] " // Per-CPU data
 
 ///@section Core Kernel
 #define KERN_CLASS "[SYS::CORE] "         // Generic kernel core messages
 #define PANIC_CLASS "[SYS::PANIC] "       // Kernel panics (Fatal errors)
+#define FAULT_CLASS "[SYS::FAULT] "
 #define SYSCALL_CLASS "[SYS::CALL] "      // System call entry/exit tracing
 #define TIME_CLASS "[SYS::TIME] "         // RTC, PIT, HPET, System Clock
 #define ATOMIC_CLASS "[SYS::ATOMIC] "     // Atomic operations
 #define SPINLOCK_CLASS "[SYS::SPINLOCK] " // Spinlock operations
 #define FW_CLASS "[SYS::FW] "           // Firmware interfaces (BIOS/UEFI)
+#define FKX_CLASS "[SYS::FKX] "         // FKX Module Loader
 
 ///@section Crypto
 #define RNG_CLASS "[CRPT::RNG] " // Random Number Generator
@@ -88,7 +92,7 @@
  *  DEVICE DRIVERS
  * ========================================================================= */
 ///@section Bus Drivers
-#define PCI_CLASS "[DRV::PCI] " // PCI/PCIe Bus enumeration
+#define PCI_CLASS "[S-SYS::PCI] " /// @note PCI IS NOT A DRIVER! ITS MORE OF A SUBSYSTEM!
 #define USB_CLASS "[DRV::USB] " // USB Stack (UHCI/EHCI/XHCI)
 
 ///@section Storage Drivers
@@ -128,10 +132,9 @@
  *  NETWORKING STACK
  * ========================================================================= */
 #define NET_CLASS "[NET::CORE] " // Generic Network Stack
-#define NIC_CLASS                                                              \
-  "[NET::NIC] " // Network Interface Card Driver (e1000, rtl8139)
+#define NIC_CLASS "[NET::NIC] " // Network Interface Card Driver (e1000, rtl8139)
 #define ETH_CLASS "[NET::ETH] "   // Ethernet Layer (L2)
-#define IP_CLASS "[NET::IPV4] "   // IPv4/IPv6 Layer (L3)
+#define IP_CLASS "[NET::IP] "   // IPv4/IPv6 Layer (L3)
 #define ARP_CLASS "[NET::ARP] "   // ARP Protocol
 #define TCP_CLASS "[NET::TCP] "   // TCP Protocol (L4)
 #define UDP_CLASS "[NET::UDP] "   // UDP Protocol (L4)
@@ -141,3 +144,4 @@
  *  UTILITIES & LIBRARIES
  * ========================================================================= */
 #define TEST_CLASS "[SYS::TEST] " // Unit tests running inside kernel
+#define DEBUG_CLASS "[SYS::DEBUG] "

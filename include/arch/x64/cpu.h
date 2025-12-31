@@ -53,7 +53,12 @@ typedef struct cpu_regs {
 // CPUID detection
 void cpuid(uint32_t leaf, uint32_t *eax, uint32_t *ebx, uint32_t *ecx,
            uint32_t *edx);
-void cpuid_count(uint32_t leaf, uint32_t subleaf, uint32_t* eax, uint32_t* ebx, uint32_t* ecx, uint32_t* edx);
+void cpuid_count(uint32_t leaf, uint32_t subleaf, uint32_t *eax, uint32_t *ebx,
+                 uint32_t *ecx, uint32_t *edx);
+
+#define MSR_FS_BASE 0xC0000100
+#define MSR_GS_BASE 0xC0000101
+#define MSR_KERNEL_GS_BASE 0xC0000102
 
 // MSR access
 uint64_t rdmsr(uint32_t msr);

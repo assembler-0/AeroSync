@@ -1,15 +1,11 @@
 #pragma once
 
 #include <kernel/types.h>
+#include <mm/page.h>
 
-// Page size constants
-#define PAGE_SIZE 4096UL
-#define PAGE_SHIFT 12
-#define PAGE_MASK (~(PAGE_SIZE - 1))
+#include <arch/x64/mm/paging.h>
 
-// Align macros
-#define PAGE_ALIGN_DOWN(addr) ((addr) & PAGE_MASK)
-#define PAGE_ALIGN_UP(addr) (((addr) + PAGE_SIZE - 1) & PAGE_MASK)
+#define MAX_ORDER 11
 
 // Convert between addresses and page frame numbers
 #define PHYS_TO_PFN(addr) ((addr) >> PAGE_SHIFT)
@@ -36,9 +32,14 @@ typedef struct {
   uint64_t reserved_pages;  // Reserved (unusable) pages
   uint64_t total_bytes;     // Total usable memory in bytes
   uint64_t highest_address; // Highest usable physical address
-  uint64_t bitmap_pages;    // Pages used by bitmap itself
-  uint64_t bitmap_size;     // Size of bitmap in bytes
+  uint64_t memmap_pages;    // Pages used by mem_map array
+  uint64_t memmap_size;     // Size of mem_map array in bytes
 } pmm_stats_t;
+
+#include <mm/zone.h>
+
+/* Per-CPU page cache for order-0 pages */
+/* Defined in mm/zone.h */
 
 /**
  * Initialize the physical memory manager.
@@ -49,6 +50,12 @@ typedef struct {
  * @return 0 on success, negative on error
  */
 int pmm_init(void *memmap_response, uint64_t hhdm_offset);
+
+/**
+ * Initialize per-CPU PMM state (PCP list).
+ * Must be called on each CPU after per-CPU area setup.
+ */
+void pmm_init_cpu(void);
 
 /**
  * Allocate a single physical page.
@@ -85,7 +92,7 @@ void pmm_free_pages(uint64_t phys_addr, size_t count);
  *
  * @return Pointer to stats structure
  */
-pmm_stats_t * pmm_get_stats(void);
+pmm_stats_t *pmm_get_stats(void);
 
 /**
  * Convert physical address to virtual address using HHDM.
@@ -104,7 +111,10 @@ static inline void *pmm_phys_to_virt(uint64_t phys_addr);
 static inline uint64_t pmm_virt_to_phys(void *virt_addr);
 
 // HHDM offset - set during pmm_init
+
 extern uint64_t g_hhdm_offset;
+
+extern struct page *mem_map;
 
 static inline void *pmm_phys_to_virt(uint64_t phys_addr) {
   return (void *)(phys_addr + g_hhdm_offset);
@@ -112,4 +122,20 @@ static inline void *pmm_phys_to_virt(uint64_t phys_addr) {
 
 static inline uint64_t pmm_virt_to_phys(void *virt_addr) {
   return (uint64_t)virt_addr - g_hhdm_offset;
+}
+
+static inline struct page *phys_to_page(uint64_t phys) {
+  return &mem_map[PHYS_TO_PFN(phys)];
+}
+
+static inline uint64_t page_to_pfn(struct page *page) {
+  return (uint64_t)(page - mem_map);
+}
+
+static inline struct page *virt_to_page(void *addr) {
+  return phys_to_page(pmm_virt_to_phys(addr));
+}
+
+static inline void *page_address(struct page *page) {
+  return pmm_phys_to_virt(PFN_TO_PHYS((uint64_t)(page - mem_map)));
 }

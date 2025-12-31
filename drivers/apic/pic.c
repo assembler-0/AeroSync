@@ -1,29 +1,18 @@
-/// SPDX-License-Identifier: GPL-2.0-only
+///SPDX-License-Identifier: GPL-2.0-only
 /**
  * VoidFrameX monolithic kernel
  *
  * @file drivers/apic/pic.c
  * @brief Legacy PIC interrupt controller driver
  * @copyright (C) 2025 assembler-0
- *
- * This file is part of the VoidFrameX kernel.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
+#include <kernel/classes.h> 
+#include <kernel/fkx/fkx.h>
+#include <kernel/sysintf/ic.h>
 #include <arch/x64/io.h>
 #include <drivers/timer/pit.h>
-#include <kernel/types.h>
-#include <drivers/apic/ic.h>
 #include <lib/printk.h>
-#include <kernel/classes.h>
 
 #define PIC1_COMMAND 0x20
 #define PIC1_DATA 0x21
@@ -36,10 +25,6 @@
 
 static uint16_t s_irq_mask = 0xFFFF; // All masked initially
 
-// pit_set_frequency is now in drivers/timer/pit.c
-// But pic_interface expects a callback.
-
-// Helper to write the cached mask to the PICs
 static void pic_write_mask() {
   outb(PIC1_DATA, s_irq_mask & 0xFF);
   outb(PIC2_DATA, (s_irq_mask >> 8) & 0xFF);
@@ -71,32 +56,22 @@ void pic_send_eoi(uint32_t interrupt_number) {
 }
 
 int pic_install(void) {
-  // Standard initialization sequence
+  printk(KERN_NOTICE PIC_CLASS "PIC drivers does not come with builtin PIT timer\n");
+  
   outb(PIC1_COMMAND, ICW1_INIT | ICW1_ICW4);
   outb(PIC2_COMMAND, ICW1_INIT | ICW1_ICW4);
-
-  // Remap PIC vectors to 0x20-0x2F
-  outb(PIC1_DATA, 0x20); // Master PIC vector offset
-
-  outb(PIC2_DATA, 0x28); // Slave PIC vector offset
-
-  // Configure cascade
-  outb(PIC1_DATA, 4); // Tell Master PIC about slave at IRQ2
-
-  outb(PIC2_DATA, 2); // Tell Slave PIC its cascade identity
-
-  // Set 8086 mode
+  outb(PIC1_DATA, 0x20); 
+  outb(PIC2_DATA, 0x28); 
+  outb(PIC1_DATA, 4); 
+  outb(PIC2_DATA, 2); 
   outb(PIC1_DATA, ICW4_8086);
-
   outb(PIC2_DATA, ICW4_8086);
 
-
-  // Indicate success
   return 1;
 }
 
 int pic_probe(void) {
-  return 1; // Assume PIC is always present
+  return 1; 
 }
 
 static void pic_shutdown(void) {

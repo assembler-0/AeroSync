@@ -25,6 +25,9 @@ struct __aligned(sizeof(long)) vm_area_struct {
   uint64_t vm_start; /* Our start address within vm_mm */
   uint64_t vm_end;   /* The first byte after our end address within vm_mm */
 
+  /* For Augmented RB-Tree gap tracking */
+  uint64_t vm_rb_max_gap;
+
   /* Linked list of VMAs sorted by address */
   struct list_head vm_list;
 
@@ -33,20 +36,25 @@ struct __aligned(sizeof(long)) vm_area_struct {
   /* TODO: Backing store/file pointers will go here */
 };
 
+#include <kernel/rw_semaphore.h>
+
 /*
  * mm_struct
  * Represents the entire address space of a task.
  */
 struct mm_struct {
   struct rb_root mm_rb;        /* Root of the VMA Red-Black Tree */
+  struct vm_area_struct *mmap_cache; /* Last found VMA (O(1) optimization) */
   struct list_head mmap_list; /* List of VMAs */
 
   uint64_t *pml4; /* Physical address of the top-level page table */
 
-  spinlock_t page_table_lock; /* Protects page table modifications */
-  spinlock_t mmap_lock;       /* Protects VMA list/tree modifications */
+  spinlock_t page_table_lock; /* Protects page table modifications (fallback) */
+  struct rw_semaphore mmap_lock; /* Protects VMA list/tree modifications */
 
   int map_count; /* Number of VMAs */
+
+  uint64_t mmap_base; /* Hint for where to start looking for free space */
 
   uint64_t start_code, end_code, start_data, end_data;
   uint64_t start_brk, brk, start_stack;

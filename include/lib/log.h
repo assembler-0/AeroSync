@@ -15,14 +15,12 @@ void log_set_level(int level);
 int  log_get_level(void);
 
 // Console sink management
-typedef void (*log_sink_putc_t)(char c);
+fnd(void, log_sink_putc_t, char c);
 void log_init(log_sink_putc_t backend);
 // Start asynchronous logging consumer (klogd). Safe to call once after
 // scheduler is up. Subsequent calls are no-ops.
 void log_init_async(void);
 void log_set_console_sink(log_sink_putc_t sink);
-void log_set_console_level(int level);
-int  log_get_console_level(void);
 
 // Write a complete, already formatted message (no implicit newline added)
 // Returns number of bytes accepted (may be truncated to ring capacity)
@@ -31,3 +29,20 @@ int log_write_str(int level, const char *msg);
 // Read next record as a string. Returns length copied or 0 if none available.
 // If out_level != NULL, stores the record level.
 int log_read(char *out_buf, int out_buf_len, int *out_level);
+
+// Optional runtime debug control: by default DEBUG may be off even if
+// the numeric level exists; use these helpers to enable/disable it at
+// runtime without changing the numeric log level used for other messages.
+void log_enable_debug(void);
+void log_disable_debug(void);
+int  log_is_debug_enabled(void);
+
+// If the console sink is known to be async-capable (i.e. slow but safe to
+// defer to the klogd consumer), callers can hint the logger to avoid
+// synchronous console emission during early boot:
+void log_set_console_async_hint(int is_async);
+
+// Try to spawn the background klogd consumer now. Returns non-zero if the
+// consumer was started (or was already running). This allows callers to
+// attempt enabling async printing when the scheduler becomes available.
+int log_try_init_async(void);

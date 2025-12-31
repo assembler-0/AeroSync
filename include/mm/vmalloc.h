@@ -32,6 +32,17 @@ void vfree(void *addr);
 void *viomap(uint64_t phys_addr, size_t size);
 
 /*
+ * Maps a specific physical address range using Write-Combining (WC).
+ * Ideal for framebuffers.
+ */
+void *viomap_wc(uint64_t phys_addr, size_t size);
+
+/*
  * Unmaps an IO mapping.
  */
 void viounmap(void *addr);
+
+/*
+ * Do a stress test, panics if failed
+ */
+void vmalloc_test(void);

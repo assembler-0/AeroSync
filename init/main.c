@@ -18,37 +18,37 @@
  * GNU General Public License for more details.
  */
 
+#include <arch/x64/fpu.h>
 #include <arch/x64/cpu.h>
 #include <arch/x64/features/features.h>
 #include <arch/x64/gdt/gdt.h>
 #include <arch/x64/idt/idt.h>
 #include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/vmm.h>
+#include <arch/x64/percpu.h>
 #include <arch/x64/smp.h>
 #include <compiler.h>
 #include <crypto/crc32.h>
-#include <drivers/apic/apic.h>
-#include <drivers/apic/ic.h>
-#include <drivers/apic/pic.h>
+#include <drivers/acpi/power.h>
 #include <drivers/qemu/debugcon/debugcon.h>
-#include <drivers/timer/hpet.h>
-#include <drivers/timer/pit.h>
-#include <drivers/timer/time.h>
-#include <drivers/uart/serial.h>
 #include <fs/vfs.h>
 #include <kernel/classes.h>
+#include <kernel/cmdline.h>
+#include <kernel/fkx/fkx.h>
 #include <kernel/panic.h>
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>
+#include <kernel/sysintf/ic.h>
+#include <kernel/sysintf/time.h>
 #include <kernel/types.h>
 #include <kernel/version.h>
-#include <lib/linearfb/linearfb.h>
+#include <lib/log.h>
 #include <lib/printk.h>
 #include <limine/limine.h>
 #include <mm/slab.h>
 #include <mm/vma.h>
+#include <mm/vmalloc.h>
 #include <uacpi/uacpi.h>
-#include <drivers/timer/pit.h>
 
 // Set Limine Request Start Marker
 __attribute__((used,
@@ -78,7 +78,7 @@ __attribute__((
         ".limine_requests"))) static volatile struct limine_paging_mode_request
     paging_request = {.id = LIMINE_PAGING_MODE_REQUEST_ID,
                       .revision = 0,
-                      .mode = LIMINE_PAGING_MODE_X86_64_4LVL};
+                      .mode = LIMINE_PAGING_MODE_X86_64_5LVL};
 
 // Request HHDM (Higher Half Direct Map)
 __attribute__((
@@ -103,66 +103,82 @@ __attribute__((
     module_request = {.id = LIMINE_MODULE_REQUEST_ID,
                       .revision = 0}; // New module request
 
-__attribute__((
-    used,
-    section(".limine_reuests"))) static volatile struct limine_bootloader_info_request 
-    bootloader_info_request = {.id = LIMINE_BOOTLOADER_INFO_REQUEST_ID, .revision = 0};
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_bootloader_info_request bootloader_info_request = {
+        .id = LIMINE_BOOTLOADER_INFO_REQUEST_ID, .revision = 0};
+
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_bootloader_performance_request bootloader_performance_request = {
+        .id = LIMINE_BOOTLOADER_PERFORMANCE_REQUEST_ID, .revision = 0};
+
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_executable_cmdline_request cmdline_request = {
+        .id = LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID, .revision = 0};
+
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_firmware_type_request fw_request = {
+        .id = LIMINE_FIRMWARE_TYPE_REQUEST_ID, .revision = 0};
 
 __attribute__((
     used,
-    section(".limine_reuests"))) static volatile struct limine_bootloader_performance_request 
-    bootloader_performance_request = {.id = LIMINE_BOOTLOADER_PERFORMANCE_REQUEST_ID, .revision = 0};
-
-__attribute__((
-    used,
-    section(".limine_requests"))) static volatile struct limine_executable_cmdline_request 
-    cmdline_request = {.id = LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID, .revision = 0};
-
-__attribute__((
-    used,
-    section(".limine_requests"))) static volatile struct limine_firmware_type_request 
-    fw_request = {.id = LIMINE_FIRMWARE_TYPE_REQUEST_ID, .revision = 0};
-
-__attribute__((
-    used,
-    section(".limine_requests"))) static volatile struct limine_date_at_boot_request 
-    date_at_boot_request = {.id = LIMINE_DATE_AT_BOOT_REQUEST_ID, .revision = 0};
+    section(
+        ".limine_requests"))) static volatile struct limine_date_at_boot_request
+    date_at_boot_request = {.id = LIMINE_DATE_AT_BOOT_REQUEST_ID,
+                            .revision = 0};
 
 // Set Limine Request End Marker
 __attribute__((used, section(".limine_requests_end"))) static volatile uint64_t
     limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
 
-static struct task_struct bsp_task;
+static struct task_struct bsp_task __aligned(16);
 
-int kthread_idle(void *data) {
+volatile struct limine_framebuffer_request *get_framebuffer_request(void) {
+  return &framebuffer_request;
+}
+EXPORT_SYMBOL(get_framebuffer_request);
+
+int process(void *data) {
   while (1) {
-    cpu_hlt();
+    check_preempt();
   }
 }
 
+DEFINE_PER_CPU(int, test_var);
+
+void test_percpu_system(void) {
+  int cpu = smp_get_id();
+  int val = 0xDEADBEEF + cpu;
+
+  printk(KERN_INFO "Testing per-cpu system on CPU %d\n", cpu);
+
+  this_cpu_write(test_var, val);
+
+  int read_back = this_cpu_read(test_var);
+  if (read_back != val) {
+    printk(KERN_ERR "Per-CPU test failed! Wrote %x, read %x\n", val, read_back);
+    panic("Per-CPU test failed");
+  }
+
+  printk(KERN_INFO "Per-CPU test passed on CPU %d (val=%x)\n", cpu, read_back);
+}
+
+// TODO: MAKE ALL HARDWARE DRIVER A SEPARATE MODULE!!
+
 void __init __noreturn __noinline __sysv_abi start_kernel(void) {
+  panic_register_handler(get_builtin_panic_ops());
+  panic_handler_install();
+
   if (LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision) == false) {
     panic_early();
   }
 
-  // Register printk backends
   printk_register_backend(debugcon_get_backend());
-  printk_register_backend(serial_get_backend());
-  printk_register_backend(linearfb_get_backend());
-
-  // check if we recived 4-level paging mode
-  if (!paging_request.response ||
-      paging_request.response->mode != LIMINE_PAGING_MODE_X86_64_4LVL) {
-    panic(KERN_CLASS "4-level paging mode not enabled");
-  }
-
-  printk_init_auto(NULL);
-  pit_calibrate_tsc();
+  printk_auto_configure(NULL, 0);
+  tsc_calibrate_early();
 
   printk(KERN_CLASS "VoidFrameX (R) v%s - %s\n", VOIDFRAMEX_VERSION,
          VOIDFRAMEX_COMPILER_VERSION);
   printk(KERN_CLASS "copyright (C) 2025 assembler-0\n");
-  printk(KERN_CLASS "build: %s\n", VOIDFRAMEX_BUILD_DATE);
 
   if (bootloader_info_request.response &&
       bootloader_performance_request.response) {
@@ -191,12 +207,26 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
                : "(unknown)");
   }
 
+  if (paging_request.response) {
+    printk(KERN_CLASS "system pagination level: %d\n", vmm_get_paging_levels());
+  }
+
   if (cmdline_request.response) {
-    printk(KERN_CLASS "cmdline: %s\n", cmdline_request.response->cmdline);
+    /* Register known options and parse the executable command-line provided by
+     * the bootloader (via Limine). Using static storage in the cmdline parser
+     * ensures we don't allocate during early boot. */
+    cmdline_register_option("verbose", CMDLINE_TYPE_FLAG);
+    cmdline_parse(cmdline_request.response->cmdline);
+    if (cmdline_verbose()) {
+      /* Enable verbose/debug log output which some subsystems consult. */
+      log_enable_debug();
+      printk(KERN_CLASS "cmdline: verbose enabled\n");
+    }
   }
 
   if (date_at_boot_request.response) {
-    printk(KERN_INFO "unix timestamp: %lld\n", date_at_boot_request.response->timestamp);
+    printk(KERN_CLASS "unix timestamp: %lld\n",
+           date_at_boot_request.response->timestamp);
   }
 
   // Initialize Physical Memory Manager
@@ -204,31 +234,61 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     panic(KERN_CLASS "memmap/HHDM not available");
   }
 
-  gdt_init();
-  idt_install();
-
   pmm_init(memmap_request.response, hhdm_request.response->offset);
 
   vmm_init();
 
   slab_init();
+  setup_per_cpu_areas();
+  smp_prepare_boot_cpu();
+  pmm_init_cpu();
+  test_percpu_system();
 
-  // Initialize the kernel's virtual memory address space manager
-  mm_init(&init_mm);
-  init_mm.pml4 = (uint64_t *)pmm_phys_to_virt(g_kernel_pml4);
-
-  // Verify VMA Implementation
+  slab_test();
+  vmalloc_test();
   vma_test();
 
+  gdt_init();
+  idt_install();
+
+  if (module_request.response) {
+    printk(KERN_DEBUG FKX_CLASS "Found %lu modules, \n",
+           module_request.response->module_count);
+
+    for (size_t i = 0; i < module_request.response->module_count; i++) {
+      struct limine_file *m = module_request.response->modules[i];
+      printk(KERN_DEBUG FKX_CLASS "  [%zu] %s @ %p (%lu bytes)\n", i, m->path,
+             m->address, m->size);
+
+      if (fkx_load_image(m->address, m->size) == 0) {
+        printk(FKX_CLASS "Successfully loaded module: %s\n", m->path);
+      }
+    }
+
+    if (fkx_finalize_loading() != 0) {
+      printk(KERN_ERR FKX_CLASS "Failed to finalize module loading\n");
+    }
+  } else {
+    printk(KERN_NOTICE FKX_CLASS
+           "no FKX module found/loaded"
+           ", you probably do not want this"
+           ", this build of VoidFrameX does not have "
+           "any built-in hardware drivers"
+           ", expect exponential lack of hardware support.\n");
+  }
+
+  fkx_init_module_class(FKX_PRINTK_CLASS);
+  printk_auto_configure(NULL, 1);
+
+  fkx_init_module_class(FKX_IC_CLASS);
+  ic_register_lapic_get_id_early();
 
   cpu_features_init();
+
   // Two-phase ACPI init to break IC/APIC/uACPI circular dependency
   uacpi_kernel_init_early();
 
   // Register interrupt controllers
-  ic_register_controller(apic_get_driver());
-  ic_register_controller(pic_get_driver());
-
   interrupt_controller_t ic_type = ic_install();
 
   // Notify ACPI glue that IC is ready so it can bind any deferred handlers
@@ -238,31 +298,14 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   // ready)
   uacpi_kernel_init_late();
 
-  if (ic_type == INTC_APIC)
-    smp_init();
-  crc32_init();
-  vfs_init();
-
-  if (module_request.response && module_request.response->module_count > 0) {
-    struct limine_file *initrd_module = module_request.response->modules[0];
-    printk(INITRD_CLASS "Found module '%s' at %p, size %lu\n",
-           initrd_module->path, initrd_module->address, initrd_module->size);
-  } else {
-    printk(INITRD_CLASS "No initrd module found.\n");
-  }
-
-  sched_init();
-  sched_init_task(&bsp_task);
+  // Initialize ACPI Power Management (Buttons, etc.)
+  acpi_power_init();
 
   // --- Time Subsystem Initialization ---
-  printk(KERN_CLASS "Initializing Time Subsystem...\n");
-
-  time_register_source(pit_get_time_source());
-  time_register_source(hpet_get_time_source());
-
+  fkx_init_module_class(FKX_TIMER_CLASS);
   // Initialize unified time subsystem (Selects Best Source and Inits it)
   if (time_init() != 0) {
-    printk(KERN_WARNING KERN_CLASS "Time subsystem initialization failed!\n");
+    printk(KERN_WARNING KERN_CLASS "Time subsystem initialization failed\n");
   }
 
   // Recalibrate TSC using the best available time source
@@ -272,18 +315,33 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     printk(KERN_CLASS "TSC calibrated successfully.\n");
   }
 
+  // Initialize generic driver modules (e.g., PCI)
+  fkx_init_module_class(FKX_DRIVER_CLASS);
+
+  fpu_init();
+  sched_init();
+  sched_init_task(&bsp_task);
+
+  if (ic_type == INTC_APIC)
+    smp_init();
+  crc32_init();
+  vfs_init();
+
   printk_init_async();
 
-  kthread_run(kthread_create(kthread_idle, NULL, 5, "kthread/idle"));
+  printk(KERN_CLASS "VoidFrameX initialization complete, starting init...\n");
 
-  printk(KERN_CLASS "Kernel initialization complete, starting init...\n");
+  if (!process_spawn(process, NULL, "v-pxs"))
+    panic(KERN_CLASS "attempted to kill init, nothing to do.");
+
+  fkx_init_module_class(FKX_GENERIC_CLASS);
 
   cpu_sti();
 
-  while (1) {
+  while (true) {
     check_preempt();
     cpu_hlt();
   }
-
+  
   __unreachable();
 }

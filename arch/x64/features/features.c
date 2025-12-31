@@ -33,6 +33,7 @@ static cpu_features_t g_cpu_features;
 #define CR4_OSFXSR (1 << 9)
 #define CR4_OSXMMEXCPT (1 << 10)
 #define CR4_OSXSAVE (1 << 18)
+#define CR4_LA57 (1 << 12)
 
 // XCR0 bits
 #define XCR0_SSE (1 << 1)
@@ -40,6 +41,10 @@ static cpu_features_t g_cpu_features;
 #define XCR0_OPMASK (1 << 5)
 #define XCR0_ZMM_HI256 (1 << 6)
 #define XCR0_HI16_ZMM (1 << 7)
+
+#define MSR_IA32_PAT 0x277
+#define MSR_IA32_EFER 0xC0000080
+#define EFER_NXE (1 << 11)
 
 static inline void xsetbv(uint32_t reg, uint64_t value) {
   uint32_t lo = value & 0xFFFFFFFF;
@@ -73,7 +78,33 @@ static void write_cr4(uint64_t cr4) {
   __asm__ volatile("mov %0, %%cr4" ::"r"(cr4));
 }
 
+static void pat_init(void) {
+  if (!g_cpu_features.pat)
+    return;
+
+  // PAT layout:
+  // 0: WB (06) - Default
+  // 1: WC (01) - Standard default (PWT)
+  // 2: UC- (07) - Standard default (PCD)
+  // 3: UC (00) - Standard default (PWT | PCD)
+  // 4: WB (06) - PAT
+  // 5: WT (04) - PAT | PWT
+  // 6: WC (01) - PAT | PCD
+  // 7: WP (05) - PAT | PWT | PCD
+  uint64_t pat = (0x06ULL << 0) | (0x01ULL << 8) | (0x07ULL << 16) |
+                 (0x00ULL << 24) | (0x06ULL << 32) | (0x04ULL << 40) |
+                 (0x01ULL << 48) | (0x05ULL << 56);
+  wrmsr(MSR_IA32_PAT, pat);
+}
+
 void cpu_features_init_ap(void) {
+  // Enable NX
+  if (g_cpu_features.nx) {
+    uint64_t efer = rdmsr(MSR_IA32_EFER);
+    efer |= EFER_NXE;
+    wrmsr(MSR_IA32_EFER, efer);
+  }
+
   // Enable SSE
   if (g_cpu_features.sse) {
     uint64_t cr0 = read_cr0();
@@ -103,6 +134,8 @@ void cpu_features_init_ap(void) {
     xcr0 |= XCR0_OPMASK | XCR0_ZMM_HI256 | XCR0_HI16_ZMM;
     xsetbv(0, xcr0);
   }
+
+  pat_init();
 }
 
 void cpu_features_init(void) {
@@ -119,6 +152,8 @@ void cpu_features_init(void) {
       g_cpu_features.sse = true;
     if (edx & (1 << 26))
       g_cpu_features.sse2 = true;
+    if (edx & (1 << 16))
+      g_cpu_features.pat = true;
 
     if (ecx & (1 << 0))
       g_cpu_features.sse3 = true;
@@ -151,6 +186,24 @@ void cpu_features_init(void) {
       g_cpu_features.bmi2 = true;
     if (ebx & (1 << 16))
       g_cpu_features.avx512f = true;
+    
+    if (ecx & (1 << 16))
+      g_cpu_features.la57 = true;
+  }
+
+  // Check extended features
+  cpuid(0x80000000, &eax, &ebx, &ecx, &edx);
+  if (eax >= 0x80000001) {
+    cpuid(0x80000001, &eax, &ebx, &ecx, &edx);
+    if (edx & (1 << 20))
+      g_cpu_features.nx = true;
+  }
+
+  // Enable NX
+  if (g_cpu_features.nx) {
+    uint64_t efer = rdmsr(MSR_IA32_EFER);
+    efer |= EFER_NXE;
+    wrmsr(MSR_IA32_EFER, efer);
   }
 
   // Enable SSE
@@ -190,6 +243,8 @@ void cpu_features_init(void) {
     xsetbv(0, xcr0);
   }
 
+  pat_init();
+
   cpu_features_dump(&g_cpu_features);
 }
 
@@ -212,6 +267,9 @@ void cpu_features_dump(cpu_features_t *features) {
   printk(CPU_CLASS "  FMA: %s\n", features->fma ? "Yes" : "No");
   printk(CPU_CLASS "  BMI1: %s\n", features->bmi1 ? "Yes" : "No");
   printk(CPU_CLASS "  BMI2: %s\n", features->bmi2 ? "Yes" : "No");
+  printk(CPU_CLASS "  PAT: %s\n", features->pat ? "Yes" : "No");
+  printk(CPU_CLASS "  LA57: %s\n", features->la57 ? "Yes" : "No");
+  printk(CPU_CLASS "  NX: %s\n", features->nx ? "Yes" : "No");
 }
 
 cpu_features_t *get_cpu_features(void) {

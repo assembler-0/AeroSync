@@ -1,22 +1,18 @@
 #pragma once
 
 #include <kernel/types.h>
-#include <lib/log.h>
-
-typedef int (*printk_backend_probe)(void);
-typedef int (*printk_backend_init)(void *payload);
 
 typedef struct printk_backend {
   const char *name;
   int priority;              // bigger = preferred
-  log_sink_putc_t putc;
-  printk_backend_probe probe;
-  printk_backend_init init;
-  void (*cleanup)(void);
-  int (*is_active)(void);
+  fn(void, putc, char c);
+  fn(int, probe, void);
+  fn(int, init, void *payload);
+  fn(void, cleanup, void);
+  fn(int, is_active, void);
 } printk_backend_t;
 
-static int generic_backend_init(void *payload) { (void)payload; return 1; }
+static int generic_backend_init(void *payload) { (void)payload; return 0; }
 
 #define KERN_EMERG "$0$"
 #define KERN_ALERT "$1$"
@@ -31,11 +27,31 @@ static int generic_backend_init(void *payload) { (void)payload; return 1; }
 int printk(const char *fmt, ...);
 int vprintk(const char *fmt, va_list args);
 
+#define PRINTK_LOG_OR_NO_LOG(b) (b ? b->name : NULL)
+
 // Initialize printing subsystem
 void printk_register_backend(const printk_backend_t *backend);
-void printk_init_auto(void *payload);
-int printk_set_sink(const char *backend_name);
+
+/**
+ * @function printk_auto_configure(2) - setup registered printk backedns
+ * @param payload payload passed to init()
+ * @param reinit status to check if
+ */
+void printk_auto_configure(void *payload, int reinit);
+/**
+ * @function printk_set_sink(1) - change printk backend
+ * @param backend_name backend name, disable printk if recived NULL
+ * @param cleanup clean up status
+ */
+int printk_set_sink(const char *backend_name, bool cleanup);
 void printk_shutdown(void);
+
+/**
+ * @function printk_auto_select_backend(1) - select best backend
+ * @param not exclude backend name
+ * @exception printk_auto_select_backend will never return the current active backend
+ */
+const printk_backend_t *printk_auto_select_backend(const char *not);
 // Enable asynchronous printk logging (spawns background consumer thread).
 void printk_init_async(void);
 

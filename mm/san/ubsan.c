@@ -22,6 +22,7 @@
 #include <kernel/classes.h>
 #include <kernel/panic.h>
 #include <lib/printk.h>
+#include <kernel/fkx/fkx.h>
 
 struct SourceLocation {
   const char *file;
@@ -107,6 +108,7 @@ UBSAN_HANDLER(__ubsan_handle_add_overflow)(struct OverflowData *data,
   print_type("Type", data->type);
   panic(UBSAN_CLASS "add_overflow");
 }
+EXPORT_SYMBOL(__ubsan_handle_add_overflow);
 
 UBSAN_HANDLER(__ubsan_handle_sub_overflow)(struct OverflowData *data,
                                            uintptr_t lhs, uintptr_t rhs) {
@@ -115,6 +117,7 @@ UBSAN_HANDLER(__ubsan_handle_sub_overflow)(struct OverflowData *data,
   print_type("Type", data->type);
   panic(UBSAN_CLASS "sub_overflow");
 }
+EXPORT_SYMBOL(__ubsan_handle_sub_overflow);
 
 UBSAN_HANDLER(__ubsan_handle_mul_overflow)(struct OverflowData *data,
                                            uintptr_t lhs, uintptr_t rhs) {
@@ -123,6 +126,7 @@ UBSAN_HANDLER(__ubsan_handle_mul_overflow)(struct OverflowData *data,
   print_type("Type", data->type);
   panic(UBSAN_CLASS "mul_overflow");
 }
+EXPORT_SYMBOL(__ubsan_handle_mul_overflow);
 
 UBSAN_HANDLER(__ubsan_handle_divrem_overflow)(struct OverflowData *data,
                                               uintptr_t lhs, uintptr_t rhs) {
@@ -131,6 +135,7 @@ UBSAN_HANDLER(__ubsan_handle_divrem_overflow)(struct OverflowData *data,
   print_type("Type", data->type);
   panic(UBSAN_CLASS "divrem_overflow");
 }
+EXPORT_SYMBOL(__ubsan_handle_divrem_overflow);
 
 UBSAN_HANDLER(__ubsan_handle_negate_overflow)(struct OverflowData *data,
                                               uintptr_t old_val) {
@@ -139,6 +144,7 @@ UBSAN_HANDLER(__ubsan_handle_negate_overflow)(struct OverflowData *data,
   print_type("Type", data->type);
   panic(UBSAN_CLASS "negate_overflow");
 }
+EXPORT_SYMBOL(__ubsan_handle_negate_overflow);
 
 UBSAN_HANDLER(__ubsan_handle_pointer_overflow)(struct OverflowData *data,
                                                uintptr_t base,
@@ -147,6 +153,7 @@ UBSAN_HANDLER(__ubsan_handle_pointer_overflow)(struct OverflowData *data,
   print_location(&data->location);
   panic(UBSAN_CLASS "pointer_overflow");
 }
+EXPORT_SYMBOL(__ubsan_handle_pointer_overflow);
 
 UBSAN_HANDLER(__ubsan_handle_shift_out_of_bounds)(
     struct ShiftOutOfBoundsData *data, uintptr_t lhs, uintptr_t rhs) {
@@ -156,6 +163,7 @@ UBSAN_HANDLER(__ubsan_handle_shift_out_of_bounds)(
   print_type("RHS Type", data->rhs_type);
   panic(UBSAN_CLASS "shift_out_of_bounds");
 }
+EXPORT_SYMBOL(__ubsan_handle_shift_out_of_bounds);
 
 UBSAN_HANDLER(__ubsan_handle_out_of_bounds)(struct OutOfBoundsData *data,
                                             uintptr_t index) {
@@ -166,6 +174,7 @@ UBSAN_HANDLER(__ubsan_handle_out_of_bounds)(struct OutOfBoundsData *data,
   printk(KERN_EMERG UBSAN_CLASS "Index: %lx\n", index);
   panic(UBSAN_CLASS "out_of_bounds");
 }
+EXPORT_SYMBOL(__ubsan_handle_out_of_bounds);
 
 static const char * const type_check_kinds[] = {"load of",
                                          "store to",
@@ -203,6 +212,7 @@ UBSAN_HANDLER(__ubsan_handle_type_mismatch)(struct TypeMismatchData *data,
 
   panic(UBSAN_CLASS "type_mismatch");
 }
+EXPORT_SYMBOL(__ubsan_handle_type_mismatch);
 
 struct TypeMismatchDataV1 {
   struct SourceLocation location;
@@ -221,6 +231,7 @@ UBSAN_HANDLER(__ubsan_handle_type_mismatch_v1)(struct TypeMismatchDataV1 *data,
   };
   __ubsan_handle_type_mismatch(&converted, ptr);
 }
+EXPORT_SYMBOL(__ubsan_handle_type_mismatch_v1);
 
 UBSAN_HANDLER(__ubsan_handle_load_invalid_value)(struct InvalidValueData *data,
                                                  uintptr_t val) {
@@ -230,6 +241,7 @@ UBSAN_HANDLER(__ubsan_handle_load_invalid_value)(struct InvalidValueData *data,
   printk(KERN_EMERG UBSAN_CLASS "Value: %lx\n", val);
   panic(UBSAN_CLASS "load_invalid_value");
 }
+EXPORT_SYMBOL(__ubsan_handle_load_invalid_value);
 
 UBSAN_HANDLER(__ubsan_handle_builtin_unreachable)(
     struct UnreachableData *data) {
@@ -238,6 +250,7 @@ UBSAN_HANDLER(__ubsan_handle_builtin_unreachable)(
     print_location(&data->location);
   panic(UBSAN_CLASS "builtin_unreachable");
 }
+EXPORT_SYMBOL(__ubsan_handle_builtin_unreachable);
 
 UBSAN_HANDLER(__ubsan_handle_missing_return)(struct UnreachableData *data) {
   printk(KERN_EMERG UBSAN_CLASS "Function missing return statement\n");
@@ -245,6 +258,7 @@ UBSAN_HANDLER(__ubsan_handle_missing_return)(struct UnreachableData *data) {
     print_location(&data->location);
   panic(UBSAN_CLASS "missing_return");
 }
+EXPORT_SYMBOL(__ubsan_handle_missing_return);
 
 UBSAN_HANDLER(__ubsan_handle_vla_bound_not_positive)(
     struct UnreachableData *data, uintptr_t bound) {
@@ -255,6 +269,7 @@ UBSAN_HANDLER(__ubsan_handle_vla_bound_not_positive)(
   printk(KERN_EMERG UBSAN_CLASS "Bound: %ld\n", (long)bound);
   panic(UBSAN_CLASS "vla_bound_not_positive");
 }
+EXPORT_SYMBOL(__ubsan_handle_vla_bound_not_positive);
 
 UBSAN_HANDLER(__ubsan_handle_float_cast_overflow)(
     struct FloatCastOverflowData *data, uintptr_t from) {
@@ -264,6 +279,7 @@ UBSAN_HANDLER(__ubsan_handle_float_cast_overflow)(
   print_type("To", data->to_type);
   panic(UBSAN_CLASS "float_cast_overflow");
 }
+EXPORT_SYMBOL(__ubsan_handle_float_cast_overflow);
 
 UBSAN_HANDLER(__ubsan_handle_nonnull_return_v1)(struct NonNullReturnData *data,
                                                 struct SourceLocation *loc) {
@@ -275,16 +291,19 @@ UBSAN_HANDLER(__ubsan_handle_nonnull_return_v1)(struct NonNullReturnData *data,
      We'll print data->location. */
   panic(UBSAN_CLASS "nonnull_return");
 }
+EXPORT_SYMBOL(__ubsan_handle_nonnull_return_v1);
 
 UBSAN_HANDLER(__ubsan_handle_nonnull_arg)(struct NonNullArgData *data) {
   printk(KERN_EMERG UBSAN_CLASS "Nonnull argument is null\n");
   print_location(&data->location);
   panic(UBSAN_CLASS "nonnull_arg");
 }
+EXPORT_SYMBOL(__ubsan_handle_nonnull_arg);
 
 UBSAN_HANDLER(__ubsan_handle_nonnull_arg_v1)(struct NonNullArgData *data) {
   __ubsan_handle_nonnull_arg(data);
 }
+EXPORT_SYMBOL(__ubsan_handle_nonnull_arg_v1);
 
 struct ImplicitConversionData {
   struct SourceLocation location;
@@ -301,6 +320,7 @@ UBSAN_HANDLER(__ubsan_handle_implicit_conversion)(
   print_type("To", data->to_type);
   panic(UBSAN_CLASS "implicit_conversion");
 }
+EXPORT_SYMBOL(__ubsan_handle_implicit_conversion);
 
 struct FunctionTypeMismatchData {
   struct SourceLocation location;
@@ -315,6 +335,7 @@ UBSAN_HANDLER(__ubsan_handle_function_type_mismatch)(
   printk(KERN_EMERG UBSAN_CLASS "Address: %lx\n", ptr);
   panic(UBSAN_CLASS "function_type_mismatch");
 }
+EXPORT_SYMBOL(__ubsan_handle_function_type_mismatch);
 
 struct InvalidBuiltinData {
   struct SourceLocation location;
@@ -326,6 +347,7 @@ UBSAN_HANDLER(__ubsan_handle_invalid_builtin)(struct InvalidBuiltinData *data) {
   print_location(&data->location);
   panic(UBSAN_CLASS "invalid_builtin");
 }
+EXPORT_SYMBOL(__ubsan_handle_invalid_builtin);
 
 UBSAN_HANDLER(__ubsan_handle_float_cast_invalid_value)(
     struct FloatCastOverflowData *data, uintptr_t val) {
@@ -335,3 +357,4 @@ UBSAN_HANDLER(__ubsan_handle_float_cast_invalid_value)(
   print_type("To", data->to_type);
   panic(UBSAN_CLASS "float_cast_invalid_value");
 }
+EXPORT_SYMBOL(__ubsan_handle_float_cast_invalid_value);

@@ -17,12 +17,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+#pragma once
 
-#ifndef _DRIVERS_TIMER_TIME_H
-#define _DRIVERS_TIMER_TIME_H
-
+#include <compiler.h>
 #include <kernel/types.h>
-#include <kernel/classes.h>
 
 typedef enum {
   TIME_SOURCE_PIT = 0,
@@ -78,17 +76,22 @@ const char *time_get_source_name(void);
 void time_wait_ns(uint64_t ns);
 
 /**
+ * @brief Busy-wait for a specified number of microseconds.
+ */
+static __always_inline void delay_us(uint64_t us) { time_wait_ns(us * 1000ULL); }
+
+/**
+ * @brief Busy-wait for a specified number of milliseconds.
+ */
+static __always_inline void delay_ms(uint64_t ms) { time_wait_ns(ms * 1000000ULL); }
+
+/**
+ * @brief Busy-wait for a specified number of seconds.
+ */
+static __always_inline void delay_s(uint64_t s) { time_wait_ns(s * 1000000000ULL); }
+
+/**
  * @brief Calibrate the TSC using the currently active time source.
  * @return 0 on success, -1 on failure.
  */
 int time_calibrate_tsc_system(void);
-
-/**
- * @brief Get the current high-precision timestamp in nanoseconds.
- * Note: This typically relies on TSC after calibration, but can fallback to the
- * time source.
- * @return Timestamp in nanoseconds.
- */
-uint64_t time_get_uptime_ns(void);
-
-#endif // _DRIVERS_TIMER_TIME_H

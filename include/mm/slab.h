@@ -1,64 +1,71 @@
 #pragma once
 
-#include <kernel/types.h>
 #include <kernel/spinlock.h>
+#include <kernel/types.h>
 
-#define SLAB_MAGIC_ALLOC 0xDEADBEEF
-#define SLAB_MAGIC_FREE  0xFEEDFACE
-#define SLAB_GUARD_SIZE  16
+#include <arch/x64/cpu.h>
+#include <arch/x64/mm/pmm.h>
+#include <kernel/spinlock.h>
+#include <kernel/types.h>
+#include <mm/page.h>
 
-// Allocation regions
-typedef enum {
-    ALLOC_REGION_KERNEL = 0,  // General kernel allocations
-    ALLOC_REGION_STACK,       // Stack allocations (stricter)
-    ALLOC_REGION_DMA,         // DMA-coherent memory
-    ALLOC_REGION_COUNT
-} alloc_region_t;
+#define SLAB_MAX_ORDER 11
+#define SLAB_MAX_SIZE (128 * 1024)
 
-// Slab sizes (powers of 2)
-#define SLAB_MIN_SIZE 16
-#define SLAB_MAX_SIZE 2048
-#define SLAB_COUNT 8  // 16, 32, 64, 128, 256, 512, 1024, 2048
+/* SLUB flags */
+#define SLAB_POISON 0x00000800UL
+#define SLAB_RED_ZONE 0x00002000UL
+#define SLAB_HWCACHE_ALIGN 0x00008000UL
 
-typedef struct slab_obj {
-    uint32_t magic;
-    uint32_t size;
-    struct slab_obj *next;
-    alloc_region_t region;
-    uint8_t guard_pre[SLAB_GUARD_SIZE];
-} __attribute__((aligned(8))) slab_obj_t;
+struct kmem_cache_cpu {
+  void *freelist;    /* Pointer to next available object */
+  unsigned long tid; /* Transaction ID for lockless cmpxchg */
+  struct page *page; /* The slab from which we are allocating */
+} __aligned(64);
 
-typedef struct slab_cache {
-    size_t obj_size;
-    size_t objs_per_page;
-    struct slab_obj *free_list;
-    uint64_t total_objs;
-    uint64_t free_objs;
-    spinlock_t lock;
-} slab_cache_t;
+struct kmem_cache_node {
+  spinlock_t list_lock;
+  unsigned long nr_partial;
+  struct list_head partial;
+#ifdef CONFIG_SLUB_DEBUG
+  atomic_long_t nr_slabs;
+  atomic_long_t total_objects;
+#endif
+};
 
-typedef struct slab_region {
-    const char *name;
-    slab_cache_t caches[SLAB_COUNT];
-    uint64_t total_allocated;
-    uint64_t peak_allocated;
-    bool strict_guards;
-} slab_region_t;
+typedef struct kmem_cache {
+  struct kmem_cache_cpu cpu_slab[MAX_CPUS];
 
-// Core API
-int slab_init(void);
+  /* Used for slowpath */
+  unsigned long flags;
+  unsigned long min_partial;
+  int size;           /* The size of an object including meta data */
+  int object_size;    /* The size of an object without meta data */
+  int offset;         /* Free pointer offset. */
+  unsigned int order; /* PMM allocation order */
+
+  /* Slabs per node (simplified for now to single node) */
+  struct kmem_cache_node node;
+
+  const char *name;
+  struct list_head list; /* List of all slabs */
+
+  /* Alignment */
+  int align;
+} kmem_cache_t;
+
+/* API */
+void slab_init(void);
+void slab_test(void);
+kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align,
+                                unsigned long flags);
+void *kmem_cache_alloc(kmem_cache_t *cache);
+void kmem_cache_free(kmem_cache_t *cache, void *obj);
+
 void *kmalloc(size_t size);
-void *kmalloc_region(size_t size, alloc_region_t region);
 void kfree(void *ptr);
 
-// Stack allocator (stricter)
-void *alloc_stack(size_t size);
-void free_stack(void *ptr);
-
-// Debug/stats
-void slab_dump_stats(void);
-bool slab_check_guards(void *ptr);
-
-// Internal
-static inline size_t slab_size_to_index(size_t size);
-static inline size_t slab_index_to_size(size_t index);
+/* Helpers to convert between object and page */
+static inline struct page *virt_to_head_page(const void *x) {
+  return virt_to_page((void *)x);
+}

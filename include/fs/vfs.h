@@ -1,10 +1,8 @@
-#ifndef VFS_H
-#define VFS_H
+#pragma once
 
 #include <kernel/types.h>
 #include <kernel/spinlock.h>
-#include <kernel/mutex.h>
-#include <../linux/list.h>
+#include <linux/list.h>
 
 // Forward declarations for VFS structures
 struct super_block;
@@ -152,50 +150,48 @@ struct file {
 
 // struct file_operations: Operations for an open file
 struct file_operations {
-    vfs_off_t (*llseek) (struct file *file, vfs_off_t offset, int whence);
-    ssize_t (*read)     (struct file *file, char *buf, size_t count, vfs_loff_t *ppos);
-    ssize_t (*write)    (struct file *file, const char *buf, size_t count, vfs_loff_t *ppos);
-    int (*open)         (struct inode *inode, struct file *file);
-    int (*release)      (struct inode *inode, struct file *file);
+    fn(vfs_off_t, llseek, struct file *file, vfs_off_t offset, int whence);
+    fn(ssize_t, read, struct file *file, char *buf, size_t count, vfs_loff_t *ppos);
+    fn(ssize_t, write, struct file *file, const char *buf, size_t count, vfs_loff_t *ppos);
+    fn(int, open, struct inode *inode, struct file *file);
+    fn(int, release, struct inode *inode, struct file *file);
     // Add more operations as needed, e.g., ioctl, mmap, poll, etc.
 };
 
 // struct inode_operations: Operations for an inode
 struct inode_operations {
-    int (*create)       (struct inode *dir, struct dentry *dentry, vfs_mode_t mode);
-    struct dentry *(*lookup)    (struct inode *dir, struct dentry *dentry, uint32_t flags);
-    int (*link)         (struct dentry *old_dentry, struct inode *dir, struct dentry *new_dentry);
-    int (*unlink)       (struct inode *dir, struct dentry *dentry);
-    int (*mkdir)        (struct inode *dir, struct dentry *dentry, vfs_mode_t mode);
-    int (*rmdir)        (struct inode *dir, struct dentry *dentry);
-    int (*rename)       (struct inode *old_dir, struct dentry *old_dentry,
+    fn(int, create, struct inode *dir, struct dentry *dentry, vfs_mode_t mode);
+    fn(struct dentry *, lookup, struct inode *dir, struct dentry *dentry, uint32_t flags);
+    fn(int, link, struct dentry *old_dentry, struct inode *dir, struct dentry *new_dentry);
+    fn(int, unlink, struct inode *dir, struct dentry *dentry);
+    fn(int, mkdir, struct inode *dir, struct dentry *dentry, vfs_mode_t mode);
+    fn(int, rmdir, struct inode *dir, struct dentry *dentry);
+    fn(int, rename, struct inode *old_dir, struct dentry *old_dentry,
                          struct inode *new_dir, struct dentry *new_dentry);
-    int (*setattr)      (struct dentry *dentry, vfs_mode_t mode, vfs_loff_t size);
-    int (*getattr)      (struct dentry *dentry, struct inode *inode);
+    fn(int, setattr, struct dentry *dentry, vfs_mode_t mode, vfs_loff_t size);
+    fn(int, getattr, struct dentry *dentry, struct inode *inode);
     // Add more operations as needed, e.g., symlink, readlink, follow_link, permission
 };
 
 // struct super_operations: Operations for a superblock
 struct super_operations {
-    struct inode *(*alloc_inode)    (struct super_block *sb);
-    void (*destroy_inode)           (struct inode *inode);
-    void (*dirty_inode)             (struct inode *inode); // Mark inode as dirty
-    int (*write_inode)              (struct inode *inode, int sync);
-    void (*put_super)               (struct super_block *sb);
-    int (*statfs)                   (struct dentry *dentry, void *buf); // Fill fs statistics
+    fn(struct inode*, alloc_inode, struct super_block *sb);
+    fn(void, destroy_inode, struct inode *inode);
+    fn(void, dirty_inode, struct inode *inode); // Mark inode as dirty
+    fn(int, write_inode, struct inode *inode, int sync);
+    fn(void, put_super, struct super_block *sb);
+    fn(int, statfs, struct dentry *dentry, void *buf); // Fill fs statistics
     // Add more operations as needed, e.g., remount, show_options
 };
 
 // Structure to register a filesystem type
 struct file_system_type {
   const char *name;
-  int (*mount)(struct file_system_type *fs_type, const char *dev_name, const char *dir_name, unsigned long flags, void *data);
-  void (*kill_sb)(struct super_block *sb);
+  fn(int, mount, struct file_system_type *fs_type, const char *dev_name, const char *dir_name, unsigned long flags, void *data);
+  fn(void, kill_sb, struct super_block *sb);
   struct list_head fs_list; // List of registered filesystems
 };
 
 void vfs_init(void);
 int register_filesystem(struct file_system_type *fs_type);
 int unregister_filesystem(struct file_system_type *fs_type);
-
-#endif // VFS_H
