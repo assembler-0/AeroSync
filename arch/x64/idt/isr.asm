@@ -3,19 +3,19 @@
 extern irq_common_stub
 
 ; Helper macro to handle swapgs on entry if from Ring 3
-%macro SWAPGS_IF_NEEDED 0
-    test qword [rsp + 24], 3 ; Check CS (which was pushed by CPU)
-    jz .no_swapgs_entry
+%macro SWAPGS_IF_NEEDED 1
+    test qword [rsp + %1], 3 ; Check CS
+    jz %%no_swapgs_entry
     swapgs
-.no_swapgs_entry:
+%%no_swapgs_entry:
 %endmacro
 
 ; Helper macro to handle swapgs on exit if returning to Ring 3
-%macro SWAPGS_IF_NEEDED_EXIT 0
-    test qword [rsp + 24], 3 ; Check CS (CS is 24 bytes above current RSP if interrupt info was popped)
-    jz .no_swapgs_exit
+%macro SWAPGS_IF_NEEDED_EXIT 1
+    test qword [rsp + %1], 3 ; Check CS
+    jz %%no_swapgs_exit
     swapgs
-.no_swapgs_exit:
+%%no_swapgs_exit:
 %endmacro
 
 %macro ISR_NOERRCODE 1
@@ -24,7 +24,7 @@ global isr%1
 isr%1:
     ; CPU pushes: RIP, CS, RFLAGS, RSP, SS
     
-    SWAPGS_IF_NEEDED
+    SWAPGS_IF_NEEDED 8
 
     ; For consistency with ISR_ERRCODE, push a dummy error code
     push qword 0
@@ -87,7 +87,7 @@ isr%1:
     ; Pop interrupt number and dummy error code
     add rsp, 16
 
-    SWAPGS_IF_NEEDED_EXIT
+    SWAPGS_IF_NEEDED_EXIT 8
 
     iretq
 %endmacro
@@ -98,7 +98,7 @@ global isr%1
 isr%1:
     ; CPU pushes: Error Code, RIP, CS, RFLAGS, RSP, SS
     
-    SWAPGS_IF_NEEDED
+    SWAPGS_IF_NEEDED 16
 
     ; Push interrupt number
     push qword %1
@@ -159,7 +159,10 @@ isr%1:
     ; Pop interrupt number
     add rsp, 8
 
-    SWAPGS_IF_NEEDED_EXIT
+    SWAPGS_IF_NEEDED_EXIT 16
+
+    ; Pop error code
+    add rsp, 8
 
     iretq
 %endmacro

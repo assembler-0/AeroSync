@@ -68,6 +68,10 @@ void setup_per_cpu_areas(void) {
     // - _percpu_start.
     __per_cpu_offset[i] = (unsigned long)ptr - (unsigned long)_percpu_start;
 
+    // Set 'this_cpu_off' inside the per-cpu area
+    DECLARE_PER_CPU(unsigned long, this_cpu_off);
+    *(unsigned long *)((uint8_t *)ptr + ((unsigned long)&this_cpu_off - (unsigned long)_percpu_start)) = __per_cpu_offset[i];
+
     printk(KERN_DEBUG PERCPU_CLASS "  CPU %lu: per-cpu area @ %p\n", i, ptr);
   }
 

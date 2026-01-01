@@ -25,6 +25,7 @@
 #include <arch/x64/mm/pmm.h>
 #include <arch/x64/percpu.h>
 #include <arch/x64/smp.h>
+#include <arch/x64/gdt/gdt.h>
 #include <kernel/fkx/fkx.h>
 #include <kernel/sched/cpumask.h>
 #include <kernel/sched/process.h>
@@ -225,7 +226,7 @@ pid_t sys_fork(void) {
 
 void sys_exit(int error_code) {
   struct task_struct *curr = get_current();
-  
+
   cpu_cli();
   curr->state = TASK_ZOMBIE;
   
@@ -302,3 +303,69 @@ struct task_struct *process_spawn(int (*entry)(void *), void *data,
   return p;
 }
 EXPORT_SYMBOL(process_spawn);
+
+struct task_struct *spawn_user_process_raw(void *data, size_t len, const char *name) {
+    struct task_struct *curr = get_current();
+    struct task_struct *p = copy_process(0, 0, curr);
+    if (!p) return NULL;
+
+    strncpy(p->comm, name, sizeof(p->comm));
+    p->flags &= ~PF_KTHREAD;
+
+    /* Create a new MM context for the user process */
+    p->mm = mm_create();
+    if (!p->mm) {
+        free_task(p);
+        return NULL;
+    }
+    p->active_mm = p->mm;
+
+    /* Map code and copy buffer content */
+    uint64_t code_addr = 0x400000; // Standard base for simple ELFs/bins
+    if (mm_populate_user_range(p->mm, code_addr, len, VM_READ | VM_EXEC | VM_USER, data, len) != 0) {
+        free_task(p);
+        return NULL;
+    }
+
+    /* Map user stack */
+    uint64_t stack_top = 0x800000000000; // Far away in user space
+    uint64_t stack_size = PAGE_SIZE * 16;
+    uint64_t stack_base = stack_top - stack_size;
+    if (mm_populate_user_range(p->mm, stack_base, stack_size, VM_READ | VM_WRITE | VM_USER | VM_STACK, NULL, 0) != 0) {
+        free_task(p);
+        return NULL;
+    }
+
+    /* Setup kernel stack for ret_from_user_thread */
+    /* We push a cpu_regs structure onto the kernel stack */
+    cpu_regs *regs = (cpu_regs *)((uint8_t *)p->stack + (PAGE_SIZE * 4) - sizeof(cpu_regs));
+    memset(regs, 0, sizeof(cpu_regs));
+
+    regs->rip = code_addr;
+    regs->rsp = stack_top - 8; // Align stack
+    regs->cs = USER_CODE_SELECTOR | 3;
+    regs->ss = USER_DATA_SELECTOR | 3;
+    regs->rflags = 0x202; // IF=1, bit 1 is reserved and must be 1
+
+    /* segments are not used in 64-bit but we set them for safety/iret frame consistency if needed */
+    regs->ds = regs->es = regs->fs = regs->gs = (USER_DATA_SELECTOR | 3);
+
+    /* ret_from_user_thread expects rax to be 'prev' but for the very first switch 
+     * it will be passed from __switch_to return.
+     * The stack layout should match what ret_from_user_thread expects.
+     */
+    uint64_t *sp = (uint64_t *)regs;
+    *(--sp) = (uint64_t)ret_from_user_thread;
+    *(--sp) = 0; // rbx
+    *(--sp) = 0; // rbp
+    *(--sp) = 0; // r12
+    *(--sp) = 0; // r13
+    *(--sp) = 0; // r14
+    *(--sp) = 0; // r15
+
+    p->thread.rsp = (uint64_t)sp;
+
+    wake_up_new_task(p);
+    return p;
+}
+EXPORT_SYMBOL(spawn_user_process_raw);

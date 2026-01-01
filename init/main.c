@@ -132,6 +132,7 @@ static struct task_struct bsp_task __aligned(16);
 volatile struct limine_framebuffer_request *get_framebuffer_request(void) {
   return &framebuffer_request;
 }
+
 EXPORT_SYMBOL(get_framebuffer_request);
 
 static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
@@ -174,30 +175,30 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   printk(KERN_CLASS "copyright (C) 2025 assembler-0\n");
 
   if (bootloader_info_request.response &&
-    bootloader_performance_request.response) {
+      bootloader_performance_request.response) {
     printk(KERN_CLASS
            "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
            bootloader_info_request.response->name
-               ? bootloader_info_request.response->name
-               : "(null)",
+             ? bootloader_info_request.response->name
+             : "(null)",
            bootloader_info_request.response->version
-               ? bootloader_info_request.response->version
-               : "(null-version)",
+             ? bootloader_info_request.response->version
+             : "(null-version)",
            bootloader_performance_request.response->exec_usec,
            bootloader_performance_request.response->init_usec);
-    }
+  }
 
   if (fw_request.response) {
     printk(FW_CLASS "firmware type: %s\n",
            fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI64
-               ? "UEFI (64-bit)"
-           : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI32
-               ? "UEFI (32-bit)"
-           : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_X86BIOS
-               ? "BIOS (x86)"
-           : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_SBI
-               ? "SBI"
-               : "(unknown)");
+             ? "UEFI (64-bit)"
+             : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI32
+                 ? "UEFI (32-bit)"
+                 : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_X86BIOS
+                     ? "BIOS (x86)"
+                     : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_SBI
+                         ? "SBI"
+                         : "(unknown)");
   }
 
   printk(KERN_CLASS "system pagination level: %d\n", vmm_get_paging_levels());
@@ -252,11 +253,11 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     }
   } else {
     printk(KERN_NOTICE FKX_CLASS
-           "no FKX module found/loaded"
-           ", you probably do not want this"
-           ", this build of VoidFrameX does not have "
-           "any built-in hardware drivers"
-           ", expect exponential lack of hardware support.\n");
+      "no FKX module found/loaded"
+      ", you probably do not want this"
+      ", this build of VoidFrameX does not have "
+      "any built-in hardware drivers"
+      ", expect exponential lack of hardware support.\n");
   }
 
   fkx_init_module_class(FKX_PRINTK_CLASS);

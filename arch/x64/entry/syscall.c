@@ -14,6 +14,7 @@
 #include <kernel/types.h>
 #include <kernel/sysintf/panic.h>
 #include <lib/printk.h>
+#include <lib/uaccess.h>
 
 #define MSR_STAR 0xC0000081
 #define MSR_LSTAR 0xC0000082
@@ -42,11 +43,38 @@ static void sys_ni_syscall(struct syscall_regs *regs) {
 }
 
 static void sys_write(struct syscall_regs *regs) {
-    REGS_RETURN_VAL(regs, 0);
+    int fd = (int)regs->rdi;
+    const char *buf = (const char *)regs->rsi;
+    size_t count = (size_t)regs->rdx;
+
+    if (fd == 1 || fd == 2) { // stdout or stderr
+        char kbuf[256];
+        size_t total = 0;
+        
+        while (count > 0) {
+            size_t to_copy = (count > sizeof(kbuf) - 1) ? sizeof(kbuf) - 1 : count;
+            if (copy_from_user(kbuf, buf, to_copy) != 0) {
+                REGS_RETURN_VAL(regs, -EFAULT);
+                return;
+            }
+            
+            kbuf[to_copy] = '\0';
+            printk(KERN_INFO "%s", kbuf); // TODO: NOT JUST PRINTK!, IMPLEMENT WRITE!
+            
+            buf += to_copy;
+            count -= to_copy;
+            total += to_copy;
+        }
+        REGS_RETURN_VAL(regs, total);
+    } else {
+        REGS_RETURN_VAL(regs, -EBADF);
+    }
 }
 
 static void sys_exit_handler(struct syscall_regs *regs) {
-    sys_exit((int)regs->rdi);
+    int status = (int)regs->rdi;
+    printk(KERN_DEBUG SYSCALL_CLASS "User process %d exited with status %d\n", current->pid, status);
+    sys_exit(status);
 }
 
 static sys_call_ptr_t syscall_table[] = {

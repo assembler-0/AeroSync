@@ -20,6 +20,10 @@ void move_task_to_rq(struct task_struct *task, int dest_cpu);
 
 void spawn_user_test_process(void);
 
+/**
+ * @warning USE THIS FUNCTION FOR INTERNAL PURPOSES ONLY, WILL BE REMOVED FOR SECURITY CONCERNS
+ */
+struct task_struct *spawn_user_process_raw(void *data, size_t len, const char *name);
 int do_execve_from_buffer(void *data, size_t len, const char *name);
 
 pid_t sys_fork(void);
@@ -35,8 +39,6 @@ struct task_struct *copy_process(uint64_t clone_flags,
                                  struct task_struct *p);
 
 void wake_up_new_task(struct task_struct *p);
-
-int do_execve_from_buffer(void *data, size_t len, const char *name);
 
 /* Task memory management */
 struct task_struct *alloc_task_struct(void);

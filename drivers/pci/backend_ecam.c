@@ -79,7 +79,7 @@ void pci_backend_ecam_init(void) {
   uacpi_table tbl;
   uacpi_status ret = uacpi_table_find_by_signature(ACPI_MCFG_SIGNATURE, &tbl);
   if (ret != UACPI_STATUS_OK) {
-    printk(KERN_ERR PCI_CLASS "uACPI MCFG error: %s", uacpi_status_to_string(ret));
+    printk(KERN_ERR PCI_CLASS "uACPI MCFG error: %s\n", uacpi_status_to_string(ret));
     return;
   }
 

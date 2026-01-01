@@ -18,7 +18,8 @@
 #define VM_DONTEXPAND 0x00040000 /* Cannot expand with mremap */
 #define VM_LOCKED 0x00100000     /* Pages are locked */
 #define VM_USER   0x00200000     /* User-space accessible */
-#define VM_PFNMAP 0x00400000     /* Physical frame number mapping */
+#define VM_STACK  0x00400000     /* VMA is a stack */
+#define VM_PFNMAP 0x00800000     /* Physical frame number mapping */
 #define VM_HUGE   0x00800000     /* VMA is backed by huge pages */
 
 /* Cache Policy Flags */

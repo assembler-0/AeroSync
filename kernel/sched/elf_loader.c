@@ -19,6 +19,7 @@
  */
 
 #include <arch/x64/cpu.h>
+#include <arch/x64/gdt/gdt.h>
 #include <arch/x64/mm/paging.h>
 #include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/vmm.h>
@@ -76,7 +77,7 @@ static int create_elf_tables(struct linux_binprm *bprm, Elf64_Ehdr *exec) {
     return 0;
 }
 
-static int load_elf_binary(struct linux_binprm *bprm) {
+static int load_elf_binary(struct task_struct *p, struct linux_binprm *bprm) {
     Elf64_Ehdr *hdr = (Elf64_Ehdr *)bprm->data;
     Elf64_Phdr *phdrs;
     int retval;
@@ -121,32 +122,30 @@ static int load_elf_binary(struct linux_binprm *bprm) {
 
     create_elf_tables(bprm, hdr);
 
-    // Finalize the task's MM switch
-    struct task_struct *curr = get_current();
-    struct mm_struct *old_mm = curr->mm;
-    
-    curr->mm = bprm->mm;
-    curr->active_mm = bprm->mm;
-    vmm_switch_pml4((uint64_t)curr->mm->pml4);
-    
-    // Safety: Don't destroy init_mm
-    if (old_mm && old_mm != &init_mm) mm_destroy(old_mm);
+    /* Update the task's MM */
+    struct mm_struct *old_mm = p->mm;
+    p->mm = bprm->mm;
+    p->active_mm = bprm->mm;
+    p->flags &= ~PF_KTHREAD;
+
+    // If we are loading into 'current', we must switch PML4 immediately
+    if (p == get_current()) {
+        vmm_switch_pml4((uint64_t)p->mm->pml4);
+        if (old_mm && old_mm != &init_mm) mm_destroy(old_mm);
+    }
 
     // Setup the Ring 3 context at the top of the kernel stack
-    uint8_t *kstack_top = (uint8_t *)curr->stack + (PAGE_SIZE * 4);
+    uint8_t *kstack_top = (uint8_t *)p->stack + (PAGE_SIZE * 4);
     cpu_regs *regs = (cpu_regs *)(kstack_top - sizeof(cpu_regs));
     memset(regs, 0, sizeof(cpu_regs));
     
     regs->rip = hdr->e_entry;
     regs->rsp = bprm->p;
-    regs->cs = 0x23;
-    regs->ss = 0x1B;
-    regs->rflags = 0x202;
+    regs->cs = USER_CODE_SELECTOR | 3;
+    regs->ss = USER_DATA_SELECTOR | 3;
+    regs->rflags = 0x202; // IF=1
 
-    // We must ensure that when we eventually schedule() or return from syscall,
-    // the CPU restores this state. 
-    // If called from a syscall, we just overwrite the stack frame.
-    // If called from kernel_init (the very first process), we need to set the task's RSP.
+    // Setup return path for the new task
     uint64_t *sp = (uint64_t *)regs;
     *(--sp) = (uint64_t)ret_from_user_thread;
     *(--sp) = 0; // rbx
@@ -156,7 +155,7 @@ static int load_elf_binary(struct linux_binprm *bprm) {
     *(--sp) = 0; // r14
     *(--sp) = 0; // r15
     
-    curr->thread.rsp = (uint64_t)sp;
+    p->thread.rsp = (uint64_t)sp;
     
     return 0;
 
@@ -167,7 +166,6 @@ bad_free:
 
 /*
  * do_execve_from_buffer - The internal backend for execve.
- * Currently takes a buffer because we lack a VFS.
  */
 int do_execve_from_buffer(void *data, size_t len, const char *name) {
     struct linux_binprm bprm;
@@ -178,7 +176,7 @@ int do_execve_from_buffer(void *data, size_t len, const char *name) {
     bprm.data_len = len;
     bprm.argc = 0;
 
-    retval = load_elf_binary(&bprm);
+    retval = load_elf_binary(get_current(), &bprm);
     if (retval == 0) {
         strncpy(get_current()->comm, name, 16);
     }

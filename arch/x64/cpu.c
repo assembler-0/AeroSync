@@ -22,6 +22,7 @@
 #include <arch/x64/percpu.h>
 #include <kernel/fkx/fkx.h>
 
+DEFINE_PER_CPU(unsigned long, this_cpu_off);
 DEFINE_PER_CPU(uint64_t, cpu_user_rsp);
 
 void cpuid(uint32_t leaf, uint32_t* eax, uint32_t* ebx, uint32_t* ecx, uint32_t* edx) {
