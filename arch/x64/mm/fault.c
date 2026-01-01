@@ -19,6 +19,7 @@
  */
 
 #include <arch/x64/cpu.h>
+#include <arch/x64/exception.h>
 #include <arch/x64/mm/paging.h>
 #include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/vmm.h>
@@ -62,6 +63,15 @@ void do_page_fault(cpu_regs *regs) {
     goto kernel_panic;
   }
 
+  // Check for kernel-mode fault recovery (exception table)
+  if (!user_mode) {
+      uint64_t fixup = search_exception_table(regs->rip);
+      if (fixup) {
+          regs->rip = fixup;
+          return;
+      }
+  }
+
   // Try to find VMA covering this address
   down_read(&mm->mmap_lock);
   struct vm_area_struct *vma = vma_find(mm, cr2);
@@ -82,25 +92,38 @@ void do_page_fault(cpu_regs *regs) {
       goto signal_segv;
     }
 
-    // Demand Paging: Allocate a physical page
-    uint64_t phys = pmm_alloc_page();
-    if (!phys) {
-      up_read(&mm->mmap_lock);
-      printk(KERN_ERR FAULT_CLASS  "OOM during demand paging for %llx\n", cr2);
-      goto kernel_panic;
+    uint64_t pml4_phys = (uint64_t)mm->pml4;
+
+    // COW Handling: If it's a write fault on a present page in a writable VMA
+    if (write_fault && (error_code & PF_PROT)) {
+        if (vmm_handle_cow(pml4_phys, cr2) == 0) {
+            up_read(&mm->mmap_lock);
+            return; // Success, retry write
+        }
+        // If COW failed, treat as SEGV or panic
+        up_read(&mm->mmap_lock);
+        goto signal_segv;
     }
 
-    // Map it
-    uint64_t flags = PTE_PRESENT;
-    if (vma->vm_flags & VM_USER) flags |= PTE_USER;
-    if (vma->vm_flags & VM_WRITE) flags |= PTE_RW;
-    if (!(vma->vm_flags & VM_EXEC)) flags |= PTE_NX;
+    // Demand Paging: Allocate a physical page if it's not present
+    if (!(error_code & PF_PROT)) {
+        uint64_t phys = pmm_alloc_page();
+        if (!phys) {
+            up_read(&mm->mmap_lock);
+            printk(KERN_ERR FAULT_CLASS  "OOM during demand paging for %llx\n", cr2);
+            goto kernel_panic;
+        }
 
-    // Use the PML4 from the MM struct
-    uint64_t pml4_phys = (uint64_t) mm->pml4;
-    vmm_map_page(pml4_phys, cr2 & PAGE_MASK, phys, flags);
-    up_read(&mm->mmap_lock);
-    return; // Retry instruction
+        // Map it
+        uint64_t flags = PTE_PRESENT;
+        if (vma->vm_flags & VM_USER) flags |= PTE_USER;
+        if (vma->vm_flags & VM_WRITE) flags |= PTE_RW;
+        if (!(vma->vm_flags & VM_EXEC)) flags |= PTE_NX;
+
+        vmm_map_page(pml4_phys, cr2 & PAGE_MASK, phys, flags);
+        up_read(&mm->mmap_lock);
+        return; // Retry instruction
+    }
   }
   up_read(&mm->mmap_lock);
 

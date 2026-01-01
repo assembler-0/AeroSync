@@ -43,9 +43,24 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="uaccess and dumb moments">
+    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="missing include">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/lib/uaccess.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/lib/uaccess.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x64/exception.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/exception.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x64/mm/fault.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/fault.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x64/mm/pmm.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/pmm.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x64/mm/vmm.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/vmm.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/arch/x64/exception.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/exception.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/arch/x64/mm/vmm.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/mm/vmm.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/kernel/atomic.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/atomic.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/kernel/version.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/version.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/mm/page.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/page.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/sched/process.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/sched/process.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/uaccess.c" beforeDir="false" afterPath="$PROJECT_DIR$/lib/uaccess.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mm/mmu_gather.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/mmu_gather.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mm/page_alloc.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/page_alloc.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mm/vma.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vma.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voidframex.ld" beforeDir="false" afterPath="$PROJECT_DIR$/voidframex.ld" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -408,7 +423,7 @@
       <workItem from="1767232284198" duration="7393000" />
       <workItem from="1767243891593" duration="2352000" />
       <workItem from="1767246572498" duration="1243000" />
-      <workItem from="1767248187189" duration="1041000" />
+      <workItem from="1767248187189" duration="3096000" />
     </task>
     <task id="LOCAL-00001" summary="Mutexes and FKX spec">
       <option name="closed" value="true" />
@@ -570,7 +585,31 @@
       <option name="project" value="LOCAL" />
       <updated>1767248311800</updated>
     </task>
-    <option name="localTasksCounter" value="21" />
+    <task id="LOCAL-00021" summary="minor bug on LA57">
+      <option name="closed" value="true" />
+      <created>1767249760165</created>
+      <option name="number" value="00021" />
+      <option name="presentableId" value="LOCAL-00021" />
+      <option name="project" value="LOCAL" />
+      <updated>1767249760165</updated>
+    </task>
+    <task id="LOCAL-00022" summary="missing include">
+      <option name="closed" value="true" />
+      <created>1767249810573</created>
+      <option name="number" value="00022" />
+      <option name="presentableId" value="LOCAL-00022" />
+      <option name="project" value="LOCAL" />
+      <updated>1767249810573</updated>
+    </task>
+    <task id="LOCAL-00023" summary="missing include">
+      <option name="closed" value="true" />
+      <created>1767249844137</created>
+      <option name="number" value="00023" />
+      <option name="presentableId" value="LOCAL-00023" />
+      <option name="project" value="LOCAL" />
+      <updated>1767249844137</updated>
+    </task>
+    <option name="localTasksCounter" value="24" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -606,7 +645,9 @@
     <MESSAGE value="ring 3 support" />
     <MESSAGE value="PCI subsystem" />
     <MESSAGE value="uaccess and dumb moments" />
-    <option name="LAST_COMMIT_MESSAGE" value="uaccess and dumb moments" />
+    <MESSAGE value="minor bug on LA57" />
+    <MESSAGE value="missing include" />
+    <option name="LAST_COMMIT_MESSAGE" value="missing include" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

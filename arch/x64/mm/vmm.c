@@ -391,15 +391,22 @@ int vmm_map_pages_list(uint64_t pml_root_phys, uint64_t virt, uint64_t *phys_lis
 
 int vmm_unmap_page(uint64_t pml_root_phys, uint64_t virt) {
   irq_flags_t irq = spinlock_lock_irqsave(&vmm_lock);
-  vmm_unmap_page_locked(pml_root_phys, virt);
+  uint64_t phys = vmm_unmap_page_locked(pml_root_phys, virt);
   spinlock_unlock_irqrestore(&vmm_lock, irq);
+
+  if (phys) {
+      put_page(phys_to_page(phys));
+  }
   return 0;
 }
 
 int vmm_unmap_pages(uint64_t pml_root_phys, uint64_t virt, size_t count) {
   irq_flags_t irq = spinlock_lock_irqsave(&vmm_lock);
   for (size_t i = 0; i < count; i++) {
-    vmm_unmap_page_locked(pml_root_phys, virt + i * PAGE_SIZE);
+    uint64_t phys = vmm_unmap_page_locked(pml_root_phys, virt + i * PAGE_SIZE);
+    if (phys) {
+        put_page(phys_to_page(phys));
+    }
   }
   spinlock_unlock_irqrestore(&vmm_lock, irq);
   return 0;
@@ -447,6 +454,111 @@ uint64_t vmm_virt_to_phys(uint64_t pml_root_phys, uint64_t virt) {
   if (!(entry & PTE_PRESENT)) return 0;
 
   return PTE_GET_ADDR(entry) + (virt & 0xFFF);
+}
+
+/**
+ * Recursive helper to copy page table levels.
+ * @param src_table_phys Physical address of the source table
+ * @param dst_table_phys Physical address of the destination table
+ * @param level Current paging level (5 to 2)
+ * @return 0 on success
+ */
+static int vmm_copy_level(uint64_t src_table_phys, uint64_t dst_table_phys, int level) {
+    uint64_t *src_table = (uint64_t *)phys_to_virt(src_table_phys);
+    uint64_t *dst_table = (uint64_t *)phys_to_virt(dst_table_phys);
+
+    // Only copy user space entries (0-255). 
+    // Higher half (256-511) is already shared via mm_create copying the root.
+    int entries = (level == vmm_get_paging_levels()) ? 256 : 512;
+
+    for (int i = 0; i < entries; i++) {
+        uint64_t entry = src_table[i];
+        if (!(entry & PTE_PRESENT)) continue;
+
+        if (level > 1 && !(entry & PTE_HUGE)) {
+            // Internal table, allocate a new one in the destination
+            uint64_t new_table_phys = vmm_alloc_table();
+            if (!new_table_phys) return -1;
+            
+            dst_table[i] = new_table_phys | PTE_PRESENT | PTE_RW | PTE_USER;
+            if (vmm_copy_level(PTE_GET_ADDR(entry), new_table_phys, level - 1) < 0)
+                return -1;
+        } else {
+            // Leaf entry (4KB PTE or Huge Page)
+            
+            // If the page is writable, we MUST make it Read-Only for COW
+            if (entry & PTE_RW) {
+                entry &= ~PTE_RW;
+                // Update source table as well to make it Read-Only
+                src_table[i] = entry;
+                // Note: We'll flush the TLB for the whole range later or rely on invlpg
+            }
+
+            dst_table[i] = entry;
+            
+            // Increment reference count of the physical page
+            get_page(phys_to_page(PTE_GET_ADDR(entry)));
+        }
+    }
+    return 0;
+}
+
+int vmm_copy_page_tables(uint64_t src_pml4, uint64_t dst_pml4) {
+    irq_flags_t irq = spinlock_lock_irqsave(&vmm_lock);
+    int ret = vmm_copy_level(src_pml4, dst_pml4, vmm_get_paging_levels());
+    
+    // Flush TLB to enforce Read-Only on the source process
+    uint64_t current_cr3;
+    __asm__ volatile("mov %%cr3, %0" : "=r"(current_cr3));
+    if ((current_cr3 & PTE_ADDR_MASK) == src_pml4) {
+        __asm__ volatile("mov %0, %%cr3" :: "r"(current_cr3) : "memory");
+    }
+    
+    spinlock_unlock_irqrestore(&vmm_lock, irq);
+    return ret;
+}
+
+int vmm_handle_cow(uint64_t pml4_phys, uint64_t virt) {
+    irq_flags_t irq = spinlock_lock_irqsave(&vmm_lock);
+    
+    uint64_t *pte_p = vmm_get_pte_ptr(pml4_phys, virt, false);
+    if (!pte_p || !(*pte_p & PTE_PRESENT)) {
+        spinlock_unlock_irqrestore(&vmm_lock, irq);
+        return -1;
+    }
+
+    uint64_t entry = *pte_p;
+    uint64_t old_phys = PTE_GET_ADDR(entry);
+    struct page *old_page = phys_to_page(old_phys);
+
+    // If we are the only owner, just make it writable again
+    if (page_ref_count(old_page) == 1) {
+        *pte_p |= PTE_RW;
+        spinlock_unlock_irqrestore(&vmm_lock, irq);
+        vmm_tlb_flush_local(virt);
+        return 0;
+    }
+
+    // Otherwise, duplicate the page
+    uint64_t new_phys = pmm_alloc_page();
+    if (!new_phys) {
+        spinlock_unlock_irqrestore(&vmm_lock, irq);
+        return -1;
+    }
+
+    memcpy(phys_to_virt(new_phys), phys_to_virt(old_phys), PAGE_SIZE);
+
+    // Update PTE to point to the new page and make it writable
+    uint64_t flags = PTE_GET_FLAGS(entry) | PTE_RW;
+    *pte_p = new_phys | flags;
+
+    spinlock_unlock_irqrestore(&vmm_lock, irq);
+
+    // Drop reference to the old page
+    put_page(old_page);
+
+    vmm_tlb_flush_local(virt);
+    return 0;
 }
 
 void vmm_dump_entry(uint64_t pml_root_phys, uint64_t virt) {
@@ -569,7 +681,7 @@ void vmm_init(void) {
   printk(KERN_DEBUG VMM_CLASS "  - Dirty/Flags Helpers: OK\n");
 
   vmm_unmap_page(g_kernel_pml4, test_virt);
-  pmm_free_page(test_phys);
+  // pmm_free_page(test_phys); // Removed: vmm_unmap_page now calls put_page()
   printk(KERN_DEBUG VMM_CLASS "  - Unmap: OK\n");
 
   up_write(&init_mm.mmap_lock);

@@ -82,6 +82,11 @@ SECTIONS
         KEEP(*(fkx_ksymtab))
         _fkx_ksymtab_end = .;
 
+        . = ALIGN(4);
+        __start___ex_table = .;
+        KEEP(*(__ex_table))
+        __stop___ex_table = .;
+
         . = ALIGN(PAGE_SIZE);
         _rodata_end = .;
     } :rodata

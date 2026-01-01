@@ -18,6 +18,7 @@
  * GNU General Public License for more details.
  */
 
+#include <arch/x64/exception.h>
 #include <lib/string.h>
 
 void get_exception_as_str(char* buff, uint32_t num) {
@@ -107,5 +108,18 @@ void get_exception_as_str(char* buff, uint32_t num) {
         default:
             strcpy(buff, "Unknown Exception");
             break;
+        }
     }
-}
+    
+    uint64_t search_exception_table(uint64_t addr) {
+        struct exception_table_entry *entry;
+        
+        for (entry = __start___ex_table; entry < __stop___ex_table; entry++) {
+            if (entry->insn == addr) {
+                return entry->fixup;
+            }
+        }
+        
+        return 0;
+    }
+    

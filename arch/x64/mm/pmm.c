@@ -340,35 +340,7 @@ void pmm_free_pages(uint64_t phys_addr, size_t count) {
   uint64_t pfn = PHYS_TO_PFN(phys_addr);
   struct page *page = &mem_map[pfn];
 
-  // We assume count is 2^order.
-  // Use existing free_pages wrapper which infers order? No, user passes count.
-  // If count is not power of 2, we might have issues if we allocated it as
-  // power of 2. But pmm_alloc_pages calculates order. So we should calculate
-  // order here too.
-
-  unsigned int order = 0;
-  if (count > 1) {
-    order = 64 - __builtin_clzll(count - 1);
-  }
-
-  // Optimize order-0 free with PCP
-  if (order == 0 && percpu_ready()) {
-    irq_flags_t flags = save_irq_flags();
-    struct per_cpu_pages *pcp = this_cpu_ptr(pcp_pages);
-
-    // If full (arbitrary limit for now 32), flush to global
-    // Note: In real impl we would flush batch
-    if (pcp->count >= 32) {
-      __free_pages(page, 0);
-    } else {
-      list_add(&page->list, &pcp->list);
-      pcp->count++;
-    }
-    restore_irq_flags(flags);
-    return;
-  }
-
-  __free_pages(page, order);
+  put_page(page);
 }
 
 void pmm_init_cpu(void) {

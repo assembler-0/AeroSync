@@ -47,6 +47,10 @@ static inline int atomic_dec_return(atomic_t *v) {
     return atomic_sub_return(1, v);
 }
 
+static inline int atomic_dec_and_test(atomic_t *v) {
+    return atomic_dec_return(v) == 0;
+}
+
 static inline int atomic_cmpxchg(atomic_t *v, int old, int new) {
     int expected = old;
     __atomic_compare_exchange_n(&v->counter, &expected, new, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);

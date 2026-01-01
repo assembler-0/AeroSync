@@ -227,8 +227,13 @@ struct mm_struct *mm_copy(struct mm_struct *old_mm) {
       up_write(&old_mm->mmap_lock);
       return NULL;
     }
+  }
 
-    // TODO: Copy page table entries for private mappings (COW)
+  /* Copy page tables (COW) */
+  if (vmm_copy_page_tables((uint64_t)old_mm->pml4, (uint64_t)new_mm->pml4) < 0) {
+      mm_free(new_mm);
+      up_write(&old_mm->mmap_lock);
+      return NULL;
   }
 
   up_write(&old_mm->mmap_lock);
@@ -714,9 +719,9 @@ int vma_unmap_range(struct mm_struct *mm, uint64_t start, uint64_t end) {
     // Unmap physical pages
     if (mm->pml4) {
         for (uint64_t addr = vma->vm_start; addr < vma->vm_end; addr += PAGE_SIZE) {
-            uint64_t phys = vmm_virt_to_phys((uint64_t)mm->pml4, addr);
+            uint64_t phys;
+            vmm_unmap_pages_and_get_phys((uint64_t)mm->pml4, addr, &phys, 1);
             if (phys) {
-                vmm_unmap_page((uint64_t)mm->pml4, addr);
                 tlb_remove_page(&tlb, phys, addr);
             }
         }

@@ -23,6 +23,7 @@
 #include <arch/x64/fpu.h>
 #include <arch/x64/mm/paging.h>
 #include <arch/x64/mm/pmm.h>
+#include <arch/x64/mm/vmm.h>
 #include <arch/x64/percpu.h>
 #include <arch/x64/smp.h>
 #include <arch/x64/gdt/gdt.h>
@@ -328,7 +329,7 @@ struct task_struct *spawn_user_process_raw(void *data, size_t len, const char *n
     }
 
     /* Map user stack */
-    uint64_t stack_top = 0x800000000000; // Far away in user space
+    uint64_t stack_top = vmm_get_max_user_address() - PAGE_SIZE; // Dynamic canonical stack top
     uint64_t stack_size = PAGE_SIZE * 16;
     uint64_t stack_base = stack_top - stack_size;
     if (mm_populate_user_range(p->mm, stack_base, stack_size, VM_READ | VM_WRITE | VM_USER | VM_STACK, NULL, 0) != 0) {

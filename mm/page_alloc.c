@@ -202,6 +202,14 @@ struct page *alloc_pages(gfp_t gfp_mask, unsigned int order) {
     return NULL;
 }
 
+void put_page(struct page *page) {
+    if (!page) return;
+    
+    if (atomic_dec_and_test(&page->_refcount)) {
+        __free_pages(page, page->order);
+    }
+}
+
 void __free_pages(struct page *page, unsigned int order) {
     if (!page) return;
 

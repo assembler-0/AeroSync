@@ -66,3 +66,16 @@ struct page {
 #define PageSlab(page)       ((page)->flags & PG_slab)
 #define SetPageSlab(page)    ((page)->flags |= PG_slab)
 #define ClearPageSlab(page)  ((page)->flags &= ~PG_slab)
+
+/* Reference counting */
+#include <kernel/atomic.h>
+
+static inline void get_page(struct page *page) {
+    atomic_inc(&page->_refcount);
+}
+
+void put_page(struct page *page);
+
+static inline int page_ref_count(struct page *page) {
+    return atomic_read(&page->_refcount);
+}

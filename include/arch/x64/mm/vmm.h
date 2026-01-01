@@ -95,6 +95,19 @@ int vmm_unmap_pages_and_get_phys(uint64_t pml4_phys, uint64_t virt,
                                  uint64_t *phys_list, size_t count);
 
 /**
+ * Copy user page tables for fork (COW).
+ * @param src_pml4 Physical address of source PML root
+ * @param dst_pml4 Physical address of destination PML root
+ * @return 0 on success
+ */
+int vmm_copy_page_tables(uint64_t src_pml4, uint64_t dst_pml4);
+
+/**
+ * Handle a Copy-On-Write fault.
+ */
+int vmm_handle_cow(uint64_t pml4_phys, uint64_t virt);
+
+/**
  * Get the physical address mapped to a virtual address. *
  * @param pml4_phys Physical address of the PML4 table
  * @param virt      Virtual address query
