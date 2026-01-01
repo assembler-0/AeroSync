@@ -21,7 +21,7 @@
 cmake_minimum_required(VERSION 3.30)
 set_property(GLOBAL PROPERTY RULE_MESSAGES OFF)
 project(VoidFrameX
-        VERSION 1.0.1 # <EPOCH>.<FEATURE>.<PATCH>
+        VERSION 1.1.1 # <EPOCH>.<FEATURE>.<PATCH>
         LANGUAGES C CXX ASM_NASM
         HOMEPAGE_URL "https://github.com/assembler-0/VoidFrameX"
         DESCRIPTION "A modern monolithic operating system kernel designed for performance and modularity."
@@ -89,6 +89,11 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
     set(Rust_CARGO_TARGET "x86_64-unknown-none")
 else()
     message(WARNING "Unsupported target architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+
+if(CMAKE_C_COMPILER MATCHES ${ALLOWED_C_COMPILER})
+else()
+    message(FATAL_ERROR "Unsupported C compiler: ${CMAKE_C_COMPILER}")
 endif()
 
 message(STATUS "CMake Generator: ${CMAKE_GENERATOR}")
