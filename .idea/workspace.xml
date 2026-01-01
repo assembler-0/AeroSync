@@ -28,7 +28,6 @@
       <config projectName="VoidFrameX" targetName="vbox-delete-vm" />
       <config projectName="VoidFrameX" targetName="bochs-run" />
       <config projectName="VoidFrameX" targetName="vbox-create-vm" />
-      <config projectName="VoidFrameX" targetName="splash" />
       <config projectName="VoidFrameX" targetName="vmw-run" />
       <config projectName="VoidFrameX" targetName="linearfb" />
       <config projectName="VoidFrameX" targetName="vmw-delete-vm" />
@@ -44,36 +43,17 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="clean up flags.cmake">
+    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="ring 3 support">
+      <change afterPath="$PROJECT_DIR$/include/drivers/pci/backend_ecam.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/drivers/pci/backend_pio.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/CMakeLists.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/CONTRIBUTORS.md" beforeDir="false" afterPath="$PROJECT_DIR$/CONTRIBUTORS.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/cpu.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/cpu.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/gdt/gdt.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/gdt/gdt.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/gdt_tss.asm" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/gdt_tss.asm" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/idt/idt.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/idt/idt.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/idt/isr.asm" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/idt/isr.asm" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/mm/fault.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/fault.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/smp.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/smp.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cmake/source.cmake" beforeDir="false" afterPath="$PROJECT_DIR$/cmake/source.cmake" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/drivers/misc/splash.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/misc/splash.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/arch/x64/gdt/gdt.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/gdt/gdt.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/arch/x64/percpu.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/percpu.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/sched/process.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/sched/process.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/sched/sched.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/sched/sched.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/drivers/pci/pci.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/pci/pci.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/drivers/pci/pci.cmake" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/pci/pci.cmake" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/drivers/uart/serial.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/uart/serial.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/drivers/pci/pci.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/drivers/pci/pci.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/kernel/sysintf/pci.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/sysintf/pci.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/include/kernel/version.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/version.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/lib/log.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/lib/log.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/lib/printk.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/lib/printk.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/mm/vma.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/vma.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/sched/core.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/sched/core.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/sched/process.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/sched/process.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/sched/switch.asm" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/sched/switch.asm" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/linearfb/linearfb.c" beforeDir="false" afterPath="$PROJECT_DIR$/lib/linearfb/linearfb.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/log.c" beforeDir="false" afterPath="$PROJECT_DIR$/lib/log.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/printk.c" beforeDir="false" afterPath="$PROJECT_DIR$/lib/printk.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/slab.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/slab.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/vma.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vma.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/sysintf/pci.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/sysintf/pci.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -175,7 +155,7 @@
   }
 }</component>
   <component name="RecapUselessUpdatesCounter">
-    <option name="suspendCountdown" value="2" />
+    <option name="suspendCountdown" value="0" />
   </component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
@@ -286,11 +266,6 @@
         <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
       </method>
     </configuration>
-    <configuration name="splash" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="VoidFrameX" TARGET_NAME="splash" CONFIG_NAME="Release" RUN_TARGET_PROJECT_NAME="VoidFrameX" RUN_TARGET_NAME="splash">
-      <method v="2">
-        <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
-      </method>
-    </configuration>
     <configuration name="timer" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="VoidFrameX" TARGET_NAME="timer" CONFIG_NAME="Release" RUN_TARGET_PROJECT_NAME="VoidFrameX" RUN_TARGET_NAME="timer">
       <method v="2">
         <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
@@ -391,7 +366,6 @@
       <item itemvalue="CMake Application.pci" />
       <item itemvalue="CMake Application.run-bios" />
       <item itemvalue="CMake Application.run" />
-      <item itemvalue="CMake Application.splash" />
       <item itemvalue="CMake Application.timer" />
       <item itemvalue="CMake Application.uart" />
       <item itemvalue="CMake Application.vbox-create-vm" />
@@ -444,7 +418,7 @@
       <workItem from="1766882320538" duration="1639000" />
       <workItem from="1766903538116" duration="3000" />
       <workItem from="1767221727303" duration="10187000" />
-      <workItem from="1767232284198" duration="2045000" />
+      <workItem from="1767232284198" duration="5929000" />
     </task>
     <task id="LOCAL-00001" summary="Mutexes and FKX spec">
       <option name="closed" value="true" />
@@ -582,7 +556,15 @@
       <option name="project" value="LOCAL" />
       <updated>1767186383416</updated>
     </task>
-    <option name="localTasksCounter" value="18" />
+    <task id="LOCAL-00018" summary="ring 3 support">
+      <option name="closed" value="true" />
+      <created>1767234340777</created>
+      <option name="number" value="00018" />
+      <option name="presentableId" value="LOCAL-00018" />
+      <option name="project" value="LOCAL" />
+      <updated>1767234340778</updated>
+    </task>
+    <option name="localTasksCounter" value="19" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -615,7 +597,8 @@
     <MESSAGE value="ubsan for modules" />
     <MESSAGE value="SLUB rework" />
     <MESSAGE value="clean up flags.cmake" />
-    <option name="LAST_COMMIT_MESSAGE" value="clean up flags.cmake" />
+    <MESSAGE value="ring 3 support" />
+    <option name="LAST_COMMIT_MESSAGE" value="ring 3 support" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>
