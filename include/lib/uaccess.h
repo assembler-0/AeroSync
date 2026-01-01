@@ -35,8 +35,9 @@ size_t copy_to_user(void *to, const void *from, size_t n);
 static inline bool access_ok(const void *addr, size_t size) {
     uint64_t start = (uint64_t)addr;
     uint64_t end = start + size;
+    uint64_t limit = vmm_get_max_user_address();
 
-    // Check for overflow and ensure it's in the lower half of the address space
-    // x86-64 canonical addresses: 0 to 0x00007FFFFFFFFFFF
-    return (end >= start) && (end < 0x0000800000000000ULL);
+    // Check for overflow and ensure it's within the valid user address range.
+    // This dynamically handles both 4-level (48-bit) and 5-level (57-bit) paging.
+    return (end >= start) && (end < limit);
 }

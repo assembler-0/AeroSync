@@ -43,21 +43,9 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="PCI subsystem">
+    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="uaccess and dumb moments">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/cpu.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/cpu.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/entry/syscall.asm" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/entry/syscall.asm" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/entry/syscall.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/entry/syscall.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/idt/isr.asm" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/idt/isr.asm" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/drivers/pci/backend_ecam.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/pci/backend_ecam.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/drivers/uart/serial.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/uart/serial.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/sched/process.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/sched/process.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/version.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/version.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/mm/vma.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/vma.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/percpu.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/percpu.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/sched/elf_loader.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/sched/elf_loader.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/sched/process.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/sched/process.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/lib/uaccess.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/lib/uaccess.h" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -420,7 +408,7 @@
       <workItem from="1767232284198" duration="7393000" />
       <workItem from="1767243891593" duration="2352000" />
       <workItem from="1767246572498" duration="1243000" />
-      <workItem from="1767248187189" duration="7000" />
+      <workItem from="1767248187189" duration="1041000" />
     </task>
     <task id="LOCAL-00001" summary="Mutexes and FKX spec">
       <option name="closed" value="true" />
@@ -574,7 +562,15 @@
       <option name="project" value="LOCAL" />
       <updated>1767238995228</updated>
     </task>
-    <option name="localTasksCounter" value="20" />
+    <task id="LOCAL-00020" summary="uaccess and dumb moments">
+      <option name="closed" value="true" />
+      <created>1767248311800</created>
+      <option name="number" value="00020" />
+      <option name="presentableId" value="LOCAL-00020" />
+      <option name="project" value="LOCAL" />
+      <updated>1767248311800</updated>
+    </task>
+    <option name="localTasksCounter" value="21" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -609,7 +605,8 @@
     <MESSAGE value="clean up flags.cmake" />
     <MESSAGE value="ring 3 support" />
     <MESSAGE value="PCI subsystem" />
-    <option name="LAST_COMMIT_MESSAGE" value="PCI subsystem" />
+    <MESSAGE value="uaccess and dumb moments" />
+    <option name="LAST_COMMIT_MESSAGE" value="uaccess and dumb moments" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

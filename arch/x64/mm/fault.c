@@ -51,6 +51,12 @@ void do_page_fault(cpu_regs *regs) {
     mm = curr->mm ? curr->mm : curr->active_mm;
   }
 
+  // Security: If user mode access to higher half or canonical hole occurs, it's a SEGV.
+  if (user_mode && cr2 >= vmm_get_max_user_address()) {
+      printk(KERN_ERR FAULT_CLASS "User-mode access to kernel address %llx\n", cr2);
+      goto signal_segv;
+  }
+
   // If we have no MM context, this is a fatal kernel fault.
   if (!mm) {
     goto kernel_panic;
@@ -86,9 +92,7 @@ void do_page_fault(cpu_regs *regs) {
 
     // Map it
     uint64_t flags = PTE_PRESENT;
-    if (user_mode || (vma->vm_flags & VM_USER) || (cr2 < vmm_get_canonical_high_base())) {
-      flags |= PTE_USER;
-    }
+    if (vma->vm_flags & VM_USER) flags |= PTE_USER;
     if (vma->vm_flags & VM_WRITE) flags |= PTE_RW;
     if (!(vma->vm_flags & VM_EXEC)) flags |= PTE_NX;
 
