@@ -2,11 +2,30 @@
 
 extern irq_common_stub
 
+; Helper macro to handle swapgs on entry if from Ring 3
+%macro SWAPGS_IF_NEEDED 0
+    test qword [rsp + 24], 3 ; Check CS (which was pushed by CPU)
+    jz .no_swapgs_entry
+    swapgs
+.no_swapgs_entry:
+%endmacro
+
+; Helper macro to handle swapgs on exit if returning to Ring 3
+%macro SWAPGS_IF_NEEDED_EXIT 0
+    test qword [rsp + 24], 3 ; Check CS (CS is 24 bytes above current RSP if interrupt info was popped)
+    jz .no_swapgs_exit
+    swapgs
+.no_swapgs_exit:
+%endmacro
+
 %macro ISR_NOERRCODE 1
 section .text
 global isr%1
 isr%1:
     ; CPU pushes: RIP, CS, RFLAGS, RSP, SS
+    
+    SWAPGS_IF_NEEDED
+
     ; For consistency with ISR_ERRCODE, push a dummy error code
     push qword 0
     ; Push interrupt number
@@ -28,7 +47,6 @@ isr%1:
     push rbx
     push rax
     ; Push segment registers (in reverse order of struct: gs, fs, es, ds)
-    ; Use general-purpose registers to push/pop segment register values
     mov rax, gs
     push rax
     mov rax, fs
@@ -38,19 +56,17 @@ isr%1:
     mov rax, ds
     push rax
 
+    ; Load kernel data segments
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+
     ; The pointer to the Registers struct should be RSP
     mov rdi, rsp
     call irq_common_stub
 
-    ; Pop segment registers (in order: ds, es, fs, gs)
-    pop rax
-    mov ds, rax
-    pop rax
-    mov es, rax
-    pop rax
-    mov fs, rax
-    pop rax
-    mov gs, rax
+    ; Skip reloading segments from stack (preserves GS base)
+    add rsp, 32
     ; Pop general purpose registers
     pop rax
     pop rbx
@@ -70,6 +86,9 @@ isr%1:
 
     ; Pop interrupt number and dummy error code
     add rsp, 16
+
+    SWAPGS_IF_NEEDED_EXIT
+
     iretq
 %endmacro
 
@@ -78,6 +97,9 @@ section .text
 global isr%1
 isr%1:
     ; CPU pushes: Error Code, RIP, CS, RFLAGS, RSP, SS
+    
+    SWAPGS_IF_NEEDED
+
     ; Push interrupt number
     push qword %1
     ; Push general purpose registers
@@ -97,7 +119,6 @@ isr%1:
     push rbx
     push rax
     ; Push segment registers (in reverse order of struct: gs, fs, es, ds)
-    ; Use general-purpose registers to push/pop segment register values
     mov rax, gs
     push rax
     mov rax, fs
@@ -107,19 +128,17 @@ isr%1:
     mov rax, ds
     push rax
 
+    ; Load kernel data segments
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+
     ; The pointer to the Registers struct should be RSP
     mov rdi, rsp
     call irq_common_stub
 
-    ; Pop segment registers (in order: ds, es, fs, gs)
-    pop rax
-    mov ds, rax
-    pop rax
-    mov es, rax
-    pop rax
-    mov fs, rax
-    pop rax
-    mov gs, rax
+    ; Skip reloading segments from stack (preserves GS base)
+    add rsp, 32
     ; Pop general purpose registers
     pop rax
     pop rbx
@@ -139,6 +158,9 @@ isr%1:
 
     ; Pop interrupt number
     add rsp, 8
+
+    SWAPGS_IF_NEEDED_EXIT
+
     iretq
 %endmacro
 

@@ -153,7 +153,7 @@ static void console_emit_prefix_ts(int level, uint64_t ts_ns) {
     uint64_t s = ns / 1000000000ULL;
     uint64_t us = (ns % 1000000000ULL) / 1000ULL;
 
-    char ts_buf[32];
+    char ts_buf[48];
     snprintf(ts_buf, sizeof(ts_buf), "[%5llu.%06llu] ", s, us);
 
     char *t = ts_buf;

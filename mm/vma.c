@@ -22,6 +22,7 @@
 #include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/vmm.h>
 #include <kernel/classes.h>
+#include <kernel/errno.h>
 #include <kernel/panic.h>
 #include <lib/printk.h>
 #include <lib/string.h>
@@ -772,6 +773,46 @@ int vma_protect(struct mm_struct *mm, uint64_t start, uint64_t end,
 
   up_write(&mm->mmap_lock);
   return 0;
+}
+
+int mm_populate_user_range(struct mm_struct *mm, uint64_t start, size_t size, uint64_t flags, const uint8_t *data, size_t data_len) {
+    if (!mm || size == 0) return -1;
+
+    uint64_t end = (start + size + PAGE_SIZE - 1) & PAGE_MASK;
+    start &= PAGE_MASK;
+
+    if (vma_map_range(mm, start, end, flags | VM_USER) != 0) {
+        // Range might already be partially mapped by another segment, that's okay
+    }
+
+    uint64_t pml4_phys = (uint64_t)mm->pml4;
+    uint64_t pte_flags = PTE_PRESENT | PTE_USER;
+    if (flags & VM_WRITE) pte_flags |= PTE_RW;
+    if (!(flags & VM_EXEC)) pte_flags |= PTE_NX;
+
+    for (uint64_t addr = start; addr < end; addr += PAGE_SIZE) {
+        uint64_t phys = vmm_virt_to_phys(pml4_phys, addr);
+        
+        if (!phys) {
+            phys = pmm_alloc_page();
+            if (!phys) return -ENOMEM;
+            vmm_map_page(pml4_phys, addr, phys, pte_flags);
+            
+            // Zero initialize the new page
+            void *virt = pmm_phys_to_virt(phys);
+            memset(virt, 0, PAGE_SIZE);
+        }
+
+        // If we have data to copy into this page
+        size_t offset = addr - start;
+        if (data && offset < data_len) {
+            void *virt = pmm_phys_to_virt(phys);
+            size_t to_copy = (data_len - offset) > PAGE_SIZE ? PAGE_SIZE : (data_len - offset);
+            memcpy(virt, data + offset, to_copy);
+        }
+    }
+
+    return 0;
 }
 
 /* ========================================================================

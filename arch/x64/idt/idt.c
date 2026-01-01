@@ -303,39 +303,41 @@ int idt_install() {
     // The code segment selector is 0x08 (from our GDT)
     uint16_t kcode_segment = 0x08;
     uint8_t flags = 0x8E; // Present, DPL 0, 64-bit Interrupt Gate
+    uint8_t flags_user = 0xEE; // Present, DPL 3, 64-bit Interrupt Gate
 
-    idt_set_gate(0, (uint64_t)isr0, kcode_segment, flags);
-    idt_set_gate(1, (uint64_t)isr1, kcode_segment, flags);
-    idt_set_gate(2, (uint64_t)isr2, kcode_segment, flags);
-    idt_set_gate(3, (uint64_t)isr3, kcode_segment, flags);
-    idt_set_gate(4, (uint64_t)isr4, kcode_segment, flags);
-    idt_set_gate(5, (uint64_t)isr5, kcode_segment, flags);
-    idt_set_gate(6, (uint64_t)isr6, kcode_segment, flags);
-    idt_set_gate(7, (uint64_t)isr7, kcode_segment, flags);
-    idt_set_gate(8, (uint64_t)isr8, kcode_segment, flags);
-    idt_set_gate(9, (uint64_t)isr9, kcode_segment, flags);
-    idt_set_gate(10, (uint64_t)isr10, kcode_segment, flags);
-    idt_set_gate(11, (uint64_t)isr11, kcode_segment, flags);
-    idt_set_gate(12, (uint64_t)isr12, kcode_segment, flags);
-    idt_set_gate(13, (uint64_t)isr13, kcode_segment, flags);
-    idt_set_gate(14, (uint64_t)isr14, kcode_segment, flags);
-    idt_set_gate(15, (uint64_t)isr15, kcode_segment, flags);
-    idt_set_gate(16, (uint64_t)isr16, kcode_segment, flags);
-    idt_set_gate(17, (uint64_t)isr17, kcode_segment, flags);
-    idt_set_gate(18, (uint64_t)isr18, kcode_segment, flags);
-    idt_set_gate(19, (uint64_t)isr19, kcode_segment, flags);
-    idt_set_gate(20, (uint64_t)isr20, kcode_segment, flags);
-    idt_set_gate(21, (uint64_t)isr21, kcode_segment, flags);
-    idt_set_gate(22, (uint64_t)isr22, kcode_segment, flags);
-    idt_set_gate(23, (uint64_t)isr23, kcode_segment, flags);
-    idt_set_gate(24, (uint64_t)isr24, kcode_segment, flags);
-    idt_set_gate(25, (uint64_t)isr25, kcode_segment, flags);
-    idt_set_gate(26, (uint64_t)isr26, kcode_segment, flags);
-    idt_set_gate(27, (uint64_t)isr27, kcode_segment, flags);
-    idt_set_gate(28, (uint64_t)isr28, kcode_segment, flags);
-    idt_set_gate(29, (uint64_t)isr29, kcode_segment, flags);
-    idt_set_gate(30, (uint64_t)isr30, kcode_segment, flags);
-    idt_set_gate(31, (uint64_t)isr31, kcode_segment, flags);
+    // Exceptions (0-31) - These should be accessible from user mode (ring 3) when they occur due to user code
+    idt_set_gate(0, (uint64_t)isr0, kcode_segment, flags_user);  // Divide by Zero
+    idt_set_gate(1, (uint64_t)isr1, kcode_segment, flags_user);  // Debug
+    idt_set_gate(2, (uint64_t)isr2, kcode_segment, flags_user);  // NMI
+    idt_set_gate(3, (uint64_t)isr3, kcode_segment, flags_user);  // Breakpoint
+    idt_set_gate(4, (uint64_t)isr4, kcode_segment, flags_user);  // Overflow
+    idt_set_gate(5, (uint64_t)isr5, kcode_segment, flags_user);  // Bound Range Exceeded
+    idt_set_gate(6, (uint64_t)isr6, kcode_segment, flags_user);  // Invalid Opcode
+    idt_set_gate(7, (uint64_t)isr7, kcode_segment, flags_user);  // Device Not Available
+    idt_set_gate(8, (uint64_t)isr8, kcode_segment, flags_user);  // Double Fault
+    idt_set_gate(9, (uint64_t)isr9, kcode_segment, flags_user);  // Coprocessor Segment Overrun
+    idt_set_gate(10, (uint64_t)isr10, kcode_segment, flags_user); // Invalid TSS
+    idt_set_gate(11, (uint64_t)isr11, kcode_segment, flags_user); // Segment Not Present
+    idt_set_gate(12, (uint64_t)isr12, kcode_segment, flags_user); // Stack Fault
+    idt_set_gate(13, (uint64_t)isr13, kcode_segment, flags_user); // General Protection Fault
+    idt_set_gate(14, (uint64_t)isr14, kcode_segment, flags_user); // Page Fault
+    idt_set_gate(15, (uint64_t)isr15, kcode_segment, flags_user); // Reserved
+    idt_set_gate(16, (uint64_t)isr16, kcode_segment, flags_user); // x87 FPU Floating-Point exception
+    idt_set_gate(17, (uint64_t)isr17, kcode_segment, flags_user); // Alignment Check
+    idt_set_gate(18, (uint64_t)isr18, kcode_segment, flags_user); // Machine Check
+    idt_set_gate(19, (uint64_t)isr19, kcode_segment, flags_user); // SIMD Floating-Point exception
+    idt_set_gate(20, (uint64_t)isr20, kcode_segment, flags_user); // Virtualization exception
+    idt_set_gate(21, (uint64_t)isr21, kcode_segment, flags_user); // Control protocol exception
+    idt_set_gate(22, (uint64_t)isr22, kcode_segment, flags_user); // Reserved
+    idt_set_gate(23, (uint64_t)isr23, kcode_segment, flags_user); // Reserved
+    idt_set_gate(24, (uint64_t)isr24, kcode_segment, flags_user); // Reserved
+    idt_set_gate(25, (uint64_t)isr25, kcode_segment, flags_user); // Reserved
+    idt_set_gate(26, (uint64_t)isr26, kcode_segment, flags_user); // Reserved
+    idt_set_gate(27, (uint64_t)isr27, kcode_segment, flags_user); // Reserved
+    idt_set_gate(28, (uint64_t)isr28, kcode_segment, flags_user); // Hypervisor injection exception
+    idt_set_gate(29, (uint64_t)isr29, kcode_segment, flags_user); // VMM communication exception
+    idt_set_gate(30, (uint64_t)isr30, kcode_segment, flags_user); // Security exception
+    idt_set_gate(31, (uint64_t)isr31, kcode_segment, flags_user); // Reserved
     idt_set_gate(32, (uint64_t)isr32, kcode_segment, flags);
     idt_set_gate(33, (uint64_t)isr33, kcode_segment, flags);
     idt_set_gate(34, (uint64_t)isr34, kcode_segment, flags);

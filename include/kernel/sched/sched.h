@@ -379,6 +379,7 @@ void sched_init_task(struct task_struct *initial_task);
 void sched_init_ap(void);
 void scheduler_tick(void);
 void check_preempt(void);
+void schedule_tail(struct task_struct *prev);
 
 void set_task_nice(struct task_struct *p, int nice);
 

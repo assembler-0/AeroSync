@@ -7,7 +7,17 @@
  * @copyright (C) 2025 assembler-0
  *
  * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
+
 
 #include <arch/x64/cpu.h>
 #include <arch/x64/fpu.h>
@@ -29,6 +39,7 @@
 #include <mm/slab.h>
 #include <mm/vma.h>
 #include <vsprintf.h>
+#include <arch/x64/gdt/gdt.h>
 
 /*
  * Scheduler Core Implementation
@@ -249,15 +260,31 @@ void task_wake_up_all(void) {
 }
 
 /*
- * Cleanup for the previous task after a context switch.
+ * schedule_tail - Finish the context switch.
+ * This is called by every task after it is switched in.
+ * For new tasks, it's called via the entry stub.
  */
-static void finish_task_switch(struct task_struct *prev) {
-  if (prev && prev->state == TASK_DEAD) {
-    free_task(prev);
-  } else if (prev && prev->state == TASK_ZOMBIE) {
-    /* Used to be TASK_ZOMBIE for cleanup */
-    free_task(prev);
-  }
+void schedule_tail(struct task_struct *prev) {
+    struct rq *rq = this_rq();
+
+    /* Release the runqueue lock held since schedule() */
+    spinlock_unlock(&rq->lock);
+    cpu_sti(); // Matches spinlock_lock_irqsave behavior
+
+    /* Restore FPU state for the current task */
+    if (current->thread.fpu) {
+      if (current->thread.fpu_used) {
+        fpu_restore(current->thread.fpu);
+      } else {
+        fpu_init_task(current->thread.fpu);
+        fpu_restore(current->thread.fpu);
+        current->thread.fpu_used = true;
+      }
+    }
+
+    if (prev && (prev->state == TASK_DEAD || prev->state == TASK_ZOMBIE)) {
+        free_task(prev);
+    }
 }
 
 void set_task_nice(struct task_struct *p, int nice) {
@@ -364,24 +391,14 @@ void schedule(void) {
       fpu_save(prev_task->thread.fpu);
     }
 
-    spinlock_unlock_irqrestore(&rq->lock, flags);
+    /* Update TSS RSP0 for the next task (Ring 0 stack pointer) */
+    if (next_task->stack) {
+        set_tss_rsp0((uint64_t)((uint8_t *)next_task->stack + (PAGE_SIZE * 4)));
+    }
 
     prev_task = switch_to(prev_task, next_task);
 
-    /* Restore FPU state for next task (now current) */
-    if (current->thread.fpu) {
-      if (current->thread.fpu_used) {
-        fpu_restore(current->thread.fpu);
-      } else {
-        /* Initialize FPU to clean state for this thread */
-        fpu_init_task(current->thread.fpu);
-        fpu_restore(current->thread.fpu);
-        /* Mark as used so we save it next time */
-        current->thread.fpu_used = true;
-      }
-    }
-
-    finish_task_switch(prev_task);
+    schedule_tail(prev_task);
     return;
   }
 
@@ -571,6 +588,15 @@ void sched_init_task(struct task_struct *initial_task) {
 
   cpumask_setall(&initial_task->cpus_allowed);
 
+  /* Initialize task hierarchy lists for the boot task */
+  INIT_LIST_HEAD(&initial_task->tasks);
+  INIT_LIST_HEAD(&initial_task->children);
+  INIT_LIST_HEAD(&initial_task->sibling);
+
+  /* Add initial task to global task list */
+  extern struct list_head task_list;
+  list_add_tail(&initial_task->tasks, &task_list);
+
   rq->curr = initial_task;
   // rq->idle = initial_task; // Will be set in sched_init_ap for APs, logic for
   // BSP?
@@ -600,6 +626,10 @@ void sched_init_ap(void) {
   idle->sched_class = &idle_sched_class;
   idle->preempt_count = 0;
   cpumask_set_cpu(cpu, &idle->cpus_allowed);
+
+  INIT_LIST_HEAD(&idle->tasks);
+  INIT_LIST_HEAD(&idle->children);
+  INIT_LIST_HEAD(&idle->sibling);
 
   struct rq *rq = this_rq();
   rq->curr = idle;

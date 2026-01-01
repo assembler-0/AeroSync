@@ -158,7 +158,7 @@ int vprintk(const char *fmt, va_list args) {
   // Parse optional level prefix (e.g. "$3$")
   const char *real_fmt = parse_level_prefix(fmt, &level);
 
-  char local_buf[512];
+  char local_buf[256];
   int count = vsnprintf(local_buf, sizeof(local_buf), real_fmt, args);
 
   // Write to log subsystem

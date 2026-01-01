@@ -1,11 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-#ifndef _ARCH_X64_PERCPU_H
-#define _ARCH_X64_PERCPU_H
+#pragma once
 
 #include <arch/x64/cpu.h>
 #include <arch/x64/smp.h>
-#include <stdbool.h>
-#include <stdint.h>
 
 /* Linker symbols for the per-CPU section */
 extern char _percpu_start[];
@@ -150,5 +147,3 @@ extern unsigned long __per_cpu_offset[MAX_CPUS];
 void setup_per_cpu_areas(void);
 
 bool percpu_ready(void);
-
-#endif /* _ARCH_X64_PERCPU_H */

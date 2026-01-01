@@ -3,7 +3,7 @@
  * VoidFrameX monolithic kernel
  *
  * @file init/main.c
- * @brief Kernel entry point and limine requests
+ * @brief Kernel entry point and initialization
  * @copyright (C) 2025 assembler-0
  *
  * This file is part of the VoidFrameX kernel.
@@ -20,6 +20,7 @@
 
 #include <arch/x64/fpu.h>
 #include <arch/x64/cpu.h>
+#include <arch/x64/entry.h>
 #include <arch/x64/features/features.h>
 #include <arch/x64/gdt/gdt.h>
 #include <arch/x64/idt/idt.h>
@@ -46,89 +47,85 @@
 #include <lib/printk.h>
 #include <limine/limine.h>
 #include <mm/slab.h>
-#include <mm/vma.h>
-#include <mm/vmalloc.h>
 #include <uacpi/uacpi.h>
 
 // Set Limine Request Start Marker
 __attribute__((used,
-               section(".limine_requests_start"))) static volatile uint64_t
-    limine_requests_start_marker[] = LIMINE_REQUESTS_START_MARKER;
+  section(".limine_requests_start"))) static volatile uint64_t
+limine_requests_start_marker[] = LIMINE_REQUESTS_START_MARKER;
 
-// Set Limine Base Revision to 3
 __attribute__((used, section(".limine_requests"))) static volatile uint64_t
-    limine_base_revision[3] = LIMINE_BASE_REVISION(4);
+limine_base_revision[3] = LIMINE_BASE_REVISION(4);
 
-// Request framebuffer
 __attribute__((
-    used,
-    section(".limine_requests"))) volatile struct limine_framebuffer_request
-    framebuffer_request = {.id = LIMINE_FRAMEBUFFER_REQUEST_ID, .revision = 0};
+  used,
+  section(".limine_requests"))) volatile struct limine_framebuffer_request
+framebuffer_request = {.id = LIMINE_FRAMEBUFFER_REQUEST_ID, .revision = 0};
 
-// Request memory map
 __attribute__((
-    used,
-    section(".limine_requests"))) static volatile struct limine_memmap_request
-    memmap_request = {.id = LIMINE_MEMMAP_REQUEST_ID, .revision = 0};
+  used,
+  section(".limine_requests"))) static volatile struct limine_memmap_request
+memmap_request = {.id = LIMINE_MEMMAP_REQUEST_ID, .revision = 0};
 
-// Request paging mode
 __attribute__((
-    used,
-    section(
-        ".limine_requests"))) static volatile struct limine_paging_mode_request
-    paging_request = {.id = LIMINE_PAGING_MODE_REQUEST_ID,
-                      .revision = 0,
-                      .mode = LIMINE_PAGING_MODE_X86_64_5LVL};
+  used,
+  section(".limine_requests"))) static volatile struct limine_paging_mode_request
+paging_request = {
+  .id = LIMINE_PAGING_MODE_REQUEST_ID,
+  .revision = 0,
+  .mode = LIMINE_PAGING_MODE_X86_64_5LVL
+};
 
-// Request HHDM (Higher Half Direct Map)
 __attribute__((
-    used,
-    section(".limine_requests"))) static volatile struct limine_hhdm_request
-    hhdm_request = {.id = LIMINE_HHDM_REQUEST_ID, .revision = 0};
+  used,
+  section(".limine_requests"))) static volatile struct limine_hhdm_request
+hhdm_request = {.id = LIMINE_HHDM_REQUEST_ID, .revision = 0};
 
-// Request RSDP (for ACPI)
 __attribute__((used,
-               section(".limine_requests"))) volatile struct limine_rsdp_request
-    rsdp_request = {.id = LIMINE_RSDP_REQUEST_ID, .revision = 0};
+  section(".limine_requests"))) volatile struct limine_rsdp_request
+rsdp_request = {.id = LIMINE_RSDP_REQUEST_ID, .revision = 0};
 
 __attribute__((
-    used,
-    section(".limine_requests"))) static volatile struct limine_smbios_request
-    smbios_request = {.id = LIMINE_SMBIOS_REQUEST_ID, .revision = 0};
-
-// Request modules (initrd)
-__attribute__((
-    used,
-    section(".limine_requests"))) static volatile struct limine_module_request
-    module_request = {.id = LIMINE_MODULE_REQUEST_ID,
-                      .revision = 0}; // New module request
-
-__attribute__((used, section(".limine_requests"))) static volatile struct
-    limine_bootloader_info_request bootloader_info_request = {
-        .id = LIMINE_BOOTLOADER_INFO_REQUEST_ID, .revision = 0};
-
-__attribute__((used, section(".limine_requests"))) static volatile struct
-    limine_bootloader_performance_request bootloader_performance_request = {
-        .id = LIMINE_BOOTLOADER_PERFORMANCE_REQUEST_ID, .revision = 0};
-
-__attribute__((used, section(".limine_requests"))) static volatile struct
-    limine_executable_cmdline_request cmdline_request = {
-        .id = LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID, .revision = 0};
-
-__attribute__((used, section(".limine_requests"))) static volatile struct
-    limine_firmware_type_request fw_request = {
-        .id = LIMINE_FIRMWARE_TYPE_REQUEST_ID, .revision = 0};
+  used,
+  section(".limine_requests"))) static volatile struct limine_smbios_request
+smbios_request = {.id = LIMINE_SMBIOS_REQUEST_ID, .revision = 0};
 
 __attribute__((
-    used,
-    section(
-        ".limine_requests"))) static volatile struct limine_date_at_boot_request
-    date_at_boot_request = {.id = LIMINE_DATE_AT_BOOT_REQUEST_ID,
-                            .revision = 0};
+  used,
+  section(".limine_requests"))) static volatile struct limine_module_request
+module_request = {.id = LIMINE_MODULE_REQUEST_ID, .revision = 0};
 
-// Set Limine Request End Marker
+__attribute__((used, section(".limine_requests"))) static volatile struct
+limine_bootloader_info_request bootloader_info_request = {
+  .id = LIMINE_BOOTLOADER_INFO_REQUEST_ID, .revision = 0
+};
+
+__attribute__((used, section(".limine_requests"))) static volatile struct
+limine_bootloader_performance_request bootloader_performance_request = {
+  .id = LIMINE_BOOTLOADER_PERFORMANCE_REQUEST_ID, .revision = 0
+};
+
+__attribute__((used, section(".limine_requests"))) static volatile struct
+limine_executable_cmdline_request cmdline_request = {
+  .id = LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID, .revision = 0
+};
+
+__attribute__((used, section(".limine_requests"))) static volatile struct
+limine_firmware_type_request fw_request = {
+  .id = LIMINE_FIRMWARE_TYPE_REQUEST_ID, .revision = 0
+};
+
+__attribute__((
+  used,
+  section(
+    ".limine_requests"))) static volatile struct limine_date_at_boot_request
+date_at_boot_request = {
+  .id = LIMINE_DATE_AT_BOOT_REQUEST_ID,
+  .revision = 0
+};
+
 __attribute__((used, section(".limine_requests_end"))) static volatile uint64_t
-    limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
+limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
 
 static struct task_struct bsp_task __aligned(16);
 
@@ -137,33 +134,29 @@ volatile struct limine_framebuffer_request *get_framebuffer_request(void) {
 }
 EXPORT_SYMBOL(get_framebuffer_request);
 
-int process(void *data) {
+static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
+  (void) unused;
+
+  printk(KERN_INFO KERN_CLASS "finishing system initialization\n");
+
+  fkx_init_module_class(FKX_GENERIC_CLASS);
+
+  // TODO: Implement run_init_process() which calls do_execve()
+  // For now, since we have no init binary on disk, we just stay in kernel
+  printk(KERN_NOTICE KERN_CLASS "no init binary found. System idle.\n");
+
+  printk(KERN_CLASS "VoidFrameX initialization complete.\n");
+
   while (1) {
     check_preempt();
+    cpu_hlt();
   }
 }
 
-DEFINE_PER_CPU(int, test_var);
-
-void test_percpu_system(void) {
-  int cpu = smp_get_id();
-  int val = 0xDEADBEEF + cpu;
-
-  printk(KERN_INFO "Testing per-cpu system on CPU %d\n", cpu);
-
-  this_cpu_write(test_var, val);
-
-  int read_back = this_cpu_read(test_var);
-  if (read_back != val) {
-    printk(KERN_ERR "Per-CPU test failed! Wrote %x, read %x\n", val, read_back);
-    panic("Per-CPU test failed");
-  }
-
-  printk(KERN_INFO "Per-CPU test passed on CPU %d (val=%x)\n", cpu, read_back);
-}
-
-// TODO: MAKE ALL HARDWARE DRIVER A SEPARATE MODULE!!
-
+/**
+ * @brief VoidFrameX kernel main entry point
+ * @note NO RETURN!
+ */
 void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   panic_register_handler(get_builtin_panic_ops());
   panic_handler_install();
@@ -173,7 +166,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   }
 
   printk_register_backend(debugcon_get_backend());
-  printk_auto_configure(NULL, 0);
+  printk_init_early();
   tsc_calibrate_early();
 
   printk(KERN_CLASS "VoidFrameX (R) v%s - %s\n", VOIDFRAMEX_VERSION,
@@ -181,7 +174,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   printk(KERN_CLASS "copyright (C) 2025 assembler-0\n");
 
   if (bootloader_info_request.response &&
-      bootloader_performance_request.response) {
+    bootloader_performance_request.response) {
     printk(KERN_CLASS
            "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
            bootloader_info_request.response->name
@@ -192,7 +185,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
                : "(null-version)",
            bootloader_performance_request.response->exec_usec,
            bootloader_performance_request.response->init_usec);
-  }
+    }
 
   if (fw_request.response) {
     printk(FW_CLASS "firmware type: %s\n",
@@ -207,9 +200,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
                : "(unknown)");
   }
 
-  if (paging_request.response) {
-    printk(KERN_CLASS "system pagination level: %d\n", vmm_get_paging_levels());
-  }
+  printk(KERN_CLASS "system pagination level: %d\n", vmm_get_paging_levels());
 
   if (cmdline_request.response) {
     /* Register known options and parse the executable command-line provided by
@@ -235,36 +226,27 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   }
 
   pmm_init(memmap_request.response, hhdm_request.response->offset);
-
   vmm_init();
-
   slab_init();
   setup_per_cpu_areas();
   smp_prepare_boot_cpu();
   pmm_init_cpu();
-  test_percpu_system();
-
-  slab_test();
-  vmalloc_test();
-  vma_test();
 
   gdt_init();
   idt_install();
+  syscall_init();
 
   if (module_request.response) {
     printk(KERN_DEBUG FKX_CLASS "Found %lu modules, \n",
            module_request.response->module_count);
-
     for (size_t i = 0; i < module_request.response->module_count; i++) {
       struct limine_file *m = module_request.response->modules[i];
       printk(KERN_DEBUG FKX_CLASS "  [%zu] %s @ %p (%lu bytes)\n", i, m->path,
              m->address, m->size);
-
       if (fkx_load_image(m->address, m->size) == 0) {
         printk(FKX_CLASS "Successfully loaded module: %s\n", m->path);
       }
     }
-
     if (fkx_finalize_loading() != 0) {
       printk(KERN_ERR FKX_CLASS "Failed to finalize module loading\n");
     }
@@ -278,27 +260,16 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   }
 
   fkx_init_module_class(FKX_PRINTK_CLASS);
-  printk_auto_configure(NULL, 1);
+  printk_init_late();
 
   fkx_init_module_class(FKX_IC_CLASS);
   ic_register_lapic_get_id_early();
 
   cpu_features_init();
-
-  // Two-phase ACPI init to break IC/APIC/uACPI circular dependency
   uacpi_kernel_init_early();
-
-  // Register interrupt controllers
   interrupt_controller_t ic_type = ic_install();
-
-  // Notify ACPI glue that IC is ready so it can bind any deferred handlers
   uacpi_notify_ic_ready();
-
-  // Complete ACPI initialization (will install SCI/GPE handlers now that IC is
-  // ready)
   uacpi_kernel_init_late();
-
-  // Initialize ACPI Power Management (Buttons, etc.)
   acpi_power_init();
 
   // --- Time Subsystem Initialization ---
@@ -315,7 +286,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     printk(KERN_CLASS "TSC calibrated successfully.\n");
   }
 
-  // Initialize generic driver modules (e.g., PCI)
   fkx_init_module_class(FKX_DRIVER_CLASS);
 
   fpu_init();
@@ -329,19 +299,19 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   printk_init_async();
 
-  printk(KERN_CLASS "VoidFrameX initialization complete, starting init...\n");
-
-  if (!process_spawn(process, NULL, "v-pxs"))
-    panic(KERN_CLASS "attempted to kill init, nothing to do.");
-
-  fkx_init_module_class(FKX_GENERIC_CLASS);
+  // Start kernel_init thread
+  struct task_struct *init_task = kthread_create(kernel_init, NULL, "kernel_init");
+  if (!init_task)
+    panic(KERN_CLASS "Failed to create kernel_init thread");
+  kthread_run(init_task);
 
   cpu_sti();
 
+  // BSP becomes the idle thread
   while (true) {
     check_preempt();
     cpu_hlt();
   }
-  
+
   __unreachable();
 }

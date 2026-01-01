@@ -86,10 +86,10 @@ void gdt_init(void) {
                GDT_GRAN_CODE); // 0x08: Kernel Code
   set_gdt_gate(2, 0, 0xFFFFFFFF, GDT_ACCESS_DATA_PL0,
                GDT_GRAN_DATA); // 0x10: Kernel Data
-  set_gdt_gate(3, 0, 0xFFFFFFFF, GDT_ACCESS_CODE_PL3,
-               GDT_GRAN_CODE); // 0x18: User Code
-  set_gdt_gate(4, 0, 0xFFFFFFFF, GDT_ACCESS_DATA_PL3,
-               GDT_GRAN_DATA); // 0x20: User Data
+  set_gdt_gate(3, 0, 0xFFFFFFFF, GDT_ACCESS_DATA_PL3,
+               GDT_GRAN_DATA); // 0x18: User Data
+  set_gdt_gate(4, 0, 0xFFFFFFFF, GDT_ACCESS_CODE_PL3,
+               GDT_GRAN_CODE); // 0x20: User Code
 
   struct tss_entry *tss = this_cpu_ptr(tss_entry);
   uint64_t tss_base = (uint64_t)tss;

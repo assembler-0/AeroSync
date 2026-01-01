@@ -86,7 +86,7 @@ void do_page_fault(cpu_regs *regs) {
 
     // Map it
     uint64_t flags = PTE_PRESENT;
-    if (user_mode || (cr2 < vmm_get_canonical_high_base())) {
+    if (user_mode || (vma->vm_flags & VM_USER) || (cr2 < vmm_get_canonical_high_base())) {
       flags |= PTE_USER;
     }
     if (vma->vm_flags & VM_WRITE) flags |= PTE_RW;

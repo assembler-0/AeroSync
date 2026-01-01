@@ -10,10 +10,6 @@
 #define KLOG_INFO    6
 #define KLOG_DEBUG   7
 
-// Set the minimum level stored in the ring buffer (inclusive)
-void log_set_level(int level);
-int  log_get_level(void);
-
 // Console sink management
 fnd(void, log_sink_putc_t, char c);
 void log_init(log_sink_putc_t backend);

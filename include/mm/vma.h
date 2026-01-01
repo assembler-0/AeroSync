@@ -17,6 +17,7 @@
 #define VM_DONTCOPY 0x00020000   /* Don't copy on fork */
 #define VM_DONTEXPAND 0x00040000 /* Cannot expand with mremap */
 #define VM_LOCKED 0x00100000     /* Pages are locked */
+#define VM_USER   0x00200000     /* User-space accessible */
 #define VM_PFNMAP 0x00400000     /* Physical frame number mapping */
 #define VM_HUGE   0x00800000     /* VMA is backed by huge pages */
 
@@ -75,6 +76,7 @@ int vma_map_range(struct mm_struct *mm, uint64_t start, uint64_t end,
 int vma_unmap_range(struct mm_struct *mm, uint64_t start, uint64_t end);
 int vma_protect(struct mm_struct *mm, uint64_t start, uint64_t end,
                 uint64_t new_flags);
+int mm_populate_user_range(struct mm_struct *mm, uint64_t start, size_t size, uint64_t flags, const uint8_t *data, size_t data_len);
 
 /* VMA Iteration */
 struct vm_area_struct *vma_next(struct vm_area_struct *vma);

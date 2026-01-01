@@ -19,6 +19,7 @@
  */
 
 #include <arch/x64/cpu.h>
+#include <arch/x64/entry.h>
 #include <arch/x64/features/features.h>
 #include <arch/x64/gdt/gdt.h>
 #include <arch/x64/idt/idt.h>
@@ -45,8 +46,6 @@ static volatile int smp_start_barrier =
 static struct wait_counter ap_startup_counter;
 static int smp_initialized = 0;
 
-// Global array to map logical CPU ID to physical APIC ID
-// Global array to map logical CPU ID to physical APIC ID
 // Per-CPU APIC ID
 DEFINE_PER_CPU(int, cpu_apic_id);
 
@@ -92,6 +91,9 @@ static void smp_ap_entry(struct limine_mp_info *info) {
 
   // Load IDT for this CPU
   idt_load(&g_IdtPtr);
+  
+  // Initialize Syscall MSRs
+  syscall_init();
 
   // Also increment the atomic counter for consistency with other code
   __atomic_fetch_add(&cpus_online, 1, __ATOMIC_RELEASE);
