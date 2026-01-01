@@ -10,6 +10,7 @@
 #include <arch/x64/cpu.h>
 #include <arch/x64/gdt/gdt.h>
 #include <kernel/classes.h>
+#include <kernel/errno.h>
 #include <kernel/sched/process.h>
 #include <kernel/types.h>
 #include <kernel/sysintf/panic.h>
