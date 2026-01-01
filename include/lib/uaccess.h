@@ -1,7 +1,7 @@
 #pragma once
 
+#include <arch/x64/mm/vmm.h>
 #include <kernel/types.h>
-#include <kernel/errno.h>
 
 /**
  * copy_from_user - Copy a block of data from user space.
