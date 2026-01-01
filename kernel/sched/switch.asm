@@ -3,6 +3,7 @@
 section .text
 
 global __switch_to
+global ret_from_fork
 global ret_from_kernel_thread
 global ret_from_user_thread
 
@@ -38,6 +39,54 @@ __switch_to:
     pop rbx
     
     ret
+
+; entry point for new processes created via fork/clone
+; rax = prev (returned from __switch_to)
+ret_from_fork:
+    ; Finish schedule()
+    mov rdi, rax
+    call schedule_tail
+    
+    ; We are now in the child process.
+    ; The stack contains syscall_regs (or cpu_regs if from exception).
+    ; We need to jump to the appropriate return path.
+    
+    ; Check if we were a kernel thread or user process?
+    ; For now, assume user process return via syscall_exit logic.
+    ; Since we don't have a separate syscall_exit, we'll re-use the one in syscall.asm
+    ; or just implement it here.
+    
+    jmp .syscall_return_path
+
+.syscall_return_path:
+    ; Restore context (matches syscall.asm return logic)
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbp
+    pop rbx
+
+    pop r11 ; saved rflags
+    pop r9
+    pop r8
+    pop r10
+    pop rdx
+    pop rsi
+    pop rdi
+    pop rax ; This should be 0 for child, set by do_fork
+
+    pop rcx     ; RCX = RIP
+    add rsp, 8  ; Skip CS
+    pop r11     ; R11 = RFLAGS
+    add rsp, 16 ; Skip User RSP and Alignment Dummy
+    add rsp, 8
+
+    ; Restore User RSP and switch back
+    extern cpu_user_rsp
+    mov rsp, [gs:cpu_user_rsp]
+    swapgs
+    o64 sysret
 
 ; entry point for new kernel threads
 ; rax = prev (returned from __switch_to)

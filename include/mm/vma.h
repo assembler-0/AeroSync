@@ -41,6 +41,8 @@ struct mm_struct *mm_alloc(void);
 struct mm_struct *mm_create(void);
 struct mm_struct *mm_copy(struct mm_struct *old_mm);
 void mm_free(struct mm_struct *mm);
+void mm_get(struct mm_struct *mm);
+void mm_put(struct mm_struct *mm);
 
 /* VMA Operations */
 struct vm_area_struct *vma_alloc(void);

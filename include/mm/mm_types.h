@@ -36,6 +36,7 @@ struct __aligned(sizeof(long)) vm_area_struct {
   /* TODO: Backing store/file pointers will go here */
 };
 
+#include <kernel/atomic.h>
 #include <kernel/rw_semaphore.h>
 
 /*
@@ -52,6 +53,7 @@ struct mm_struct {
   spinlock_t page_table_lock; /* Protects page table modifications (fallback) */
   struct rw_semaphore mmap_lock; /* Protects VMA list/tree modifications */
 
+  atomic_t mm_count; /* Reference count */
   int map_count; /* Number of VMAs */
 
   uint64_t mmap_base; /* Hint for where to start looking for free space */

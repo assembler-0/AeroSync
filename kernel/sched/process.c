@@ -46,6 +46,7 @@ DECLARE_PER_CPU(struct rq, runqueues);
 
 extern void ret_from_kernel_thread(void);
 extern void ret_from_user_thread(void);
+extern void ret_from_fork(void);
 
 struct ida pid_ida;
 
@@ -124,6 +125,7 @@ struct task_struct *copy_process(uint64_t clone_flags,
   // Setup memory management
   if (clone_flags & CLONE_VM) {
       p->mm = parent->mm;
+      mm_get(p->mm);
   } else if (parent->mm) {
       p->mm = mm_copy(parent->mm);
       if (!p->mm) {
@@ -199,30 +201,56 @@ void kthread_run(struct task_struct *k) {
 }
 EXPORT_SYMBOL(kthread_run);
 
-pid_t do_fork(uint64_t clone_flags, uint64_t stack_start) {
+pid_t do_fork(uint64_t clone_flags, uint64_t stack_start, struct syscall_regs *regs) {
     struct task_struct *curr = get_current();
     struct task_struct *p = copy_process(clone_flags, stack_start, curr);
-    if (!p) return -1;
+    if (!p) return -ENOMEM;
 
     pid_t pid = p->pid;
     
-    // For fork, we need to clone the stack more carefully
-    memcpy(p->stack, curr->stack, PAGE_SIZE * 4);
+    /* 
+     * For fork/clone, we copy the parent's kernel stack content.
+     * The syscall_regs are located at the top of the parent's stack.
+     */
+    uint64_t *parent_sp = (uint64_t *)regs;
+    // Calculate how many bytes are used on the stack (from regs to top)
+    size_t stack_used = (uint64_t)((uint8_t *)curr->stack + (PAGE_SIZE * 4)) - (uint64_t)parent_sp;
     
-    uint64_t stack_offset = (uint64_t)curr->thread.rsp - (uint64_t)curr->stack;
-    p->thread.rsp = (uint64_t)p->stack + stack_offset;
-    
-    // Child returns 0 in RAX. 
-    // Since we don't have a pt_regs offset yet, we assume the switch_to context
-    // is at the same place. In a real kernel, we'd find the pt_regs on the 
-    // stack and set rax = 0.
+    // Position of regs on the child's stack
+    uint64_t *child_regs_ptr = (uint64_t *)((uint8_t *)p->stack + (PAGE_SIZE * 4) - stack_used);
+    memcpy(child_regs_ptr, parent_sp, stack_used);
+
+    // Child returns 0 in RAX
+    struct syscall_regs *child_regs = (struct syscall_regs *)child_regs_ptr;
+    child_regs->rax = 0;
+
+    // If stack_start is provided (clone), update it in child_regs
+    if (stack_start) {
+        child_regs->rsp = stack_start;
+    }
+
+    // Setup child's switch_to context
+    // We want it to pop r15..rbx and then ret to ret_from_fork
+    uint64_t *sp = (uint64_t *)child_regs_ptr;
+    *(--sp) = (uint64_t)ret_from_fork;
+    *(--sp) = 0;                  // rbx
+    *(--sp) = 0;                  // rbp
+    *(--sp) = 0;                  // r12
+    *(--sp) = 0;                  // r13
+    *(--sp) = 0;                  // r14
+    *(--sp) = 0;                  // r15
+
+    p->thread.rsp = (uint64_t)sp;
+    p->thread.rflags = 0x202;
     
     wake_up_new_task(p);
     return pid;
 }
 
 pid_t sys_fork(void) {
-    return do_fork(0, 0);
+    // This is now just a stub if called from kernel, 
+    // but proper way is sys_fork_handler in syscall.c
+    return -ENOSYS; 
 }
 
 void sys_exit(int error_code) {
@@ -247,6 +275,7 @@ void free_task(struct task_struct *task) {
 
   if (task->pid >= 0) release_pid(task->pid);
   if (task->thread.fpu) fpu_free(task->thread.fpu);
+  if (task->mm) mm_put(task->mm);
   if (task->stack) vfree(task->stack);
   
   free_task_struct(task);

@@ -119,6 +119,7 @@ void mm_init(struct mm_struct *mm) {
   mm->pml4 = NULL;
   spinlock_init(&mm->page_table_lock);
   rwsem_init(&mm->mmap_lock);
+  atomic_set(&mm->mm_count, 1);
 
   /* Initialize memory layout fields */
   mm->start_code = 0;
@@ -199,6 +200,17 @@ struct mm_struct *mm_create(void) {
 
   mm->pml4 = (uint64_t *)pml4_phys;
   return mm;
+}
+
+void mm_get(struct mm_struct *mm) {
+    if (mm) atomic_inc(&mm->mm_count);
+}
+
+void mm_put(struct mm_struct *mm) {
+    if (!mm) return;
+    if (atomic_dec_and_test(&mm->mm_count)) {
+        mm_free(mm);
+    }
 }
 
 struct mm_struct *mm_copy(struct mm_struct *old_mm) {

@@ -81,7 +81,7 @@ int time_init(void) {
   }
 
   if (!selected) {
-    panic(TIME_CLASS "No suitable time source found!");
+    panic(TIME_CLASS "No suitable time source found");
   }
 
   current_time_source = selected;

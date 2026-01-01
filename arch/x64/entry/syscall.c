@@ -16,6 +16,7 @@
 #include <kernel/sysintf/panic.h>
 #include <lib/printk.h>
 #include <lib/uaccess.h>
+#include <arch/x64/entry.h>
 
 #define MSR_STAR 0xC0000081
 #define MSR_LSTAR 0xC0000082
@@ -29,14 +30,7 @@ extern void syscall_entry(void);
 
 #define REGS_RETURN_VAL(r, v) (r ? r->rax = v : panic(SYSCALL_CLASS "regs == null"))
 
-// Syscall Registers (matches ASM stack layout)
-struct syscall_regs {
-    uint64_t r15, r14, r13, r12, rbp, rbx;
-    uint64_t r11_dup, r9, r8, r10, rdx, rsi, rdi, rax;
-    uint64_t rip, cs, rflags, rsp, ss;
-};
-
-typedef void (*sys_call_ptr_t)(struct syscall_regs *);
+fnd(void, sys_call_ptr_t, struct syscall_regs *);
 
 static void sys_ni_syscall(struct syscall_regs *regs) {
     printk(KERN_WARNING SYSCALL_CLASS "Unknown syscall %llu\n", regs->rax);
@@ -78,8 +72,25 @@ static void sys_exit_handler(struct syscall_regs *regs) {
     sys_exit(status);
 }
 
+static void sys_fork_handler(struct syscall_regs *regs) {
+    REGS_RETURN_VAL(regs, do_fork(0, 0, regs));
+}
+
+static void sys_clone_handler(struct syscall_regs *regs) {
+    uint64_t flags = regs->rdi;
+    uint64_t stack = regs->rsi;
+    REGS_RETURN_VAL(regs, do_fork(flags, stack, regs));
+}
+
+static void sys_getpid_handler(struct syscall_regs *regs) {
+    REGS_RETURN_VAL(regs, current->pid);
+}
+
 static sys_call_ptr_t syscall_table[] = {
     [1] = sys_write,
+    [39] = sys_getpid_handler,
+    [56] = sys_clone_handler,
+    [57] = sys_fork_handler,
     [60] = sys_exit_handler,
 };
 
