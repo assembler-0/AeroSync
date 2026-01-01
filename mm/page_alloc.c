@@ -34,14 +34,14 @@
 struct zone managed_zones[MAX_NR_ZONES];
 
 /* Default zone names */
-static const char * const zone_names[MAX_NR_ZONES] = {
+static const char *const zone_names[MAX_NR_ZONES] = {
 #ifdef CONFIG_ZONE_DMA
-    "DMA",
+  "DMA",
 #endif
 #ifdef CONFIG_ZONE_DMA32
-    "DMA32",
+  "DMA32",
 #endif
-    "Normal"
+  "Normal"
 };
 
 /* Defined in arch/x64/mm/pmm.c */
@@ -52,14 +52,15 @@ extern uint64_t pmm_max_pages;
  * Debugging helper
  */
 static void check_page_sanity(struct page *page, int order) {
-    if (PageBuddy(page)) {
-        char buf[64];
-        snprintf(buf, sizeof(buf), PMM_CLASS "Bad page state: PageBuddy set in alloc path (pfn %llu)", (uint64_t)(page - mem_map));
-        panic(buf);
-    }
-    if (page->order != 0 && page->order != order) {
-        page->order = 0;
-    }
+  if (PageBuddy(page)) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), PMM_CLASS "Bad page state: PageBuddy set in alloc path (pfn %llu)",
+             (uint64_t) (page - mem_map));
+    panic(buf);
+  }
+  if (page->order != 0 && page->order != order) {
+    page->order = 0;
+  }
 }
 
 /*
@@ -67,188 +68,189 @@ static void check_page_sanity(struct page *page, int order) {
  */
 
 static inline unsigned long __find_buddy_pfn(unsigned long page_pfn, unsigned int order) {
-    return page_pfn ^ (1 << order);
+  return page_pfn ^ (1 << order);
 }
 
 static inline bool page_is_buddy(struct page *page, struct page *buddy, unsigned int order) {
-    if (!PageBuddy(buddy))
-        return false;
-    if (buddy->order != order)
-        return false;
-    return true;
+  if (!PageBuddy(buddy))
+    return false;
+  if (buddy->order != order)
+    return false;
+  return true;
 }
 
-static inline void expand(struct zone *zone, struct page *page, 
-                         int low, int high, struct free_area *area) {
-    unsigned long size = 1 << high;
+static inline void expand(struct zone *zone, struct page *page,
+                          int low, int high, struct free_area *area) {
+  unsigned long size = 1 << high;
 
-    while (high > low) {
-        area--;
-        high--;
-        size >>= 1;
-        
-        struct page *buddy = page + size;
-        INIT_LIST_HEAD(&buddy->list);
-        
-        SetPageBuddy(buddy);
-        buddy->order = high;
-        
-        list_add(&buddy->list, &area->free_list[0]);
-        area->nr_free++;
-    }
+  while (high > low) {
+    area--;
+    high--;
+    size >>= 1;
+
+    struct page *buddy = page + size;
+    INIT_LIST_HEAD(&buddy->list);
+
+    SetPageBuddy(buddy);
+    buddy->order = high;
+
+    list_add(&buddy->list, &area->free_list[0]);
+    area->nr_free++;
+  }
 }
 
 static struct page *__rmqueue(struct zone *zone, unsigned int order) {
-    unsigned int current_order;
-    struct free_area *area;
-    struct page *page;
+  unsigned int current_order;
+  struct free_area *area;
+  struct page *page;
 
-    for (current_order = order; current_order < MAX_ORDER; ++current_order) {
-        area = &zone->free_area[current_order];
-        if (list_empty(&area->free_list[0]))
-            continue;
+  for (current_order = order; current_order < MAX_ORDER; ++current_order) {
+    area = &zone->free_area[current_order];
+    if (list_empty(&area->free_list[0]))
+      continue;
 
-        page = list_entry(area->free_list[0].next, struct page, list);
-        list_del(&page->list);
-        
-        ClearPageBuddy(page);
-        area->nr_free--;
-        
-        expand(zone, page, order, current_order, area);
-        return page;
-    }
+    page = list_entry(area->free_list[0].next, struct page, list);
+    list_del(&page->list);
 
-    return NULL;
+    ClearPageBuddy(page);
+    area->nr_free--;
+
+    expand(zone, page, order, current_order, area);
+    return page;
+  }
+
+  return NULL;
 }
 
-static void __free_one_page(struct page *page, unsigned long pfn, 
+static void __free_one_page(struct page *page, unsigned long pfn,
                             struct zone *zone, unsigned int order) {
-    unsigned long buddy_pfn;
-    unsigned long combined_pfn;
-    struct page *buddy;
-    
-    while (order < MAX_ORDER - 1) {
-        buddy_pfn = __find_buddy_pfn(pfn, order);
-        
-        if (buddy_pfn >= zone->zone_start_pfn + zone->spanned_pages)
-            break;
-            
-        // Check if buddy is within max pages (global check)
-        if (buddy_pfn >= pmm_max_pages)
-            break;
+  unsigned long buddy_pfn;
+  unsigned long combined_pfn;
+  struct page *buddy;
 
-        buddy = &mem_map[buddy_pfn];
+  while (order < MAX_ORDER - 1) {
+    buddy_pfn = __find_buddy_pfn(pfn, order);
 
-        if (!page_is_buddy(page, buddy, order))
-            break;
+    if (buddy_pfn >= zone->zone_start_pfn + zone->spanned_pages)
+      break;
 
-        /* Our buddy is free, merge with it */
-        list_del(&buddy->list);
-        zone->free_area[order].nr_free--;
-        ClearPageBuddy(buddy);
-        
-        combined_pfn = buddy_pfn & pfn;
-        page = &mem_map[combined_pfn];
-        pfn = combined_pfn;
-        order++;
-    }
+    // Check if buddy is within max pages (global check)
+    if (buddy_pfn >= pmm_max_pages)
+      break;
 
-    SetPageBuddy(page);
-    page->order = order;
-    list_add(&page->list, &zone->free_area[order].free_list[0]);
-    zone->free_area[order].nr_free++;
+    buddy = &mem_map[buddy_pfn];
+
+    if (!page_is_buddy(page, buddy, order))
+      break;
+
+    /* Our buddy is free, merge with it */
+    list_del(&buddy->list);
+    zone->free_area[order].nr_free--;
+    ClearPageBuddy(buddy);
+
+    combined_pfn = buddy_pfn & pfn;
+    page = &mem_map[combined_pfn];
+    pfn = combined_pfn;
+    order++;
+  }
+
+  SetPageBuddy(page);
+  page->order = order;
+  list_add(&page->list, &zone->free_area[order].free_list[0]);
+  zone->free_area[order].nr_free++;
 }
 
 /*
  * Core Allocator
  */
 struct page *alloc_pages(gfp_t gfp_mask, unsigned int order) {
-    struct page *page = NULL;
-    struct zone *z;
-    int z_idx;
-    unsigned long flags;
+  struct page *page = NULL;
+  struct zone *z;
+  int z_idx;
+  unsigned long flags;
 
-    // Iterate zones based on GFP.
-    // Simple fallback: Normal -> DMA32 -> DMA
-    // If GFP_DMA is set, start at DMA.
-    
-    int start_zone = ZONE_NORMAL;
-    if (gfp_mask & GFP_DMA) start_zone = ZONE_DMA;
-    else if (gfp_mask & GFP_DMA32) start_zone = ZONE_DMA32;
-    
-    for (z_idx = start_zone; z_idx >= 0; z_idx--) {
-        z = &managed_zones[z_idx];
-        
-        if (!z->present_pages) continue;
-        
-        flags = spinlock_lock_irqsave(&z->lock);
-        page = __rmqueue(z, order);
-        spinlock_unlock_irqrestore(&z->lock, flags);
+  // Iterate zones based on GFP.
+  // Simple fallback: Normal -> DMA32 -> DMA
+  // If GFP_DMA is set, start at DMA.
 
-        if (page) {
-            check_page_sanity(page, order);
-            atomic_set(&page->_refcount, 1);
-            return page;
-        }
+  int start_zone = ZONE_NORMAL;
+  if (gfp_mask & GFP_DMA) start_zone = ZONE_DMA;
+  else if (gfp_mask & GFP_DMA32) start_zone = ZONE_DMA32;
+
+  for (z_idx = start_zone; z_idx >= 0; z_idx--) {
+    z = &managed_zones[z_idx];
+
+    if (!z->present_pages) continue;
+
+    flags = spinlock_lock_irqsave(&z->lock);
+    page = __rmqueue(z, order);
+    spinlock_unlock_irqrestore(&z->lock, flags);
+
+    if (page) {
+      check_page_sanity(page, order);
+      page->order = order;
+      atomic_set(&page->_refcount, 1);
+      return page;
     }
+  }
 
-    printk(KERN_ERR PMM_CLASS "failed to allocate order %u from zones up to %d\n", order, start_zone);
-    for (int i = 0; i < MAX_NR_ZONES; i++) {
-        z = &managed_zones[i];
-        if (!z->present_pages) continue;
-        printk(KERN_ERR PMM_CLASS "  Zone %s: %lu pages present\n", z->name, z->present_pages);
-    }
+  printk(KERN_ERR PMM_CLASS "failed to allocate order %u from zones up to %d\n", order, start_zone);
+  for (int i = 0; i < MAX_NR_ZONES; i++) {
+    z = &managed_zones[i];
+    if (!z->present_pages) continue;
+    printk(KERN_ERR PMM_CLASS "  Zone %s: %lu pages present\n", z->name, z->present_pages);
+  }
 
-    return NULL;
+  return NULL;
 }
 
 void put_page(struct page *page) {
-    if (!page) return;
-    
-    if (atomic_dec_and_test(&page->_refcount)) {
-        __free_pages(page, page->order);
-    }
+  if (!page) return;
+
+  if (atomic_dec_and_test(&page->_refcount)) {
+    __free_pages(page, page->order);
+  }
 }
 
 void __free_pages(struct page *page, unsigned int order) {
-    if (!page) return;
+  if (!page) return;
 
-    if (PageBuddy(page)) {
-        char buf[64];
-        snprintf(buf, sizeof(buf), PMM_CLASS "Double free of page %p", page);
-        panic(buf);
+  if (PageBuddy(page)) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), PMM_CLASS "Double free of page %p", page);
+    panic(buf);
+  }
+
+  unsigned long pfn = (unsigned long) (page - mem_map);
+  struct zone *zone = &managed_zones[ZONE_NORMAL];
+
+  // Determine zone.
+  for (int i = 0; i < MAX_NR_ZONES; i++) {
+    struct zone *z = &managed_zones[i];
+    if (pfn >= z->zone_start_pfn && pfn < (z->zone_start_pfn + z->spanned_pages)) {
+      zone = z;
+      break;
     }
-    
-    unsigned long pfn = (unsigned long)(page - mem_map);
-    struct zone *zone = &managed_zones[ZONE_NORMAL];
+  }
 
-    // Determine zone. 
-    for (int i = 0; i < MAX_NR_ZONES; i++) {
-        struct zone *z = &managed_zones[i];
-        if (pfn >= z->zone_start_pfn && pfn < (z->zone_start_pfn + z->spanned_pages)) {
-            zone = z;
-            break;
-        }
-    }
-
-    unsigned long flags;
-    flags = spinlock_lock_irqsave(&zone->lock);
-    __free_one_page(page, pfn, zone, order);
-    spinlock_unlock_irqrestore(&zone->lock, flags);
+  unsigned long flags;
+  flags = spinlock_lock_irqsave(&zone->lock);
+  __free_one_page(page, pfn, zone, order);
+  spinlock_unlock_irqrestore(&zone->lock, flags);
 }
 
 void free_area_init(void) {
-    for (int i = 0; i < MAX_NR_ZONES; i++) {
-        struct zone *z = &managed_zones[i];
-        spinlock_init(&z->lock);
-        z->name = zone_names[i];
-        z->present_pages = 0;
-        z->spanned_pages = 0;
-        z->zone_start_pfn = 0;
-        
-        for (int order = 0; order < MAX_ORDER; order++) {
-            INIT_LIST_HEAD(&z->free_area[order].free_list[0]);
-            z->free_area[order].nr_free = 0;
-        }
+  for (int i = 0; i < MAX_NR_ZONES; i++) {
+    struct zone *z = &managed_zones[i];
+    spinlock_init(&z->lock);
+    z->name = zone_names[i];
+    z->present_pages = 0;
+    z->spanned_pages = 0;
+    z->zone_start_pfn = 0;
+
+    for (int order = 0; order < MAX_ORDER; order++) {
+      INIT_LIST_HEAD(&z->free_area[order].free_list[0]);
+      z->free_area[order].nr_free = 0;
     }
+  }
 }

@@ -1,5 +1,6 @@
 #include <arch/x64/mm/tlb.h>
 #include <arch/x64/cpu.h>
+#include <arch/x64/features/features.h>
 #include <kernel/sysintf/ic.h>
 #include <kernel/sched/sched.h>
 #include <lib/printk.h>
@@ -7,14 +8,37 @@
 #include <arch/x64/smp.h>
 
 /**
- * TLB Shootdown implementation for VoidFrameX
+ * TLB Shootdown implementation for VoidFrameX (PCID-Aware)
  */
 
+struct invpcid_desc {
+    uint64_t pcid : 12;
+    uint64_t rsvd : 52;
+    uint64_t addr;
+};
+
+static inline void __invpcid(uint64_t type, uint16_t pcid, uint64_t addr) {
+    struct invpcid_desc desc = {pcid, 0, addr};
+    __asm__ volatile("invpcid %1, %0" : : "r"(type), "m"(desc) : "memory");
+}
+
 void vmm_tlb_flush_local(uint64_t addr) {
+    // invlpg is sufficient for the current PCID and for Global pages
     __asm__ volatile("invlpg (%0)" : : "r"(addr) : "memory");
 }
 
 void vmm_tlb_flush_all_local(void) {
+    cpu_features_t *features = get_cpu_features();
+    if (features->pcid) {
+        // If PCID is enabled, a simple CR3 reload only flushes the current PCID.
+        // We might want to flush all PCIDs if this is a major change.
+        if (features->invpcid) {
+            // Type 2: All PCIDs except global
+            __invpcid(2, 0, 0);
+            return;
+        }
+    }
+
     uint64_t cr3;
     __asm__ volatile("mov %%cr3, %0" : "=r"(cr3));
     __asm__ volatile("mov %0, %%cr3" : : "r"(cr3) : "memory");

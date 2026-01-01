@@ -18,6 +18,10 @@
 
 #define PDE_PAT (1ULL << 12)     // Page Attribute Table (2MB/1GB pages)
 
+// CR3 / PCID bits
+#define CR3_PCID_MASK 0xFFFULL
+#define CR3_NOFLUSH   (1ULL << 63)
+
 // Cache Types (PAT)
 // 0: WB, 1: WC, 2: UC-, 3: UC, 4: WB, 5: WT, 6: WC, 7: WP
 #define VMM_CACHE_WB (0)
@@ -125,10 +129,18 @@ int vmm_is_accessed(uint64_t pml4_phys, uint64_t virt);
 void vmm_clear_accessed(uint64_t pml4_phys, uint64_t virt);
 
 /**
+ * Huge Page Helpers
+ */
+int vmm_merge_to_huge(uint64_t pml_root_phys, uint64_t virt, uint64_t target_huge_size);
+int vmm_shatter_huge_page(uint64_t pml_root_phys, uint64_t virt, uint64_t large_page_size);
+void vmm_merge_range(uint64_t pml_root_phys, uint64_t start, uint64_t end);
+
+/**
  * Switch the active Page Table (CR3).
  *
  * @param pml4_phys Physical address of the new PML4
  */
 void vmm_switch_pml4(uint64_t pml4_phys);
+void vmm_switch_pml4_pcid(uint64_t pml4_phys, uint16_t pcid, bool no_flush);
 
 extern uint64_t g_kernel_pml4;

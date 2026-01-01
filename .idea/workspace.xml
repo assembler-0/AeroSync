@@ -45,16 +45,14 @@
   <component name="ChangeListManager">
     <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="uaccess and COW for fork()">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/entry/syscall.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/entry/syscall.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/arch/x64/entry.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/entry.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/sched/process.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/sched/process.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/mm/mm_types.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/mm_types.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/mm/vma.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/vma.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/sched/process.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/sched/process.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/sched/switch.asm" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/sched/switch.asm" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/sysintf/time.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/sysintf/time.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/vma.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vma.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x64/features/features.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/features/features.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x64/mm/tlb.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/tlb.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x64/mm/vmm.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/vmm.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/arch/x64/features/features.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/features/features.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/arch/x64/mm/pmm.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/mm/pmm.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/arch/x64/mm/vmm.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/mm/vmm.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/mm/zone.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/zone.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mm/page_alloc.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/page_alloc.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -419,6 +417,7 @@
       <workItem from="1767246572498" duration="1243000" />
       <workItem from="1767248187189" duration="4377000" />
       <workItem from="1767253764799" duration="8000" />
+      <workItem from="1767258368841" duration="8000" />
     </task>
     <task id="LOCAL-00001" summary="Mutexes and FKX spec">
       <option name="closed" value="true" />

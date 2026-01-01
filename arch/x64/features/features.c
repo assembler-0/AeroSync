@@ -34,6 +34,9 @@ static cpu_features_t g_cpu_features;
 #define CR4_OSXMMEXCPT (1 << 10)
 #define CR4_OSXSAVE (1 << 18)
 #define CR4_LA57 (1 << 12)
+#define CR4_PCIDE (1 << 17)
+#define CR4_SMEP (1 << 20)
+#define CR4_SMAP (1 << 21)
 
 // XCR0 bits
 #define XCR0_SSE (1 << 1)
@@ -135,6 +138,27 @@ void cpu_features_init_ap(void) {
     xsetbv(0, xcr0);
   }
 
+  // Enable PCID
+  if (g_cpu_features.pcid) {
+    uint64_t cr4 = read_cr4();
+    cr4 |= CR4_PCIDE;
+    write_cr4(cr4);
+  }
+
+  // Enable SMEP
+  if (g_cpu_features.smep) {
+    uint64_t cr4 = read_cr4();
+    cr4 |= CR4_SMEP;
+    write_cr4(cr4);
+  }
+
+  // Enable SMAP
+  if (g_cpu_features.smap) {
+    uint64_t cr4 = read_cr4();
+    cr4 |= CR4_SMAP;
+    write_cr4(cr4);
+  }
+
   pat_init();
 }
 
@@ -173,6 +197,8 @@ void cpu_features_init(void) {
 
     if (ecx & (1 << 12))
       g_cpu_features.fma = true;
+    if (ecx & (1 << 17))
+      g_cpu_features.pcid = true;
   }
 
   if (max_leaf >= 7) {
@@ -182,10 +208,16 @@ void cpu_features_init(void) {
       g_cpu_features.bmi1 = true;
     if (ebx & (1 << 5))
       g_cpu_features.avx2 = true;
+    if (ebx & (1 << 7))
+      g_cpu_features.smep = true;
     if (ebx & (1 << 8))
       g_cpu_features.bmi2 = true;
+    if (ebx & (1 << 10))
+      g_cpu_features.invpcid = true;
     if (ebx & (1 << 16))
       g_cpu_features.avx512f = true;
+    if (ebx & (1 << 20))
+      g_cpu_features.smap = true;
     
     if (ecx & (1 << 16))
       g_cpu_features.la57 = true;
@@ -243,6 +275,27 @@ void cpu_features_init(void) {
     xsetbv(0, xcr0);
   }
 
+  // Enable PCID
+  if (g_cpu_features.pcid) {
+    uint64_t cr4 = read_cr4();
+    cr4 |= CR4_PCIDE;
+    write_cr4(cr4);
+  }
+
+  // Enable SMEP
+  if (g_cpu_features.smep) {
+    uint64_t cr4 = read_cr4();
+    cr4 |= CR4_SMEP;
+    write_cr4(cr4);
+  }
+
+  // Enable SMAP
+  if (g_cpu_features.smap) {
+    uint64_t cr4 = read_cr4();
+    cr4 |= CR4_SMAP;
+    write_cr4(cr4);
+  }
+
   pat_init();
 
   cpu_features_dump(&g_cpu_features);
@@ -270,6 +323,10 @@ void cpu_features_dump(cpu_features_t *features) {
   printk(CPU_CLASS "  PAT: %s\n", features->pat ? "Yes" : "No");
   printk(CPU_CLASS "  LA57: %s\n", features->la57 ? "Yes" : "No");
   printk(CPU_CLASS "  NX: %s\n", features->nx ? "Yes" : "No");
+  printk(CPU_CLASS "  PCID: %s\n", features->pcid ? "Yes" : "No");
+  printk(CPU_CLASS "  INVPCID: %s\n", features->invpcid ? "Yes" : "No");
+  printk(CPU_CLASS "  SMEP: %s\n", features->smep ? "Yes" : "No");
+  printk(CPU_CLASS "  SMAP: %s\n", features->smap ? "Yes" : "No");
 }
 
 cpu_features_t *get_cpu_features(void) {

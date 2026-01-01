@@ -2,10 +2,9 @@
 
 #include <kernel/types.h>
 #include <mm/page.h>
-
 #include <arch/x64/mm/paging.h>
 
-#define MAX_ORDER 11
+#define MAX_ORDER 19
 
 // Convert between addresses and page frame numbers
 #define PHYS_TO_PFN(addr) ((addr) >> PAGE_SHIFT)
