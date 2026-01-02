@@ -77,13 +77,13 @@ extern struct zone managed_zones[MAX_NR_ZONES];
  */
 void free_area_init(void);
 
-struct page *alloc_pages(gfp_t gfp_mask, unsigned int order);
+struct folio *alloc_pages(gfp_t gfp_mask, unsigned int order);
 
 void __free_pages(struct page *page, unsigned int order);
 
 void free_pages(uint64_t addr, unsigned int order);
 
-static inline struct page *alloc_page(gfp_t gfp_mask) {
+static inline struct folio *alloc_page(gfp_t gfp_mask) {
   return alloc_pages(gfp_mask, 0);
 }
 

@@ -16,13 +16,14 @@
 void *dma_alloc_coherent(size_t size, dma_addr_t *dma_handle, gfp_t gfp) {
     if (!size || !dma_handle) return NULL;
 
+    struct folio *folio;
     // Use GFP_DMA32 by default if not specified, to ensure 32-bit compatibility
     if (!(gfp & (GFP_DMA | GFP_DMA32))) {
         gfp |= GFP_DMA32;
     }
 
     size_t count = (size + PAGE_SIZE - 1) / PAGE_SIZE;
-    struct page *page = alloc_pages(gfp, 0); // TODO: Implement order allocation correctly if needed
+    // struct folio *page = alloc_pages(gfp, 0); // TODO: Implement order allocation correctly if needed
     
     // Simple implementation for now: only single page or order-based allocation
     // For contiguous pages, we need to pass the correct order.
@@ -35,13 +36,13 @@ void *dma_alloc_coherent(size_t size, dma_addr_t *dma_handle, gfp_t gfp) {
         return NULL;
     }
 
-    page = alloc_pages(gfp, order);
-    if (!page) return NULL;
+    folio = alloc_pages(gfp, order);
+    if (!folio) return NULL;
 
-    uint64_t phys = PFN_TO_PHYS(page_to_pfn(page));
+    uint64_t phys = folio_to_phys(folio);
     *dma_handle = (dma_addr_t)phys;
 
-    void *virt = page_address(page);
+    void *virt = page_address(&folio->page);
     
     // Coherent memory should be zeroed
     if (gfp & ___GFP_ZERO) {

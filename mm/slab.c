@@ -48,14 +48,16 @@ static inline void set_freelist_next(void *obj, int offset, void *next) {
 }
 
 static struct page *allocate_slab(kmem_cache_t *s, gfp_t flags, int node) {
+  struct folio *folio;
   struct page *page;
   void *start;
   void *p;
 
-  page = alloc_pages(flags, s->order);
-  if (!page)
+  folio = alloc_pages(flags, s->order);
+  if (!folio)
     return NULL;
 
+  page = &folio->page;
   start = page_address(page);
   page->slab_cache = s;
   page->objects = (PAGE_SIZE << s->order) / s->size;

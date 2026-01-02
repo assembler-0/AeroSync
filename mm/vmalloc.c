@@ -47,10 +47,13 @@ static int vmalloc_map_pages_batched(struct vm_area_struct *vma, size_t real_siz
   if (vma->vm_flags & VM_HUGE) {
     size_t huge_count = total_pages / 512;
     for (size_t i = 0; i < huge_count; i++) {
-      uint64_t phys = pmm_alloc_pages(512); // Allocate 2MB contiguous
-      if (!phys || vmm_map_huge_page(g_kernel_pml4, virt_start + i * VMM_PAGE_SIZE_2M,
+      struct folio *folio = alloc_pages(GFP_KERNEL, 9); // order 9 = 512 pages = 2MB
+      if (!folio) goto rollback_huge;
+      
+      uint64_t phys = folio_to_phys(folio);
+      if (vmm_map_huge_page(g_kernel_pml4, virt_start + i * VMM_PAGE_SIZE_2M,
                                      phys, vmm_flags | PTE_PRESENT, VMM_PAGE_SIZE_2M) < 0) {
-        if (phys) pmm_free_pages(phys, 512);
+        folio_put(folio);
         goto rollback_huge;
       }
       pages_mapped += 512;

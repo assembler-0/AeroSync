@@ -329,6 +329,12 @@ uint64_t pmm_alloc_pages(size_t count) {
       struct page *page = list_first_entry(&pcp->list, struct page, list);
       list_del(&page->list);
       pcp->count--;
+      
+      // Initialize folio metadata for PCP page
+      page->order = 0;
+      SetPageHead(page);
+      atomic_set(&page->_refcount, 1);
+      
       restore_irq_flags(flags);
       return PFN_TO_PHYS((uint64_t)(page - mem_map));
     }
@@ -345,11 +351,11 @@ uint64_t pmm_alloc_pages(size_t count) {
     order = 64 - __builtin_clzll(count - 1);
   }
 
-  struct page *page = alloc_pages(GFP_KERNEL, order);
-  if (!page)
+  struct folio *folio = alloc_pages(GFP_KERNEL, order);
+  if (!folio)
     return 0;
 
-  return PFN_TO_PHYS((uint64_t)(page - mem_map));
+  return folio_to_phys(folio);
 }
 
 void pmm_free_page(uint64_t phys_addr) { pmm_free_pages(phys_addr, 1); }

@@ -162,7 +162,7 @@ extern void wakeup_kswapd(struct zone *zone);
 /*
  * Core Allocator
  */
-struct page *alloc_pages(gfp_t gfp_mask, unsigned int order) {
+struct folio *alloc_pages(gfp_t gfp_mask, unsigned int order) {
   struct page *page = NULL;
   struct zone *z;
   int z_idx;
@@ -189,8 +189,9 @@ struct page *alloc_pages(gfp_t gfp_mask, unsigned int order) {
     if (page) {
       check_page_sanity(page, order);
       page->order = order;
+      SetPageHead(page);
       atomic_set(&page->_refcount, 1);
-      return page;
+      return (struct folio *)page;
     }
   }
 
@@ -208,7 +209,12 @@ void put_page(struct page *page) {
   if (!page || PageReserved(page)) return;
 
   if (atomic_dec_and_test(&page->_refcount)) {
-    __free_pages(page, page->order);
+    unsigned int order = 0;
+    if (PageHead(page)) {
+        order = page->order;
+        ClearPageHead(page);
+    }
+    __free_pages(page, order);
   }
 }
 

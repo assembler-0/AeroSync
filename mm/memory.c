@@ -122,7 +122,7 @@ int folio_reclaim(struct folio *folio) {
     }
 
     if (try_to_unmap_folio(folio)) {
-        uint64_t phys = PFN_TO_PHYS(page_to_pfn(&folio->page));
+        uint64_t phys = folio_to_phys(folio);
         pmm_free_page(phys);
         return 0;
     }
@@ -331,7 +331,8 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
         if (vma->vm_flags & VM_WRITE) pte_flags |= PTE_RW;
         if (!(vma->vm_flags & VM_EXEC)) pte_flags |= PTE_NX;
 
-        uint64_t phys = PFN_TO_PHYS(page_to_pfn(vmf.page));
+        struct folio *folio = page_folio(vmf.page);
+        uint64_t phys = folio_to_phys(folio);
         vmm_map_page((uint64_t)vma->vm_mm->pml4, vmf.address, phys, pte_flags);
     }
 

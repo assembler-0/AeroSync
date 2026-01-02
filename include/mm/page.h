@@ -10,6 +10,7 @@
 #define PG_slab       (1 << 3)
 #define PG_referenced (1 << 4)
 #define PG_lru        (1 << 5)
+#define PG_head       (1 << 6) /* Page is the head of a compound page (folio) */
 
 struct kmem_cache;
 
@@ -53,7 +54,7 @@ struct page {
     };
   };
 
-  unsigned int order; /* Order of the block if it's the head of a buddy block */
+  unsigned int order; /* Order of the block (Buddy/Folio) */
   uint32_t zone; /* Memory zone (if any) */
   atomic_t _refcount; /* Reference count */
 
@@ -84,6 +85,10 @@ struct folio {
 #define SetPageSlab(page)    ((page)->flags |= PG_slab)
 #define ClearPageSlab(page)  ((page)->flags &= ~PG_slab)
 
+#define PageHead(page)       ((page)->flags & PG_head)
+#define SetPageHead(page)    ((page)->flags |= PG_head)
+#define ClearPageHead(page)  ((page)->flags &= ~PG_head)
+
 /* Reference counting */
 #include <kernel/atomic.h>
 
@@ -111,11 +116,26 @@ static inline int folio_ref_count(struct folio *folio) {
 }
 
 static inline struct folio *page_folio(struct page *page) {
+    // In a mature system, this would handle tail-to-head conversion.
+    // Since we are migrating, we assume callers pass the head or 
+    // we will eventually implement compound page logic.
     return (struct folio *)page;
 }
 
 static inline struct page *folio_page(struct folio *folio, size_t n) {
     return &folio->page + n;
+}
+
+static inline unsigned int folio_order(struct folio *folio) {
+    return folio->page.order;
+}
+
+static inline size_t folio_nr_pages(struct folio *folio) {
+    return 1UL << folio->page.order;
+}
+
+static inline size_t folio_size(struct folio *folio) {
+    return folio_nr_pages(folio) << 12; // PAGE_SHIFT
 }
 
 extern uint64_t g_hhdm_offset;
@@ -129,4 +149,9 @@ static inline void *page_address(struct page *page) {
 
 static inline void *folio_address(struct folio *folio) {
     return page_address(&folio->page);
+}
+
+static inline uint64_t folio_to_phys(struct folio *folio) {
+    uint64_t pfn = (uint64_t)(&folio->page - mem_map);
+    return pfn << 12;
 }
