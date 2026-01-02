@@ -59,7 +59,7 @@ struct tss_entry {
   uint64_t reserved2;
   uint16_t reserved3;
   uint16_t iomap_base;
-} __attribute__((packed));
+} __packed;
 
 void gdt_init(void);
 void gdt_init_ap(void);

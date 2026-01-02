@@ -300,10 +300,9 @@ void mm_destroy(struct mm_struct *mm) {
     vma_free(vma);
   }
 
-  // Free the PML4 table if it's not the kernel's
+  // Free the page tables if it's not the kernel's
   if (mm->pml4 && (uint64_t) mm->pml4 != g_kernel_pml4) {
-    // TODO: Recursively free all page table levels
-    pmm_free_page((uint64_t) mm->pml4);
+    vmm_free_page_tables((uint64_t) mm->pml4);
     mm->pml4 = NULL;
   }
 

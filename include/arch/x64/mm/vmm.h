@@ -120,6 +120,13 @@ int vmm_handle_cow(uint64_t pml4_phys, uint64_t virt);
 uint64_t vmm_virt_to_phys(uint64_t pml4_phys, uint64_t virt);
 
 /**
+ * Recursively free all page table levels for a given address space.
+ * Only frees user-space mappings.
+ * @param pml_root Physical address of the PML root.
+ */
+void vmm_free_page_tables(uint64_t pml_root);
+
+/**
  * Modern VMM functions
  */
 int vmm_set_flags(uint64_t pml4_phys, uint64_t virt, uint64_t flags);

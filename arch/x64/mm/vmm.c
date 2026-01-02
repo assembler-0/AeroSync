@@ -57,9 +57,10 @@ uint64_t vmm_get_max_user_address(void) {
  * @param table The table containing the huge page entry.
  * @param index The index of the huge page entry.
  * @param level The current paging level (3 for PDPT/1GB, 2 for PD/2MB).
+ * @param virt The virtual address being split (for TLB shootdown).
  * @return 0 on success.
  */
-static int vmm_split_huge_page(uint64_t *table, uint64_t index, int level) {
+static int vmm_split_huge_page(uint64_t *table, uint64_t index, int level, uint64_t virt) {
     uint64_t entry = table[index];
     uint64_t new_table_phys = vmm_alloc_table();
     if (!new_table_phys) return -1;
@@ -95,11 +96,9 @@ static int vmm_split_huge_page(uint64_t *table, uint64_t index, int level) {
     // We use full permissions for intermediate tables; leaf PTEs control final access.
     table[index] = new_table_phys | PTE_PRESENT | PTE_RW | PTE_USER;
 
-    // Flush TLB to ensure the CPU drops the cached Huge Page translation
-    // and starts using the new Page Table.
-    uint64_t current_cr3;
-    __asm__ volatile("mov %%cr3, %0" : "=r"(current_cr3));
-    __asm__ volatile("mov %0, %%cr3" :: "r"(current_cr3) : "memory");
+    // Flush TLB across all CPUs to ensure they drop the cached Huge Page translation
+    uint64_t range = (level == 3) ? VMM_PAGE_SIZE_1G : VMM_PAGE_SIZE_2M;
+    vmm_tlb_shootdown(NULL, virt & ~(range - 1), (virt & ~(range - 1)) + range);
 
     return 0;
 }
@@ -204,8 +203,8 @@ int vmm_merge_to_huge(uint64_t pml_root_phys, uint64_t virt, uint64_t target_hug
     // Free the old sub-table
     pmm_free_page(sub_table_phys);
 
-    // Flush TLB
-    vmm_tlb_flush_all_local(); // Merging is rare, full flush is safe
+    // Flush TLB across all CPUs to ensure they see the new page size
+    vmm_tlb_shootdown(NULL, virt, virt + target_huge_size);
 
     return 0;
 }
@@ -249,7 +248,7 @@ int vmm_shatter_huge_page(uint64_t pml_root_phys, uint64_t virt, uint64_t large_
         return -1;
     }
 
-    int ret = vmm_split_huge_page(current_table, idx, target_level);
+    int ret = vmm_split_huge_page(current_table, idx, target_level, virt);
     
     spinlock_unlock_irqrestore(&vmm_lock, irq);
     return ret;
@@ -283,7 +282,7 @@ void vmm_merge_range(uint64_t pml_root_phys, uint64_t start, uint64_t end) {
 }
 
 static uint64_t *get_next_level(uint64_t *current_table, uint64_t index,
-                                bool alloc, int level) {
+                               bool alloc, int level, uint64_t virt) {
   uint64_t entry = current_table[index];
 
   if (entry & PTE_PRESENT) {
@@ -291,7 +290,7 @@ static uint64_t *get_next_level(uint64_t *current_table, uint64_t index,
       if (!alloc) return NULL;
       
       // Auto-split huge page if we need to go deeper for a 4KB mapping
-      if (vmm_split_huge_page(current_table, index, level) < 0)
+      if (vmm_split_huge_page(current_table, index, level, virt) < 0)
           return NULL;
       
       // Re-read the entry after split
@@ -299,7 +298,6 @@ static uint64_t *get_next_level(uint64_t *current_table, uint64_t index,
     }
     return (uint64_t *)phys_to_virt(PTE_GET_ADDR(entry));
   }
-
   if (!alloc) return NULL;
 
   uint64_t new_table_phys = vmm_alloc_table();
@@ -311,6 +309,40 @@ static uint64_t *get_next_level(uint64_t *current_table, uint64_t index,
 
   current_table[index] = new_table_phys | PTE_PRESENT | PTE_RW | PTE_USER;
   return (uint64_t *)phys_to_virt(new_table_phys);
+}
+
+/**
+ * Recursive helper to free page table levels.
+ * @param table_phys Physical address of the table to free
+ * @param level Current paging level (5 to 2)
+ */
+static void vmm_free_level(uint64_t table_phys, int level) {
+    uint64_t *table = (uint64_t *)phys_to_virt(table_phys);
+
+    // Only free user space entries if we are at the root level (256 entries).
+    // Otherwise, free all 512 entries.
+    int entries = (level == vmm_get_paging_levels()) ? 256 : 512;
+
+    for (int i = 0; i < entries; i++) {
+        uint64_t entry = table[i];
+        if (!(entry & PTE_PRESENT)) continue;
+
+        if (level > 1 && !(entry & PTE_HUGE)) {
+            // Free the next level recursively
+            vmm_free_level(PTE_GET_ADDR(entry), level - 1);
+        }
+    }
+
+    // Free the table itself
+    pmm_free_page(table_phys);
+}
+
+void vmm_free_page_tables(uint64_t pml_root) {
+    if (!pml_root || pml_root == g_kernel_pml4) return;
+    
+    irq_flags_t irq = spinlock_lock_irqsave(&vmm_lock);
+    vmm_free_level(pml_root, vmm_get_paging_levels());
+    spinlock_unlock_irqrestore(&vmm_lock, irq);
 }
 
 /**
@@ -330,7 +362,7 @@ static uint64_t *vmm_get_pte_ptr(uint64_t pml_root_phys, uint64_t virt, bool all
             default: return NULL;
         }
 
-        uint64_t *next_table = get_next_level(current_table, index, alloc, level);
+        uint64_t *next_table = get_next_level(current_table, index, alloc, level, virt);
         if (!next_table) return NULL;
         current_table = next_table;
     }
@@ -361,7 +393,7 @@ void vmm_clear_dirty(uint64_t pml_root, uint64_t virt) {
   *pte_p &= ~PTE_DIRTY;
   spinlock_unlock_irqrestore(&table_page->ptl, flags);
 
-  vmm_tlb_flush_local(virt);
+  vmm_tlb_shootdown(NULL, virt, virt + PAGE_SIZE);
 }
 
 int vmm_is_accessed(uint64_t pml_root, uint64_t virt) {
@@ -385,7 +417,7 @@ void vmm_clear_accessed(uint64_t pml_root, uint64_t virt) {
   *pte_p &= ~PTE_ACCESSED;
   spinlock_unlock_irqrestore(&table_page->ptl, flags);
 
-  vmm_tlb_flush_local(virt);
+  vmm_tlb_shootdown(NULL, virt, virt + PAGE_SIZE);
 }
 
 int vmm_set_flags(uint64_t pml_root, uint64_t virt, uint64_t flags) {
@@ -401,7 +433,7 @@ int vmm_set_flags(uint64_t pml_root, uint64_t virt, uint64_t flags) {
 
   spinlock_unlock_irqrestore(&table_page->ptl, ptl_flags);
 
-  vmm_tlb_flush_local(virt);
+  vmm_tlb_shootdown(NULL, virt, virt + PAGE_SIZE);
   return 0;
 }
 
@@ -426,7 +458,7 @@ static int vmm_map_huge_page_locked(uint64_t pml_root_phys, uint64_t virt, uint6
             default: return -1;
         }
         
-        uint64_t *next_table = get_next_level(current_table, index, true, level);
+        uint64_t *next_table = get_next_level(current_table, index, true, level, virt);
         if (!next_table) return -1;
         current_table = next_table;
     }
@@ -490,7 +522,7 @@ static uint64_t vmm_unmap_page_locked(uint64_t pml_root_phys, uint64_t virt) {
       if (entry & PTE_HUGE) {
           // If we encounter a huge page while trying to unmap a 4KB page,
           // we must split it first to avoid unmapping the entire huge region.
-          if (vmm_split_huge_page(current_table, index, level) < 0) {
+          if (vmm_split_huge_page(current_table, index, level, virt) < 0) {
               return 0; // Failed to split (OOM)
           }
           entry = current_table[index]; // Refresh entry after split
@@ -603,6 +635,8 @@ int vmm_unmap_page(uint64_t pml_root_phys, uint64_t virt) {
   if (phys) {
       put_page(phys_to_page(phys));
   }
+  
+  vmm_tlb_shootdown(NULL, virt, virt + PAGE_SIZE);
   return 0;
 }
 
@@ -615,6 +649,10 @@ int vmm_unmap_pages(uint64_t pml_root_phys, uint64_t virt, size_t count) {
     }
   }
   spinlock_unlock_irqrestore(&vmm_lock, irq);
+  
+  // Flush TLB across all CPUs
+  vmm_tlb_shootdown(NULL, virt, virt + count * PAGE_SIZE);
+  
   return 0;
 }
 
@@ -625,6 +663,8 @@ int vmm_unmap_pages_and_get_phys(uint64_t pml_root_phys, uint64_t virt,
     phys_list[i] = vmm_unmap_page_locked(pml_root_phys, virt + i * PAGE_SIZE);
   }
   spinlock_unlock_irqrestore(&vmm_lock, irq);
+
+  vmm_tlb_shootdown(NULL, virt, virt + count * PAGE_SIZE);
   return 0;
 }
 

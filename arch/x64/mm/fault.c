@@ -18,6 +18,7 @@
  * GNU General Public License for more details.
  */
 
+#include <string.h>
 #include <arch/x64/cpu.h>
 #include <arch/x64/exception.h>
 #include <arch/x64/mm/paging.h>
@@ -138,6 +139,9 @@ void do_page_fault(cpu_regs *regs) {
         printk(KERN_ERR FAULT_CLASS "OOM during demand paging for %llx\n", cr2);
         goto kernel_panic;
       }
+
+      // Security: Zero the page before mapping it to user space
+      memset(pmm_phys_to_virt(phys), 0, PAGE_SIZE);
 
       vmm_map_page(pml4_phys, cr2 & PAGE_MASK, phys, flags);
       up_read(&mm->mmap_lock);

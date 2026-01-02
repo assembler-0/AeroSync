@@ -178,11 +178,16 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
   // Normal: > 4GB
 
   managed_zones[ZONE_DMA].zone_start_pfn = 0;
-  managed_zones[ZONE_DMA].spanned_pages = 4096;
+  managed_zones[ZONE_DMA].spanned_pages = pmm_max_pages > 4096 ? 4096 : pmm_max_pages;
   managed_zones[ZONE_DMA].present_pages = 0;
 
   managed_zones[ZONE_DMA32].zone_start_pfn = 4096;
-  managed_zones[ZONE_DMA32].spanned_pages = 1048576 - 4096;
+  if (pmm_max_pages > 4096) {
+    managed_zones[ZONE_DMA32].spanned_pages =
+        pmm_max_pages > 1048576 ? (1048576 - 4096) : (pmm_max_pages - 4096);
+  } else {
+    managed_zones[ZONE_DMA32].spanned_pages = 0;
+  }
   managed_zones[ZONE_DMA32].present_pages = 0;
 
   managed_zones[ZONE_NORMAL].zone_start_pfn = 1048576;

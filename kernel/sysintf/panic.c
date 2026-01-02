@@ -21,6 +21,7 @@
 #define MAX_PANIC_HANDLERS 8
 
 #include <string.h>
+#include <vsprintf.h>
 #include <kernel/classes.h>
 #include <kernel/fkx/fkx.h>
 #include <kernel/sysintf/panic.h>
@@ -77,8 +78,13 @@ void panic_switch_handler(const char *name) {
   }
 }
 
-void __exit __noinline __noreturn __sysv_abi panic(const char *msg) {
-  active_backend->panic(msg);
+void __exit __noinline __noreturn __sysv_abi panic(const char *msg, ...) {
+  va_list va;
+  va_start(va, msg);
+  char buff[128];
+  vsnprintf(buff, sizeof(buff), msg, va);
+  active_backend->panic(buff);
+  va_end(va);
 }
 
 void __exit __noinline __noreturn __sysv_abi panic_exception(cpu_regs *regs) {

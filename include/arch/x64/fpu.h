@@ -12,6 +12,7 @@
 #pragma once
 
 #include <kernel/types.h>
+#include <compiler.h>
 
 /* Maximum XSAVE area size - covers AVX-512 and future extensions */
 #define XSTATE_MAX_SIZE 4096
@@ -40,7 +41,7 @@
  * It must be 64-byte aligned for XSAVE.
  */
 struct fpu_state {
-  uint8_t state[XSTATE_MAX_SIZE] __attribute__((aligned(64)));
+  uint8_t state[XSTATE_MAX_SIZE] __aligned(64);
 };
 
 /**
