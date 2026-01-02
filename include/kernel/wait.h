@@ -82,13 +82,13 @@ typedef struct __wait_queue wait_queue_t;
     __ret;                                                                     \
   })
 
-#define wait_event_timeout(wq, condition_fn, data, timeout) \
-({ \
-    long __ret = timeout; \
-    if (!(condition_fn(data))) \
-        __ret = __wait_event_timeout(&wq, condition_fn, data, timeout); \
-    __ret; \
-})
+// #define wait_event_timeout(wq, condition_fn, data, timeout) \
+// ({ \
+//     long __ret = timeout; \
+//     if (!(condition_fn(data))) \
+//         __ret = __wait_event_timeout(&wq, condition_fn, data, timeout); \
+//     __ret; \
+// })
 
 #define wait_event_interruptible_timeout(wq, condition, timeout) \
 ({ \
@@ -115,7 +115,7 @@ int default_wake_function(wait_queue_head_t *wq_head, struct __wait_queue *wait,
 /* Prepare to sleep functions */
 long prepare_to_wait(wait_queue_head_t *wq_head, wait_queue_t *wait, int state);
 void finish_wait(wait_queue_head_t *wq_head, wait_queue_t *wait);
-long __wait_event_timeout(wait_queue_head_t *wq, int (*condition)(void *), void *data, long timeout);
+// long __wait_event_timeout(wait_queue_head_t *wq, int (*condition)(void *), void *data, long timeout);
 
 /* Wake up functions */
 void wake_up(wait_queue_head_t *wq_head);

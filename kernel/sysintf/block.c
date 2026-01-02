@@ -7,6 +7,7 @@
  * @copyright (C) 2025 assembler-0
  */
 
+#include <kernel/classes.h>
 #include <kernel/sysintf/block.h>
 #include <lib/string.h>
 #include <lib/printk.h>
@@ -39,7 +40,7 @@ int block_device_register(struct block_device *dev) {
     
     mutex_unlock(&block_list_lock);
 
-    printk(KERN_INFO "BLOCK: Registered device '%s' (%u sectors, %u bytes/sector)\n",
+    printk(KERN_INFO BLOCK_CLASS "Registered device '%s' (%u sectors, %u bytes/sector)\n",
            dev->name, dev->sector_count, dev->block_size);
 
     return 0;
@@ -56,7 +57,7 @@ void block_device_unregister(struct block_device *dev) {
     if (dev->ops->release)
         dev->ops->release(dev);
 
-    printk(KERN_INFO "BLOCK: Unregistered device '%s'\n", dev->name);
+    printk(KERN_INFO BLOCK_CLASS "Unregistered device '%s'\n", dev->name);
 }
 EXPORT_SYMBOL(block_device_unregister);
 

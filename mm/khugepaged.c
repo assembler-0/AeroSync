@@ -29,15 +29,7 @@
 #include <lib/printk.h>
 #include <kernel/classes.h>
 
-#define KHUGEPAGED_SLEEP_MS 10000
 #define SCAN_BATCH_VMAS 16
-
-static DECLARE_WAIT_QUEUE_HEAD(khugepaged_wait);
-
-static int khugepaged_should_run(void *unused) {
-  (void) unused;
-  return 0; // Only wake up on timeout or signal
-}
 
 static void khugepaged_scan_mm(struct mm_struct *mm) {
   struct vm_area_struct *vma;
@@ -65,7 +57,7 @@ static void khugepaged_scan_mm(struct mm_struct *mm) {
        * all 512 pages are present and contiguous.
        */
       if (vmm_merge_to_huge(mm, addr, VMM_PAGE_SIZE_2M) == 0) {
-        // printk(KERN_DEBUG "[THP] Collapsed 2MB huge page at %llx\n", addr);
+        // printk(KERN_DEBUG THP_CLASS "collapsed 2MB huge page at %llx\n", addr);
       }
     }
   }
@@ -76,15 +68,9 @@ static int khugepaged_thread(void *unused) {
   (void) unused;
   printk(KERN_INFO THP_CLASS "khugepaged started\n");
 
-          while (1) {
-
-              /* Sleep between scans */
-
-              wait_event_timeout(khugepaged_wait, khugepaged_should_run, (void*)1, KHUGEPAGED_SLEEP_MS);
-
-      
-
-              /* Scan all MMs */    irq_flags_t flags = spinlock_lock_irqsave(&tasklist_lock);
+  while (1) {
+    /* Scan all MMs */
+    irq_flags_t flags = spinlock_lock_irqsave(&tasklist_lock);
     struct task_struct *p;
     list_for_each_entry(p, &task_list, tasks) {
       struct mm_struct *mm = p->mm;
