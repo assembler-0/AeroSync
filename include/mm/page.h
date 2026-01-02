@@ -24,7 +24,7 @@ struct page {
   unsigned long flags; /* Page flags */
   union {
     struct list_head list; /* List node for free lists / generic */
-    struct list_head lru;  /* Node in active/inactive lists */
+    struct list_head lru; /* Node in active/inactive lists */
     struct {
       struct page *next; /* Next page in a list (e.g. SLUB partial) */
       int pages; /* Number of pages (compound) */
@@ -75,7 +75,7 @@ struct page {
  * index, and reference count for the entire block.
  */
 struct folio {
-    struct page page;
+  struct page page;
 };
 
 /* Helper macros */
@@ -114,57 +114,57 @@ static inline int page_ref_count(struct page *page) {
 
 /* Folio-based reference counting */
 static inline void folio_get(struct folio *folio) {
-    atomic_inc(&folio->page._refcount);
+  atomic_inc(&folio->page._refcount);
 }
 
 static inline void folio_put(struct folio *folio) {
-    put_page(&folio->page);
+  put_page(&folio->page);
 }
 
 static inline int folio_ref_count(struct folio *folio) {
-    return atomic_read(&folio->page._refcount);
+  return atomic_read(&folio->page._refcount);
 }
 
 static inline void folio_ref_add(struct folio *folio, int nr) {
-    atomic_add(nr, &folio->page._refcount);
+  atomic_add(nr, &folio->page._refcount);
 }
 
 static inline struct folio *page_folio(struct page *page) {
-    if (unlikely(PageTail(page)))
-        return (struct folio *)page->head;
-    return (struct folio *)page;
+  if (unlikely(PageTail(page)))
+    return (struct folio *) page->head;
+  return (struct folio *) page;
 }
 
 static inline struct page *folio_page(struct folio *folio, size_t n) {
-    return &folio->page + n;
+  return &folio->page + n;
 }
 
 static inline unsigned int folio_order(struct folio *folio) {
-    return folio->page.order;
+  return folio->page.order;
 }
 
 static inline size_t folio_nr_pages(struct folio *folio) {
-    return 1UL << folio->page.order;
+  return 1UL << folio->page.order;
 }
 
 static inline size_t folio_size(struct folio *folio) {
-    return folio_nr_pages(folio) << 12; // PAGE_SHIFT
+  return folio_nr_pages(folio) << 12; // PAGE_SHIFT
 }
 
 extern uint64_t g_hhdm_offset;
 extern struct page *mem_map;
 
 static inline void *page_address(struct page *page) {
-    uint64_t pfn = (uint64_t)(page - mem_map);
-    uint64_t phys = pfn << 12; // PAGE_SHIFT 12
-    return (void *)(phys + g_hhdm_offset);
+  uint64_t pfn = (uint64_t) (page - mem_map);
+  uint64_t phys = pfn << 12; // PAGE_SHIFT 12
+  return (void *) (phys + g_hhdm_offset);
 }
 
 static inline void *folio_address(struct folio *folio) {
-    return page_address(&folio->page);
+  return page_address(&folio->page);
 }
 
 static inline uint64_t folio_to_phys(struct folio *folio) {
-    uint64_t pfn = (uint64_t)(&folio->page - mem_map);
-    return pfn << 12;
+  uint64_t pfn = (uint64_t) (&folio->page - mem_map);
+  return pfn << 12;
 }

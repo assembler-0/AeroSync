@@ -43,24 +43,7 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="folio">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/mm/vmm.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/vmm.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/drivers/uart/serial.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/uart/serial.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/arch/x64/mm/vmm.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/mm/vmm.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/classes.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/classes.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/sched/process.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/sched/process.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/version.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/version.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/wait.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/wait.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/mm/page.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/page.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/mm/vma.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/vma.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/sched/process.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/sched/process.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/wait.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/wait.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/memory.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/memory.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/page_alloc.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/page_alloc.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/vma.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vma.c" afterDir="false" />
-    </list>
+    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="folio" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -434,6 +417,7 @@
       <workItem from="1767332169659" duration="1321000" />
       <workItem from="1767333615362" duration="909000" />
       <workItem from="1767335180877" duration="1374000" />
+      <workItem from="1767336675953" duration="13000" />
     </task>
     <task id="LOCAL-00001" summary="Mutexes and FKX spec">
       <option name="closed" value="true" />
