@@ -89,7 +89,7 @@ static void *__slab_alloc(kmem_cache_t *s, gfp_t gfpflags, int node, struct kmem
   flags = save_irq_flags();
 
   /* Check if we have a page but no freelist (slab frozen) */
-  page = c->page;
+  page = c ? c->page : NULL;
   if (!page)
     goto new_slab;
 
@@ -98,14 +98,22 @@ static void *__slab_alloc(kmem_cache_t *s, gfp_t gfpflags, int node, struct kmem
   if (freelist) {
     page->freelist = NULL; /* Take the whole freelist */
     page->inuse = (unsigned short) page->objects;
-    c->freelist = get_freelist_next(freelist, s->offset);
+    if (c) c->freelist = get_freelist_next(freelist, s->offset);
+    else {
+        // If no CPU cache, we must put the rest of the freelist back to the page
+        // But the whole point of freezing is to take the whole list.
+        // For NULL c, we just take ONE object and keep the rest in page->freelist.
+        page->freelist = get_freelist_next(freelist, s->offset);
+        page->inuse = (unsigned short)(page->objects - 1); // wait, inuse is total objects if frozen.
+        // Actually, for NULL c, we don't freeze.
+    }
     restore_irq_flags(flags);
     return freelist;
   }
 
   /* Page is full, unfreeze it */
   page->frozen = 0;
-  c->page = NULL;
+  if (c) c->page = NULL;
 
 new_slab:
   /* Check partial list */
@@ -116,13 +124,26 @@ new_slab:
     s->node.nr_partial--;
     spinlock_unlock(&s->node.list_lock);
 
-    /* Freeze this page to the CPU */
-    page->frozen = 1;
-    c->page = page;
-    freelist = page->freelist;
-    page->freelist = NULL;
-    page->inuse = (unsigned short) page->objects;
-    c->freelist = get_freelist_next(freelist, s->offset);
+    if (c) {
+        /* Freeze this page to the CPU */
+        page->frozen = 1;
+        c->page = page;
+        freelist = page->freelist;
+        page->freelist = NULL;
+        page->inuse = (unsigned short) page->objects;
+        c->freelist = get_freelist_next(freelist, s->offset);
+    } else {
+        /* Just take one object and put back to partial if not empty */
+        freelist = page->freelist;
+        page->freelist = get_freelist_next(freelist, s->offset);
+        page->inuse++;
+        if (page->freelist) {
+            spinlock_lock(&s->node.list_lock);
+            list_add(&page->list, &s->node.partial);
+            s->node.nr_partial++;
+            spinlock_unlock(&s->node.list_lock);
+        }
+    }
     restore_irq_flags(flags);
     return freelist;
   }
@@ -136,12 +157,25 @@ new_slab:
     return NULL;
   }
 
-  page->frozen = 1;
-  c->page = page;
-  freelist = page->freelist;
-  page->freelist = NULL;
-  page->inuse = (unsigned short) page->objects;
-  c->freelist = get_freelist_next(freelist, s->offset);
+  if (c) {
+      page->frozen = 1;
+      c->page = page;
+      freelist = page->freelist;
+      page->freelist = NULL;
+      page->inuse = (unsigned short) page->objects;
+      c->freelist = get_freelist_next(freelist, s->offset);
+  } else {
+      freelist = page->freelist;
+      page->freelist = get_freelist_next(freelist, s->offset);
+      page->inuse++;
+      // New slab is partial if it has more than 1 object
+      if (page->freelist) {
+          spinlock_lock(&s->node.list_lock);
+          list_add(&page->list, &s->node.partial);
+          s->node.nr_partial++;
+          spinlock_unlock(&s->node.list_lock);
+      }
+  }
 
   restore_irq_flags(flags);
   return freelist;
@@ -152,6 +186,10 @@ void *kmem_cache_alloc(kmem_cache_t *s) {
   void *object;
   struct kmem_cache_cpu *c;
   int cpu = smp_is_active() ? (int) smp_get_id() : 0;
+
+  if (unlikely(cpu >= MAX_CPUS)) {
+    return __slab_alloc(s, GFP_KERNEL, -1, NULL);
+  }
 
   flags = save_irq_flags();
   c = &s->cpu_slab[cpu];
@@ -215,6 +253,12 @@ void kmem_cache_free(kmem_cache_t *s, void *x) {
   if (unlikely(!x)) return;
 
   page = virt_to_head_page(x);
+
+  if (unlikely(cpu >= MAX_CPUS)) {
+    __slab_free(s, page, x);
+    return;
+  }
+
   flags = save_irq_flags();
   c = &s->cpu_slab[cpu];
 

@@ -633,7 +633,8 @@ int vmm_unmap_page(uint64_t pml_root_phys, uint64_t virt) {
   spinlock_unlock_irqrestore(&vmm_lock, irq);
 
   if (phys) {
-      put_page(phys_to_page(phys));
+      struct page *page = phys_to_page(phys);
+      if (page) put_page(page);
   }
   
   vmm_tlb_shootdown(NULL, virt, virt + PAGE_SIZE);
@@ -645,7 +646,8 @@ int vmm_unmap_pages(uint64_t pml_root_phys, uint64_t virt, size_t count) {
   for (size_t i = 0; i < count; i++) {
     uint64_t phys = vmm_unmap_page_locked(pml_root_phys, virt + i * PAGE_SIZE);
     if (phys) {
-        put_page(phys_to_page(phys));
+        struct page *page = phys_to_page(phys);
+        if (page) put_page(page);
     }
   }
   spinlock_unlock_irqrestore(&vmm_lock, irq);

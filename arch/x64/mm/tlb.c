@@ -1,15 +1,32 @@
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * VoidFrameX monolithic kernel
+ *
+ * @file arch/x64/mm/tlb.c
+ * @brief TLB management for the x86_64 architecture (PCID aware)
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #include <arch/x64/mm/tlb.h>
 #include <arch/x64/cpu.h>
 #include <arch/x64/features/features.h>
 #include <kernel/sysintf/ic.h>
 #include <kernel/sched/sched.h>
-#include <lib/printk.h>
-
+#include <mm/mm_types.h>
 #include <arch/x64/smp.h>
-
-/**
- * TLB Shootdown implementation for VoidFrameX (PCID-Aware)
- */
+#include <arch/x64/mm/paging.h>
+#include <mm/vma.h>
 
 struct invpcid_desc {
     uint64_t pcid : 12;
@@ -44,21 +61,69 @@ void vmm_tlb_flush_all_local(void) {
     __asm__ volatile("mov %0, %%cr3" : : "r"(cr3) : "memory");
 }
 
-static void tlb_ipi_handler(cpu_regs *regs) {
+struct tlb_shootdown_info {
+    uint64_t start;
+    uint64_t end;
+    bool full_flush;
+};
+
+static struct tlb_shootdown_info global_shootdown_info;
+static spinlock_t shootdown_lock = 0;
+
+void tlb_ipi_handler(void *regs) {
     (void)regs;
-    vmm_tlb_flush_all_local();
+    
+    if (global_shootdown_info.full_flush) {
+        vmm_tlb_flush_all_local();
+    } else {
+        for (uint64_t addr = global_shootdown_info.start; 
+             addr < global_shootdown_info.end; 
+             addr += PAGE_SIZE) {
+            vmm_tlb_flush_local(addr);
+        }
+    }
 }
 
 void vmm_tlb_shootdown(struct mm_struct *mm, uint64_t start, uint64_t end) {
-    (void)start;
-    (void)end;
-
     // 1. Flush local TLB
-    vmm_tlb_flush_all_local();
+    if (end - start > 0x10000) { // If > 64KB, just flush all
+        vmm_tlb_flush_all_local();
+    } else {
+        for (uint64_t addr = start; addr < end; addr += PAGE_SIZE) {
+            vmm_tlb_flush_local(addr);
+        }
+    }
 
     // 2. Send IPI only if SMP is active and we have other CPUs
     if (smp_is_active()) {
-        ic_send_ipi(0xFF, TLB_FLUSH_IPI_VECTOR, 0 /* Fixed */);
+        irq_flags_t flags = spinlock_lock_irqsave(&shootdown_lock);
+        
+        global_shootdown_info.start = start;
+        global_shootdown_info.end = end;
+        global_shootdown_info.full_flush = (end - start > 0x10000);
+
+        int this_cpu = cpu_id();
+        
+        if (mm && mm != &init_mm) {
+            // Target only CPUs using this mm
+            for (int i = 0; i < MAX_CPUS; i++) {
+                if (i == this_cpu) continue;
+                if (cpumask_test_cpu(i, &mm->cpu_mask)) {
+                    ic_send_ipi(*per_cpu_ptr(cpu_apic_id, i), TLB_FLUSH_IPI_VECTOR, 0);
+                }
+            }
+        } else {
+            // Global shootdown (kernel space) - target all online CPUs
+            for (int i = 0; i < MAX_CPUS; i++) {
+                if (i == this_cpu) continue;
+                // Check if CPU is online (we can use cpu_apic_id as a proxy if it's set for online CPUs)
+                if (*per_cpu_ptr(cpu_apic_id, i) != 0xFF) { // Assuming 0xFF is uninitialized
+                     ic_send_ipi(*per_cpu_ptr(cpu_apic_id, i), TLB_FLUSH_IPI_VECTOR, 0);
+                }
+            }
+        }
+        
+        spinlock_unlock_irqrestore(&shootdown_lock, flags);
     }
 }
 

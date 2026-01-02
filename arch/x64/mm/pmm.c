@@ -361,6 +361,11 @@ void pmm_free_pages(uint64_t phys_addr, size_t count) {
   uint64_t pfn = PHYS_TO_PFN(phys_addr);
   struct page *page = &mem_map[pfn];
 
+  if (count > 0 && count != (1UL << page->order)) {
+      printk(KERN_WARNING PMM_CLASS "pmm_free_pages: count %zu does not match page order %u (pfn %llu)\n",
+             count, page->order, pfn);
+  }
+
   put_page(page);
 }
 

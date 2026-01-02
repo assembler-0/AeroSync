@@ -39,7 +39,8 @@ void tlb_remove_page(struct mmu_gather *tlb, uint64_t phys, uint64_t virt) {
         // Overflow, flush now
         vmm_tlb_shootdown(tlb->mm, tlb->start, tlb->end);
         for (size_t i = 0; i < tlb->nr_pages; i++) {
-            put_page(phys_to_page(tlb->pages[i]));
+            struct page *page = phys_to_page(tlb->pages[i]);
+            if (page) put_page(page);
         }
         tlb->nr_pages = 0;
         tlb->full_flush = true;
@@ -52,7 +53,8 @@ void tlb_finish_mmu(struct mmu_gather *tlb) {
     }
     
     for (size_t i = 0; i < tlb->nr_pages; i++) {
-        put_page(phys_to_page(tlb->pages[i]));
+        struct page *page = phys_to_page(tlb->pages[i]);
+        if (page) put_page(page);
     }
     tlb->nr_pages = 0;
 }

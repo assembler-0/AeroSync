@@ -159,10 +159,16 @@ void move_task_to_rq(struct task_struct *task, int dest_cpu) {
 
 static void switch_mm(struct mm_struct *prev, struct mm_struct *next,
                       struct task_struct *tsk) {
+  int cpu = cpu_id();
   if (prev == next)
     return;
 
+  if (prev) {
+    cpumask_clear_cpu(cpu, &prev->cpu_mask);
+  }
+
   if (next && next->pml4) {
+    cpumask_set_cpu(cpu, &next->cpu_mask);
     vmm_switch_pml4((uint64_t)next->pml4);
   } else {
     vmm_switch_pml4(g_kernel_pml4);
@@ -571,6 +577,7 @@ void sched_init_task(struct task_struct *initial_task) {
   struct rq *rq = this_rq();
   initial_task->mm = &init_mm;
   initial_task->active_mm = &init_mm;
+  cpumask_set_cpu(cpu_id(), &init_mm.cpu_mask);
   initial_task->state = TASK_RUNNING;
   initial_task->flags = PF_KTHREAD;
   initial_task->cpu = cpu_id();
@@ -634,5 +641,7 @@ void sched_init_ap(void) {
   struct rq *rq = this_rq();
   rq->curr = idle;
   rq->idle = idle;
+  idle->active_mm = &init_mm;
+  cpumask_set_cpu(cpu, &init_mm.cpu_mask);
   set_current(idle);
 }

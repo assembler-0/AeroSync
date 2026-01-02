@@ -112,8 +112,8 @@ static inline uint64_t pmm_virt_to_phys(void *virt_addr);
 // HHDM offset - set during pmm_init
 
 extern uint64_t g_hhdm_offset;
-
 extern struct page *mem_map;
+extern uint64_t pmm_max_pages;
 
 static inline void *pmm_phys_to_virt(uint64_t phys_addr) {
   return (void *)(phys_addr + g_hhdm_offset);
@@ -124,7 +124,9 @@ static inline uint64_t pmm_virt_to_phys(void *virt_addr) {
 }
 
 static inline struct page *phys_to_page(uint64_t phys) {
-  return &mem_map[PHYS_TO_PFN(phys)];
+  uint64_t pfn = PHYS_TO_PFN(phys);
+  if (pfn >= pmm_max_pages) return NULL;
+  return &mem_map[pfn];
 }
 
 static inline uint64_t page_to_pfn(struct page *page) {

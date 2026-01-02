@@ -66,7 +66,7 @@ void __used __hot irq_common_stub(cpu_regs *regs) {
   }
 
   if (regs->interrupt_number == TLB_FLUSH_IPI_VECTOR) {
-    vmm_tlb_flush_all_local();
+    tlb_ipi_handler(regs);
     return;
   }
 

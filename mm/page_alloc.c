@@ -145,9 +145,8 @@ static void __free_one_page(struct page *page, unsigned long pfn,
     zone->free_area[order].nr_free--;
     ClearPageBuddy(buddy);
 
-    combined_pfn = buddy_pfn & pfn;
-    page = &mem_map[combined_pfn];
-    pfn = combined_pfn;
+    pfn &= ~(1UL << order);
+    page = &mem_map[pfn];
     order++;
   }
 

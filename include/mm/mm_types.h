@@ -112,6 +112,7 @@ struct __aligned(sizeof(long)) vm_area_struct {
 
 #include <kernel/atomic.h>
 #include <kernel/rw_semaphore.h>
+#include <kernel/sched/cpumask.h>
 
 /*
  * mm_struct
@@ -134,4 +135,6 @@ struct mm_struct {
 
   uint64_t start_code, end_code, start_data, end_data;
   uint64_t start_brk, brk, start_stack;
+
+  struct cpumask cpu_mask; /* CPUs currently using this mm */
 };

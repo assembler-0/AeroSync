@@ -13,5 +13,6 @@
 void vmm_tlb_flush_local(uint64_t addr);
 void vmm_tlb_flush_all_local(void);
 void vmm_tlb_shootdown(struct mm_struct *mm, uint64_t start, uint64_t end);
+void tlb_ipi_handler(void *regs);
 
 void vmm_tlb_init(void);

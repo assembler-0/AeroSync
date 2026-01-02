@@ -156,6 +156,7 @@ void mm_init(struct mm_struct *mm) {
   rwsem_init(&mm->mmap_lock);
   atomic_set(&mm->mm_count, 1);
   mm->vmacache_seqnum = 0;
+  cpumask_clear(&mm->cpu_mask);
 
   /* Initialize memory layout fields */
   mm->start_code = 0;
