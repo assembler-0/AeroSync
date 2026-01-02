@@ -228,7 +228,8 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     panic(KERN_CLASS "memmap/HHDM not available");
   }
 
-  pmm_init(memmap_request.response, hhdm_request.response->offset);
+  pmm_init(memmap_request.response, hhdm_request.response->offset, 
+           rsdp_request.response ? rsdp_request.response->address : NULL);
   vmm_init();
   slab_init();
 

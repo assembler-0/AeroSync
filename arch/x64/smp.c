@@ -204,3 +204,17 @@ uint64_t smp_get_id(void) {
   // We assume GS is set up early enough (in setup_per_cpu_areas for BSP)
   return this_cpu_read(cpu_number);
 }
+
+int lapic_to_cpu(uint8_t lapic_id) {
+    for (int i = 0; i < smp_get_cpu_count(); i++) {
+        if (*per_cpu_ptr(cpu_apic_id, i) == (int)lapic_id) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+uint8_t lapic_get_id_for_cpu(int cpu) {
+    if (cpu < 0 || cpu >= MAX_CPUS) return 0xFF;
+    return (uint8_t)*per_cpu_ptr(cpu_apic_id, cpu);
+}

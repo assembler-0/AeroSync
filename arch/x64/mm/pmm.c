@@ -94,7 +94,10 @@ static void register_zone_pages(uint64_t start_pfn, uint64_t end_pfn) {
   }
 }
 
-int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
+extern void numa_init(void *rsdp);
+extern int pfn_to_nid(uint64_t pfn);
+
+int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
   struct limine_memmap_response *memmap =
       (struct limine_memmap_response *)memmap_response_ptr;
 
@@ -104,7 +107,10 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
   }
 
   g_hhdm_offset = hhdm_offset;
-  printk(KERN_DEBUG PMM_CLASS "Initializing sophisticated buddy system...\n");
+  printk(KERN_DEBUG PMM_CLASS "Initializing buddy system...\n");
+
+  // Initialize NUMA topology manually (early ACPI walk)
+  numa_init(rsdp);
 
   // Pass 1: Calculate max PFN
   uint64_t highest_addr = 0;
@@ -149,51 +155,52 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
     INIT_LIST_HEAD(&mem_map[i].list);
     mem_map[i].flags = PG_reserved;
     mem_map[i].order = 0;
+    mem_map[i].node = 0; // Default
     spinlock_init(&mem_map[i].ptl);
   }
-
-  // Init PCP list for BSP (and others when they boot? No, per-cpu area is
-  // zeroed/copied) We need to INIT_LIST_HEAD for pcp list. Since per-cpu area
-  // is dynamically allocated, we should ideally init it there. But for now, we
-  // can init on first use or here for BSP? Per-cpu area is set up in main.c ->
-  // setup_per_cpu_areas. We can't access other CPU's per-cpu data easily
-  // without manual offset math.
-  //
-  // Strategy: The per-cpu setup code copies static data.
-  // If we initialize the static variable, it gets copied!
-  // BUT LIST_HEAD points to itself. Copying it breaks the pointer (it will
-  // point to static, not new area).
-  //
-  // FIX: We need a per-cpu initialization hook for PMM.
-  // OR: INIT_LIST_HEAD on first access or in setup_per_cpu_areas?
-  //
-  // Let's add pmm_init_cpu() to be called from start_kernel/smp_call.
 
   // Initialize allocator zones
   free_area_init();
 
-  // Set up Zones
-  // DMA: 0 - 16MB (PFN 0 - 4096)
-  // DMA32: 16MB - 4GB (PFN 4096 - 1048576)
-  // Normal: > 4GB
+  // Set up Zones for each node with accurate boundaries
+  for (int n = 0; n < MAX_NUMNODES; n++) {
+      if (!node_data[n]) continue;
+      
+      struct pglist_data *pgdat = node_data[n];
+      unsigned long node_start = pgdat->node_start_pfn;
+      unsigned long node_end = node_start + pgdat->node_spanned_pages;
 
-  managed_zones[ZONE_DMA].zone_start_pfn = 0;
-  managed_zones[ZONE_DMA].spanned_pages = pmm_max_pages > 4096 ? 4096 : pmm_max_pages;
-  managed_zones[ZONE_DMA].present_pages = 0;
+      // ZONE_DMA: [0, 16MB]
+      pgdat->node_zones[ZONE_DMA].zone_start_pfn = node_start;
+      if (node_start < 4096) {
+          unsigned long end = node_end < 4096 ? node_end : 4096;
+          pgdat->node_zones[ZONE_DMA].spanned_pages = end - node_start;
+      } else {
+          pgdat->node_zones[ZONE_DMA].spanned_pages = 0;
+      }
+      pgdat->node_zones[ZONE_DMA].present_pages = 0;
 
-  managed_zones[ZONE_DMA32].zone_start_pfn = 4096;
-  if (pmm_max_pages > 4096) {
-    managed_zones[ZONE_DMA32].spanned_pages =
-        pmm_max_pages > 1048576 ? (1048576 - 4096) : (pmm_max_pages - 4096);
-  } else {
-    managed_zones[ZONE_DMA32].spanned_pages = 0;
+      // ZONE_DMA32: [16MB, 4GB]
+      pgdat->node_zones[ZONE_DMA32].zone_start_pfn = node_start < 4096 ? 4096 : node_start;
+      if (node_end > 4096 && node_start < 1048576) {
+          unsigned long start = node_start < 4096 ? 4096 : node_start;
+          unsigned long end = node_end < 1048576 ? node_end : 1048576;
+          pgdat->node_zones[ZONE_DMA32].spanned_pages = (end > start) ? (end - start) : 0;
+      } else {
+          pgdat->node_zones[ZONE_DMA32].spanned_pages = 0;
+      }
+      pgdat->node_zones[ZONE_DMA32].present_pages = 0;
+
+      // ZONE_NORMAL: [4GB, ...]
+      pgdat->node_zones[ZONE_NORMAL].zone_start_pfn = node_start < 1048576 ? 1048576 : node_start;
+      if (node_end > 1048576) {
+          unsigned long start = node_start < 1048576 ? 1048576 : node_start;
+          pgdat->node_zones[ZONE_NORMAL].spanned_pages = node_end - start;
+      } else {
+          pgdat->node_zones[ZONE_NORMAL].spanned_pages = 0;
+      }
+      pgdat->node_zones[ZONE_NORMAL].present_pages = 0;
   }
-  managed_zones[ZONE_DMA32].present_pages = 0;
-
-  managed_zones[ZONE_NORMAL].zone_start_pfn = 1048576;
-  managed_zones[ZONE_NORMAL].spanned_pages =
-      pmm_max_pages > 1048576 ? pmm_max_pages - 1048576 : 0;
-  managed_zones[ZONE_NORMAL].present_pages = 0;
 
   // Pass 2: Feed free pages to allocator
   uint64_t mm_start_pfn = PHYS_TO_PFN(mm_phys);
@@ -216,21 +223,30 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
       if (pfn >= mm_start_pfn && pfn < mm_end_pfn)
         continue;
 
+      int nid = pfn_to_nid(pfn);
+
+      struct pglist_data *pgdat = node_data[nid];
+      if (!pgdat) {
+          nid = 0;
+          pgdat = node_data[0];
+      }
+
       // Register page
       struct page *page = &mem_map[pfn];
       ClearPageReserved(page);
+      page->node = nid;
 
       // Determine zone for stats
       struct zone *z = NULL;
       int z_idx = 0;
       if (pfn < 4096) {
-        z = &managed_zones[ZONE_DMA];
+        z = &pgdat->node_zones[ZONE_DMA];
         z_idx = ZONE_DMA;
       } else if (pfn < 1048576) {
-        z = &managed_zones[ZONE_DMA32];
+        z = &pgdat->node_zones[ZONE_DMA32];
         z_idx = ZONE_DMA32;
       } else {
-        z = &managed_zones[ZONE_NORMAL];
+        z = &pgdat->node_zones[ZONE_NORMAL];
         z_idx = ZONE_NORMAL;
       }
 
@@ -244,17 +260,22 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
 
   pmm_initialized = true;
 
-  // Calculate watermarks for each zone
-  for (int i = 0; i < MAX_NR_ZONES; i++) {
-      struct zone *z = &managed_zones[i];
-      if (z->present_pages > 0) {
-          z->watermark[WMARK_MIN] = z->present_pages / 100;      // 1%
-          z->watermark[WMARK_LOW] = z->present_pages * 3 / 100;  // 3%
-          z->watermark[WMARK_HIGH] = z->present_pages * 5 / 100; // 5%
-          
-          printk(KERN_DEBUG PMM_CLASS "Zone %s: %lu pages, watermarks [MIN:%lu LOW:%lu HIGH:%lu]\n",
-                 z->name, z->present_pages, z->watermark[WMARK_MIN], 
-                 z->watermark[WMARK_LOW], z->watermark[WMARK_HIGH]);
+  // Calculate watermarks for each zone in each node
+  for (int n = 0; n < MAX_NUMNODES; n++) {
+      if (!node_data[n]) continue;
+      struct pglist_data *pgdat = node_data[n];
+      
+      for (int i = 0; i < MAX_NR_ZONES; i++) {
+          struct zone *z = &pgdat->node_zones[i];
+          if (z->present_pages > 0) {
+              z->watermark[WMARK_MIN] = z->present_pages / 100;      // 1%
+              z->watermark[WMARK_LOW] = z->present_pages * 3 / 100;  // 3%
+              z->watermark[WMARK_HIGH] = z->present_pages * 5 / 100; // 5%
+              
+              printk(KERN_DEBUG PMM_CLASS "node %d Zone %s: %lu pages, watermarks [min:%lu low:%lu high:%lu]\n",
+                     n, z->name, z->present_pages, z->watermark[WMARK_MIN], 
+                     z->watermark[WMARK_LOW], z->watermark[WMARK_HIGH]);
+          }
       }
   }
 

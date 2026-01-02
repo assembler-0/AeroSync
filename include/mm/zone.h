@@ -7,6 +7,7 @@
 #include <arch/x64/cpu.h>
 #include <mm/gfp.h>
 #include <arch/x64/mm/pmm.h>
+#include <arch/x64/smp.h>
 
 /* Zone types */
 enum zone_type {
@@ -62,7 +63,19 @@ struct zone {
 }
     __aligned(64); // Cache line aligned
 
-/* Global array of zones */
+#define MAX_NUMNODES 8
+
+struct pglist_data {
+  struct zone node_zones[MAX_NR_ZONES];
+  unsigned long node_start_pfn;
+  unsigned long node_present_pages;
+  unsigned long node_spanned_pages;
+  int node_id;
+} __aligned(64);
+
+extern struct pglist_data *node_data[MAX_NUMNODES];
+
+/* Global array of zones - kept for compatibility with non-NUMA paths */
 extern struct zone managed_zones[MAX_NR_ZONES];
 
 /*
@@ -78,6 +91,7 @@ extern struct zone managed_zones[MAX_NR_ZONES];
 void free_area_init(void);
 
 struct folio *alloc_pages(gfp_t gfp_mask, unsigned int order);
+struct folio *alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order);
 
 void __free_pages(struct page *page, unsigned int order);
 
@@ -85,6 +99,11 @@ void free_pages(uint64_t addr, unsigned int order);
 
 static inline struct folio *alloc_page(gfp_t gfp_mask) {
   return alloc_pages(gfp_mask, 0);
+}
+
+int cpu_to_node(int cpu);
+static inline int this_node(void) {
+    return cpu_to_node((int)smp_get_id());
 }
 
 static inline void __free_page(struct page *page) {

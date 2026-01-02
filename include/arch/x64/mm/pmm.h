@@ -48,7 +48,7 @@ typedef struct {
  * @param hhdm_offset The HHDM offset from Limine
  * @return 0 on success, negative on error
  */
-int pmm_init(void *memmap_response, uint64_t hhdm_offset);
+int pmm_init(void *memmap_response, uint64_t hhdm_offset, void *rsdp);
 
 /**
  * Initialize per-CPU PMM state (PCP list).

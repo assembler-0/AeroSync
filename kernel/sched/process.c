@@ -151,6 +151,7 @@ struct task_struct *copy_process(uint64_t clone_flags,
   p->sched_class = parent->sched_class;
   p->static_prio = parent->static_prio;
   p->nice = parent->nice;
+  p->node_id = parent->node_id;
   p->se.load = parent->se.load;
   cpumask_copy(&p->cpus_allowed, &parent->cpus_allowed);
 

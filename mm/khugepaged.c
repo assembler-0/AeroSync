@@ -76,12 +76,15 @@ static int khugepaged_thread(void *unused) {
   (void) unused;
   printk(KERN_INFO THP_CLASS "khugepaged started\n");
 
-  while (1) {
-    /* Sleep between scans */
-    wait_event_timeout(khugepaged_wait, khugepaged_should_run, NULL, KHUGEPAGED_SLEEP_MS);
+          while (1) {
 
-    /* Scan all MMs */
-    irq_flags_t flags = spinlock_lock_irqsave(&tasklist_lock);
+              /* Sleep between scans */
+
+              wait_event_timeout(khugepaged_wait, khugepaged_should_run, (void*)1, KHUGEPAGED_SLEEP_MS);
+
+      
+
+              /* Scan all MMs */    irq_flags_t flags = spinlock_lock_irqsave(&tasklist_lock);
     struct task_struct *p;
     list_for_each_entry(p, &task_list, tasks) {
       struct mm_struct *mm = p->mm;

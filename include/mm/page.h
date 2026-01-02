@@ -62,6 +62,7 @@ struct page {
 
   unsigned int order; /* Order of the block (Buddy/Folio) */
   uint32_t zone; /* Memory zone (if any) */
+  uint32_t node; /* NUMA node ID */
   atomic_t _refcount; /* Reference count */
 
   /* Split page table lock */

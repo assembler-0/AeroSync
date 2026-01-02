@@ -41,6 +41,7 @@
 #define FW_CLASS "[sys::core::fw] "           // Firmware interfaces (BIOS/UEFI)
 #define FKX_CLASS "[sys::sysintf::fkx] "         // FKX Module Loader
 #define SYNC_CLASS "[sys::core::sync] " // Synchronization (Mutex, Semaphores, Spinlocks)
+#define NUMA_CLASS "[sys::core::numa] "
 
 ///@section Crypto
 #define RNG_CLASS "[crypto::rng] " // Random Number Generator

@@ -577,6 +577,7 @@ void sched_init_task(struct task_struct *initial_task) {
   struct rq *rq = this_rq();
   initial_task->mm = &init_mm;
   initial_task->active_mm = &init_mm;
+  initial_task->node_id = cpu_to_node(initial_task->cpu);
   cpumask_set_cpu(cpu_id(), &init_mm.cpu_mask);
   initial_task->state = TASK_RUNNING;
   initial_task->flags = PF_KTHREAD;
@@ -628,6 +629,7 @@ void sched_init_ap(void) {
   memset(idle, 0, sizeof(*idle));
   snprintf(idle->comm, sizeof(idle->comm), "idle/%d", cpu);
   idle->cpu = cpu;
+  idle->node_id = cpu_to_node(cpu);
   idle->flags = PF_KTHREAD | PF_IDLE;
   idle->state = TASK_RUNNING;
   idle->sched_class = &idle_sched_class;

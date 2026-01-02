@@ -195,6 +195,7 @@ struct task_struct {
   struct cpumask cpus_allowed; /* CPUs this task can run on */
   int nr_cpus_allowed;         /* Number of CPUs in cpus_allowed */
   int cpu;                     /* Current/last CPU */
+  int node_id;                 /* NUMA node ID of the task (usually based on CPU) */
 
   /*
    * Task relationships
