@@ -18,7 +18,7 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/io.h>
+#include <arch/x86_64/io.h>
 #include <drivers/apic/apic_internal.h>
 #include <drivers/apic/ioapic.h>
 #include <drivers/apic/pic.h>

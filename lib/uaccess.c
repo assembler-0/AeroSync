@@ -1,7 +1,7 @@
 #include <lib/uaccess.h>
-#include <arch/x64/mm/vmm.h>
+#include <arch/x86_64/mm/vmm.h>
 
-/* These are implemented in arch/x64/lib/uaccess.asm */
+/* These are implemented in arch/x86_64/lib/uaccess.asm */
 extern size_t __copy_from_user(void *to, const void *from, size_t n);
 extern size_t __copy_to_user(void *to, const void *from, size_t n);
 

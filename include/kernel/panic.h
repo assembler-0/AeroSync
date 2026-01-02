@@ -1,7 +1,7 @@
 #pragma once
 
 #include <compiler.h>
-#include <arch/x64/cpu.h>
+#include <arch/x86_64/cpu.h>
 #include <kernel/sysintf/panic.h>
 
 void __exit __noinline __noreturn __sysv_abi

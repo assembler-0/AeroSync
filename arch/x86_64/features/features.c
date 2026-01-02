@@ -2,7 +2,7 @@
 /**
  * VoidFrameX monolithic kernel
  *
- * @file arch/x64/features/features.c
+ * @file arch/x86_64/features/features.c
  * @brief CPU feature detection and enabling for x86_64 architecture
  * @copyright (C) 2025 assembler-0
  *
@@ -19,8 +19,8 @@
  */
 
 #include <kernel/classes.h>
-#include <arch/x64/cpu.h>
-#include <arch/x64/features/features.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/features/features.h>
 #include <lib/printk.h>
 
 static cpu_features_t g_cpu_features;

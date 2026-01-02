@@ -18,16 +18,16 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/fpu.h>
-#include <arch/x64/cpu.h>
-#include <arch/x64/entry.h>
-#include <arch/x64/features/features.h>
-#include <arch/x64/gdt/gdt.h>
-#include <arch/x64/idt/idt.h>
-#include <arch/x64/mm/pmm.h>
-#include <arch/x64/mm/vmm.h>
-#include <arch/x64/percpu.h>
-#include <arch/x64/smp.h>
+#include <arch/x86_64/fpu.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/entry.h>
+#include <arch/x86_64/features/features.h>
+#include <arch/x86_64/gdt/gdt.h>
+#include <arch/x86_64/idt/idt.h>
+#include <arch/x86_64/mm/pmm.h>
+#include <arch/x86_64/mm/vmm.h>
+#include <arch/x86_64/percpu.h>
+#include <arch/x86_64/smp.h>
 #include <compiler.h>
 #include <crypto/crc32.h>
 #include <drivers/acpi/power.h>

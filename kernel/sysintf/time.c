@@ -18,8 +18,8 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/tsc.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/tsc.h>
 #include <kernel/sysintf/time.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>

@@ -3,8 +3,8 @@
 #include <kernel/spinlock.h>
 #include <kernel/types.h>
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/mm/pmm.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/mm/pmm.h>
 #include <kernel/spinlock.h>
 #include <kernel/types.h>
 #include <mm/page.h>

@@ -19,12 +19,12 @@
  */
 
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/fpu.h>
-#include <arch/x64/mm/vmm.h>
-#include <arch/x64/percpu.h>
-#include <arch/x64/smp.h>
-#include <arch/x64/tsc.h>      /* Added for get_time_ns */
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/fpu.h>
+#include <arch/x86_64/mm/vmm.h>
+#include <arch/x86_64/percpu.h>
+#include <arch/x86_64/smp.h>
+#include <arch/x86_64/tsc.h>      /* Added for get_time_ns */
 #include <drivers/apic/apic.h> /* Added for IPI functions */
 #include <kernel/classes.h>
 #include <kernel/panic.h>
@@ -39,7 +39,7 @@
 #include <mm/slab.h>
 #include <mm/vma.h>
 #include <vsprintf.h>
-#include <arch/x64/gdt/gdt.h>
+#include <arch/x86_64/gdt/gdt.h>
 
 /*
  * Scheduler Core Implementation

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <kernel/types.h>
-#include <arch/x64/mm/paging.h>
+#include <arch/x86_64/mm/paging.h>
 
 // Page Table Entry Flags
 #define PTE_PRESENT (1ULL << 0)

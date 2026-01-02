@@ -2,7 +2,7 @@
 /**
  * VoidFrameX monolithic kernel
  *
- * @file arch/x64/idt/idt.c
+ * @file arch/x86_64/idt/idt.c
  * @brief Interrupt Descriptor Table (IDT) setup and installation
  * @copyright (C) 2025 assembler-0
  *
@@ -20,7 +20,7 @@
 
 #include <kernel/classes.h>
 #include <lib/printk.h>
-#include <arch/x64/idt/idt.h>
+#include <arch/x86_64/idt/idt.h>
 
 #define IDT_ENTRIES 256
 

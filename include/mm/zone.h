@@ -4,10 +4,10 @@
 #include <kernel/atomic.h>
 #include <linux/list.h>
 #include <mm/page.h>
-#include <arch/x64/cpu.h>
+#include <arch/x86_64/cpu.h>
 #include <mm/gfp.h>
-#include <arch/x64/mm/pmm.h>
-#include <arch/x64/smp.h>
+#include <arch/x86_64/mm/pmm.h>
+#include <arch/x86_64/smp.h>
 
 /* Zone types */
 enum zone_type {

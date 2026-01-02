@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 #pragma once
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/smp.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/smp.h>
 
 /* Linker symbols for the per-CPU section */
 extern char _percpu_start[];

@@ -2,7 +2,7 @@
 ;
 ; VoidFrameX monolithic kernel
 ;
-; @file arch/x64/lib/uaccess.asm
+; @file arch/x86_64/lib/uaccess.asm
 ; @brief User memory access routines with exception handling
 ; @copyright (C) 2025 assembler-0
 

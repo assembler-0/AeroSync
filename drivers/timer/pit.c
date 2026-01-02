@@ -10,8 +10,8 @@
 #include <drivers/timer/pit.h>
 #include <kernel/sysintf/time.h>
 #include <kernel/fkx/fkx.h>
-#include <arch/x64/io.h>
-#include <arch/x64/tsc.h>
+#include <arch/x86_64/io.h>
+#include <arch/x86_64/tsc.h>
 
 #define PIT_CMD_PORT 0x43
 #define PIT_CH0_PORT 0x40

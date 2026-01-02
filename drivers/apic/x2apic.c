@@ -11,7 +11,7 @@
 #include <drivers/apic/x2apic.h> 
 #include <drivers/apic/apic_internal.h> 
 #include <kernel/fkx/fkx.h> 
-#include <arch/x64/cpu.h> 
+#include <arch/x86_64/cpu.h> 
 #include <lib/printk.h> 
 #include <kernel/spinlock.h> 
 

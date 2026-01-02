@@ -22,13 +22,13 @@
 #include <mm/mm_types.h>
 #include <mm/page.h>
 #include <mm/slab.h>
-#include <arch/x64/mm/vmm.h>
+#include <arch/x86_64/mm/vmm.h>
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>
 #include <linux/container_of.h>
 #include <lib/printk.h>
 #include <kernel/classes.h>
-#include <arch/x64/tsc.h>
+#include <arch/x86_64/tsc.h>
 #include <mm/vm_object.h>
 
 #define SCAN_BATCH_VMAS 16

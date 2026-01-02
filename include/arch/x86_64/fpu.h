@@ -2,7 +2,7 @@
 /**
  * VoidFrameX monolithic kernel
  *
- * @file include/arch/x64/fpu.h
+ * @file include/arch/x86_64/fpu.h
  * @brief FPU/SSE/AVX state management
  * @copyright (C) 2025 assembler-0
  *

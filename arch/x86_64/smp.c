@@ -2,7 +2,7 @@
 /**
  * VoidFrameX monolithic kernel
  *
- * @file arch/x64/smp.c
+ * @file arch/x86_64/smp.c
  * @brief SMP initialization and AP entry point
  * @copyright (C) 2025 assembler-0
  *
@@ -18,15 +18,15 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/entry.h>
-#include <arch/x64/features/features.h>
-#include <arch/x64/gdt/gdt.h>
-#include <arch/x64/idt/idt.h>
-#include <arch/x64/mm/pmm.h>
-#include <arch/x64/mm/vmm.h>
-#include <arch/x64/percpu.h>
-#include <arch/x64/smp.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/entry.h>
+#include <arch/x86_64/features/features.h>
+#include <arch/x86_64/gdt/gdt.h>
+#include <arch/x86_64/idt/idt.h>
+#include <arch/x86_64/mm/pmm.h>
+#include <arch/x86_64/mm/vmm.h>
+#include <arch/x86_64/percpu.h>
+#include <arch/x86_64/smp.h>
 #include <kernel/classes.h>
 #include <kernel/sysintf/ic.h>
 #include <kernel/wait.h>

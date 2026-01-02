@@ -18,11 +18,11 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/gdt/gdt.h>
-#include <arch/x64/mm/paging.h>
-#include <arch/x64/mm/pmm.h>
-#include <arch/x64/mm/vmm.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/gdt/gdt.h>
+#include <arch/x86_64/mm/paging.h>
+#include <arch/x86_64/mm/pmm.h>
+#include <arch/x86_64/mm/vmm.h>
 #include <kernel/elf.h>
 #include <kernel/errno.h>
 #include <kernel/sched/process.h>

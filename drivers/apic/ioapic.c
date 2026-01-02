@@ -18,7 +18,7 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/mm/paging.h>
+#include <arch/x86_64/mm/paging.h>
 #include <drivers/apic/ioapic.h>
 #include <kernel/classes.h>
 #include <kernel/fkx/fkx.h>

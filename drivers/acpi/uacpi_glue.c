@@ -18,12 +18,12 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/io.h>
-#include <arch/x64/irq.h>
-#include <arch/x64/mm/layout.h>
-#include <arch/x64/mm/vmm.h>
-#include <arch/x64/tsc.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/io.h>
+#include <arch/x86_64/irq.h>
+#include <arch/x86_64/mm/layout.h>
+#include <arch/x86_64/mm/vmm.h>
+#include <arch/x86_64/tsc.h>
 #include <kernel/sysintf/ic.h>
 #include <kernel/classes.h>
 #include <kernel/mutex.h>

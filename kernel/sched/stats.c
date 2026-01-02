@@ -9,8 +9,8 @@
  * This file is part of the VoidFrameX kernel.
  */
 
-#include <arch/x64/percpu.h>
-#include <arch/x64/smp.h>
+#include <arch/x86_64/percpu.h>
+#include <arch/x86_64/smp.h>
 #include <kernel/sched/sched.h>
 #include <lib/printk.h>
 

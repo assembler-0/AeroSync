@@ -2,7 +2,7 @@
 /**
  * VoidFrameX monolithic kernel
  *
- * @file arch/x64/mm/tlb.c
+ * @file arch/x86_64/mm/tlb.c
  * @brief TLB management for the x86_64 architecture (PCID aware)
  * @copyright (C) 2025 assembler-0
  *
@@ -18,16 +18,16 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/mm/tlb.h>
-#include <arch/x64/cpu.h>
-#include <arch/x64/features/features.h>
+#include <arch/x86_64/mm/tlb.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/features/features.h>
 #include <kernel/sysintf/ic.h>
 #include <kernel/sched/sched.h>
 #include <mm/mm_types.h>
-#include <arch/x64/smp.h>
-#include <arch/x64/mm/paging.h>
+#include <arch/x86_64/smp.h>
+#include <arch/x86_64/mm/paging.h>
 #include <mm/vma.h>
-#include <arch/x64/cpu.h>
+#include <arch/x86_64/cpu.h>
 
 struct invpcid_desc {
     uint64_t pcid : 12;

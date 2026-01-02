@@ -19,7 +19,7 @@
  */
 
 #include <crypto/rng.h>
-#include <arch/x64/cpu.h>
+#include <arch/x86_64/cpu.h>
 
 static uint64_t s[2]; // state
 

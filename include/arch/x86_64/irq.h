@@ -1,6 +1,6 @@
 #pragma once
 
-#include <arch/x64/cpu.h>
+#include <arch/x86_64/cpu.h>
 
 typedef fn(void, irq_handler_t, cpu_regs *regs);
 

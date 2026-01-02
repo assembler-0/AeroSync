@@ -10,7 +10,7 @@
 #include <kernel/classes.h> 
 #include <kernel/fkx/fkx.h>
 #include <kernel/sysintf/ic.h>
-#include <arch/x64/io.h>
+#include <arch/x86_64/io.h>
 #include <drivers/timer/pit.h>
 #include <lib/printk.h>
 

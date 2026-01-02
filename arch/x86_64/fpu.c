@@ -2,7 +2,7 @@
 /**
  * VoidFrameX monolithic kernel
  *
- * @file arch/x64/fpu.c
+ * @file arch/x86_64/fpu.c
  * @brief FPU/SSE/AVX state management implementation
  * @copyright (C) 2025 assembler-0
  *
@@ -12,8 +12,8 @@
  * Supports FXSAVE/FXRSTOR and XSAVE/XRSTOR depending on CPU features.
  */
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/fpu.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/fpu.h>
 #include <kernel/classes.h>
 #include <lib/printk.h>
 #include <lib/string.h>

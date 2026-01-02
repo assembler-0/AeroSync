@@ -18,7 +18,7 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/io.h>
+#include <arch/x86_64/io.h>
 #include <lib/log.h>
 #include <kernel/classes.h>
 #include <kernel/types.h>

@@ -11,9 +11,9 @@
 
 #pragma once
 
-#include <arch/x64/smp.h>
+#include <arch/x86_64/smp.h>
 #include <kernel/types.h>
-#include <arch/x64/cpu.h>
+#include <arch/x86_64/cpu.h>
 
 /* Number of 64-bit words needed to hold MAX_CPUS bits */
 #define CPUMASK_BITS ((MAX_CPUS + 63) / 64)

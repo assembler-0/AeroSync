@@ -19,8 +19,8 @@
  */
 
 #include <mm/mmu_gather.h>
-#include <arch/x64/mm/tlb.h>
-#include <arch/x64/mm/pmm.h>
+#include <arch/x86_64/mm/tlb.h>
+#include <arch/x86_64/mm/pmm.h>
 #include <mm/page.h>
 
 void tlb_gather_mmu(struct mmu_gather *tlb, struct mm_struct *mm, uint64_t start, uint64_t end) {

@@ -1,5 +1,5 @@
 # ============================================================================
-# VoidFrame Toolchain for Linux x64 Host
+# VoidFrame Toolchain for Linux x86_64 Host
 # ============================================================================
 set(CMAKE_SYSTEM_NAME Generic)
 set(CMAKE_SYSTEM_PROCESSOR x86_64)

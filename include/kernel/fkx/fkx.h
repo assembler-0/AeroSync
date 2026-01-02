@@ -23,7 +23,7 @@
 #include <kernel/sysintf/time.h>
 #include <kernel/sysintf/ic.h>
 #include <lib/printk.h>
-#include <arch/x64/cpu.h>
+#include <arch/x86_64/cpu.h>
 #include <kernel/mutex.h>
 #include <kernel/semaphore.h>
 #include <kernel/wait.h>

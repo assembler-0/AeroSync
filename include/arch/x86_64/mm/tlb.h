@@ -4,8 +4,8 @@
 #include <mm/mm_types.h>
 
 /**
- * @file include/arch/x64/mm/tlb.h
- * @brief TLB shootdown and management for x64
+ * @file include/arch/x86_64/mm/tlb.h
+ * @brief TLB shootdown and management for x86_64
  */
 
 #define TLB_FLUSH_IPI_VECTOR 0xFD

@@ -9,8 +9,8 @@
  * This file is part of the VoidFrameX kernel.
  */
 
-#include <arch/x64/mm/paging.h>
-#include <arch/x64/tsc.h> /* For get_time_ns */
+#include <arch/x86_64/mm/paging.h>
+#include <arch/x86_64/tsc.h> /* For get_time_ns */
 #include <kernel/sched/sched.h>
 #include <lib/math.h>
 #include <lib/printk.h>

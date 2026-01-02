@@ -19,7 +19,7 @@
  */
 
 #include <kernel/sysintf/dma.h>
-#include <arch/x64/mm/pmm.h>
+#include <arch/x86_64/mm/pmm.h>
 #include <lib/printk.h>
 #include <mm/gfp.h>
 #include <kernel/fkx/fkx.h>

@@ -15,7 +15,7 @@
  * RT tasks have higher priority than CFS tasks and lower than Deadline tasks.
  */
 
-#include <arch/x64/tsc.h>
+#include <arch/x86_64/tsc.h>
 #include <kernel/classes.h>
 #include <kernel/sched/sched.h>
 #include <lib/printk.h>

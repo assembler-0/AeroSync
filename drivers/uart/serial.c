@@ -20,7 +20,7 @@
 
 #include <kernel/fkx/fkx.h>
 #include <drivers/uart/serial.h>
-#include <arch/x64/io.h>
+#include <arch/x86_64/io.h>
 
 // Serial port register offsets
 #define SERIAL_DATA_REG     0

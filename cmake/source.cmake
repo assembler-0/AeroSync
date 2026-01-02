@@ -1,14 +1,14 @@
 # ============================================================================
 # Sources Organization
 # ============================================================================
-file(GLOB ARCH_SOURCES "arch/x64/*.c")
-file(GLOB_RECURSE ARCH_FEATURE_SOURCES "arch/x64/features/*.c")
-file(GLOB_RECURSE ARCH_GDT_SOURCES "arch/x64/gdt/*.c")
-file(GLOB_RECURSE ARCH_IDT_SOURCES "arch/x64/idt/*.c")
-file(GLOB_RECURSE ARCH_MM_SOURCES "arch/x64/mm/*.c")
-file(GLOB_RECURSE ARCH_IRQ_SOURCES "arch/x64/irq/*.c")
-file(GLOB_RECURSE ARCH_ENTRY_SOURCES "arch/x64/entry/*.c")
-file(GLOB_RECURSE ARCH_ASM_SOURCES "arch/x64/*.asm")
+file(GLOB ARCH_SOURCES "arch/x86_64/*.c")
+file(GLOB_RECURSE ARCH_FEATURE_SOURCES "arch/x86_64/features/*.c")
+file(GLOB_RECURSE ARCH_GDT_SOURCES "arch/x86_64/gdt/*.c")
+file(GLOB_RECURSE ARCH_IDT_SOURCES "arch/x86_64/idt/*.c")
+file(GLOB_RECURSE ARCH_MM_SOURCES "arch/x86_64/mm/*.c")
+file(GLOB_RECURSE ARCH_IRQ_SOURCES "arch/x86_64/irq/*.c")
+file(GLOB_RECURSE ARCH_ENTRY_SOURCES "arch/x86_64/entry/*.c")
+file(GLOB_RECURSE ARCH_ASM_SOURCES "arch/x86_64/*.asm")
 list(APPEND ARCH_SOURCES
     ${ARCH_FEATURE_SOURCES}
     ${ARCH_GDT_SOURCES}

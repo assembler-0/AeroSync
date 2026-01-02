@@ -1,6 +1,6 @@
 #pragma once
 
-#include <arch/x64/percpu.h>
+#include <arch/x86_64/percpu.h>
 #include <kernel/sched/cpumask.h>
 #include <kernel/spinlock.h>
 #include <kernel/types.h>

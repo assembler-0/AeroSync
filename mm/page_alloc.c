@@ -24,7 +24,7 @@
 #include <lib/vsprintf.h>
 #include <kernel/spinlock.h>
 #include <kernel/panic.h>
-#include <arch/x64/cpu.h>
+#include <arch/x86_64/cpu.h>
 #include <kernel/classes.h>
 #include <linux/list.h>
 #include <linux/container_of.h>
@@ -41,7 +41,7 @@ static const char *const zone_names[MAX_NR_ZONES] = {
   "Normal"
 };
 
-/* Defined in arch/x64/mm/pmm.c */
+/* Defined in arch/x86_64/mm/pmm.c */
 extern struct page *mem_map;
 extern uint64_t pmm_max_pages;
 

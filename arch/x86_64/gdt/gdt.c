@@ -2,7 +2,7 @@
 /**
  * VoidFrameX monolithic kernel
  *
- * @file arch/x64/gdt/gdt.c
+ * @file arch/x86_64/gdt/gdt.c
  * @brief Global Descriptor Table (GDT) setup for x86-64
  * @copyright (C) 2025 assembler-0
  *
@@ -18,9 +18,9 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/gdt/gdt.h>
-#include <arch/x64/percpu.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/gdt/gdt.h>
+#include <arch/x86_64/percpu.h>
 #include <compiler.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>

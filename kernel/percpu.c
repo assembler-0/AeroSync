@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/mm/pmm.h>
-#include <arch/x64/percpu.h>
-#include <arch/x64/smp.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/mm/pmm.h>
+#include <arch/x86_64/percpu.h>
+#include <arch/x86_64/smp.h>
 #include <kernel/classes.h>
 #include <kernel/fkx/fkx.h>
 #include <kernel/panic.h>

@@ -2,8 +2,8 @@
 /**
  * VoidFrameX monolithic kernel
  *
- * @file arch/x64/irq/irq.c
- * @brief Interrupt handling for x64 architecture
+ * @file arch/x86_64/irq/irq.c
+ * @brief Interrupt handling for x86_64 architecture
  * @copyright (C) 2025 assembler-0
  *
  * This file is part of the VoidFrameX kernel.
@@ -18,9 +18,9 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/irq.h>
-#include <arch/x64/mm/tlb.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/irq.h>
+#include <arch/x86_64/mm/tlb.h>
 #include <kernel/sysintf/ic.h>
 #include <kernel/panic.h>
 #include <kernel/sched/sched.h>

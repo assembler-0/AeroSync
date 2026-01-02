@@ -2,7 +2,7 @@
 /**
  * VoidFrameX monolithic kernel
  *
- * @file arch/x64/tsc.c
+ * @file arch/x86_64/tsc.c
  * @brief TSC (Time Stamp Counter) management and calibration
  * @copyright (C) 2025 assembler-0
  *
@@ -18,8 +18,8 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/tsc.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/tsc.h>
 #include <kernel/classes.h>
 #include <lib/printk.h>
 #include <kernel/fkx/fkx.h>

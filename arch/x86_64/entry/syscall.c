@@ -2,13 +2,13 @@
 /**
  * VoidFrameX monolithic kernel
  *
- * @file arch/x64/entry/syscall.c
+ * @file arch/x86_64/entry/syscall.c
  * @brief System Call Dispatcher and Initialization
  * @copyright (C) 2025 assembler-0
  */
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/gdt/gdt.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/gdt/gdt.h>
 #include <kernel/classes.h>
 #include <kernel/errno.h>
 #include <kernel/sched/process.h>
@@ -16,7 +16,7 @@
 #include <kernel/sysintf/panic.h>
 #include <lib/printk.h>
 #include <lib/uaccess.h>
-#include <arch/x64/entry.h>
+#include <arch/x86_64/entry.h>
 
 #define MSR_STAR 0xC0000081
 #define MSR_LSTAR 0xC0000082

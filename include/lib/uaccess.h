@@ -1,6 +1,6 @@
 #pragma once
 
-#include <arch/x64/mm/vmm.h>
+#include <arch/x86_64/mm/vmm.h>
 #include <kernel/types.h>
 
 /**

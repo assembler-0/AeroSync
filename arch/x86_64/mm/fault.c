@@ -19,9 +19,9 @@
  */
 
 #include <lib/string.h>
-#include <arch/x64/cpu.h>
-#include <arch/x64/exception.h>
-#include <arch/x64/mm/vmm.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/exception.h>
+#include <arch/x86_64/mm/vmm.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>
 #include <kernel/sched/sched.h> // For current task

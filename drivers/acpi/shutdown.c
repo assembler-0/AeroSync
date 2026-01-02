@@ -22,7 +22,7 @@
 #include <lib/printk.h>
 #include <uacpi/uacpi.h>
 #include <uacpi/sleep.h>
-#include <arch/x64/io.h>
+#include <arch/x86_64/io.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>
 

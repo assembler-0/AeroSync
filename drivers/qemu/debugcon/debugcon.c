@@ -1,4 +1,4 @@
-#include <arch/x64/io.h>
+#include <arch/x86_64/io.h>
 #include <drivers/qemu/debugcon/debugcon.h>
 #include <lib/printk.h>
 

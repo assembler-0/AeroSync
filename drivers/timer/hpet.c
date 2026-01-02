@@ -7,12 +7,12 @@
  * @copyright (C) 2025 assembler-0
  */
 
-#include <arch/x64/mm/paging.h>
+#include <arch/x86_64/mm/paging.h>
 #include <drivers/timer/hpet.h>
 #include <kernel/classes.h> 
 #include <kernel/fkx/fkx.h>
 #include <lib/printk.h>
-#include <arch/x64/tsc.h>
+#include <arch/x86_64/tsc.h>
 #include <mm/vmalloc.h>
 
 hpet_info_t hpet_info = {0};

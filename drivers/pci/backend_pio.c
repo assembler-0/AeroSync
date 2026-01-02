@@ -8,7 +8,7 @@
  */
 
 #include <kernel/types.h>
-#include <arch/x64/io.h>
+#include <arch/x86_64/io.h>
 #include <kernel/sysintf/pci.h>
 #include <lib/printk.h>
 

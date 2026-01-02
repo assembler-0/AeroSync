@@ -18,7 +18,7 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/tsc.h>
+#include <arch/x86_64/tsc.h>
 #include <compiler.h>
 #include <lib/printk.h>
 #include <kernel/sched/process.h>

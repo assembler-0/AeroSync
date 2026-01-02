@@ -21,12 +21,12 @@
 #include <mm/mm_types.h>
 #include <mm/vma.h>
 #include <mm/vm_object.h>
-#include <arch/x64/mm/layout.h>
-#include <arch/x64/mm/pmm.h>
-#include <arch/x64/mm/vmm.h>
+#include <arch/x86_64/mm/layout.h>
+#include <arch/x86_64/mm/pmm.h>
+#include <arch/x86_64/mm/vmm.h>
 #include <lib/string.h>
 #include <mm/slab.h>
-#include <arch/x64/mm/paging.h>
+#include <arch/x86_64/mm/paging.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>
 #include <kernel/fkx/fkx.h>

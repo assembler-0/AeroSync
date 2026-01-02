@@ -5,9 +5,9 @@
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <lib/vsprintf.h>
-#include <arch/x64/mm/pmm.h>
-#include <arch/x64/mm/vmm.h>
-#include <arch/x64/io.h>
+#include <arch/x86_64/mm/pmm.h>
+#include <arch/x86_64/mm/vmm.h>
+#include <arch/x86_64/io.h>
 #include <kernel/sysintf/time.h>
 #include <kernel/sysintf/ic.h>
 #include <kernel/classes.h>

@@ -18,8 +18,8 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/exception.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/exception.h>
 #include <compiler.h>
 #include <kernel/classes.h>
 #include <lib/printk.h>

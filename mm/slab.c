@@ -23,9 +23,9 @@
 #include <mm/page.h>
 #include <mm/zone.h>
 #include <mm/vmalloc.h>
-#include <arch/x64/mm/pmm.h>
-#include <arch/x64/mm/layout.h>
-#include <arch/x64/smp.h>
+#include <arch/x86_64/mm/pmm.h>
+#include <arch/x86_64/mm/layout.h>
+#include <arch/x86_64/smp.h>
 #include <linux/container_of.h>
 #include <kernel/fkx/fkx.h>
 #include <lib/string.h>

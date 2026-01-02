@@ -12,7 +12,7 @@
 #include <lib/printk.h>
 #include <uacpi/acpi.h> // We only use the header definitions
 #include <kernel/classes.h>
-#include <arch/x64/mm/pmm.h>
+#include <arch/x86_64/mm/pmm.h>
 #include <lib/string.h>
 
 struct pglist_data *node_data[MAX_NUMNODES] = {NULL};

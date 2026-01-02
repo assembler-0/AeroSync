@@ -2,7 +2,7 @@
 /**
  * VoidFrameX monolithic kernel
  *
- * @file arch/x64/cpu.c
+ * @file arch/x86_64/cpu.c
  * @brief Architecture-specific CPU functions
  * @copyright (C) 2025 assembler-0
  *
@@ -18,8 +18,8 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/percpu.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/percpu.h>
 #include <kernel/fkx/fkx.h>
 
 DEFINE_PER_CPU(unsigned long, this_cpu_off);

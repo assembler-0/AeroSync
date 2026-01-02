@@ -2,7 +2,7 @@
 /**
  * VoidFrameX monolithic kernel
  *
- * @file arch/x64/exception.c
+ * @file arch/x86_64/exception.c
  * @brief Exception helper functions
  * @copyright (C) 2025 assembler-0
  *
@@ -18,7 +18,7 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/exception.h>
+#include <arch/x86_64/exception.h>
 #include <lib/string.h>
 
 void get_exception_as_str(char* buff, uint32_t num) {

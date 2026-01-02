@@ -23,8 +23,8 @@
 #include <mm/vm_object.h>
 #include <mm/page.h>
 #include <mm/slab.h>
-#include <arch/x64/mm/pmm.h>
-#include <arch/x64/mm/vmm.h>
+#include <arch/x86_64/mm/pmm.h>
+#include <arch/x86_64/mm/vmm.h>
 #include <kernel/classes.h>
 #include <kernel/errno.h>
 #include <kernel/mutex.h>

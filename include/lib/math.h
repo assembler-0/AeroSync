@@ -67,7 +67,7 @@ static inline float fast_sqrtf(float x) {
     return x * rsqrtf(x);
 }
 
-/* Optimized square root using x64 SSE */
+/* Optimized square root using x86_64 SSE */
 static inline double sqrt(double x) {
     double result;
     __asm__ volatile("sqrtsd %1, %0" : "=x"(result) : "x"(x));

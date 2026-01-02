@@ -18,8 +18,8 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/percpu.h>
-#include <arch/x64/tsc.h>
+#include <arch/x86_64/percpu.h>
+#include <arch/x86_64/tsc.h>
 #include <kernel/sched/sched.h>
 #include <kernel/wait.h>
 #include <lib/printk.h>
