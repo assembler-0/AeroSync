@@ -16,7 +16,7 @@
  * - Robust error handling and rollback
  */
 
-#include <printk.h>
+#include <lib/printk.h>
 #include <mm/vmalloc.h>
 #include <mm/mm_types.h>
 #include <mm/vma.h>

@@ -7,13 +7,16 @@
  * @copyright (C) 2025 assembler-0
  */
 
-#include <string.h>
+#include <lib/string.h>
+#include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/vmm.h>
 #include <kernel/errno.h>
 #include <linux/container_of.h>
 #include <mm/slab.h>
 #include <mm/vma.h>
 #include <mm/vm_object.h>
+
+#define page_to_phys(page) PFN_TO_PHYS(page_to_pfn(page))
 
 /* Forward declarations for RMAP (defined in memory.c) */
 void folio_add_anon_rmap(struct folio *folio, struct vm_area_struct *vma, uint64_t address);
@@ -50,6 +53,10 @@ void vm_object_free(struct vm_object *obj) {
 
     if (obj->ops && obj->ops->free) {
         obj->ops->free(obj);
+    }
+
+    if (obj->backing_object) {
+        vm_object_put(obj->backing_object);
     }
 
     kfree(obj);
@@ -215,6 +222,92 @@ static const struct vm_object_operations device_obj_ops = {
     .fault = device_obj_fault,
 };
 
+static int shadow_obj_fault(struct vm_object *obj, struct vm_area_struct *vma, struct vm_fault *vmf) {
+    spinlock_lock(&obj->lock);
+
+    /* 1. Check if the page is already in the shadow object */
+    struct page *page = vm_object_find_page(obj, vmf->pgoff);
+    if (page) {
+        get_page(page);
+        vmf->page = page;
+        spinlock_unlock(&obj->lock);
+        return 0;
+    }
+
+    /* 2. Page not in shadow, check backing object */
+    struct vm_object *backing = obj->backing_object;
+    if (!backing) {
+        spinlock_unlock(&obj->lock);
+        return VM_FAULT_SIGSEGV;
+    }
+
+    uint64_t backing_pgoff = vmf->pgoff + (obj->shadow_offset >> PAGE_SHIFT);
+    struct vm_fault backing_vmf = *vmf;
+    backing_vmf.pgoff = backing_pgoff;
+
+    /* 
+     * If it's a read fault, we can just return the page from the backing object 
+     * WITHOUT copying it (mapping it read-only).
+     * BUT: To simplify for now, and since we might change the PTE to read-only 
+     * at the arch level, let's just use the backing object's fault handler.
+     */
+    int ret = backing->ops->fault(backing, vma, &backing_vmf);
+    if (ret != 0) {
+        spinlock_unlock(&obj->lock);
+        return ret;
+    }
+
+    page = backing_vmf.page;
+
+    /* 3. If it's a WRITE fault, we MUST "promote" (copy) the page to the shadow object */
+    if (vmf->flags & FAULT_FLAG_WRITE) {
+        uint64_t phys = pmm_alloc_page();
+        if (!phys) {
+            put_page(page);
+            spinlock_unlock(&obj->lock);
+            return VM_FAULT_OOM;
+        }
+        
+        struct page *new_page = phys_to_page(phys);
+        void *src = pmm_phys_to_virt(page_to_phys(page));
+        void *dst = pmm_phys_to_virt(phys);
+        memcpy(dst, src, PAGE_SIZE);
+        
+        put_page(page); /* Release backing page reference */
+        
+        if (vm_object_add_page(obj, vmf->pgoff, new_page) < 0) {
+            pmm_free_page(phys);
+            spinlock_unlock(&obj->lock);
+            return VM_FAULT_SIGBUS;
+        }
+        
+        page = new_page;
+        get_page(page);
+    }
+
+    vmf->page = page;
+    spinlock_unlock(&obj->lock);
+    return 0;
+}
+
+static const struct vm_object_operations shadow_obj_ops = {
+    .fault = shadow_obj_fault,
+};
+
+struct vm_object *vm_object_shadow_create(struct vm_object *backing, uint64_t offset, size_t size) {
+    struct vm_object *obj = vm_object_alloc(VM_OBJECT_ANON); /* Shadow is essentially anonymous */
+    if (!obj) return NULL;
+
+    obj->backing_object = backing;
+    if (backing) vm_object_get(backing);
+    
+    obj->shadow_offset = offset;
+    obj->size = size;
+    obj->ops = &shadow_obj_ops;
+    
+    return obj;
+}
+
 struct vm_object *vm_object_anon_create(size_t size) {
     struct vm_object *obj = vm_object_alloc(VM_OBJECT_ANON);
     if (!obj) return NULL;
@@ -232,4 +325,32 @@ struct vm_object *vm_object_device_create(uint64_t phys_addr, size_t size) {
     obj->size = size;
     obj->ops = &device_obj_ops;
     return obj;
+}
+
+int vm_object_cow_prepare(struct vm_area_struct *vma, struct vm_area_struct *new_vma) {
+    struct vm_object *old_obj = vma->vm_obj;
+    if (!old_obj) return 0;
+
+    /* 
+     * Create shadow objects for both. 
+     * They will both point to the same original backing object.
+     */
+    struct vm_object *shadow_parent = vm_object_shadow_create(old_obj, vma->vm_pgoff << PAGE_SHIFT, vma_size(vma));
+    struct vm_object *shadow_child = vm_object_shadow_create(old_obj, vma->vm_pgoff << PAGE_SHIFT, vma_size(vma));
+
+    if (!shadow_parent || !shadow_child) {
+        if (shadow_parent) vm_object_put(shadow_parent);
+        if (shadow_child) vm_object_put(shadow_child);
+        return -ENOMEM;
+    }
+
+    /* Update VMAs */
+    vma->vm_obj = shadow_parent;
+    vma->vm_pgoff = 0; /* Shadow handles the offset now */
+    
+    new_vma->vm_obj = shadow_child;
+    new_vma->vm_pgoff = 0;
+    
+    vm_object_put(old_obj);
+    return 0;
 }

@@ -18,7 +18,7 @@
  * GNU General Public License for more details.
  */
 
-#include <string.h>
+#include <lib/string.h>
 #include <arch/x64/cpu.h>
 #include <arch/x64/exception.h>
 #include <arch/x64/mm/vmm.h>
@@ -91,20 +91,7 @@ void do_page_fault(cpu_regs *regs) {
       goto signal_segv;
     }
 
-    uint64_t pml4_phys = (uint64_t) mm->pml4;
-
-    // COW Handling: If it's a write fault on a present page in a writable VMA
-    if (write_fault && (error_code & PF_PROT)) {
-      if (vmm_handle_cow(pml4_phys, cr2) == 0) {
-        up_read(&mm->mmap_lock);
-        return; // Success, retry write
-      }
-      // If COW failed, treat as SEGV or panic
-      up_read(&mm->mmap_lock);
-      goto signal_segv;
-    }
-
-    // Dispatches to VMA-specific fault handler (e.g. anon_fault or file_fault)
+    // Dispatches to VMA-specific fault handler (e.g. shadow_obj_fault)
     unsigned int fault_flags = 0;
     if (write_fault) fault_flags |= FAULT_FLAG_WRITE;
     if (user_mode) fault_flags |= FAULT_FLAG_USER;
@@ -114,6 +101,16 @@ void do_page_fault(cpu_regs *regs) {
     if (res == 0) {
         up_read(&mm->mmap_lock);
         return;
+    }
+
+    // Legacy/PTE COW Handling: If it's a write fault on a present page in a writable VMA
+    // This is a fallback for kernel/modules or VMAs not yet using vm_objects fully.
+    if (write_fault && (error_code & PF_PROT)) {
+      uint64_t pml4_phys = (uint64_t) mm->pml4;
+      if (vmm_handle_cow(pml4_phys, cr2) == 0) {
+        up_read(&mm->mmap_lock);
+        return; // Success, retry write
+      }
     }
 
     up_read(&mm->mmap_lock);

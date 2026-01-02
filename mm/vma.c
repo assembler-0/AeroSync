@@ -286,9 +286,20 @@ struct mm_struct *mm_copy(struct mm_struct *old_mm) {
      * BUT we want to share the object (COW/Shared).
      */
     if (new_vma->vm_obj) vm_object_put(new_vma->vm_obj);
-    new_vma->vm_obj = vma->vm_obj;
-    if (new_vma->vm_obj) {
-        vm_object_get(new_vma->vm_obj);
+    
+    if (vma->vm_obj && (vma->vm_flags & VM_WRITE) && !(vma->vm_flags & VM_SHARED)) {
+        if (vm_object_cow_prepare(vma, new_vma) < 0) {
+            vma_free(new_vma);
+            mm_free(new_mm);
+            up_write(&old_mm->mmap_lock);
+            return NULL;
+        }
+    } else {
+        /* Shared or Read-Only mapping: just share the object */
+        new_vma->vm_obj = vma->vm_obj;
+        if (new_vma->vm_obj) {
+            vm_object_get(new_vma->vm_obj);
+        }
     }
 
     if (vma_insert(new_mm, new_vma) != 0) {

@@ -30,7 +30,10 @@ struct vm_object {
   const struct vm_object_operations *ops;
   atomic_t refcount;
   size_t size;
-  uint64_t phys_addr; /* For VM_OBJECT_DEVICE and VM_OBJECT_PHYS */
+    struct vm_object *backing_object; /* For Shadow Objects / COW */
+    uint64_t shadow_offset;           /* Offset into the backing object */
+
+    uint64_t phys_addr; /* For VM_OBJECT_DEVICE and VM_OBJECT_PHYS */
 };
 
 /* API */
@@ -47,3 +50,5 @@ void vm_object_remove_page(struct vm_object *obj, uint64_t pgoff);
 /* Helpers */
 struct vm_object *vm_object_anon_create(size_t size);
 struct vm_object *vm_object_device_create(uint64_t phys_addr, size_t size);
+struct vm_object *vm_object_shadow_create(struct vm_object *backing, uint64_t offset, size_t size);
+int vm_object_cow_prepare(struct vm_area_struct *vma, struct vm_area_struct *new_vma);

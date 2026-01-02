@@ -43,13 +43,14 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="deadly assumptions">
+    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="vmobjects">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/version.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/version.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/mm/mm_types.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/mm_types.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x64/mm/fault.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/fault.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/mm/vm_object.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/vm_object.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/khugepaged.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/khugepaged.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/memory.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/memory.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/sysintf/panic.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/sysintf/panic.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/log.c" beforeDir="false" afterPath="$PROJECT_DIR$/lib/log.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mm/vm_object.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vm_object.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mm/vma.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vma.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mm/vmalloc.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vmalloc.c" afterDir="false" />
     </list>
@@ -62,7 +63,7 @@
     <option name="formatViaClangd" value="false" />
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="687" />
+    <option name="cachedIndexableFilesCount" value="701" />
     <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
   </component>
   <component name="ExecutionTargetManager" SELECTED_TARGET="CMakeBuildProfile:Release" />
@@ -429,7 +430,8 @@
       <workItem from="1767336675953" duration="1859000" />
       <workItem from="1767338919271" duration="8000" />
       <workItem from="1767354071630" duration="1905000" />
-      <workItem from="1767356193878" duration="9000" />
+      <workItem from="1767356193878" duration="965000" />
+      <workItem from="1767357367510" duration="13000" />
     </task>
     <task id="LOCAL-00001" summary="Mutexes and FKX spec">
       <option name="closed" value="true" />
@@ -687,7 +689,15 @@
       <option name="project" value="LOCAL" />
       <updated>1767354085586</updated>
     </task>
-    <option name="localTasksCounter" value="33" />
+    <task id="LOCAL-00033" summary="vmobjects">
+      <option name="closed" value="true" />
+      <created>1767356351106</created>
+      <option name="number" value="00033" />
+      <option name="presentableId" value="LOCAL-00033" />
+      <option name="project" value="LOCAL" />
+      <updated>1767356351106</updated>
+    </task>
+    <option name="localTasksCounter" value="34" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -702,7 +712,6 @@
     <isAutomaticReloadCMake value="true" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Bit of README.md" />
     <MESSAGE value="logging again" />
     <MESSAGE value="sysintf" />
     <MESSAGE value="HPET driver separation" />
@@ -727,7 +736,8 @@
     <MESSAGE value="folio" />
     <MESSAGE value="formatting" />
     <MESSAGE value="deadly assumptions" />
-    <option name="LAST_COMMIT_MESSAGE" value="deadly assumptions" />
+    <MESSAGE value="vmobjects" />
+    <option name="LAST_COMMIT_MESSAGE" value="vmobjects" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

@@ -20,7 +20,7 @@
 
 #define MAX_PANIC_HANDLERS 8
 
-#include <string.h>
+#include <lib/string.h>
 #include <vsprintf.h>
 #include <kernel/classes.h>
 #include <kernel/fkx/fkx.h>

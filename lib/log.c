@@ -20,7 +20,7 @@
 
 #include <arch/x64/tsc.h>
 #include <compiler.h>
-#include <printk.h>
+#include <lib/printk.h>
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h>
 #include <kernel/spinlock.h>
