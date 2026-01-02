@@ -43,7 +43,7 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="uaccess and COW for fork()">
+    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="vmalloc_test() in init">
       <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -611,7 +611,15 @@
       <option name="project" value="LOCAL" />
       <updated>1767251843611</updated>
     </task>
-    <option name="localTasksCounter" value="25" />
+    <task id="LOCAL-00025" summary="vmalloc_test() in init">
+      <option name="closed" value="true" />
+      <created>1767315359957</created>
+      <option name="number" value="00025" />
+      <option name="presentableId" value="LOCAL-00025" />
+      <option name="project" value="LOCAL" />
+      <updated>1767315359957</updated>
+    </task>
+    <option name="localTasksCounter" value="26" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -650,7 +658,8 @@
     <MESSAGE value="minor bug on LA57" />
     <MESSAGE value="missing include" />
     <MESSAGE value="uaccess and COW for fork()" />
-    <option name="LAST_COMMIT_MESSAGE" value="uaccess and COW for fork()" />
+    <MESSAGE value="vmalloc_test() in init" />
+    <option name="LAST_COMMIT_MESSAGE" value="vmalloc_test() in init" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>
