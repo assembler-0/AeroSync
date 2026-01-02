@@ -20,6 +20,7 @@
 
 #include <mm/mm_types.h>
 #include <mm/vma.h>
+#include <mm/vm_object.h>
 #include <mm/page.h>
 #include <mm/slab.h>
 #include <arch/x64/mm/pmm.h>
@@ -86,7 +87,23 @@ int try_to_unmap_folio(struct folio *folio) {
     return 1;
   }
 
-  return 0;
+  /* Check if it's a VM Object (bit 0 NOT set) */
+  struct vm_object *obj = (struct vm_object *) folio->page.mapping;
+  irq_flags_t flags = spinlock_lock_irqsave(&obj->lock);
+  struct vm_area_struct *vma;
+
+  list_for_each_entry(vma, &obj->i_mmap, vm_shared) {
+    uint64_t address = vma->vm_start + ((folio->page.index - vma->vm_pgoff) << PAGE_SHIFT);
+
+    if (address < vma->vm_start || address >= vma->vm_end) continue;
+
+    if (vma->vm_mm->pml4) {
+      vmm_unmap_page((uint64_t) vma->vm_mm->pml4, address);
+    }
+  }
+
+  spinlock_unlock_irqrestore(&obj->lock, flags);
+  return 1;
 }
 
 /**
@@ -115,6 +132,25 @@ int folio_referenced(struct folio *folio) {
       }
     }
     spinlock_unlock_irqrestore(&av->lock, flags);
+  } else {
+    /* VM Object */
+    struct vm_object *obj = (struct vm_object *) folio->page.mapping;
+    irq_flags_t flags = spinlock_lock_irqsave(&obj->lock);
+    struct vm_area_struct *vma;
+
+    list_for_each_entry(vma, &obj->i_mmap, vm_shared) {
+      uint64_t address = vma->vm_start + ((folio->page.index - vma->vm_pgoff) << PAGE_SHIFT);
+
+      if (address < vma->vm_start || address >= vma->vm_end) continue;
+
+      if (vma->vm_mm->pml4) {
+        if (vmm_is_accessed((uint64_t) vma->vm_mm->pml4, address)) {
+          referenced++;
+          vmm_clear_accessed((uint64_t) vma->vm_mm->pml4, address);
+        }
+      }
+    }
+    spinlock_unlock_irqrestore(&obj->lock, flags);
   }
 
   return referenced;
@@ -268,62 +304,11 @@ void folio_add_anon_rmap(struct folio *folio, struct vm_area_struct *vma, uint64
   }
 }
 
-/**
- * Handle a page fault for anonymous memory.
- */
-static int anon_fault(struct vm_area_struct *vma, struct vm_fault *vmf) {
-  if (anon_vma_prepare(vma) < 0) return VM_FAULT_OOM;
-
-  /* THP: Try 2MB allocation if aligned and allowed */
-  if (!(vma->vm_flags & VM_NOHUGEPAGE) &&
-      (vmf->address & 0x1FFFFF) == 0 &&
-      (vma->vm_end - vma->vm_start) >= 0x200000) {
-    struct folio *huge_folio = alloc_pages(GFP_USER | ___GFP_ZERO, 9);
-    if (huge_folio) {
-      folio_add_anon_rmap(huge_folio, vma, vmf->address);
-      vmf->page = &huge_folio->page;
-      return 0;
-    }
-  }
-
-  uint64_t phys = pmm_alloc_page();
-  if (!phys) return VM_FAULT_OOM;
-
-  struct folio *folio = page_folio(phys_to_page(phys));
-  memset(folio_address(folio), 0, PAGE_SIZE);
-
-  folio_add_anon_rmap(folio, vma, vmf->address);
-  vmf->page = &folio->page;
-  return 0;
-}
-
-const struct vm_operations_struct anon_vm_ops = {
-  .fault = anon_fault,
-};
-
-/* --- Shared Memory Support (Proof of Concept) --- */
-
-struct shmem_obj {
-  struct page **pages;
-  size_t nr_pages;
-};
+/* --- Shared Memory Support --- */
 
 static int shmem_fault(struct vm_area_struct *vma, struct vm_fault *vmf) {
-  struct shmem_obj *obj = vma->vm_private_data;
-  if (!obj || vmf->pgoff >= obj->nr_pages) return VM_FAULT_SIGBUS;
-
-  struct page *page = obj->pages[vmf->pgoff];
-  if (!page) {
-    uint64_t phys = pmm_alloc_page();
-    if (!phys) return VM_FAULT_OOM;
-    page = phys_to_page(phys);
-    memset(pmm_phys_to_virt(phys), 0, PAGE_SIZE);
-    obj->pages[vmf->pgoff] = page;
-  }
-
-  get_page(page);
-  vmf->page = page;
-  return 0;
+  if (!vma->vm_obj) return VM_FAULT_SIGBUS;
+  return vma->vm_obj->ops->fault(vma->vm_obj, vma, vmf);
 }
 
 const struct vm_operations_struct shmem_vm_ops = {
@@ -338,14 +323,26 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
   vmf.address = address & PAGE_MASK;
   vmf.flags = flags;
   vmf.pgoff = (address - vma->vm_start) >> PAGE_SHIFT;
+  if (vma->vm_pgoff) vmf.pgoff += vma->vm_pgoff;
   vmf.page = NULL;
 
-  const struct vm_operations_struct *ops = vma->vm_ops;
-  if (!ops || !ops->fault) {
-    ops = &anon_vm_ops;
+  int ret = VM_FAULT_SIGSEGV;
+
+  /* 
+   * Priority 1: VM Object (Production-ready MM)
+   * The object owns the pages and handles its own backing store.
+   */
+  if (vma->vm_obj && vma->vm_obj->ops && vma->vm_obj->ops->fault) {
+    ret = vma->vm_obj->ops->fault(vma->vm_obj, vma, &vmf);
+  } 
+  /* 
+   * Priority 2: VMA Operations (Special/Legacy)
+   */
+  else if (vma->vm_ops && vma->vm_ops->fault) {
+    ret = vma->vm_ops->fault(vma, &vmf);
   }
 
-  int ret = ops->fault(vma, &vmf);
+  if (ret == VM_FAULT_COMPLETED) return 0;
   if (ret != 0) return ret;
 
   if (vmf.page) {

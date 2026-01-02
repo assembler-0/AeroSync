@@ -43,12 +43,15 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="formatting">
+    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="deadly assumptions">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/mm/tlb.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/tlb.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/mm/vmm.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/vmm.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/kernel/version.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/version.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/mm/mm_types.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/mm_types.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mm/khugepaged.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/khugepaged.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mm/memory.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/memory.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mm/vma.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vma.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mm/vmalloc.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vmalloc.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -425,7 +428,8 @@
       <workItem from="1767335180877" duration="1374000" />
       <workItem from="1767336675953" duration="1859000" />
       <workItem from="1767338919271" duration="8000" />
-      <workItem from="1767354071630" duration="8000" />
+      <workItem from="1767354071630" duration="1905000" />
+      <workItem from="1767356193878" duration="9000" />
     </task>
     <task id="LOCAL-00001" summary="Mutexes and FKX spec">
       <option name="closed" value="true" />
@@ -675,7 +679,15 @@
       <option name="project" value="LOCAL" />
       <updated>1767336889161</updated>
     </task>
-    <option name="localTasksCounter" value="32" />
+    <task id="LOCAL-00032" summary="deadly assumptions">
+      <option name="closed" value="true" />
+      <created>1767354085586</created>
+      <option name="number" value="00032" />
+      <option name="presentableId" value="LOCAL-00032" />
+      <option name="project" value="LOCAL" />
+      <updated>1767354085586</updated>
+    </task>
+    <option name="localTasksCounter" value="33" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -690,7 +702,6 @@
     <isAutomaticReloadCMake value="true" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="TSC early calibrate" />
     <MESSAGE value="Bit of README.md" />
     <MESSAGE value="logging again" />
     <MESSAGE value="sysintf" />
@@ -715,7 +726,8 @@
     <MESSAGE value="new features" />
     <MESSAGE value="folio" />
     <MESSAGE value="formatting" />
-    <option name="LAST_COMMIT_MESSAGE" value="formatting" />
+    <MESSAGE value="deadly assumptions" />
+    <option name="LAST_COMMIT_MESSAGE" value="deadly assumptions" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

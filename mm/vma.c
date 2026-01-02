@@ -34,6 +34,11 @@
 #include <mm/mmu_gather.h>
 #include <mm/slab.h>
 #include <mm/vma.h>
+#include <mm/vm_object.h>
+
+/* Forward declarations for RMAP (defined in memory.c) */
+struct folio;
+void folio_add_anon_rmap(struct folio *folio, struct vm_area_struct *vma, uint64_t address);
 
 /* ========================================================================
  * RB-Tree Augmentation (Gap Tracking)
@@ -274,6 +279,17 @@ struct mm_struct *mm_copy(struct mm_struct *old_mm) {
     new_vma->vm_ops = vma->vm_ops;
     new_vma->vm_private_data = vma->vm_private_data;
     new_vma->vm_pgoff = vma->vm_pgoff;
+    
+    /* 
+     * vm_object handling:
+     * vma_create already created a new anon object if RAM.
+     * BUT we want to share the object (COW/Shared).
+     */
+    if (new_vma->vm_obj) vm_object_put(new_vma->vm_obj);
+    new_vma->vm_obj = vma->vm_obj;
+    if (new_vma->vm_obj) {
+        vm_object_get(new_vma->vm_obj);
+    }
 
     if (vma_insert(new_mm, new_vma) != 0) {
       vma_free(new_vma);
@@ -355,6 +371,10 @@ void vma_free(struct vm_area_struct *vma) {
   if (!vma)
     return;
 
+  if (vma->vm_obj) {
+    vm_object_put(vma->vm_obj);
+  }
+
   /* Cleanup Chained RMAP entries */
   struct anon_vma_chain *avc, *tmp_avc;
   list_for_each_entry_safe(avc, tmp_avc, &vma->anon_vma_chain, same_vma) {
@@ -394,15 +414,20 @@ struct vm_area_struct *vma_create(uint64_t start, uint64_t end,
   vma->vm_flags = flags;
   vma->vm_mm = NULL;
   
-  if (flags & (VM_IO | VM_PFNMAP)) {
-      vma->vm_ops = NULL;
-  } else {
-      vma->vm_ops = &anon_vm_ops; /* Default to anonymous for RAM */
-  }
-
+  vma->vm_ops = NULL;
   vma->vm_private_data = NULL;
   vma->vm_pgoff = 0;
-  vma->vm_mapping = NULL;
+  vma->vm_obj = NULL;
+
+  /* 
+   * Unified Buffer Cache / vm_object integration:
+   * By default, every VMA mapping RAM should have an anonymous vm_object.
+   * IO mappings will get their device objects via viomap.
+   */
+  if (!(flags & (VM_IO | VM_PFNMAP))) {
+      vma->vm_obj = vm_object_anon_create(end - start);
+  }
+
   vma->anon_vma = NULL;
   INIT_LIST_HEAD(&vma->anon_vma_chain);
   INIT_LIST_HEAD(&vma->vm_shared);
@@ -455,6 +480,18 @@ static inline bool vma_can_merge(struct vm_area_struct *prev,
     return false;
   if (prev->vm_flags != next->vm_flags)
     return false;
+  if (prev->vm_ops != next->vm_ops)
+      return false;
+  
+  /* Verify VM Objects are compatible (same object, contiguous offsets) */
+  if (prev->vm_obj != next->vm_obj)
+      return false;
+  
+  if (prev->vm_obj) {
+      if (prev->vm_pgoff + vma_pages(prev) != next->vm_pgoff)
+          return false;
+  }
+
   return true;
 }
 
@@ -581,6 +618,13 @@ int vma_insert(struct mm_struct *mm, struct vm_area_struct *vma) {
   mm->vmacache_seqnum++;
   vma_cache_update(mm, vma);
 
+  /* Link to VM Object if present */
+  if (vma->vm_obj) {
+    spinlock_lock(&vma->vm_obj->lock);
+    list_add(&vma->vm_shared, &vma->vm_obj->i_mmap);
+    spinlock_unlock(&vma->vm_obj->lock);
+  }
+
   return 0;
 }
 
@@ -594,6 +638,13 @@ void vma_remove(struct mm_struct *mm, struct vm_area_struct *vma) {
 
   /* Remove from list */
   __vma_unlink_list(vma);
+
+  /* Unlink from VM Object if present */
+  if (vma->vm_obj) {
+    spinlock_lock(&vma->vm_obj->lock);
+    list_del(&vma->vm_shared);
+    spinlock_unlock(&vma->vm_obj->lock);
+  }
 
   mm->map_count--;
   mm->vmacache_seqnum++;
@@ -618,6 +669,20 @@ int vma_split(struct mm_struct *mm, struct vm_area_struct *vma, uint64_t addr) {
   new_vma = vma_create(addr, vma->vm_end, vma->vm_flags);
   if (!new_vma)
     return -1;
+
+  /* 
+   * Synchronization: 
+   * new_vma was created with a new anonymous object (by vma_create default).
+   * We MUST replace it with the original VMA's object to ensure they share pages.
+   */
+  if (new_vma->vm_obj) vm_object_put(new_vma->vm_obj);
+  
+  new_vma->vm_obj = vma->vm_obj;
+  if (new_vma->vm_obj) vm_object_get(new_vma->vm_obj);
+  
+  new_vma->vm_pgoff = vma->vm_pgoff + ((addr - vma->vm_start) >> PAGE_SHIFT);
+  new_vma->vm_ops = vma->vm_ops;
+  new_vma->vm_private_data = vma->vm_private_data;
 
   /*
    * To safely split, we remove the existing VMA from the tree,
@@ -888,9 +953,8 @@ int mm_populate_user_range(struct mm_struct *mm, uint64_t start, size_t size, ui
   uint64_t end = (start + size + PAGE_SIZE - 1) & PAGE_MASK;
   start &= PAGE_MASK;
 
-  if (vma_map_range(mm, start, end, flags | VM_USER) != 0) {
-    // Range might already be partially mapped by another segment, that's okay
-  }
+  /* Ensure VMAs exist */
+  vma_map_range(mm, start, end, flags | VM_USER);
 
   uint64_t pml4_phys = (uint64_t) mm->pml4;
   uint64_t pte_flags = PTE_PRESENT | PTE_USER;
@@ -898,17 +962,36 @@ int mm_populate_user_range(struct mm_struct *mm, uint64_t start, size_t size, ui
   if (!(flags & VM_EXEC)) pte_flags |= PTE_NX;
 
   for (uint64_t addr = start; addr < end; addr += PAGE_SIZE) {
-    uint64_t phys = vmm_virt_to_phys(pml4_phys, addr);
+    struct vm_area_struct *vma = vma_find(mm, addr);
+    if (!vma || !vma->vm_obj) return -EINVAL;
 
-    if (!phys) {
+    uint64_t pgoff = (addr - vma->vm_start) >> PAGE_SHIFT;
+    if (vma->vm_pgoff) pgoff += vma->vm_pgoff;
+
+    spinlock_lock(&vma->vm_obj->lock);
+    struct page *page = vm_object_find_page(vma->vm_obj, pgoff);
+    uint64_t phys;
+
+    if (!page) {
       phys = pmm_alloc_page();
-      if (!phys) return -ENOMEM;
-      vmm_map_page(pml4_phys, addr, phys, pte_flags);
-
-      // Zero initialize the new page
-      void *virt = pmm_phys_to_virt(phys);
-      memset(virt, 0, PAGE_SIZE);
+      if (!phys) {
+        spinlock_unlock(&vma->vm_obj->lock);
+        return -ENOMEM;
+      }
+      page = phys_to_page(phys);
+      memset(pmm_phys_to_virt(phys), 0, PAGE_SIZE);
+      vm_object_add_page(vma->vm_obj, pgoff, page);
+      
+      /* If anonymous, setup RMAP */
+      if (vma->vm_obj->type == VM_OBJECT_ANON && vma->anon_vma) {
+          folio_add_anon_rmap(page_folio(page), vma, addr);
+      }
+    } else {
+      phys = PFN_TO_PHYS(page_to_pfn(page));
     }
+    spinlock_unlock(&vma->vm_obj->lock);
+
+    vmm_map_page(pml4_phys, addr, phys, pte_flags);
 
     // If we have data to copy into this page
     size_t offset = addr - start;

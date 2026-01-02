@@ -20,6 +20,7 @@
 #include <mm/vmalloc.h>
 #include <mm/mm_types.h>
 #include <mm/vma.h>
+#include <mm/vm_object.h>
 #include <arch/x64/mm/layout.h>
 #include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/vmm.h>
@@ -354,6 +355,14 @@ void *viomap(uint64_t phys_addr, size_t size) {
     return NULL;
   }
 
+  /* Create Device Object for UBC integration */
+  vma->vm_obj = vm_object_device_create(phys_start, page_aligned_size);
+  if (!vma->vm_obj) {
+    vma_free(vma);
+    up_write(&init_mm.mmap_lock);
+    return NULL;
+  }
+
   if (vma_insert(&init_mm, vma) < 0) {
     vma_free(vma);
     up_write(&init_mm.mmap_lock);
@@ -398,6 +407,13 @@ void *viomap_wc(uint64_t phys_addr, size_t size) {
   struct vm_area_struct *vma = vma_create(virt_start, virt_start + reserve_size,
                                           VM_READ | VM_WRITE | VM_IO | VM_CACHE_WC);
   if (!vma) {
+    up_write(&init_mm.mmap_lock);
+    return NULL;
+  }
+
+  vma->vm_obj = vm_object_device_create(phys_start, page_aligned_size);
+  if (!vma->vm_obj) {
+    vma_free(vma);
     up_write(&init_mm.mmap_lock);
     return NULL;
   }

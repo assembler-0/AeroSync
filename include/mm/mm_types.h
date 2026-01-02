@@ -8,24 +8,13 @@
 
 struct vm_area_struct;
 struct vm_fault;
+struct vm_object;
 
 /* VMA Flags */
 #define VM_READ 0x00000001
 #define VM_WRITE 0x00000002
 #define VM_EXEC 0x00000004
 #define VM_SHARED 0x00000008
-
-/*
- * address_space
- * The "Page Cache" anchor. Connects an object (file/inode) to its physical pages.
- */
-struct address_space {
-  void *host;              /* Owner (e.g., struct inode) */
-  struct rb_root page_tree; /* Radix tree/Rbtree of all pages in this object */
-  spinlock_t tree_lock;
-  struct list_head i_mmap; /* List of all VMAs mapping this object */
-  const struct address_space_operations *a_ops;
-};
 
 /*
  * anon_vma_chain
@@ -103,8 +92,8 @@ struct __aligned(sizeof(long)) vm_area_struct {
   struct list_head anon_vma_chain; /* List of struct anon_vma_chain */
 
   /* Object Mapping (File/Shared) */
-  struct address_space *vm_mapping;
-  struct list_head vm_shared; /* Node in mapping->i_mmap */
+  struct vm_object *vm_obj;
+  struct list_head vm_shared; /* Node in obj->i_mmap */
 
   /* TODO: Backing store/file pointers will go here */
   void *vm_private_data;

@@ -29,6 +29,7 @@
 #include <lib/printk.h>
 #include <kernel/classes.h>
 #include <arch/x64/tsc.h>
+#include <mm/vm_object.h>
 
 #define SCAN_BATCH_VMAS 16
 
@@ -41,7 +42,7 @@ static void khugepaged_scan_mm(struct mm_struct *mm) {
     if (scanned++ >= SCAN_BATCH_VMAS) break;
 
     /* Only anonymous VMAs that allow huge pages */
-    if (vma->vm_ops != &anon_vm_ops) continue;
+    if (!vma->vm_obj || vma->vm_obj->type != VM_OBJECT_ANON) continue;
     if (vma->vm_flags & (VM_NOHUGEPAGE | VM_IO | VM_PFNMAP)) continue;
 
     /* Align range to 2MB */

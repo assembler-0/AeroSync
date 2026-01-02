@@ -29,6 +29,7 @@
 #include <arch/x64/percpu.h>
 #include <arch/x64/smp.h>
 #include <compiler.h>
+#include <string.h>
 #include <crypto/crc32.h>
 #include <drivers/acpi/power.h>
 #include <drivers/qemu/debugcon/debugcon.h>
