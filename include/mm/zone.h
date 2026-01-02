@@ -51,6 +51,10 @@ struct zone {
   unsigned long spanned_pages;
   unsigned long present_pages;
 
+  /* Watermarks */
+  unsigned long watermark[3]; /* MIN, LOW, HIGH */
+  unsigned long nr_free_pages;
+
   const char *name;
 
   /* Stats */

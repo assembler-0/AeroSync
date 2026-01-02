@@ -78,7 +78,7 @@ void printk_auto_configure(void *payload, const int reinit) {
 }
 
 void printk_init_async(void) {
-  printk(KERN_CLASS "Enabling asynchronous printk...\n");
+  printk(KERN_CLASS "Starting asynchronous printk...\n");
   log_init_async();
 }
 

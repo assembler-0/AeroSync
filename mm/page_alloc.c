@@ -110,6 +110,7 @@ static struct page *__rmqueue(struct zone *zone, unsigned int order) {
 
     ClearPageBuddy(page);
     area->nr_free--;
+    zone->nr_free_pages -= (1 << order);
 
     expand(zone, page, order, current_order, area);
     return page;
@@ -154,7 +155,10 @@ static void __free_one_page(struct page *page, unsigned long pfn,
   page->order = order;
   list_add(&page->list, &zone->free_area[order].free_list[0]);
   zone->free_area[order].nr_free++;
+  zone->nr_free_pages += (1 << order);
 }
+
+extern void wakeup_kswapd(struct zone *zone);
 
 /*
  * Core Allocator
@@ -165,10 +169,6 @@ struct page *alloc_pages(gfp_t gfp_mask, unsigned int order) {
   int z_idx;
   unsigned long flags;
 
-  // Iterate zones based on GFP.
-  // Simple fallback: Normal -> DMA32 -> DMA
-  // If GFP_DMA is set, start at DMA.
-
   int start_zone = ZONE_NORMAL;
   if (gfp_mask & GFP_DMA) start_zone = ZONE_DMA;
   else if (gfp_mask & GFP_DMA32) start_zone = ZONE_DMA32;
@@ -177,6 +177,11 @@ struct page *alloc_pages(gfp_t gfp_mask, unsigned int order) {
     z = &managed_zones[z_idx];
 
     if (!z->present_pages) continue;
+
+    /* Check watermarks */
+    if (z->nr_free_pages < z->watermark[WMARK_LOW]) {
+        wakeup_kswapd(z);
+    }
 
     flags = spinlock_lock_irqsave(&z->lock);
     page = __rmqueue(z, order);
@@ -201,7 +206,7 @@ struct page *alloc_pages(gfp_t gfp_mask, unsigned int order) {
 }
 
 void put_page(struct page *page) {
-  if (!page) return;
+  if (!page || PageReserved(page)) return;
 
   if (atomic_dec_and_test(&page->_refcount)) {
     __free_pages(page, page->order);
@@ -243,6 +248,7 @@ void free_area_init(void) {
     z->present_pages = 0;
     z->spanned_pages = 0;
     z->zone_start_pfn = 0;
+    z->nr_free_pages = 0;
 
     for (int order = 0; order < MAX_ORDER; order++) {
       INIT_LIST_HEAD(&z->free_area[order].free_list[0]);

@@ -310,13 +310,14 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   printk_init_async();
 
+  lru_init();
+  kswapd_init();
+
   // Start kernel_init thread
   struct task_struct *init_task = kthread_create(kernel_init, NULL, "kernel_init");
   if (!init_task)
     panic(KERN_CLASS "Failed to create kernel_init thread");
   kthread_run(init_task);
-
-  vmalloc(5 * 1024 * 1024);
 
   cpu_sti();
 

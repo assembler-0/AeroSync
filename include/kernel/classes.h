@@ -9,139 +9,138 @@
  *  SYSTEM & ARCHITECTURE (Low Level)
  * ========================================================================= */
 ///@section Boot & Initialization
-#define BOOT_CLASS "[SYS::BOOT] " // Bootloader info, multiboot parsing
-#define ACPI_CLASS "[SYS::ACPI] " // ACPI table parsing (RSDP, MADT, FADT)
-#define ACPI_BUTTON_CLASS "[ACPI::BTN] " // ACPI Power/Sleep button handling
-#define HAL_CLASS "[SYS::HAL] "   // Hardware Abstraction Layer generic
+#define BOOT_CLASS "[sys::boot] " // Bootloader info, multiboot parsing
+#define ACPI_CLASS "[sys::acpi] " // ACPI table parsing (RSDP, MADT, FADT)
+#define ACPI_BUTTON_CLASS "[sys::acpi::btn] " // ACPI Power/Sleep button handling
+#define POWER_CLASS "[sys::acpi::power] "
+#define HAL_CLASS "[sys::hal] "   // Hardware Abstraction Layer generic
 
 ///@section CPU & Interrupts
-#define GDT_CLASS "[SYS::GDT] "   // Global Descriptor Table
-#define IDT_CLASS "[SYS::IDT] "   // Interrupt Descriptor Table
-#define ISR_CLASS "[SYS::ISR] "   // Interrupt Service Routines
-#define IRQ_CLASS "[SYS::IRQ] "   // Hardware Interrupt Requests
-#define APIC_CLASS "[SYS::APIC] " // IOAPIC / LAPIC configuration
-#define PIC_CLASS "[SYS::PIC] "   // Legacy PIC configuration
-#define PIT_CLASS "[SYS::PIT] "   // Programmable Interval Timer
-#define IC_CLASS "[SYS::IC] "     // Interrupt Controller (APIC/PIC switching)
-#define SMP_CLASS "[SYS::SMP] " // Symmetric Multi-Processing (Multicore startup)
-#define TSC_CLASS "[SYS::TSC] " // Time Stamp Counter / CPU timing
-#define CPU_CLASS "[SYS::CPU] " // CPU features, MSRs, CPUID
-#define FPU_CLASS "[SYS::FPU] " // Floating Point / SSE / AVX contexts
-#define HPET_CLASS "[SYS::HPET] " // High Precision Event Timer
-#define TIME_CLASS "[SYS::TIME] " // Unified timer subsystem
-#define PERCPU_CLASS "[SYS::PCPU] " // Per-CPU data
+#define GDT_CLASS "[sys::gdt] "   // Global Descriptor Table
+#define IDT_CLASS "[sys::irq::idt] "   // Interrupt Descriptor Table
+#define ISR_CLASS "[sys::irq::isr] "   // Interrupt Service Routines
+#define IRQ_CLASS "[sys::irq] "   // Hardware Interrupt Requests
+#define APIC_CLASS "[sys::ic::apic] " // IOAPIC / LAPIC configuration
+#define PIC_CLASS "[sys::ic::PIC] "   // Legacy PIC configuration
+#define PIT_CLASS "[sys::timer::PIT] "   // Programmable Interval Timer
+#define IC_CLASS "[sys::sysintf::ic] "     // Interrupt Controller (APIC/PIC switching)
+#define SMP_CLASS "[sys::cpu::smp] " // Symmetric Multi-Processing (Multicore startup)
+#define TSC_CLASS "[sys::timer::tsc] " // Time Stamp Counter / CPU timing
+#define CPU_CLASS "[sys::cpu] " // CPU features, MSRs, CPUID
+#define FPU_CLASS "[sys::cpu::fpu] " // Floating Point / SSE / AVX contexts
+#define HPET_CLASS "[sys::timer::hpet] " // High Precision Event Timer
+#define TIME_CLASS "[sys::sysintf::time] " // Unified timer subsystem
+#define PERCPU_CLASS "[sys::cpu::percpu] " // Per-CPU data
 
 ///@section Core Kernel
-#define KERN_CLASS "[SYS::CORE] "         // Generic kernel core messages
-#define PANIC_CLASS "[SYS::PANIC] "       // Kernel panics (Fatal errors)
-#define FAULT_CLASS "[SYS::FAULT] "
-#define SYSCALL_CLASS "[SYS::CALL] "      // System call entry/exit tracing
-#define TIME_CLASS "[SYS::TIME] "         // RTC, PIT, HPET, System Clock
-#define ATOMIC_CLASS "[SYS::ATOMIC] "     // Atomic operations
-#define SPINLOCK_CLASS "[SYS::SPINLOCK] " // Spinlock operations
-#define FW_CLASS "[SYS::FW] "           // Firmware interfaces (BIOS/UEFI)
-#define FKX_CLASS "[SYS::FKX] "         // FKX Module Loader
+#define KERN_CLASS "[sys::core] "         // Generic kernel core messages
+#define PANIC_CLASS "[SYS::core::panic] "       // Kernel panics (Fatal errors)
+#define FAULT_CLASS "[sys::core::panic::fault] "
+#define SYSCALL_CLASS "[sys::core::syscall] "      // System call entry/exit tracing
+#define ATOMIC_CLASS "[sys::core::atomic] "     // Atomic operations
+#define FW_CLASS "[sys::core::fw] "           // Firmware interfaces (BIOS/UEFI)
+#define FKX_CLASS "[sys::sysintf::fkx] "         // FKX Module Loader
+#define SYNC_CLASS "[sys::core::sync] " // Synchronization (Mutex, Semaphores, Spinlocks)
 
 ///@section Crypto
-#define RNG_CLASS "[CRPT::RNG] " // Random Number Generator
-#define CRC_CLASS "[CRPT::CRC] " // CRC32
-#define SHA_CLASS "[CRPT::SHA] " // SHA*
+#define RNG_CLASS "[crypto::rng] " // Random Number Generator
+#define CRC_CLASS "[crypto::crc] " // CRC32
+#define SHA_CLASS "[crypto::sha] " // SHA*
 
 /* =========================================================================
  *  SANITIZER
  * ========================================================================= */
-#define UBSAN_CLASS "[SAN::UBSAN] " // Undefined Behavior Sanitizer
-#define ASAN_CLASS "[SAN::ASAN] "   // Address Sanitizer
-#define TSAN_CLASS "[SAN::TSAN] "   // Thread Sanitizer
-#define MSAN_CLASS "[SAN::MSAN] "   // Memory Sanitizer
-#define LSAN_CLASS "[SAN::LSAN] "   // Leak Sanitizer
+#define UBSAN_CLASS "[sys::san::ubsan] " // Undefined Behavior Sanitizer
+#define ASAN_CLASS "[sys::san:asan] "   // Address Sanitizer
+#define TSAN_CLASS "[sys::san::tsan] "   // Thread Sanitizer
+#define MSAN_CLASS "[sys::san::msan] "   // Memory Sanitizer
+#define LSAN_CLASS "[sys::san::lsan] "   // Leak Sanitizer
 
 /* =========================================================================
  *  MEMORY MANAGEMENT
  * ========================================================================= */
 ///@section Physical & Virtual Memory
-#define PMM_CLASS "[MM::PMM] "   // Physical Memory Manager (Bitmap/Buddy)
-#define VMM_CLASS "[MM::VMM] "   // Virtual Memory Manager (Paging, PDE/PTE)
-#define PAGE_CLASS "[MM::PAGE] " // Page Fault Handler
-#define SWAP_CLASS "[MM::SWAP] " // Swap space / Paging to disk
-#define MMIO_CLASS "[MM::MMIO] " // MMIO Virtual Address Allocator
-#define VMA_CLASS "[MM::VMA] " // Virtual Memory Area
+#define PMM_CLASS "[sys::mm::pmm] "   // Physical Memory Manager (Bitmap/Buddy)
+#define VMM_CLASS "[sys::mm::vmm] "   // Virtual Memory Manager (Paging, PDE/PTE)
+#define SWAP_CLASS "[sys::mm::swap] " // Swap space / Paging to disk
+#define MMIO_CLASS "[sys::mm::mmio] " // MMIO Virtual Address Allocator
+#define VMA_CLASS "[sys::mm::vma] " // Virtual Memory Area
+#define FOLIO_CLASS "[sys::mm::folio] " // Linux struct folio
 
 ///@section Heaps & Allocators
-#define SLAB_CLASS "[MM::SLAB] " // Slab allocator specific
-#define SHM_CLASS "[MM::SHM] "   // Shared Memory (IPC)
+#define SLAB_CLASS "[sys::mm::slab] " // Slab allocator specific
+#define SHM_CLASS "[sys::mm::shm] "   // Shared Memory (IPC)
 
 ///@section Stack protection
-#define STACK_CLASS "[MM::STACK] " // Stack overflow protection
+#define STACK_CLASS "[sys::mm::stack] " // Stack overflow protection
 
 /* =========================================================================
  *  PROCESS MANAGEMENT & SCHEDULING
  * ========================================================================= */
-#define SCHED_CLASS                                                            \
-  "[PROC::SCHED] " // Scheduler (Context switching, Picking tasks)
-#define TASK_CLASS "[PROC::TASK] "   // Task creation/destruction logic
-#define THREAD_CLASS "[PROC::THRD] " // Thread specific logic
-#define ELF_CLASS "[PROC::ELF] "     // ELF Loader / Binary parser
-#define IPC_CLASS                                                              \
-  "[PROC::IPC] " // Inter-Process Communication (Pipes, MsgQueues)
-#define SYNC_CLASS                                                             \
-  "[PROC::SYNC] " // Synchronization (Mutex, Semaphores, Spinlocks)
-#define SIGNAL_CLASS "[PROC::SIG] " // POSIX Signals delivery
+#define SCHED_CLASS "[sys::sched] " // Scheduler (Context switching, Picking tasks)
+#define TASK_CLASS "[sys::sched::task] "   // Task creation/destruction logic
+#define ELF_CLASS "[sys::sched::elf] "     // ELF Loader / Binary parser
+#define IPC_CLASS "[sys::sched::ipc] " // Inter-Process Communication (Pipes, MsgQueues)
+#define SIGNAL_CLASS "[sys::sched::signal] " // POSIX Signals delivery
 
 /* =========================================================================
  *  DEVICE DRIVERS
  * ========================================================================= */
 ///@section Bus Drivers
-#define PCI_CLASS "[S-SYS::PCI] " /// @note PCI IS NOT A DRIVER! ITS MORE OF A SUBSYSTEM!
-#define USB_CLASS "[DRV::USB] " // USB Stack (UHCI/EHCI/XHCI)
+#define PCI_CLASS "[sys::sub::pci] " /// @note PCI IS NOT A DRIVER! ITS MORE OF A SUBSYSTEM!
+#define USB_CLASS "[sys::driver::usb] " // USB Stack (UHCI/EHCI/XHCI)
 
 ///@section Storage Drivers
-#define ATA_CLASS "[DRV::ATA] "      // IDE/PATA support
-#define AHCI_CLASS "[DRV::AHCI] "    // SATA support
-#define NVME_CLASS "[DRV::NVME] "    // NVMe SSD support
-#define RAMDISK_CLASS "[DRV::RAMD] " // Initrd / Ramdisk
+#define ATA_CLASS "[sys::driver::storage::ata] "      // IDE/PATA support
+#define AHCI_CLASS "[sys::driver::storage::ahci] "    // SATA support
+#define NVME_CLASS "[sys::driver::storage::nvme] "    // NVMe SSD support
+#define RAMDISK_CLASS "[sys::driver::storage::ramdisk] " // Initrd / Ramdisk
+#define VIRTIO_BLK_CLASS "[sys::driver::storage::virtio] "
 
 ///@section Human Interface Devices
-#define KBD_CLASS "[DRV::KBD] "     // PS/2 or USB Keyboard
-#define MOUSE_CLASS "[DRV::MOUSE] " // PS/2 or USB Mouse
-#define HID_CLASS "[DRV::HID] "     // Generic HID
+#define KBD_CLASS "[sys::driver::hid::keyboard] "     // PS/2 or USB Keyboard
+#define MOUSE_CLASS "[sys::driver::hid::mouse] " // PS/2 or USB Mouse
+#define HID_CLASS "[sys::driver::hid] "     // Generic HID
 
 ///@section Display & Graphics
-#define VIDEO_CLASS "[DRV::VID] " // VGA / VESA / GOP / Framebuffer
-#define GPU_CLASS "[DRV::GPU] "   // Hardware Acceleration
-#define TTY_CLASS "[DRV::TTY] "   // Terminal / Console output
+#define VIDEO_CLASS "[sys::driver::video] " // VGA / VESA / GOP / Framebuffer
+#define GPU_CLASS "[sys::driver::video::gpu] "   // Hardware Acceleration
+#define TTY_CLASS "[sys::driver::video::tty] "   // Terminal / Console output
+#define PTY_CLASS "[sys::driver::video::pty] "   // Terminal / Console output
 
 ///@section Audio & Misc
-#define AUDIO_CLASS "[DRV::AUD] "  // AC97 / Intel HDA
-#define SERIAL_CLASS "[DRV::COM] " // UART / Serial Port
+#define AUDIO_CLASS "[sys::driver::audio] "  // AC97 / Intel HDA
+#define SERIAL_CLASS "[sys::driver::misc::uart] " // UART / Serial Port
 
 /* =========================================================================
  *  FILESYSTEMS (VFS)
  * ========================================================================= */
-#define VFS_CLASS "[FS::VFS] "   // Virtual File System (Mounts, nodes)
-#define FAT_CLASS "[FS::FAT] "   // FAT12/16/32 Driver
-#define EXT_CLASS "[FS::EXT] "   // EXT2/3/4 Driver
-#define ISO_CLASS "[FS::ISO] "   // ISO9660 (CD-ROM)
-#define DEVFS_CLASS "[FS::DEV] " // /dev filesystem
-#define TMPFS_CLASS "[FS::TMP] "
-#define NTFS_CLASS "[FS::NTFS] "
-#define USTAR_CLASS "[FS::USTAR] "
-#define INITRD_CLASS "[FS::INITRD] "
+#define VFS_CLASS "[sys::fs::vfs] "   // Virtual File System (Mounts, nodes)
+#define FAT_CLASS "[sys::fs::fat] "   // FAT12/16/32 Driver
+#define EXT_CLASS "[sys::fs::ext] "   // EXT2/3/4 Driver
+#define ISO_CLASS "[sys::fs::iso] "   // ISO9660 (CD-ROM)
+#define DEVFS_CLASS "[sys::fs::dev] " // /dev filesystem
+#define TMPFS_CLASS "[sys::fs::tmp] "
+#define NTFS_CLASS "[sys::fs::ntfs] "
+#define USTAR_CLASS "[sys::fs::ustar] "
+#define INITRD_CLASS "[sys::fs::initrd] "
+#define NEWC_CLASS "[sys::fs::newc] "
+#define CPIO_CLASS "[sys::fs::cpio] "
 
 /* =========================================================================
  *  NETWORKING STACK
  * ========================================================================= */
-#define NET_CLASS "[NET::CORE] " // Generic Network Stack
-#define NIC_CLASS "[NET::NIC] " // Network Interface Card Driver (e1000, rtl8139)
-#define ETH_CLASS "[NET::ETH] "   // Ethernet Layer (L2)
-#define IP_CLASS "[NET::IP] "   // IPv4/IPv6 Layer (L3)
-#define ARP_CLASS "[NET::ARP] "   // ARP Protocol
-#define TCP_CLASS "[NET::TCP] "   // TCP Protocol (L4)
-#define UDP_CLASS "[NET::UDP] "   // UDP Protocol (L4)
-#define DHCP_CLASS "[NET::DHCP] " // DHCP Client
+#define NET_CLASS "[sys::net] " // Generic Network Stack
+#define NIC_CLASS "[sys::net::driver::nic] " // Network Interface Card Driver (e1000, rtl8139)
+#define ETH_CLASS "[sys::net::eth] "   // Ethernet Layer (L2)
+#define IP_CLASS "[sys::net::ip] "   // IPv4/IPv6 Layer (L3)
+#define ARP_CLASS "[sys::net::arp] "   // ARP Protocol
+#define TCP_CLASS "[sys::net::tcp] "   // TCP Protocol (L4)
+#define UDP_CLASS "[sys::net::udp] "   // UDP Protocol (L4)
+#define DHCP_CLASS "[sys::net::dhcp] " // DHCP Client
 
 /* =========================================================================
  *  UTILITIES & LIBRARIES
  * ========================================================================= */
-#define TEST_CLASS "[SYS::TEST] " // Unit tests running inside kernel
-#define DEBUG_CLASS "[SYS::DEBUG] "
+#define TEST_CLASS "[misc::test] " // Unit tests running inside kernel
+#define DEBUG_CLASS "[misc::debug] "

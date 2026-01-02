@@ -244,6 +244,20 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
 
   pmm_initialized = true;
 
+  // Calculate watermarks for each zone
+  for (int i = 0; i < MAX_NR_ZONES; i++) {
+      struct zone *z = &managed_zones[i];
+      if (z->present_pages > 0) {
+          z->watermark[WMARK_MIN] = z->present_pages / 100;      // 1%
+          z->watermark[WMARK_LOW] = z->present_pages * 3 / 100;  // 3%
+          z->watermark[WMARK_HIGH] = z->present_pages * 5 / 100; // 5%
+          
+          printk(KERN_DEBUG PMM_CLASS "Zone %s: %lu pages, watermarks [MIN:%lu LOW:%lu HIGH:%lu]\n",
+                 z->name, z->present_pages, z->watermark[WMARK_MIN], 
+                 z->watermark[WMARK_LOW], z->watermark[WMARK_HIGH]);
+      }
+  }
+
   // Stats
   pmm_stats.total_pages = total_usable_bytes / PAGE_SIZE; // Approximate
   pmm_stats.highest_address = highest_addr;

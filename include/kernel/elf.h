@@ -1,5 +1,4 @@
-#ifndef KERNEL_ELF_H
-#define KERNEL_ELF_H
+#pragma once
 
 #include <kernel/types.h>
 
@@ -114,7 +113,7 @@ typedef struct {
 #define SHT_REL      9
 #define SHT_SHLIB    10
 #define SHT_DYNSYM   11
-\
+
 /* sh_flags */
 #define SHF_WRITE     (1 << 0)
 #define SHF_ALLOC     (1 << 1)
@@ -166,5 +165,3 @@ typedef struct {
 #define R_X86_64_PC16      13
 #define R_X86_64_8         14
 #define R_X86_64_PC8       15
-
-#endif // KERNEL_ELF_H

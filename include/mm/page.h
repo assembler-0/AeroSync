@@ -61,6 +61,16 @@ struct page {
   spinlock_t ptl;
 };
 
+/**
+ * struct folio - Represents a contiguous set of pages managed as a unit.
+ *
+ * A folio is guaranteed to be a "head" page. It carries the mapping,
+ * index, and reference count for the entire block.
+ */
+struct folio {
+    struct page page;
+};
+
 /* Helper macros */
 #define PageReserved(page)   ((page)->flags & PG_reserved)
 #define SetPageReserved(page) ((page)->flags |= PG_reserved)
@@ -85,4 +95,38 @@ void put_page(struct page *page);
 
 static inline int page_ref_count(struct page *page) {
   return atomic_read(&page->_refcount);
+}
+
+/* Folio-based reference counting */
+static inline void folio_get(struct folio *folio) {
+    atomic_inc(&folio->page._refcount);
+}
+
+static inline void folio_put(struct folio *folio) {
+    put_page(&folio->page);
+}
+
+static inline int folio_ref_count(struct folio *folio) {
+    return atomic_read(&folio->page._refcount);
+}
+
+static inline struct folio *page_folio(struct page *page) {
+    return (struct folio *)page;
+}
+
+static inline struct page *folio_page(struct folio *folio, size_t n) {
+    return &folio->page + n;
+}
+
+extern uint64_t g_hhdm_offset;
+extern struct page *mem_map;
+
+static inline void *page_address(struct page *page) {
+    uint64_t pfn = (uint64_t)(page - mem_map);
+    uint64_t phys = pfn << 12; // PAGE_SHIFT 12
+    return (void *)(phys + g_hhdm_offset);
+}
+
+static inline void *folio_address(struct folio *folio) {
+    return page_address(&folio->page);
 }

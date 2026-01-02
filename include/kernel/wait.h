@@ -46,19 +46,41 @@ typedef struct __wait_queue wait_queue_t;
 }
 
 /* Wait condition macros */
-#define wait_event(wq, condition) \
-do { \
-    if (!(condition)) \
-        __wait_event(wq, condition); \
-} while (0)
+#define wait_event(wq, condition)                                              \
+  do {                                                                         \
+    if (condition)                                                             \
+      break;                                                                   \
+    wait_queue_t __wait;                                                       \
+    init_wait(&__wait);                                                        \
+    for (;;) {                                                                 \
+      prepare_to_wait(wq, &__wait, TASK_UNINTERRUPTIBLE);                      \
+      if (condition)                                                           \
+        break;                                                                 \
+      schedule();                                                              \
+    }                                                                          \
+    finish_wait(wq, &__wait);                                                  \
+  } while (0)
 
-#define wait_event_interruptible(wq, condition) \
-({ \
-    int __ret = 0; \
-    if (!(condition)) \
-        __ret = __wait_event_interruptible(wq, condition); \
-    __ret; \
-})
+#define wait_event_interruptible(wq, condition)                                \
+  ({                                                                           \
+    int __ret = 0;                                                             \
+    if (!(condition)) {                                                        \
+      wait_queue_t __wait;                                                     \
+      init_wait(&__wait);                                                      \
+      for (;;) {                                                               \
+        prepare_to_wait(wq, &__wait, TASK_INTERRUPTIBLE);                      \
+        if (condition)                                                         \
+          break;                                                               \
+        schedule();                                                            \
+        if (get_current()->state == TASK_RUNNING && !(condition)) {            \
+          __ret = -1;                                                          \
+          break;                                                               \
+        }                                                                      \
+      }                                                                        \
+      finish_wait(wq, &__wait);                                                \
+    }                                                                          \
+    __ret;                                                                     \
+  })
 
 #define wait_event_timeout(wq, condition, timeout) \
 ({ \
@@ -93,12 +115,6 @@ int default_wake_function(wait_queue_head_t *wq_head, struct __wait_queue *wait,
 /* Prepare to sleep functions */
 long prepare_to_wait(wait_queue_head_t *wq_head, wait_queue_t *wait, int state);
 void finish_wait(wait_queue_head_t *wq_head, wait_queue_t *wait);
-
-/* Sleep functions */
-long __wait_event(wait_queue_head_t *wq, int condition);
-long __wait_event_interruptible(wait_queue_head_t *wq, int condition);
-long __wait_event_timeout(wait_queue_head_t *wq, int condition, long timeout);
-long __wait_event_interruptible_timeout(wait_queue_head_t *wq, int condition, long timeout);
 
 /* Wake up functions */
 void wake_up(wait_queue_head_t *wq_head);

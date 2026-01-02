@@ -45,6 +45,7 @@
 #define VM_FAULT_SIGSEGV 0x0004
 #define VM_FAULT_MAJOR  0x0008
 #define VM_FAULT_RETRY  0x0010
+#define VM_FAULT_COMPLETED 0x0020
 
 /* MM Operations */
 void mm_init(struct mm_struct *mm);
@@ -110,6 +111,15 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
 void anon_vma_free(struct anon_vma *av);
 int anon_vma_prepare(struct vm_area_struct *vma);
 int anon_vma_chain_link(struct vm_area_struct *vma, struct anon_vma *av);
+
+/* Reclamation */
+void lru_init(void);
+void kswapd_init(void);
+
+struct folio;
+int try_to_unmap_folio(struct folio *folio);
+int folio_referenced(struct folio *folio);
+int folio_reclaim(struct folio *folio);
 
 /* Validation */
 int vma_verify_tree(struct mm_struct *mm);
