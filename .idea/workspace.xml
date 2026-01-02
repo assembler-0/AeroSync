@@ -44,21 +44,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="uaccess and COW for fork()">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/mm/fault.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/fault.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/mm/pmm.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/pmm.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x64/mm/vmm.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/vmm.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/arch/x64/mm/pmm.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/mm/pmm.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/arch/x64/mm/vmm.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x64/mm/vmm.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/sched/sched.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/sched/sched.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/version.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/version.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/mm/mm_types.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/mm_types.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/mm/page.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/page.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/cmdline.c" beforeDir="false" afterPath="$PROJECT_DIR$/lib/cmdline.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/page_alloc.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/page_alloc.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/slab.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/slab.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/vma.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vma.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

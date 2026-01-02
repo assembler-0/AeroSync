@@ -48,6 +48,7 @@
 #include <limine/limine.h>
 #include <mm/slab.h>
 #include <mm/vma.h>
+#include <mm/vmalloc.h>
 #include <uacpi/uacpi.h>
 
 // Set Limine Request Start Marker
@@ -231,11 +232,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   vmm_init();
   slab_init();
 
-  pmm_test();
-  vmm_test();
-  slab_test();
-  vma_test();
-
   setup_per_cpu_areas();
   smp_prepare_boot_cpu();
   pmm_init_cpu();
@@ -243,6 +239,13 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   gdt_init();
   idt_install();
   syscall_init();
+
+  // MM smoke test
+  pmm_test();
+  vmm_test();
+  slab_test();
+  vma_test();
+  vmalloc_test();
 
   if (module_request.response) {
     printk(KERN_DEBUG FKX_CLASS "Found %lu modules, \n",
