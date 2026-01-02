@@ -92,6 +92,7 @@ static inline void expand(struct zone *zone, struct page *page,
 
     list_add(&buddy->list, &area->free_list[0]);
     area->nr_free++;
+    zone->nr_free_pages += size;
   }
 }
 
@@ -110,7 +111,7 @@ static struct page *__rmqueue(struct zone *zone, unsigned int order) {
 
     ClearPageBuddy(page);
     area->nr_free--;
-    zone->nr_free_pages -= (1 << order);
+    zone->nr_free_pages -= (1UL << current_order);
 
     expand(zone, page, order, current_order, area);
     return page;
@@ -143,6 +144,7 @@ static void __free_one_page(struct page *page, unsigned long pfn,
     /* Our buddy is free, merge with it */
     list_del(&buddy->list);
     zone->free_area[order].nr_free--;
+    zone->nr_free_pages -= (1UL << order);
     ClearPageBuddy(buddy);
 
     pfn &= ~(1UL << order);
@@ -154,7 +156,7 @@ static void __free_one_page(struct page *page, unsigned long pfn,
   page->order = order;
   list_add(&page->list, &zone->free_area[order].free_list[0]);
   zone->free_area[order].nr_free++;
-  zone->nr_free_pages += (1 << order);
+  zone->nr_free_pages += (1UL << order);
 }
 
 extern void wakeup_kswapd(struct zone *zone);
@@ -190,6 +192,18 @@ struct folio *alloc_pages(gfp_t gfp_mask, unsigned int order) {
       check_page_sanity(page, order);
       page->order = order;
       SetPageHead(page);
+      
+      /* Initialize tail pages if order > 0 */
+      if (order > 0) {
+          size_t nr = 1UL << order;
+          for (size_t i = 1; i < nr; i++) {
+              struct page *tail = page + i;
+              tail->flags = 0; // Clear all flags
+              SetPageTail(tail);
+              tail->head = page;
+          }
+      }
+
       atomic_set(&page->_refcount, 1);
       return (struct folio *)page;
     }
@@ -208,11 +222,24 @@ struct folio *alloc_pages(gfp_t gfp_mask, unsigned int order) {
 void put_page(struct page *page) {
   if (!page || PageReserved(page)) return;
 
+  struct folio *folio = page_folio(page);
+  page = &folio->page;
+
   if (atomic_dec_and_test(&page->_refcount)) {
     unsigned int order = 0;
     if (PageHead(page)) {
         order = page->order;
         ClearPageHead(page);
+        
+        /* Cleanup tail pages */
+        if (order > 0) {
+            size_t nr = 1UL << order;
+            for (size_t i = 1; i < nr; i++) {
+                struct page *tail = page + i;
+                ClearPageTail(tail);
+                tail->head = NULL;
+            }
+        }
     }
     __free_pages(page, order);
   }

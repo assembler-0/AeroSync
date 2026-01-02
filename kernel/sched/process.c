@@ -52,7 +52,7 @@ struct ida pid_ida;
 
 /* Global list of all tasks in the system */
 LIST_HEAD(task_list);
-static spinlock_t tasklist_lock = 0;
+spinlock_t tasklist_lock = 0;
 
 void pid_allocator_init(void) {
   ida_init(&pid_ida, 32768);

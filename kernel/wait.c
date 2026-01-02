@@ -225,6 +225,32 @@ void wake_up_interruptible(wait_queue_head_t *wq_head) {
   spinlock_unlock_irqrestore(&wq_head->lock, flags);
 }
 
+long __wait_event_timeout(wait_queue_head_t *wq, int (*condition)(void *), void *data, long timeout) {
+  long start = (long)(get_time_ns() / 1000000ULL);
+  long remaining = timeout;
+  wait_queue_t wait;
+  init_wait(&wait);
+
+  while (1) {
+    prepare_to_wait(wq, &wait, TASK_UNINTERRUPTIBLE);
+    if (condition(data)) {
+      break;
+    }
+    
+    long now = (long)(get_time_ns() / 1000000ULL);
+    remaining = timeout - (now - start);
+    if (remaining <= 0) {
+      remaining = 0;
+      break;
+    }
+
+    schedule();
+  }
+  
+  finish_wait(wq, &wait);
+  return remaining;
+}
+
 /**
  * sleep_on - Put current task to sleep on a wait queue
  * @wq: Wait queue to sleep on

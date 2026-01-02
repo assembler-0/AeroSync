@@ -66,6 +66,7 @@
 #define MMIO_CLASS "[sys::mm::mmio] " // MMIO Virtual Address Allocator
 #define VMA_CLASS "[sys::mm::vma] " // Virtual Memory Area
 #define FOLIO_CLASS "[sys::mm::folio] " // Linux struct folio
+#define THP_CLASS "[sys::mm::thp] "
 
 ///@section Heaps & Allocators
 #define SLAB_CLASS "[sys::mm::slab] " // Slab allocator specific

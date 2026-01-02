@@ -11,6 +11,7 @@
 #define PG_referenced (1 << 4)
 #define PG_lru        (1 << 5)
 #define PG_head       (1 << 6) /* Page is the head of a compound page (folio) */
+#define PG_tail       (1 << 7) /* Page is a tail of a compound page */
 
 struct kmem_cache;
 
@@ -36,6 +37,11 @@ struct page {
       /* Page cache and anonymous pages */
       void *mapping;
       unsigned long index;
+    };
+
+    struct {
+      /* Compound page head pointer (for tails) */
+      struct page *head;
     };
 
     struct {
@@ -89,6 +95,10 @@ struct folio {
 #define SetPageHead(page)    ((page)->flags |= PG_head)
 #define ClearPageHead(page)  ((page)->flags &= ~PG_head)
 
+#define PageTail(page)       ((page)->flags & PG_tail)
+#define SetPageTail(page)    ((page)->flags |= PG_tail)
+#define ClearPageTail(page)  ((page)->flags &= ~PG_tail)
+
 /* Reference counting */
 #include <kernel/atomic.h>
 
@@ -115,10 +125,13 @@ static inline int folio_ref_count(struct folio *folio) {
     return atomic_read(&folio->page._refcount);
 }
 
+static inline void folio_ref_add(struct folio *folio, int nr) {
+    atomic_add(nr, &folio->page._refcount);
+}
+
 static inline struct folio *page_folio(struct page *page) {
-    // In a mature system, this would handle tail-to-head conversion.
-    // Since we are migrating, we assume callers pass the head or 
-    // we will eventually implement compound page logic.
+    if (unlikely(PageTail(page)))
+        return (struct folio *)page->head;
     return (struct folio *)page;
 }
 

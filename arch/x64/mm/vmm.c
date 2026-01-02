@@ -92,6 +92,13 @@ static int vmm_split_huge_page(uint64_t *table, uint64_t index, int level, uint6
         new_table[i] = (base_phys + (i * step)) | child_flags;
     }
 
+    // Modern: Synchronize folio refcount. 
+    // The original 1 PDE reference is being split into 512 PTE references.
+    struct page *head = phys_to_page(base_phys);
+    if (head) {
+        folio_ref_add(page_folio(head), 511);
+    }
+
     // Replace huge page entry with pointer to new table.
     // We use full permissions for intermediate tables; leaf PTEs control final access.
     table[index] = new_table_phys | PTE_PRESENT | PTE_RW | PTE_USER;
@@ -105,18 +112,19 @@ static int vmm_split_huge_page(uint64_t *table, uint64_t index, int level, uint6
 
 /**
  * Attempts to merge a block of 512 smaller pages into one huge page.
- * @param pml_root_phys Physical address of the PML root.
+ * @param mm The address space (can be NULL for kernel/broadcast).
  * @param virt Virtual address (must be aligned to target_huge_size).
  * @param target_huge_size The huge page size (2MB or 1GB).
  * @return 0 on success, -1 if cannot be merged.
  */
-int vmm_merge_to_huge(uint64_t pml_root_phys, uint64_t virt, uint64_t target_huge_size) {
+int vmm_merge_to_huge(struct mm_struct *mm, uint64_t virt, uint64_t target_huge_size) {
     if (target_huge_size != VMM_PAGE_SIZE_2M && target_huge_size != VMM_PAGE_SIZE_1G)
         return -1;
 
     // Check alignment
     if (virt & (target_huge_size - 1)) return -1;
 
+    uint64_t pml_root_phys = mm ? (uint64_t)mm->pml4 : g_kernel_pml4;
     irq_flags_t irq = spinlock_lock_irqsave(&vmm_lock);
 
     uint64_t *current_table = (uint64_t *)phys_to_virt(pml_root_phys);
@@ -172,40 +180,113 @@ int vmm_merge_to_huge(uint64_t pml_root_phys, uint64_t virt, uint64_t target_hug
     uint64_t flags = PTE_GET_FLAGS(first_entry);
     uint64_t step = (target_huge_size == VMM_PAGE_SIZE_2M) ? VMM_PAGE_SIZE_4K : VMM_PAGE_SIZE_2M;
 
-    // Base must be aligned to target huge size
-    if (base_phys & (target_huge_size - 1)) {
-        spinlock_unlock_irqrestore(&vmm_lock, irq);
-        return -1;
-    }
-
+    bool contiguous = true;
     for (int i = 1; i < 512; i++) {
         uint64_t entry = sub_table[i];
         if (!(entry & PTE_PRESENT) || 
             PTE_GET_ADDR(entry) != (base_phys + (i * step)) ||
             PTE_GET_FLAGS(entry) != flags) {
-            spinlock_unlock_irqrestore(&vmm_lock, irq);
-            return -1;
+            contiguous = false;
+            break;
         }
     }
 
-    // All checks passed! Perform merge.
+    if (contiguous) {
+        // Base must be aligned to target huge size
+        if (base_phys & (target_huge_size - 1)) {
+            spinlock_unlock_irqrestore(&vmm_lock, irq);
+            return -1;
+        }
+
+        // All checks passed! Perform merge.
+        uint64_t huge_flags = flags | PTE_HUGE;
+        if (target_huge_size == VMM_PAGE_SIZE_2M && (huge_flags & PTE_PAT)) {
+            huge_flags &= ~PTE_PAT;
+            huge_flags |= PDE_PAT;
+        }
+
+        current_table[idx] = base_phys | huge_flags;
+        spinlock_unlock_irqrestore(&vmm_lock, irq);
+        
+        pmm_free_page(sub_table_phys);
+        vmm_tlb_shootdown(mm, virt, virt + target_huge_size);
+        return 0;
+    }
+
+    /* 
+     * Non-contiguous collapse (THP style)
+     */
+    if (target_huge_size != VMM_PAGE_SIZE_2M) {
+        spinlock_unlock_irqrestore(&vmm_lock, irq);
+        return -1;
+    }
+
+    spinlock_unlock_irqrestore(&vmm_lock, irq);
+    
+    struct folio *huge_folio = alloc_pages(GFP_USER | ___GFP_ZERO, 9);
+    if (!huge_folio) return -1;
+
+    void *huge_virt_ptr = folio_address(huge_folio);
+    
+    // Re-lock and perform re-navigation to verify state hasn't changed
+    irq = spinlock_lock_irqsave(&vmm_lock);
+    
+    uint64_t *table = (uint64_t *)phys_to_virt(pml_root_phys);
+    for (int level = levels; level > 2; level--) {
+        uint64_t index;
+        switch (level) {
+            case 5: index = PML5_INDEX(virt); break;
+            case 4: index = PML4_INDEX(virt); break;
+            case 3: index = PDPT_INDEX(virt); break;
+            default: spinlock_unlock_irqrestore(&vmm_lock, irq); folio_put(huge_folio); return -1;
+        }
+        uint64_t entry = table[index];
+        if (!(entry & PTE_PRESENT) || (entry & PTE_HUGE)) {
+            spinlock_unlock_irqrestore(&vmm_lock, irq);
+            folio_put(huge_folio);
+            return -1;
+        }
+        table = (uint64_t *)phys_to_virt(PTE_GET_ADDR(entry));
+    }
+    
+    idx = PD_INDEX(virt);
+    uint64_t pde = table[idx];
+    if (!(pde & PTE_PRESENT) || (pde & PTE_HUGE) || PTE_GET_ADDR(pde) != sub_table_phys) {
+        spinlock_unlock_irqrestore(&vmm_lock, irq);
+        folio_put(huge_folio);
+        return -1;
+    }
+    sub_table = (uint64_t *)phys_to_virt(PTE_GET_ADDR(pde));
+
+    for (int i = 0; i < 512; i++) {
+        uint64_t entry = sub_table[i];
+        if (!(entry & PTE_PRESENT)) {
+            spinlock_unlock_irqrestore(&vmm_lock, irq);
+            folio_put(huge_folio);
+            return -1;
+        }
+        memcpy((uint8_t*)huge_virt_ptr + (i * PAGE_SIZE), phys_to_virt(PTE_GET_ADDR(entry)), PAGE_SIZE);
+    }
+
+    uint64_t huge_phys = folio_to_phys(huge_folio);
     uint64_t huge_flags = flags | PTE_HUGE;
-    // PAT bit swap if merging 4KB into 2MB
-    if (target_huge_size == VMM_PAGE_SIZE_2M && (huge_flags & PTE_PAT)) {
+    if (huge_flags & PTE_PAT) {
         huge_flags &= ~PTE_PAT;
         huge_flags |= PDE_PAT;
     }
-
-    current_table[idx] = base_phys | huge_flags;
-
+    
+    table[idx] = huge_phys | huge_flags;
+    
+    for (int i = 0; i < 512; i++) {
+        struct page *pg = phys_to_page(PTE_GET_ADDR(sub_table[i]));
+        if (pg) put_page(pg);
+    }
+    
     spinlock_unlock_irqrestore(&vmm_lock, irq);
-
-    // Free the old sub-table
+    
     pmm_free_page(sub_table_phys);
-
-    // Flush TLB across all CPUs to ensure they see the new page size
-    vmm_tlb_shootdown(NULL, virt, virt + target_huge_size);
-
+    vmm_tlb_shootdown(mm, virt, virt + target_huge_size);
+    
     return 0;
 }
 
@@ -263,7 +344,7 @@ void vmm_merge_range(uint64_t pml_root_phys, uint64_t start, uint64_t end) {
     while (addr < end) {
         // Try 1GB merge first if aligned
         if ((addr & (VMM_PAGE_SIZE_1G - 1)) == 0 && (addr + VMM_PAGE_SIZE_1G) <= end) {
-            if (vmm_merge_to_huge(pml_root_phys, addr, VMM_PAGE_SIZE_1G) == 0) {
+            if (vmm_merge_to_huge(NULL, addr, VMM_PAGE_SIZE_1G) == 0) {
                 addr += VMM_PAGE_SIZE_1G;
                 continue;
             }
@@ -271,7 +352,7 @@ void vmm_merge_range(uint64_t pml_root_phys, uint64_t start, uint64_t end) {
 
         // Try 2MB merge if aligned
         if ((addr & (VMM_PAGE_SIZE_2M - 1)) == 0 && (addr + VMM_PAGE_SIZE_2M) <= end) {
-            if (vmm_merge_to_huge(pml_root_phys, addr, VMM_PAGE_SIZE_2M) == 0) {
+            if (vmm_merge_to_huge(NULL, addr, VMM_PAGE_SIZE_2M) == 0) {
                 addr += VMM_PAGE_SIZE_2M;
                 continue;
             }
@@ -953,7 +1034,7 @@ void vmm_test(void) {
           // For the smoke test, we'll just proceed to merge which is now idempotent
       }
 
-      if (vmm_merge_to_huge(g_kernel_pml4, merge_virt, VMM_PAGE_SIZE_2M) == 0) {
+      if (vmm_merge_to_huge(&init_mm, merge_virt, VMM_PAGE_SIZE_2M) == 0) {
           printk(KERN_DEBUG VMM_CLASS "  - Merge 2MB: OK\n");
           if (vmm_shatter_huge_page(g_kernel_pml4, merge_virt, VMM_PAGE_SIZE_2M) == 0) {
               printk(KERN_DEBUG VMM_CLASS "  - Shatter 2MB: OK\n");

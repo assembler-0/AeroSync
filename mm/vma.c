@@ -380,8 +380,6 @@ void vma_free(struct vm_area_struct *vma) {
   vma_cache_free(vma);
 }
 
-extern const struct vm_operations_struct anon_vm_ops;
-
 struct vm_area_struct *vma_create(uint64_t start, uint64_t end,
                                   uint64_t flags) {
   if (start >= end || (start & (PAGE_SIZE - 1)) || (end & (PAGE_SIZE - 1)))

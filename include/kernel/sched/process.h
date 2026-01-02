@@ -10,6 +10,10 @@
 #define CLONE_SIGHAND 0x00000800
 #define CLONE_THREAD 0x00010000
 
+/* Global task list */
+extern struct list_head task_list;
+extern spinlock_t tasklist_lock;
+
 /* Function prototypes */
 void pid_allocator_init(void);
 struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,

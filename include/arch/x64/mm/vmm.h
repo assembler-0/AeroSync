@@ -138,7 +138,8 @@ void vmm_clear_accessed(uint64_t pml4_phys, uint64_t virt);
 /**
  * Huge Page Helpers
  */
-int vmm_merge_to_huge(uint64_t pml_root_phys, uint64_t virt, uint64_t target_huge_size);
+struct mm_struct;
+int vmm_merge_to_huge(struct mm_struct *mm, uint64_t virt, uint64_t target_huge_size);
 int vmm_shatter_huge_page(uint64_t pml_root_phys, uint64_t virt, uint64_t large_page_size);
 void vmm_merge_range(uint64_t pml_root_phys, uint64_t start, uint64_t end);
 

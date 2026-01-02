@@ -263,6 +263,19 @@ void folio_add_anon_rmap(struct folio *folio, struct vm_area_struct *vma, uint64
 static int anon_fault(struct vm_area_struct *vma, struct vm_fault *vmf) {
     if (anon_vma_prepare(vma) < 0) return VM_FAULT_OOM;
 
+    /* THP: Try 2MB allocation if aligned and allowed */
+    if (!(vma->vm_flags & VM_NOHUGEPAGE) && 
+        (vmf->address & 0x1FFFFF) == 0 && 
+        (vma->vm_end - vma->vm_start) >= 0x200000) {
+        
+        struct folio *huge_folio = alloc_pages(GFP_USER | ___GFP_ZERO, 9);
+        if (huge_folio) {
+            folio_add_anon_rmap(huge_folio, vma, vmf->address);
+            vmf->page = &huge_folio->page;
+            return 0;
+        }
+    }
+
     uint64_t phys = pmm_alloc_page();
     if (!phys) return VM_FAULT_OOM;
 
@@ -333,7 +346,13 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
 
         struct folio *folio = page_folio(vmf.page);
         uint64_t phys = folio_to_phys(folio);
-        vmm_map_page((uint64_t)vma->vm_mm->pml4, vmf.address, phys, pte_flags);
+
+        if (PageHead(&folio->page) && folio->page.order == 9) {
+            vmm_map_huge_page((uint64_t)vma->vm_mm->pml4, vmf.address & 0xFFFFFFFFFFE00000ULL,
+                              phys, pte_flags, VMM_PAGE_SIZE_2M);
+        } else {
+            vmm_map_page((uint64_t)vma->vm_mm->pml4, vmf.address, phys, pte_flags);
+        }
     }
 
     return 0;
