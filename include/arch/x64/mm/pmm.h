@@ -138,3 +138,6 @@ static inline struct page *virt_to_page(void *addr) {
 static inline void *page_address(struct page *page) {
   return pmm_phys_to_virt(PFN_TO_PHYS((uint64_t)(page - mem_map)));
 }
+
+/* Simple PMM smoke test */
+void pmm_test(void);

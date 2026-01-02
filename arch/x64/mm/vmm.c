@@ -855,7 +855,9 @@ void vmm_init(void) {
   init_mm.pml4 = (uint64_t *)g_kernel_pml4;
 
   printk(VMM_CLASS "VMM Initialized (%d levels active).\n", vmm_get_paging_levels());
+}
 
+void vmm_test(void) {
   /* --- MMU Smoke Test --- */
   printk(KERN_DEBUG VMM_CLASS "Running VMM Smoke Test...\n");
 
@@ -879,13 +881,13 @@ void vmm_init(void) {
   if (vmm_is_dirty(g_kernel_pml4, test_virt)) {
        panic("VMM Smoke Test: Page dirty before access");
   }
-  
+
   // Trigger a write to set dirty bit
-  *(volatile uint64_t*)phys_to_virt(test_phys) = 0x1234; 
-  // Note: We access via HHDM here, but on some CPUs the hardware walker 
+  *(volatile uint64_t*)phys_to_virt(test_phys) = 0x1234;
+  // Note: We access via HHDM here, but on some CPUs the hardware walker
   // only sets dirty if accessed via the specific virtual mapping.
   // Let's just check if the helper can clear/set flags.
-  
+
   vmm_set_flags(g_kernel_pml4, test_virt, PTE_RW | PTE_DIRTY);
   if (!vmm_is_dirty(g_kernel_pml4, test_virt)) {
       panic("VMM Smoke Test: Dirty bit helper failed");
@@ -901,7 +903,7 @@ void vmm_init(void) {
   uint64_t merge_phys = pmm_alloc_pages(512); // Allocate 2MB contiguous (512 * 4KB)
   if (merge_phys) {
       vmm_map_pages(g_kernel_pml4, merge_virt, merge_phys, 512, PTE_PRESENT | PTE_RW);
-      
+
       // Check if it was automatically promoted
       uint64_t check_phys = vmm_virt_to_phys(g_kernel_pml4, merge_virt);
       if (check_phys == merge_phys) {

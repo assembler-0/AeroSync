@@ -245,6 +245,10 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
 
   printk(KERN_DEBUG PMM_CLASS "Initialized. Max PFN: %llu\n", pmm_max_pages);
 
+  return 0;
+}
+
+void pmm_test(void) {
   // Smoke Test
   printk(KERN_DEBUG PMM_CLASS "Running smoke test...\n");
 
@@ -289,8 +293,6 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset) {
   }
 
   printk(KERN_DEBUG PMM_CLASS "Smoke test complete.\n");
-
-  return 0;
 }
 
 uint64_t pmm_alloc_page(void) { return pmm_alloc_pages(1); }

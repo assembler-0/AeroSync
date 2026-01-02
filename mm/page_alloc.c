@@ -35,12 +35,8 @@ struct zone managed_zones[MAX_NR_ZONES];
 
 /* Default zone names */
 static const char *const zone_names[MAX_NR_ZONES] = {
-#ifdef CONFIG_ZONE_DMA
   "DMA",
-#endif
-#ifdef CONFIG_ZONE_DMA32
   "DMA32",
-#endif
   "Normal"
 };
 

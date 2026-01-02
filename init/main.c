@@ -47,6 +47,7 @@
 #include <lib/printk.h>
 #include <limine/limine.h>
 #include <mm/slab.h>
+#include <mm/vma.h>
 #include <uacpi/uacpi.h>
 
 // Set Limine Request Start Marker
@@ -229,6 +230,12 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   pmm_init(memmap_request.response, hhdm_request.response->offset);
   vmm_init();
   slab_init();
+
+  pmm_test();
+  vmm_test();
+  slab_test();
+  vma_test();
+
   setup_per_cpu_areas();
   smp_prepare_boot_cpu();
   pmm_init_cpu();

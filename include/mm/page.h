@@ -17,41 +17,45 @@ struct kmem_cache;
  * struct page - Represents a physical page frame
  */
 struct page {
-    unsigned long flags;      /* Page flags */
-    union {
-        struct list_head list;    /* List node for free lists */
+  unsigned long flags; /* Page flags */
+  union {
+    struct list_head list; /* List node for free lists */
+    struct {
+      struct page *next; /* Next page in a list (e.g. SLUB partial) */
+      int pages; /* Number of pages (compound) */
+      int pobjects; /* Approximate number of objects */
+    };
+  };
+
+  union {
+    struct {
+      /* Page cache and anonymous pages */
+      void *mapping;
+      unsigned long index;
+    };
+
+    struct {
+      /* SLUB */
+      struct kmem_cache *slab_cache;
+      void *freelist; /* First free object */
+      union {
+        unsigned counters;
+
         struct {
-            struct page *next;    /* Next page in a list (e.g. SLUB partial) */
-            int pages;            /* Number of pages (compound) */
-            int pobjects;         /* Approximate number of objects */
+          unsigned inuse: 16;
+          unsigned objects: 15;
+          unsigned frozen: 1;
         };
+      };
     };
+  };
 
-    union {
-        struct { /* Page cache and anonymous pages */
-            void *mapping;
-            unsigned long index;
-        };
-        struct { /* SLUB */
-            struct kmem_cache *slab_cache;
-            void *freelist;       /* First free object */
-            union {
-                unsigned counters;
-                struct {
-                    unsigned inuse:16;
-                    unsigned objects:15;
-                    unsigned frozen:1;
-                };
-            };
-        };
-    };
+  unsigned int order; /* Order of the block if it's the head of a buddy block */
+  uint32_t zone; /* Memory zone (if any) */
+  atomic_t _refcount; /* Reference count */
 
-    unsigned int order;       /* Order of the block if it's the head of a buddy block */
-    uint32_t zone;            /* Memory zone (if any) */
-    atomic_t _refcount;       /* Reference count */
-
-    /* Split page table lock */
-    spinlock_t ptl;
+  /* Split page table lock */
+  spinlock_t ptl;
 };
 
 /* Helper macros */
@@ -71,11 +75,11 @@ struct page {
 #include <kernel/atomic.h>
 
 static inline void get_page(struct page *page) {
-    atomic_inc(&page->_refcount);
+  atomic_inc(&page->_refcount);
 }
 
 void put_page(struct page *page);
 
 static inline int page_ref_count(struct page *page) {
-    return atomic_read(&page->_refcount);
+  return atomic_read(&page->_refcount);
 }

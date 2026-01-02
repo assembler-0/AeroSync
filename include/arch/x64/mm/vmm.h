@@ -143,4 +143,7 @@ void vmm_merge_range(uint64_t pml_root_phys, uint64_t start, uint64_t end);
 void vmm_switch_pml4(uint64_t pml4_phys);
 void vmm_switch_pml4_pcid(uint64_t pml4_phys, uint16_t pcid, bool no_flush);
 
+/* Smoke test */
+void vmm_test(void);
+
 extern uint64_t g_kernel_pml4;

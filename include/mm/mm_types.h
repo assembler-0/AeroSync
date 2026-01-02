@@ -45,7 +45,7 @@ struct __aligned(sizeof(long)) vm_area_struct {
  */
 struct mm_struct {
   struct rb_root mm_rb;        /* Root of the VMA Red-Black Tree */
-  struct vm_area_struct *mmap_cache; /* Last found VMA (O(1) optimization) */
+  uint64_t vmacache_seqnum;   /* Per-thread VMA cache invalidation sequence */
   struct list_head mmap_list; /* List of VMAs */
 
   uint64_t *pml4; /* Physical address of the top-level page table */

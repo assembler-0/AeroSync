@@ -87,8 +87,6 @@ extern const unsigned int prio_to_weight[40];
 
 DECLARE_PER_CPU(int, cpu_apic_id);
 
-struct mm_struct; /* Forward declaration for memory management struct */
-
 /* Represents a task's load weight */
 struct load_weight {
   unsigned long weight;
@@ -209,6 +207,11 @@ struct task_struct {
    */
   struct mm_struct *mm;
   struct mm_struct *active_mm;
+
+  /* Per-thread VMA Cache */
+  #define MM_VMA_CACHE_SIZE 4
+  struct vm_area_struct *vmacache[MM_VMA_CACHE_SIZE];
+  uint64_t vmacache_seqnum;
 
   /*
    * Context for context switching
@@ -336,7 +339,7 @@ struct cfs_rq {
 };
 
 /**
- * struct rq - Per-CPU runqueue
+  * struct rq - Per-CPU runqueue
  */
 struct rq {
   spinlock_t lock;
