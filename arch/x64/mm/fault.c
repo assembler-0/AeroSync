@@ -21,8 +21,6 @@
 #include <string.h>
 #include <arch/x64/cpu.h>
 #include <arch/x64/exception.h>
-#include <arch/x64/mm/paging.h>
-#include <arch/x64/mm/pmm.h>
 #include <arch/x64/mm/vmm.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>
@@ -106,47 +104,24 @@ void do_page_fault(cpu_regs *regs) {
       goto signal_segv;
     }
 
-    // Demand Paging: Allocate a physical page if it's not present
-    if (!(error_code & PF_PROT)) {
-      uint64_t phys;
-      uint64_t flags = PTE_PRESENT;
+    // Dispatches to VMA-specific fault handler (e.g. anon_fault or file_fault)
+    unsigned int fault_flags = 0;
+    if (write_fault) fault_flags |= FAULT_FLAG_WRITE;
+    if (user_mode) fault_flags |= FAULT_FLAG_USER;
+    if (exec_fault) fault_flags |= FAULT_FLAG_INSTR;
 
-      if (vma->vm_flags & VM_USER) flags |= PTE_USER;
-      if (vma->vm_flags & VM_WRITE) flags |= PTE_RW;
-      if (!(vma->vm_flags & VM_EXEC)) flags |= PTE_NX;
-
-      if (vma->vm_flags & VM_HUGE) {
-        // Try to allocate 2MB page (Order 9: 2^9 * 4KB = 2MB)
-        phys = pmm_alloc_pages(9);
-        if (phys) {
-          // Align virtual address to 2MB boundary
-          uint64_t huge_virt = cr2 & ~(VMM_PAGE_SIZE_2M - 1);
-
-          if (vmm_map_huge_page(pml4_phys, huge_virt, phys, flags, VMM_PAGE_SIZE_2M) == 0) {
-            up_read(&mm->mmap_lock);
-            return;
-          }
-          // If mapping failed, free pages and maybe fallback?
-          pmm_free_pages(phys, 9);
-        }
-        // Fallback to 4KB if huge alloc failed
-        // (or handle OOM if strict huge usage is required, but standard behavior implies opportunistic)
-      }
-
-      phys = pmm_alloc_page();
-      if (!phys) {
+    int res = handle_mm_fault(vma, cr2, fault_flags);
+    if (res == 0) {
         up_read(&mm->mmap_lock);
-        printk(KERN_ERR FAULT_CLASS "OOM during demand paging for %llx\n", cr2);
-        goto kernel_panic;
-      }
-
-      // Security: Zero the page before mapping it to user space
-      memset(pmm_phys_to_virt(phys), 0, PAGE_SIZE);
-
-      vmm_map_page(pml4_phys, cr2 & PAGE_MASK, phys, flags);
-      up_read(&mm->mmap_lock);
-      return; // Retry instruction
+        return;
     }
+
+    up_read(&mm->mmap_lock);
+    if (res == VM_FAULT_OOM) {
+        printk(KERN_ERR FAULT_CLASS "OOM during fault handling for %llx\n", cr2);
+        goto kernel_panic;
+    }
+    goto signal_segv;
   }
   up_read(&mm->mmap_lock);
 

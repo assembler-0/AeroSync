@@ -8,6 +8,8 @@
 #define PG_buddy      (1 << 1)
 #define PG_active     (1 << 2)
 #define PG_slab       (1 << 3)
+#define PG_referenced (1 << 4)
+#define PG_lru        (1 << 5)
 
 struct kmem_cache;
 
@@ -19,7 +21,8 @@ struct kmem_cache;
 struct page {
   unsigned long flags; /* Page flags */
   union {
-    struct list_head list; /* List node for free lists */
+    struct list_head list; /* List node for free lists / generic */
+    struct list_head lru;  /* Node in active/inactive lists */
     struct {
       struct page *next; /* Next page in a list (e.g. SLUB partial) */
       int pages; /* Number of pages (compound) */

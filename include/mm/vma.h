@@ -34,6 +34,18 @@
 #define VMA_MERGE_PREV 0x1
 #define VMA_MERGE_NEXT 0x2
 
+/* Fault flags */
+#define FAULT_FLAG_WRITE 0x01
+#define FAULT_FLAG_USER  0x02
+#define FAULT_FLAG_INSTR 0x04
+
+/* Standard fault return codes */
+#define VM_FAULT_OOM    0x0001
+#define VM_FAULT_SIGBUS 0x0002
+#define VM_FAULT_SIGSEGV 0x0004
+#define VM_FAULT_MAJOR  0x0008
+#define VM_FAULT_RETRY  0x0010
+
 /* MM Operations */
 void mm_init(struct mm_struct *mm);
 void mm_destroy(struct mm_struct *mm);
@@ -90,6 +102,14 @@ void vma_dump(struct mm_struct *mm);
 void vma_dump_single(struct vm_area_struct *vma);
 size_t mm_total_size(struct mm_struct *mm);
 size_t mm_map_count(struct mm_struct *mm);
+
+/* Generic fault handler */
+int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int flags);
+
+/* RMAP Helpers */
+void anon_vma_free(struct anon_vma *av);
+int anon_vma_prepare(struct vm_area_struct *vma);
+int anon_vma_chain_link(struct vm_area_struct *vma, struct anon_vma *av);
 
 /* Validation */
 int vma_verify_tree(struct mm_struct *mm);

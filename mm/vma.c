@@ -269,11 +269,21 @@ struct mm_struct *mm_copy(struct mm_struct *old_mm) {
       return NULL;
     }
 
+    /* Copy metadata */
+    new_vma->vm_ops = vma->vm_ops;
+    new_vma->vm_private_data = vma->vm_private_data;
+    new_vma->vm_pgoff = vma->vm_pgoff;
+
     if (vma_insert(new_mm, new_vma) != 0) {
       vma_free(new_vma);
       mm_free(new_mm);
       up_write(&old_mm->mmap_lock);
       return NULL;
+    }
+
+    /* Notify owner that a new reference was created */
+    if (new_vma->vm_ops && new_vma->vm_ops->open) {
+      new_vma->vm_ops->open(new_vma);
     }
   }
 
@@ -296,6 +306,9 @@ void mm_destroy(struct mm_struct *mm) {
 
   struct vm_area_struct *vma, *tmp;
   for_each_vma_safe(mm, vma, tmp) {
+    if (vma->vm_ops && vma->vm_ops->close) {
+        vma->vm_ops->close(vma);
+    }
     vma_remove(mm, vma);
     vma_free(vma);
   }
@@ -341,6 +354,20 @@ void vma_free(struct vm_area_struct *vma) {
   if (!vma)
     return;
 
+  /* Cleanup Chained RMAP entries */
+  struct anon_vma_chain *avc, *tmp_avc;
+  list_for_each_entry_safe(avc, tmp_avc, &vma->anon_vma_chain, same_vma) {
+      struct anon_vma *av = avc->anon_vma;
+      
+      irq_flags_t flags = spinlock_lock_irqsave(&av->lock);
+      list_del(&avc->same_anon_vma);
+      spinlock_unlock_irqrestore(&av->lock, flags);
+      
+      anon_vma_free(av);
+      list_del(&avc->same_vma);
+      kfree(avc);
+  }
+
   if (is_bootstrap_vma(vma)) {
     uint64_t index = vma - bootstrap_vmas;
     spinlock_lock(&bootstrap_vma_lock);
@@ -351,6 +378,8 @@ void vma_free(struct vm_area_struct *vma) {
 
   vma_cache_free(vma);
 }
+
+extern const struct vm_operations_struct anon_vm_ops;
 
 struct vm_area_struct *vma_create(uint64_t start, uint64_t end,
                                   uint64_t flags) {
@@ -365,6 +394,13 @@ struct vm_area_struct *vma_create(uint64_t start, uint64_t end,
   vma->vm_end = end;
   vma->vm_flags = flags;
   vma->vm_mm = NULL;
+  vma->vm_ops = &anon_vm_ops; /* Default to anonymous */
+  vma->vm_private_data = NULL;
+  vma->vm_pgoff = 0;
+  vma->vm_mapping = NULL;
+  vma->anon_vma = NULL;
+  INIT_LIST_HEAD(&vma->anon_vma_chain);
+  INIT_LIST_HEAD(&vma->vm_shared);
   RB_CLEAR_NODE(&vma->vm_rb);
   INIT_LIST_HEAD(&vma->vm_list);
 
