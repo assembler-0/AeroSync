@@ -28,6 +28,7 @@
 #include <linux/container_of.h>
 #include <lib/printk.h>
 #include <kernel/classes.h>
+#include <arch/x64/tsc.h>
 
 #define SCAN_BATCH_VMAS 16
 
@@ -41,17 +42,13 @@ static void khugepaged_scan_mm(struct mm_struct *mm) {
 
     /* Only anonymous VMAs that allow huge pages */
     if (vma->vm_ops != &anon_vm_ops) continue;
-    if (vma->vm_flags & VM_NOHUGEPAGE) continue;
+    if (vma->vm_flags & (VM_NOHUGEPAGE | VM_IO | VM_PFNMAP)) continue;
 
     /* Align range to 2MB */
     uint64_t start = (vma->vm_start + 0x1FFFFFULL) & 0xFFFFFFFFFFE00000ULL;
     uint64_t end = vma->vm_end & 0xFFFFFFFFFFE00000ULL;
 
     for (uint64_t addr = start; addr + 0x200000 <= end; addr += 0x200000) {
-      /*
-       * Attempt to merge. vmm_merge_to_huge will verify if
-       * all 512 pages are present and contiguous.
-       */
       /*
        * Attempt to merge. vmm_merge_to_huge will verify if
        * all 512 pages are present and contiguous.
@@ -69,25 +66,45 @@ static int khugepaged_thread(void *unused) {
   printk(KERN_INFO THP_CLASS "khugepaged started\n");
 
   while (1) {
-    /* Scan all MMs */
+    struct mm_struct *mms[64];
+    int mm_count = 0;
+
+    /* Collect MMs under lock to avoid iterating task_list while unlocked */
     irq_flags_t flags = spinlock_lock_irqsave(&tasklist_lock);
     struct task_struct *p;
     list_for_each_entry(p, &task_list, tasks) {
-      struct mm_struct *mm = p->mm;
-      if (mm && mm != &init_mm) {
-        mm_get(mm);
-        spinlock_unlock_irqrestore(&tasklist_lock, flags);
+      if (p->mm && p->mm != &init_mm) {
+        // Avoid duplicates if multiple threads share the same MM
+        bool duplicate = false;
+        for (int i = 0; i < mm_count; i++) {
+          if (mms[i] == p->mm) {
+            duplicate = true;
+            break;
+          }
+        }
+        if (duplicate) continue;
 
-        khugepaged_scan_mm(mm);
-
-        flags = spinlock_lock_irqsave(&tasklist_lock);
-        mm_put(mm);
+        mm_get(p->mm);
+        mms[mm_count++] = p->mm;
+        if (mm_count >= 64) break;
       }
     }
     spinlock_unlock_irqrestore(&tasklist_lock, flags);
 
-    /* Also scan init_mm (kernel vmalloc space) */
-    khugepaged_scan_mm(&init_mm);
+    /* Scan collected MMs */
+    for (int i = 0; i < mm_count; i++) {
+      khugepaged_scan_mm(mms[i]);
+      mm_put(mms[i]);
+    }
+
+    /* Occasionally scan init_mm (kernel vmalloc space) */
+    static int init_mm_scan_count = 0;
+    if (init_mm_scan_count++ % 10 == 0) {
+      khugepaged_scan_mm(&init_mm);
+    }
+
+    /* Throttle the thread to avoid CPU starvation and excessive scanning */
+    tsc_delay_ms(100);
   }
   return 0;
 }

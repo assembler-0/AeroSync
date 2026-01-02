@@ -45,11 +45,10 @@
   <component name="ChangeListManager">
     <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="formatting">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/version.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/version.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/wait.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/wait.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x64/mm/tlb.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/tlb.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x64/mm/vmm.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x64/mm/vmm.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mm/khugepaged.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/khugepaged.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/memory.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/memory.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mm/vma.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vma.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -60,7 +59,7 @@
     <option name="formatViaClangd" value="false" />
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="590" />
+    <option name="cachedIndexableFilesCount" value="687" />
     <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
   </component>
   <component name="ExecutionTargetManager" SELECTED_TARGET="CMakeBuildProfile:Release" />
@@ -167,11 +166,6 @@
     </key>
   </component>
   <component name="RunManager" selected="CMake Application.vmw-run">
-    <configuration default="true" type="CLionExternalRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true">
-      <method v="2">
-        <option name="CLION.EXTERNAL.BUILD" enabled="true" />
-      </method>
-    </configuration>
     <configuration name="bochs-run" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="VoidFrameX" TARGET_NAME="bochs-run" CONFIG_NAME="Release">
       <method v="2">
         <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
@@ -431,6 +425,7 @@
       <workItem from="1767335180877" duration="1374000" />
       <workItem from="1767336675953" duration="1859000" />
       <workItem from="1767338919271" duration="8000" />
+      <workItem from="1767354071630" duration="8000" />
     </task>
     <task id="LOCAL-00001" summary="Mutexes and FKX spec">
       <option name="closed" value="true" />

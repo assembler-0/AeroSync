@@ -27,6 +27,7 @@
 #include <arch/x64/smp.h>
 #include <arch/x64/mm/paging.h>
 #include <mm/vma.h>
+#include <arch/x64/cpu.h>
 
 struct invpcid_desc {
     uint64_t pcid : 12;
@@ -69,6 +70,7 @@ struct tlb_shootdown_info {
 
 static struct tlb_shootdown_info global_shootdown_info;
 static spinlock_t shootdown_lock = 0;
+static atomic_t shootdown_wait_count = {0};
 
 void tlb_ipi_handler(void *regs) {
     (void)regs;
@@ -82,6 +84,8 @@ void tlb_ipi_handler(void *regs) {
             vmm_tlb_flush_local(addr);
         }
     }
+
+    atomic_dec(&shootdown_wait_count);
 }
 
 void vmm_tlb_shootdown(struct mm_struct *mm, uint64_t start, uint64_t end) {
@@ -103,24 +107,49 @@ void vmm_tlb_shootdown(struct mm_struct *mm, uint64_t start, uint64_t end) {
         global_shootdown_info.full_flush = (end - start > 0x10000);
 
         int this_cpu = cpu_id();
+        int target_cpus = 0;
         
         if (mm && mm != &init_mm) {
             // Target only CPUs using this mm
             for (int i = 0; i < MAX_CPUS; i++) {
                 if (i == this_cpu) continue;
                 if (cpumask_test_cpu(i, &mm->cpu_mask)) {
-                    ic_send_ipi(*per_cpu_ptr(cpu_apic_id, i), TLB_FLUSH_IPI_VECTOR, 0);
+                    target_cpus++;
+                }
+            }
+            
+            if (target_cpus > 0) {
+                atomic_set(&shootdown_wait_count, target_cpus);
+                for (int i = 0; i < MAX_CPUS; i++) {
+                    if (i == this_cpu) continue;
+                    if (cpumask_test_cpu(i, &mm->cpu_mask)) {
+                        ic_send_ipi(*per_cpu_ptr(cpu_apic_id, i), TLB_FLUSH_IPI_VECTOR, 0);
+                    }
                 }
             }
         } else {
             // Global shootdown (kernel space) - target all online CPUs
             for (int i = 0; i < MAX_CPUS; i++) {
                 if (i == this_cpu) continue;
-                // Check if CPU is online (we can use cpu_apic_id as a proxy if it's set for online CPUs)
-                if (*per_cpu_ptr(cpu_apic_id, i) != 0xFF) { // Assuming 0xFF is uninitialized
-                     ic_send_ipi(*per_cpu_ptr(cpu_apic_id, i), TLB_FLUSH_IPI_VECTOR, 0);
+                if (*per_cpu_ptr(cpu_apic_id, i) != 0xFF) {
+                    target_cpus++;
                 }
             }
+            
+            if (target_cpus > 0) {
+                atomic_set(&shootdown_wait_count, target_cpus);
+                for (int i = 0; i < MAX_CPUS; i++) {
+                    if (i == this_cpu) continue;
+                    if (*per_cpu_ptr(cpu_apic_id, i) != 0xFF) {
+                         ic_send_ipi(*per_cpu_ptr(cpu_apic_id, i), TLB_FLUSH_IPI_VECTOR, 0);
+                    }
+                }
+            }
+        }
+
+        // Wait for all CPUs to acknowledge
+        while (atomic_read(&shootdown_wait_count) > 0) {
+            cpu_relax();
         }
         
         spinlock_unlock_irqrestore(&shootdown_lock, flags);

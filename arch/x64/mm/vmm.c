@@ -223,8 +223,8 @@ int vmm_merge_to_huge(struct mm_struct *mm, uint64_t virt, uint64_t target_huge_
     current_table[idx] = base_phys | huge_flags;
     spinlock_unlock_irqrestore(&vmm_lock, irq);
 
-    pmm_free_page(sub_table_phys);
     vmm_tlb_shootdown(mm, virt, virt + target_huge_size);
+    pmm_free_page(sub_table_phys);
     return 0;
   }
 
@@ -304,8 +304,8 @@ int vmm_merge_to_huge(struct mm_struct *mm, uint64_t virt, uint64_t target_huge_
 
   spinlock_unlock_irqrestore(&vmm_lock, irq);
 
-  pmm_free_page(sub_table_phys);
   vmm_tlb_shootdown(mm, virt, virt + target_huge_size);
+  pmm_free_page(sub_table_phys);
 
   return 0;
 }

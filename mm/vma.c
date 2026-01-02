@@ -393,7 +393,13 @@ struct vm_area_struct *vma_create(uint64_t start, uint64_t end,
   vma->vm_end = end;
   vma->vm_flags = flags;
   vma->vm_mm = NULL;
-  vma->vm_ops = &anon_vm_ops; /* Default to anonymous */
+  
+  if (flags & (VM_IO | VM_PFNMAP)) {
+      vma->vm_ops = NULL;
+  } else {
+      vma->vm_ops = &anon_vm_ops; /* Default to anonymous for RAM */
+  }
+
   vma->vm_private_data = NULL;
   vma->vm_pgoff = 0;
   vma->vm_mapping = NULL;
