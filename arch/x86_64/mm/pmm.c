@@ -167,6 +167,12 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
       if (!node_data[n]) continue;
       
       struct pglist_data *pgdat = node_data[n];
+
+      // Fix for UMA fallback where numa_init might not know the max PFN yet
+      if (n == 0 && pgdat->node_spanned_pages == 0xFFFFFFFF) {
+          pgdat->node_spanned_pages = pmm_max_pages;
+      }
+
       unsigned long node_start = pgdat->node_start_pfn;
       unsigned long node_end = node_start + pgdat->node_spanned_pages;
 

@@ -28,15 +28,21 @@ static cpu_features_t g_cpu_features;
 // CR0 bits
 #define CR0_MP (1 << 1)
 #define CR0_EM (1 << 2)
+#define CR0_TS (1 << 3)
+#define CR0_WP (1 << 16)
 
 // CR4 bits
 #define CR4_OSFXSR (1 << 9)
 #define CR4_OSXMMEXCPT (1 << 10)
-#define CR4_OSXSAVE (1 << 18)
+#define CR4_UMIP (1 << 11)
 #define CR4_LA57 (1 << 12)
+#define CR4_FSGSBASE (1 << 16)
 #define CR4_PCIDE (1 << 17)
+#define CR4_OSXSAVE (1 << 18)
 #define CR4_SMEP (1 << 20)
 #define CR4_SMAP (1 << 21)
+#define CR4_PKE (1 << 22)
+#define CR4_CET (1 << 23)
 
 // XCR0 bits
 #define XCR0_SSE (1 << 1)
@@ -47,6 +53,7 @@ static cpu_features_t g_cpu_features;
 
 #define MSR_IA32_PAT 0x277
 #define MSR_IA32_EFER 0xC0000080
+#define MSR_IA32_U_CET 0x6A2
 #define EFER_NXE (1 << 11)
 
 static inline void xsetbv(uint32_t reg, uint64_t value) {
@@ -108,6 +115,11 @@ void cpu_features_init_ap(void) {
     wrmsr(MSR_IA32_EFER, efer);
   }
 
+  // enable WP
+  if (g_cpu_features.wp) {
+    write_cr0(read_cr0() | CR0_WP);
+  }
+
   // Enable SSE
   if (g_cpu_features.sse) {
     uint64_t cr0 = read_cr0();
@@ -159,6 +171,23 @@ void cpu_features_init_ap(void) {
     write_cr4(cr4);
   }
 
+  // enable CET SS (shadow stack)
+  // if (g_cpu_features.cet_ss) {
+  //   write_cr4(read_cr4() | CR4_CET);
+  //   uint32_t cet_u_lo = (1 << 0) | (1 << 1);
+  //   wrmsr(MSR_IA32_U_CET, cet_u_lo);
+  // }
+  //
+  // // enable PKE
+  // if (g_cpu_features.pke) {
+  //   write_cr4(read_cr4() | CR4_PKE);
+  // }
+  //
+  // // enable UMIP
+  // if (g_cpu_features.umip) {
+  //   write_cr4(read_cr4() | CR4_UMIP);
+  // }
+
   pat_init();
 }
 
@@ -191,7 +220,7 @@ void cpu_features_init(void) {
     if (ecx & (1 << 26))
       g_cpu_features.xsave = true;
     if (ecx & (1 << 27))
-      g_cpu_features.osxsave = true; // Should be 0 initially
+      g_cpu_features.osxsave = true;
     if (ecx & (1 << 28))
       g_cpu_features.avx = true;
 
@@ -218,9 +247,16 @@ void cpu_features_init(void) {
       g_cpu_features.avx512f = true;
     if (ebx & (1 << 20))
       g_cpu_features.smap = true;
-    
     if (ecx & (1 << 16))
       g_cpu_features.la57 = true;
+    if (ecx & (1 << 2))
+      g_cpu_features.umip = true;
+    if (ecx & (1 << 3))
+      g_cpu_features.pke = true;
+    if (ebx & (1 << 0))
+      g_cpu_features.fsgsbase = true;
+    if (ecx & (1 << 7))
+      g_cpu_features.cet_ss = true;
   }
 
   // Check extended features
@@ -237,6 +273,9 @@ void cpu_features_init(void) {
     efer |= EFER_NXE;
     wrmsr(MSR_IA32_EFER, efer);
   }
+
+  write_cr0(read_cr0() | CR0_WP);
+  g_cpu_features.wp = true;
 
   // Enable SSE
   if (g_cpu_features.sse) {
@@ -296,6 +335,23 @@ void cpu_features_init(void) {
     write_cr4(cr4);
   }
 
+  // enable CET SS (shadow stack)
+  // if (g_cpu_features.cet_ss) {
+  //   write_cr4(read_cr4() | CR4_CET);
+  //   uint32_t cet_u_lo = (1 << 0) | (1 << 1);
+  //   wrmsr(MSR_IA32_U_CET, cet_u_lo);
+  // }
+  //
+  // // enable PKE
+  // if (g_cpu_features.pke) {
+  //   write_cr4(read_cr4() | CR4_PKE);
+  // }
+  //
+  // // enable UMIP
+  // if (g_cpu_features.umip) {
+  //   write_cr4(read_cr4() | CR4_UMIP);
+  // }
+
   pat_init();
 
   cpu_features_dump(&g_cpu_features);
@@ -323,10 +379,14 @@ void cpu_features_dump(cpu_features_t *features) {
   printk(CPU_CLASS "  PAT: %s\n", features->pat ? "Yes" : "No");
   printk(CPU_CLASS "  LA57: %s\n", features->la57 ? "Yes" : "No");
   printk(CPU_CLASS "  NX: %s\n", features->nx ? "Yes" : "No");
+  printk(CPU_CLASS "  WP: %s\n", features->wp ? "Yes" : "No");
   printk(CPU_CLASS "  PCID: %s\n", features->pcid ? "Yes" : "No");
   printk(CPU_CLASS "  INVPCID: %s\n", features->invpcid ? "Yes" : "No");
   printk(CPU_CLASS "  SMEP: %s\n", features->smep ? "Yes" : "No");
   printk(CPU_CLASS "  SMAP: %s\n", features->smap ? "Yes" : "No");
+  printk(CPU_CLASS "  UMIP: %s\n", features->umip ? "Yes" : "No");
+  printk(CPU_CLASS "  PKE: %s\n", features->pke ? "Yes" : "No");
+  printk(CPU_CLASS "  CET: %s\n", features->cet_ss ? "Yes" : "No");
 }
 
 cpu_features_t *get_cpu_features(void) {

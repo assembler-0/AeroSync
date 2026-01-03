@@ -20,9 +20,10 @@
 #define VM_USER   0x00200000     /* User-space accessible */
 #define VM_STACK  0x00400000     /* VMA is a stack */
 #define VM_PFNMAP 0x00800000     /* Physical frame number mapping */
-#define VM_HUGE   0x01000000     /* VMA is backed by huge pages */
-#define VM_HUGEPAGE 0x02000000   /* User-requested Huge Page (advise) */
-#define VM_NOHUGEPAGE 0x04000000 /* User-requested No Huge Page */
+#define VM_HUGE   0x10000000     /* VMA is backed by huge pages */
+#define VM_HUGEPAGE 0x20000000   /* User-requested Huge Page (advise) */
+#define VM_NOHUGEPAGE 0x40000000 /* User-requested No Huge Page */
+#define VM_ALLOC_LAZY 0x80000000 /* True Lazy Allocation */
 
 /* Cache Policy Flags */
 #define VM_CACHE_WB 0x00000000

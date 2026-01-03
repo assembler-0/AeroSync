@@ -51,6 +51,11 @@ void do_page_fault(cpu_regs *regs) {
     mm = curr->mm ? curr->mm : curr->active_mm;
   }
 
+  // Fallback to kernel's init_mm if no task context (early boot smoke tests)
+  if (!mm && !user_mode) {
+    mm = &init_mm;
+  }
+
   // Security: If user mode access to higher half or canonical hole occurs, it's a SEGV.
   if (user_mode && cr2 >= vmm_get_max_user_address()) {
     printk(KERN_ERR FAULT_CLASS "User-mode access to kernel address %llx\n", cr2);

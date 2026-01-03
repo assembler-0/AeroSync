@@ -604,12 +604,7 @@ static int vmm_map_huge_page_locked(uint64_t pml_root_phys, uint64_t virt, uint6
   uint64_t current_cr3;
   __asm__ volatile("mov %%cr3, %0" : "=r"(current_cr3));
   if ((current_cr3 & PTE_ADDR_MASK) == pml_root_phys) {
-    if (target_level > 1) {
-      // Full flush for huge pages for safety
-      __asm__ volatile("mov %0, %%cr3" :: "r"(current_cr3) : "memory");
-    } else {
-      __asm__ volatile("invlpg (%0)" ::"r"(virt) : "memory");
-    }
+    vmm_tlb_flush_local(virt);
   }
 
   return 0;
@@ -637,6 +632,25 @@ static uint64_t vmm_unmap_page_locked(uint64_t pml_root_phys, uint64_t virt) {
     if (!(entry & PTE_PRESENT)) return 0;
 
     if (entry & PTE_HUGE) {
+      uint64_t huge_size = (level == 3) ? VMM_PAGE_SIZE_1G : VMM_PAGE_SIZE_2M;
+      if ((virt & (huge_size - 1)) == 0) {
+        // Aligned unmap of a huge page. No need to shatter.
+        struct page *table_page = phys_to_page(pmm_virt_to_phys(current_table));
+        irq_flags_t ptl_flags = spinlock_lock_irqsave(&table_page->ptl);
+        
+        uint64_t phys = PTE_GET_ADDR(current_table[index]);
+        current_table[index] = 0;
+        
+        spinlock_unlock_irqrestore(&table_page->ptl, ptl_flags);
+        
+        uint64_t current_cr3;
+        __asm__ volatile("mov %%cr3, %0" : "=r"(current_cr3));
+        if ((current_cr3 & PTE_ADDR_MASK) == pml_root_phys) {
+          vmm_tlb_flush_local(virt);
+        }
+        return phys;
+      }
+
       // If we encounter a huge page while trying to unmap a 4KB page,
       // we must split it first to avoid unmapping the entire huge region.
       if (vmm_split_huge_page(current_table, index, level, virt) < 0) {
@@ -744,7 +758,7 @@ int vmm_map_pages_list(uint64_t pml_root_phys, uint64_t virt, uint64_t *phys_lis
   return 0;
 }
 
-int vmm_unmap_page(uint64_t pml_root_phys, uint64_t virt) {
+int vmm_unmap_page_deferred(uint64_t pml_root_phys, uint64_t virt) {
   irq_flags_t irq = spinlock_lock_irqsave(&vmm_lock);
   uint64_t phys = vmm_unmap_page_locked(pml_root_phys, virt);
   spinlock_unlock_irqrestore(&vmm_lock, irq);
@@ -754,22 +768,23 @@ int vmm_unmap_page(uint64_t pml_root_phys, uint64_t virt) {
     if (page) put_page(page);
   }
 
+  return 0;
+}
+
+int vmm_unmap_page(uint64_t pml_root_phys, uint64_t virt) {
+  vmm_unmap_page_deferred(pml_root_phys, virt);
   vmm_tlb_shootdown(NULL, virt, virt + PAGE_SIZE);
   return 0;
 }
 
 int vmm_unmap_pages(uint64_t pml_root_phys, uint64_t virt, size_t count) {
-  irq_flags_t irq = spinlock_lock_irqsave(&vmm_lock);
+  if (count == 0) return 0;
+  
   for (size_t i = 0; i < count; i++) {
-    uint64_t phys = vmm_unmap_page_locked(pml_root_phys, virt + i * PAGE_SIZE);
-    if (phys) {
-      struct page *page = phys_to_page(phys);
-      if (page) put_page(page);
-    }
+    vmm_unmap_page_deferred(pml_root_phys, virt + i * PAGE_SIZE);
   }
-  spinlock_unlock_irqrestore(&vmm_lock, irq);
 
-  // Flush TLB across all CPUs
+  // Single shootdown for the whole range
   vmm_tlb_shootdown(NULL, virt, virt + count * PAGE_SIZE);
 
   return 0;

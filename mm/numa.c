@@ -148,4 +148,10 @@ void numa_init(void *rsdp_ptr) {
 fallback:
     node_data[0] = &static_node_data[0];
     node_data[0]->node_id = 0;
+    node_data[0]->node_start_pfn = 0;
+    
+    // Use a large enough value to cover all usable memory in UMA mode.
+    // pmm_init will later use pmm_max_pages if this is UMA.
+    // Setting it to a safe upper bound or 0 is handled in pmm_init by checking if pfn_to_nid returns 0.
+    node_data[0]->node_spanned_pages = 0xFFFFFFFF; // Effectively entire space
 }

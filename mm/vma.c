@@ -1046,16 +1046,22 @@ uint64_t vma_find_free_region_aligned(struct mm_struct *mm, size_t size,
 
   size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
 
+  /*
+   * Cached Hole Search Optimization:
+   * Use mm->mmap_base as a hint for where to start looking.
+   * If the hint is within our requested range and we are not using ASLR yet, use it.
+   */
+  if (mm->mmap_base > range_start && mm->mmap_base < range_end && size < (range_end - mm->mmap_base)) {
+      range_start = mm->mmap_base;
+  }
+
 retry:
   /*
    * ASLR: Randomize start address if we are searching a large enough range
    */
   if (!aslr_attempted && (range_end - range_start) > (size + 0x200000)) {
     if (rdrand_supported()) {
-      // Use a more aggressive ASLR strategy:
-      // Generate a random address within the entire search space
       uint64_t max_offset = range_end - range_start - size;
-      // Use 48-bit random number masked to fit
       uint64_t offset = rdrand64();
 
       offset %= max_offset;
@@ -1069,10 +1075,12 @@ retry:
   node = mm->mm_rb.rb_node;
   if (!node) {
     uint64_t addr = (range_start + alignment - 1) & ~(alignment - 1);
-    // Guard against NULL page
     if (addr == 0) addr = PAGE_SIZE;
 
-    if (addr + size <= range_end) return addr;
+    if (addr + size <= range_end) {
+        mm->mmap_base = addr + size; // Cache for next time
+        return addr;
+    }
 
     if (aslr_attempted) {
       range_start = orig_start;
@@ -1097,30 +1105,18 @@ retry:
     uint64_t prev_end = prev ? prev->vm_end : 0;
     if (prev_end < range_start) prev_end = range_start;
 
-    // Candidate address
     uint64_t candidate = (prev_end + alignment - 1) & ~(alignment - 1);
 
-    // Enforce Guard Page (Gap) from Previous
     if (prev && candidate == prev->vm_end) {
       candidate += PAGE_SIZE;
       candidate = (candidate + alignment - 1) & ~(alignment - 1);
     }
     if (candidate == 0) candidate = PAGE_SIZE;
 
-    // Check fit before current VMA
-    // Enforce Guard Page (Gap) to Next: candidate + size < vma->vm_start
-    // So candidate + size + PAGE_SIZE <= vma->vm_start
-    // (Using PAGE_SIZE as implicit guard)
     if (candidate + size + PAGE_SIZE <= vma->vm_start) {
       best_vma = vma;
       node = node->rb_left;
     } else {
-      // Check if left subtree has a large enough gap.
-      // The max_gap must be big enough to hold:
-      // [guard][size][guard] (worst case)
-      // We need roughly size + 2*PAGE_SIZE space in a gap to be sure we can fit
-      // a guarded region?
-      // Actually, if max_gap >= size + 2*PAGE_SIZE, it's definitely worth looking.
       if (node->rb_left && rb_entry(node->rb_left, struct vm_area_struct, vm_rb)->vm_rb_max_gap >= size + 2 *
           PAGE_SIZE) {
         node = node->rb_left;
@@ -1142,6 +1138,7 @@ retry:
     }
     if (addr == 0) addr = PAGE_SIZE;
 
+    mm->mmap_base = addr + size; // Cache for next time
     return addr;
   }
 
@@ -1153,7 +1150,6 @@ retry:
   if (last_node) {
     struct vm_area_struct *last_vma = rb_entry(last_node, struct vm_area_struct, vm_rb);
     addr = (last_vma->vm_end + alignment - 1) & ~(alignment - 1);
-    // Guard from last VMA
     if (addr == last_vma->vm_end) {
       addr += PAGE_SIZE;
       addr = (addr + alignment - 1) & ~(alignment - 1);
@@ -1164,10 +1160,19 @@ retry:
     if (addr == 0) addr = PAGE_SIZE;
   }
 
-  if (addr + size <= range_end)
+  if (addr + size <= range_end) {
+    mm->mmap_base = addr + size; // Cache for next time
     return addr;
+  }
 
-  // Retry without ASLR if we failed
+  // Final fallback: Reset cache and retry from original start
+  if (mm->mmap_base != 0) {
+      mm->mmap_base = 0;
+      range_start = orig_start;
+      aslr_attempted = false;
+      goto retry;
+  }
+
   if (aslr_attempted) {
     range_start = orig_start;
     aslr_attempted = false;

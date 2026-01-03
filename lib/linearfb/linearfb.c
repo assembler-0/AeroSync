@@ -291,9 +291,23 @@ EXPORT_SYMBOL(linearfb_draw_rect);
 
 void linearfb_fill_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
     if (!fb) return;
-    for (uint32_t i = 0; i < h; ++i) {
-        for (uint32_t j = 0; j < w; ++j) {
-            linearfb_put_pixel(x + j, y + i, color);
+    
+    // Simple clipping
+    if (x >= fb->width || y >= fb->height) return;
+    if (x + w > fb->width) w = fb->width - x;
+    if (y + h > fb->height) h = fb->height - y;
+    if (w == 0 || h == 0) return;
+
+    if (fb->bpp == 32) {
+        for (uint32_t i = 0; i < h; i++) {
+            uint32_t *p = (uint32_t *)((uint8_t *)fb->address + (y + i) * fb->pitch + x * 4);
+            memset32(p, color, w);
+        }
+    } else {
+        for (uint32_t i = 0; i < h; ++i) {
+            for (uint32_t j = 0; j < w; ++j) {
+                linearfb_put_pixel(x + j, y + i, color);
+            }
         }
     }
 }
@@ -500,7 +514,11 @@ EXPORT_SYMBOL(linearfb_draw_text);
 
 void linearfb_console_clear(uint32_t color) {
   if (!fb) return;
-  linearfb_fill_rect(0, 0, fb->width, fb->height, color);
+  if (fb->bpp == 32 && fb->pitch == fb->width * 4) {
+      memset32(fb->address, color, fb->width * fb->height);
+  } else {
+      linearfb_fill_rect(0, 0, fb->width, fb->height, color);
+  }
   memset(console_buffer, ' ', sizeof(console_buffer));
   console_col = 0;
   console_row = 0;

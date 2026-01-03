@@ -20,6 +20,7 @@
 
 #include <lib/string.h>
 #include <kernel/fkx/fkx.h>
+#include <kernel/ctype.h>
 
 bool is_word_boundary(char c) {
   return c == ' ' || c == '\t' || c == '\n' || c == '\0';
@@ -90,41 +91,35 @@ int strcmp(const char *a, const char *b) {
 }
 
 int strlen(const char *str) {
-  if (!str)
-    return 0;
-  int len = 0;
-  while (str[len])
-    len++;
-  return len;
+  if (!str) return 0;
+  size_t n = (size_t)-1;
+  const char *p = str;
+  __asm__ volatile("cld\n\t"
+                   "repne scasb"
+                   : "+D"(p), "+c"(n)
+                   : "a"((unsigned char)0)
+                   : "memory");
+  return (int)((size_t)-2 - n);
 }
 
 int strnlen(const char *str, const size_t max) {
-  size_t len = 0;
-  while (len < max && str[len])
-    len++;
-  return len;
+  if (!str || max == 0) return 0;
+  size_t n = max;
+  const char *p = str;
+  __asm__ volatile("cld\n\t"
+                   "repne scasb\n\t"
+                   "jnz 1f\n\t"
+                   "inc %%rcx\n\t"
+                   "1:"
+                   : "+D"(p), "+c"(n)
+                   : "a"((unsigned char)0)
+                   : "memory");
+  return (int)(max - n);
 }
 
 char *strchr(char *str, int c) {
-  char target = (char)c;
-
-  // Loop until we hit the null terminator
-  while (*str != '\0') {
-    if (*str == target) {
-      // Found the character, return a pointer to it
-      return str;
-    }
-    str++;
-  }
-
-  // Special case: if the character we're looking for IS the null terminator,
-  // the standard says we should return a pointer to it.
-  if (target == '\0') {
-    return str;
-  }
-
-  // If we get here, the character wasn't found
-  return NULL;
+  if (!str) return NULL;
+  return memchr(str, c, strlen(str) + 1);
 }
 
 void strncpy(char *dest, const char *src, size_t max_len) {
@@ -308,50 +303,159 @@ char *strrchr(const char *s, int c) {
   return (char *)last_occurrence;
 }
 
-void *memset(void *restrict s, const int c, const size_t n) {
-  volatile unsigned char *p = (volatile unsigned char *)s;
-  const unsigned char byte = (unsigned char)c;
-  for (size_t i = 0; i < n; ++i) {
-    p[i] = byte;
-  }
+void *memset(void *s, int c, size_t n) {
+  __asm__ volatile("cld\n\t"
+                   "rep stosb"
+                   : "+D"(s), "+c"(n)
+                   : "a"((unsigned char)c)
+                   : "memory");
   return s;
 }
 
-void *memcpy(void *restrict dest, const void *restrict src, const size_t n) {
-  volatile unsigned char *d = (volatile unsigned char *)dest;
-  volatile const unsigned char *s = (volatile const unsigned char *)src;
-  for (size_t i = 0; i < n; ++i) {
-    d[i] = s[i];
-  }
-  return dest;
+void *memcpy(void *d, const void *s, size_t n) {
+  __asm__ volatile("cld\n\t"
+                   "rep movsb"
+                   : "+D"(d), "+S"(s), "+c"(n)
+                   :
+                   : "memory");
+  return d;
 }
 
-void *memmove(void *dest, const void *src, const size_t n) {
-  unsigned char *d = dest;
-  const unsigned char *s = src;
-  if (d < s) {
-    for (size_t i = 0; i < n; ++i) {
-      d[i] = s[i];
-    }
-  } else if (d > s) {
-    for (size_t i = n; i > 0; --i) {
-      d[i - 1] = s[i - 1];
-    }
+void *memmove(void *dest, const void *src, size_t n) {
+  if (n == 0) return dest;
+  if (dest < src) {
+    return memcpy(dest, src, n);
   }
-  return dest;
+
+  void *orig_dest = dest;
+  void *d_end = (char *)dest + n - 1;
+  const void *s_end = (const char *)src + n - 1;
+
+  __asm__ volatile("std\n\t"
+                   "rep movsb\n\t"
+                   "cld"
+                   : "+D"(d_end), "+S"(s_end), "+c"(n)
+                   :
+                   : "memory");
+  return orig_dest;
 }
 
-int memcmp(const void *s1, const void *s2, const size_t n) {
-  const unsigned char *p1 = s1;
-  const unsigned char *p2 = s2;
-  for (size_t i = 0; i < n; ++i) {
-    if (p1[i] != p2[i]) {
-      return (int)p1[i] - (int)p2[i];
-    }
-  }
-  return 0;
+int memcmp(const void *s1, const void *s2, size_t n) {
+  if (n == 0) return 0;
+  int res;
+  __asm__ volatile("cld\n\t"
+                   "repz cmpsb\n\t"
+                   "je 1f\n\t"
+                   "sbbl %0, %0\n\t"
+                   "orl $1, %0\n\t"
+                   "jmp 2f\n\t"
+                   "1: xorl %0, %0\n\t"
+                   "2:"
+                   : "=a"(res), "+S"(s1), "+D"(s2), "+c"(n)
+                   :
+                   : "memory");
+  return res;
 }
+
+void *memset32(void *s, uint32_t val, size_t n) {
+  __asm__ volatile("cld\n\t"
+                   "rep stosl"
+                   : "+D"(s), "+c"(n)
+                   : "a"(val)
+                   : "memory");
+  return s;
+}
+
+static inline char to_lower(char c) {
+    if (c >= 'A' && c <= 'Z') return c + ('a' - 'A');
+    return c;
+}
+
+int strcasecmp(const char *s1, const char *s2) {
+    while (*s1 && (to_lower(*s1) == to_lower(*s2))) {
+        s1++;
+        s2++;
+    }
+    return (unsigned char)to_lower(*s1) - (unsigned char)to_lower(*s2);
+}
+
+int strncasecmp(const char *s1, const char *s2, size_t n) {
+    if (n == 0) return 0;
+    while (n-- > 0 && *s1 && (to_lower(*s1) == to_lower(*s2))) {
+        if (n == 0 || !*s1) break;
+        s1++;
+        s2++;
+    }
+    return (unsigned char)to_lower(*s1) - (unsigned char)to_lower(*s2);
+}
+
+size_t strlcpy(char *dst, const char *src, size_t size) {
+    size_t len = strlen(src);
+    if (size > 0) {
+        size_t copy_len = (len >= size) ? size - 1 : len;
+        memcpy(dst, src, copy_len);
+        dst[copy_len] = '\0';
+    }
+    return len;
+}
+
+uint64_t strtoul(const char *nptr, char **endptr, int base) {
+    const char *s = nptr;
+    uint64_t acc = 0;
+    int c;
+
+    while (is_word_boundary(*s)) s++;
+
+    if (base == 0) {
+        if (*s == '0') {
+            s++;
+            if (*s == 'x' || *s == 'X') {
+                s++;
+                base = 16;
+            } else {
+                base = 8;
+            }
+        } else {
+            base = 10;
+        }
+    } else if (base == 16) {
+        if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) s += 2;
+    }
+
+    for (;;) {
+        c = (unsigned char)*s;
+        if (c >= '0' && c <= '9') c -= '0';
+        else if (c >= 'A' && c <= 'Z') c -= 'A' - 10;
+        else if (c >= 'a' && c <= 'z') c -= 'a' - 10;
+        else break;
+
+        if (c >= base) break;
+        acc = acc * base + c;
+        s++;
+    }
+
+    if (endptr) *endptr = (char *)s;
+    return acc;
+}
+
+void *memchr(const void *s, int c, size_t n) {
+    if (n == 0) return NULL;
+    void *res;
+    __asm__ volatile("cld\n\t"
+                     "repne scasb\n\t"
+                     "jnz 1f\n\t"
+                     "lea -1(%%rdi), %0\n\t"
+                     "jmp 2f\n\t"
+                     "1: xor %0, %0\n\t"
+                     "2:"
+                     : "=r"(res), "+D"(s), "+c"(n)
+                     : "a"((unsigned char)c)
+                     : "memory");
+    return res;
+}
+
 EXPORT_SYMBOL(memset);
+EXPORT_SYMBOL(memset32);
 EXPORT_SYMBOL(memcpy);
 EXPORT_SYMBOL(memmove);
 EXPORT_SYMBOL(memcmp);

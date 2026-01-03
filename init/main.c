@@ -179,28 +179,30 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   if (bootloader_info_request.response &&
       bootloader_performance_request.response) {
     printk(KERN_CLASS
-           "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
-           bootloader_info_request.response->name
-             ? bootloader_info_request.response->name
-             : "(null)",
-           bootloader_info_request.response->version
-             ? bootloader_info_request.response->version
-             : "(null-version)",
-           bootloader_performance_request.response->exec_usec,
-           bootloader_performance_request.response->init_usec);
+     "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
+     bootloader_info_request.response->name
+       ? bootloader_info_request.response->name
+       : "(null)",
+     bootloader_info_request.response->version
+       ? bootloader_info_request.response->version
+       : "(null-version)",
+     bootloader_performance_request.response->exec_usec,
+     bootloader_performance_request.response->init_usec
+    );
   }
 
   if (fw_request.response) {
     printk(FW_CLASS "firmware type: %s\n",
-           fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI64
-             ? "UEFI (64-bit)"
-             : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI32
-                 ? "UEFI (32-bit)"
-                 : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_X86BIOS
-                     ? "BIOS (x86)"
-                     : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_SBI
-                         ? "SBI"
-                         : "(unknown)");
+     fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI64
+     ? "UEFI (64-bit)"
+     : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI32
+     ? "UEFI (32-bit)"
+     : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_X86BIOS
+     ? "BIOS (x86)"
+     : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_SBI
+     ? "SBI"
+     : "(unknown)"
+    );
   }
 
   printk(KERN_CLASS "system pagination level: %d\n", vmm_get_paging_levels());
@@ -211,7 +213,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
      * ensures we don't allocate during early boot. */
     cmdline_register_option("verbose", CMDLINE_TYPE_FLAG);
     cmdline_parse(cmdline_request.response->cmdline);
-    if (cmdline_verbose()) {
+    if (cmdline_get_flag("verbose")) {
       /* Enable verbose/debug log output which some subsystems consult. */
       log_enable_debug();
       printk(KERN_CLASS "cmdline: verbose enabled\n");
@@ -241,12 +243,13 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   idt_install();
   syscall_init();
 
-  // MM smoke test
-  pmm_test();
-  vmm_test();
-  slab_test();
-  vma_test();
-  vmalloc_test();
+  if (cmdline_get_flag("verbose")) {
+    pmm_test();
+    vmm_test();
+    slab_test();
+    vma_test();
+    vmalloc_test();
+  }
 
   if (module_request.response) {
     printk(KERN_DEBUG FKX_CLASS "Found %lu modules, \n",

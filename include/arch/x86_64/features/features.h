@@ -20,10 +20,15 @@ typedef struct {
   bool pat;
   bool la57;
   bool nx;
+  bool wp;
   bool pcid;
   bool invpcid;
   bool smep;
   bool smap;
+  bool umip;
+  bool cet_ss;
+  bool pke;
+  bool fsgsbase;
 } cpu_features_t;
 
 void cpu_features_init(void);

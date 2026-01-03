@@ -7,15 +7,14 @@
 extern "C" {
 #endif
 
-/* Minimal, modular command-line parser.
- * - table driven: add entries to cmdline_register_option to extend parser
- * - supports flags (no value) and key=value options
- * - simple API to query boolean flags and string values
- *
- * Usage:
- *   cmdline_register_option("verbose", CMDLINE_TYPE_FLAG, NULL);
- *   cmdline_parse(cmdline_str);
- *   if (cmdline_get_flag("verbose")) { ... }
+/* 
+ * VoidFrameX Enhanced Command-Line Parser
+ * 
+ * Supports:
+ * - Registered options (type-checked)
+ * - Unregistered options (key=value or flags)
+ * - Quoted strings with spaces: key="value with spaces"
+ * - Escape sequences: key="value with \"quotes\""
  */
 
 typedef enum {
@@ -23,19 +22,35 @@ typedef enum {
     CMDLINE_TYPE_STRING = 1, /* key=value */
 } cmdline_type_t;
 
-/* Register an option that the parser knows about. Returns 0 on success. */
+/**
+ * Register a known option. 
+ * If registered, the parser ensures it matches the expected type.
+ */
 int cmdline_register_option(const char *key, cmdline_type_t type);
 
-/* Parse a raw command-line (usually from bootloader). Returns number of
- * recognised tokens parsed. */
+/**
+ * Parse a raw command-line string.
+ * This can be called multiple times; results are cumulative.
+ */
 int cmdline_parse(const char *cmdline);
 
-/* Query helpers */
-int cmdline_get_flag(const char *key);       /* returns 1 if present, 0 otherwise */
-const char *cmdline_get_string(const char *key); /* returns NULL if not present */
+/**
+ * Query if a flag is present.
+ * Works for both registered flags and unregistered tokens.
+ */
+int cmdline_get_flag(const char *key);
 
-/* Convenience: known global flag accessor */
-static inline int cmdline_verbose(void) { return cmdline_get_flag("verbose"); }
+/**
+ * Query for a string value.
+ * returns NULL if key not found or has no value.
+ */
+const char *cmdline_get_string(const char *key);
+
+/**
+ * Iterate over all parsed options (useful for debug/logging).
+ */
+typedef void (*cmdline_iter_t)(const char *key, const char *value, void *priv);
+void cmdline_for_each(cmdline_iter_t iter, void *priv);
 
 #ifdef __cplusplus
 }
