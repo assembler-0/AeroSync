@@ -2,6 +2,7 @@
 
 #include <linux/list.h>
 #include <kernel/types.h>
+#include <kernel/atomic.h>
 
 /* Page flags */
 #define PG_reserved   (1 << 0)
@@ -101,7 +102,6 @@ struct folio {
 #define ClearPageTail(page)  ((page)->flags &= ~PG_tail)
 
 /* Reference counting */
-#include <kernel/atomic.h>
 
 static inline void get_page(struct page *page) {
   atomic_inc(&page->_refcount);

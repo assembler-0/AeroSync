@@ -108,7 +108,7 @@ static void parse_srat(struct acpi_srat *srat) {
                         numa_ranges[numa_range_count].nid = (int)domain;
                         numa_range_count++;
                         
-                        printk(KERN_DEBUG "[NUMA] Range [%llx - %llx] -> Node %d\n", 
+                        printk(KERN_DEBUG NUMA_CLASS "Range [%llx - %llx] -> Node %d\n", 
                                ma->address, ma->address + ma->length, domain);
                     }
                 }

@@ -45,7 +45,16 @@
   <component name="ChangeListManager">
     <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="psf loader and time wasted">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/arch/x86_64/percpu.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x86_64/percpu.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/compiler.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/compiler.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/kernel/atomic.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/atomic.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/kernel/rw_semaphore.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/rw_semaphore.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/kernel/types.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/types.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/include/kernel/version.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/version.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/mm/mm_types.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/mm_types.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/mm/page.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/page.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/mm/slab.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/slab.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mm/slab.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/slab.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -163,11 +172,6 @@
     </key>
   </component>
   <component name="RunManager" selected="CMake Application.vmw-run">
-    <configuration default="true" type="CLionExternalRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true">
-      <method v="2">
-        <option name="CLION.EXTERNAL.BUILD" enabled="true" />
-      </method>
-    </configuration>
     <configuration name="bochs-run" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="VoidFrameX" TARGET_NAME="bochs-run" CONFIG_NAME="Release">
       <method v="2">
         <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />

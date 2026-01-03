@@ -100,6 +100,21 @@ extern unsigned long __per_cpu_offset[MAX_CPUS];
 #define this_cpu_dec(var) this_cpu_add(var, -1)
 
 /*
+ * Double-width cmpxchg on per-CPU variables.
+ * Targets two adjacent 64-bit values (16 bytes total).
+ * Must be 16-byte aligned.
+ */
+#define this_cpu_cmpxchg_double(pcp1, pcp2, o1, o2, n1, n2)                    \
+  ({                                                                           \
+    bool __ret;                                                                \
+    asm volatile("lock; cmpxchg16b %%gs:%3; setz %0"                           \
+                 : "=a"(__ret), "+d"(o2), "+a"(o1)                             \
+                 : "m"(pcp1), "b"(n1), "c"(n2), "1"(o2), "2"(o1)               \
+                 : "memory");                                                  \
+    __ret;                                                                     \
+  })
+
+/*
  * Get the address of a per-CPU variable for the CURRENT CPU.
  * Note: This generally returns a pointer relative to GS base (0-based usually).
  * BUT, since we set GS base to the linear address of the per-cpu area,

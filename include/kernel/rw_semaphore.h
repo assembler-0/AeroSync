@@ -2,7 +2,7 @@
 
 #include <kernel/spinlock.h>
 #include <kernel/wait.h>
-#include <kernel/types.h>
+#include <kernel/atomic.h>
 
 /**
  * @file include/kernel/rw_semaphore.h

@@ -5,6 +5,7 @@
 #include <kernel/types.h>
 #include <linux/list.h>
 #include <linux/rbtree.h>
+#include <kernel/atomic.h>
 
 struct vm_area_struct;
 struct vm_fault;
