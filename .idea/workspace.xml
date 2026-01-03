@@ -43,27 +43,14 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="vmobjects">
+    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="faster vmalloc()">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x86_64/features/features.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x86_64/features/features.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x86_64/mm/fault.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x86_64/mm/fault.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x86_64/mm/pmm.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x86_64/mm/pmm.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x86_64/mm/vmm.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x86_64/mm/vmm.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/arch/x86_64/features/features.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x86_64/features/features.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/arch/x86_64/mm/vmm.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x86_64/mm/vmm.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/cmdline.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/cmdline.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/include/kernel/version.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/version.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/lib/string.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/lib/string.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/mm/vma.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/vma.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/lib/linearfb/font.h" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/fkx/loader.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/fkx/loader.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/cmdline.c" beforeDir="false" afterPath="$PROJECT_DIR$/lib/cmdline.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/linearfb/font.c" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/lib/linearfb/linearfb.c" beforeDir="false" afterPath="$PROJECT_DIR$/lib/linearfb/linearfb.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/string.c" beforeDir="false" afterPath="$PROJECT_DIR$/lib/string.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/numa.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/numa.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/vm_object.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vm_object.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/vma.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vma.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mm/vmalloc.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vmalloc.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/linearfb/linearfb.cmake" beforeDir="false" afterPath="$PROJECT_DIR$/lib/linearfb/linearfb.cmake" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -181,6 +168,11 @@
     </key>
   </component>
   <component name="RunManager" selected="CMake Application.vmw-run">
+    <configuration default="true" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true">
+      <method v="2">
+        <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="bochs-run" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="VoidFrameX" TARGET_NAME="bochs-run" CONFIG_NAME="Release">
       <method v="2">
         <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
@@ -445,7 +437,7 @@
       <workItem from="1767357367510" duration="13000" />
       <workItem from="1767397853452" duration="11000" />
       <workItem from="1767404122264" duration="5683000" />
-      <workItem from="1767410567322" duration="1610000" />
+      <workItem from="1767410567322" duration="8340000" />
     </task>
     <task id="LOCAL-00001" summary="Mutexes and FKX spec">
       <option name="closed" value="true" />
@@ -711,7 +703,15 @@
       <option name="project" value="LOCAL" />
       <updated>1767356351106</updated>
     </task>
-    <option name="localTasksCounter" value="34" />
+    <task id="LOCAL-00034" summary="faster vmalloc()">
+      <option name="closed" value="true" />
+      <created>1767412319114</created>
+      <option name="number" value="00034" />
+      <option name="presentableId" value="LOCAL-00034" />
+      <option name="project" value="LOCAL" />
+      <updated>1767412319114</updated>
+    </task>
+    <option name="localTasksCounter" value="35" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -726,7 +726,6 @@
     <isAutomaticReloadCMake value="true" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="logging again" />
     <MESSAGE value="sysintf" />
     <MESSAGE value="HPET driver separation" />
     <MESSAGE value="SLUB allocator" />
@@ -751,7 +750,8 @@
     <MESSAGE value="formatting" />
     <MESSAGE value="deadly assumptions" />
     <MESSAGE value="vmobjects" />
-    <option name="LAST_COMMIT_MESSAGE" value="vmobjects" />
+    <MESSAGE value="faster vmalloc()" />
+    <option name="LAST_COMMIT_MESSAGE" value="faster vmalloc()" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

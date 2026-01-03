@@ -1,4 +1,4 @@
-/// SPDX-License-Identifier: GPL-2.0-only
+///SPDX-License-Identifier: GPL-2.0-only
 /**
  * linearfb - Linear Framebuffer library
  *
@@ -20,18 +20,22 @@
 
 #include <lib/linearfb/linearfb.h>
 #include <kernel/fkx/fkx.h>
-#include <lib/linearfb/font.h>
+#include <lib/linearfb/psf.h>
 #include <lib/string.h>
 #include <lib/math.h>
 #include <mm/vmalloc.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <kernel/spinlock.h>
 
+extern const uint8_t embedded_console_font[];
+extern const uint32_t embedded_console_font_size;
+
 static int fb_initialized = 0;
 static struct limine_framebuffer *fb = NULL;
 static linearfb_font_t fb_font = {0};
 static uint32_t font_glyph_count = 0;
 static uint32_t font_glyph_w = 0, font_glyph_h = 0;
+static uint32_t font_pitch = 0;
 
 // --- Console state ---
 static uint32_t console_col = 0, console_row = 0;
@@ -76,10 +80,19 @@ static int linearfb_init(volatile struct limine_framebuffer_request *fb_req) {
 int linearfb_init_standard(void *data) {
   (void) data;
   linearfb_init(framebuffer_request);
-  linearfb_font_t font = {
-    .width = 8, .height = 16, .data = (uint8_t *) console_font
-  };
-  linearfb_load_font(&font, 256);
+  
+  psf_font_t psf;
+  if (psf_parse(embedded_console_font, embedded_console_font_size, &psf) == 0) {
+      linearfb_font_t font = {
+          .width = psf.width,
+          .height = psf.height,
+          .data = psf.glyph_data,
+          .pitch = psf.bytes_per_line,
+          .bpp = 1
+      };
+      linearfb_load_font(&font, psf.num_glyphs);
+  }
+
   linearfb_console_clear(0x00000000);
   linearfb_console_set_cursor(0, 0);
   return fb ? 0 : -1;
@@ -171,8 +184,7 @@ void linearfb_get_screen_surface(linearfb_surface_t *surface) {
 EXPORT_SYMBOL(linearfb_get_screen_surface);
 
 void linearfb_blit(linearfb_surface_t *dst, linearfb_surface_t *src, uint32_t dx, uint32_t dy, uint32_t sx, uint32_t sy, uint32_t w, uint32_t h) {
-    if (!dst || !src) return;
-    
+    if (!dst || !src) return;    
     // Bounds check
     if (dx >= dst->width || dy >= dst->height) return;
     if (sx >= src->width || sy >= src->height) return;
@@ -290,8 +302,7 @@ void linearfb_draw_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t
 EXPORT_SYMBOL(linearfb_draw_rect);
 
 void linearfb_fill_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
-    if (!fb) return;
-    
+    if (!fb) return;    
     // Simple clipping
     if (x >= fb->width || y >= fb->height) return;
     if (x + w > fb->width) w = fb->width - x;
@@ -493,16 +504,20 @@ EXPORT_SYMBOL(linearfb_draw_shadow_rect);
 void linearfb_draw_text(const char *text, uint32_t x, uint32_t y, uint32_t color) {
     if (!text || !fb || !fb_font.data) return;
     uint32_t cx = x, cy = y;
+    uint32_t stride = font_pitch ? font_pitch : (font_glyph_w + 7) / 8;
+    uint32_t glyph_size = font_glyph_h * stride;
+
     while (*text) {
         char c = *text++;
         uint8_t ch = (uint8_t) c;
         if (ch >= font_glyph_count) ch = '?';
-        const uint8_t *glyph = fb_font.data + ch * font_glyph_h;
+        const uint8_t *glyph = fb_font.data + ch * glyph_size;
         
         for (uint32_t r = 0; r < font_glyph_h; ++r) {
-            uint8_t bits = glyph[r];
+            const uint8_t *row_data = glyph + r * stride;
             for (uint32_t gx = 0; gx < font_glyph_w; ++gx) {
-                if (bits & (1 << (7 - gx))) {
+                // Pixel gx corresponds to byte gx/8, bit 7-(gx%8)
+                if (row_data[gx / 8] & (1 << (7 - (gx % 8)))) {
                     linearfb_put_pixel(cx + gx, cy + r, color);
                 }
             }
@@ -533,12 +548,14 @@ static void linearfb_draw_glyph_at(uint32_t col, uint32_t row, char c) {
   uint32_t py = row * font_glyph_h;
   uint8_t ch = (uint8_t) c;
   if (ch >= font_glyph_count) ch = '?';
-  const uint8_t *glyph = fb_font.data + ch * font_glyph_h;
+
+  uint32_t stride = font_pitch ? font_pitch : (font_glyph_w + 7) / 8;
+  const uint8_t *glyph = fb_font.data + ch * font_glyph_h * stride;
 
   for (uint32_t r = 0; r < font_glyph_h; ++r) {
-    uint8_t bits = glyph[r];
+    const uint8_t *row_data = glyph + r * stride;
     for (uint32_t cx = 0; cx < font_glyph_w; ++cx) {
-      uint32_t color = (bits & (1 << (7 - cx))) ? console_fg : console_bg;
+      uint32_t color = (row_data[cx / 8] & (1 << (7 - (cx % 8)))) ? console_fg : console_bg;
       linearfb_put_pixel(px + cx, py + r, color);
     }
   }
@@ -605,6 +622,7 @@ int linearfb_load_font(const linearfb_font_t *font, const uint32_t count) {
   fb_font = *font;
   font_glyph_w = font->width;
   font_glyph_h = font->height;
+  font_pitch = font->pitch;
   font_glyph_count = count;
   if (fb && font_glyph_w && font_glyph_h) {
     console_cols = fb->width / font_glyph_w;
