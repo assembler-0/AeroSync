@@ -324,8 +324,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     panic(KERN_CLASS "Failed to create kernel_init thread");
   kthread_run(init_task);
 
-  for (int i = 0; i <= 512; i++) printk("%c", i);
-
   cpu_sti();
 
   // BSP becomes the idle thread
