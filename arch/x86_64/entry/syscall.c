@@ -5,7 +5,19 @@
  * @file arch/x86_64/entry/syscall.c
  * @brief System Call Dispatcher and Initialization
  * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the VoidFrameX kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
+
 
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/gdt/gdt.h>
@@ -21,6 +33,7 @@
 #include <fs/vfs.h>
 #include <mm/slab.h>
 #include <lib/bitmap.h>
+#include <kernel/signal.h>
 
 #define MSR_STAR 0xC0000081
 #define MSR_LSTAR 0xC0000082
@@ -279,10 +292,16 @@ static sys_call_ptr_t syscall_table[] = {
     [2] = sys_open,
     [3] = sys_close,
     [8] = sys_lseek,
+    [13] = sys_rt_sigaction,
+    [14] = sys_rt_sigprocmask,
+    [15] = sys_rt_sigreturn,
     [39] = sys_getpid_handler,
     [56] = sys_clone_handler,
     [57] = sys_fork_handler,
     [60] = sys_exit_handler,
+    [62] = sys_kill,
+    [200] = sys_tkill,
+    [234] = sys_tgkill,
 };
 
 #define NR_SYSCALLS (sizeof(syscall_table) / sizeof(sys_call_ptr_t))
@@ -292,10 +311,12 @@ void do_syscall(struct syscall_regs *regs) {
     
     if (syscall_num >= NR_SYSCALLS || !syscall_table[syscall_num]) {
         sys_ni_syscall(regs);
-        return;
+    } else {
+        syscall_table[syscall_num](regs);
     }
 
-    syscall_table[syscall_num](regs);
+    /* Check for pending signals before returning to user space */
+    do_signal(regs, true);
 }
 
 void syscall_init(void) {

@@ -75,6 +75,5 @@ EXPORT_SYMBOL(local_irq_save);
 
 void local_irq_restore(irq_flags_t flags) {
   restore_irq_flags(flags);
-  cpu_sti();
 }
 EXPORT_SYMBOL(local_irq_restore);

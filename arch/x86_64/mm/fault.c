@@ -26,6 +26,7 @@
 #include <kernel/panic.h>
 #include <kernel/sched/process.h>
 #include <kernel/sched/sched.h> // For current task
+#include <kernel/signal.h>
 #include <lib/printk.h>
 #include <mm/vma.h>
 
@@ -130,7 +131,7 @@ void do_page_fault(cpu_regs *regs) {
 signal_segv:
   if (user_mode) {
     printk(KERN_ERR FAULT_CLASS "segmentation fault at %llx (User)\n", cr2);
-    sys_exit(-1);
+    send_signal(SIGSEGV, current);
     return;
   }
 

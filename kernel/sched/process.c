@@ -38,6 +38,7 @@
 #include <mm/vmalloc.h>
 #include <lib/vsprintf.h>
 #include <fs/file.h>
+#include <kernel/signal.h>
 
 /*
  * Process/Thread Management
@@ -172,6 +173,10 @@ struct task_struct *copy_process(uint64_t clone_flags,
   p->se.load = parent->se.load;
   cpumask_copy(&p->cpus_allowed, &parent->cpus_allowed);
 
+  // Setup signals
+  extern void signal_init_task(struct task_struct *p);
+  signal_init_task(p);
+
   // Link into global lists
   irq_flags_t flags = spinlock_lock_irqsave(&tasklist_lock);
   list_add_tail(&p->tasks, &task_list);
@@ -305,6 +310,12 @@ void free_task(struct task_struct *task) {
               }
           }
           kfree(task->files);
+      }
+  }
+
+  if (task->signal) {
+      if (--task->signal->count == 0) {
+          kfree(task->signal);
       }
   }
   

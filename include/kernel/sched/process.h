@@ -3,6 +3,8 @@
 #include <kernel/sched/sched.h>
 #include <kernel/types.h>
 
+struct syscall_regs;
+
 /* Thread creation flags */
 #define CLONE_VM 0x00000100
 #define CLONE_FS 0x00000200
@@ -31,7 +33,6 @@ struct task_struct *spawn_user_process_raw(void *data, size_t len, const char *n
 int do_execve_from_buffer(void *data, size_t len, const char *name);
 
 pid_t sys_fork(void);
-struct syscall_regs;
 pid_t do_fork(uint64_t clone_flags, uint64_t stack_start, struct syscall_regs *regs);
 
 struct task_struct *process_spawn(int (*entry)(void *), void *data,

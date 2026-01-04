@@ -24,6 +24,7 @@
 #include <kernel/sysintf/ic.h>
 #include <kernel/panic.h>
 #include <kernel/sched/sched.h>
+#include <kernel/signal.h>
 #include <lib/printk.h>
 
 #define IRQ_BASE_VECTOR 32
@@ -45,8 +46,26 @@ void __used __hot irq_common_stub(cpu_regs *regs) {
   if (regs->interrupt_number < IRQ_BASE_VECTOR) {
     if (regs->interrupt_number == 14) {
       do_page_fault(regs);
-      return;
+      goto out_check_signals;
     }
+
+    // If exception happened in user mode, send a signal instead of panicking
+    if ((regs->cs & 3) != 0) {
+        int sig = 0;
+        switch (regs->interrupt_number) {
+            case 0:  sig = SIGFPE;  break; // Divide by zero
+            case 1:  sig = SIGTRAP; break; // Debug
+            case 3:  sig = SIGTRAP; break; // Breakpoint
+            case 4:  sig = SIGSEGV; break; // Overflow
+            case 5:  sig = SIGSEGV; break; // Bound range
+            case 6:  sig = SIGILL;  break; // Invalid Opcode
+            case 13: sig = SIGSEGV; break; // General Protection Fault
+            default: sig = SIGILL;  break;
+        }
+        send_signal(sig, current);
+        goto out_check_signals;
+    }
+    
     panic_exception(regs);
   }
 
@@ -57,22 +76,22 @@ void __used __hot irq_common_stub(cpu_regs *regs) {
 
   if (regs->interrupt_number >= MAX_INTERRUPTS) {
       printk(KERN_ERR "Spurious interrupt with invalid vector: %llu\n", regs->interrupt_number);
-      return;
+      goto out_check_signals;
   }
 
   if (regs->interrupt_number == IRQ_SCHED_IPI_VECTOR) {
     irq_sched_ipi_handler();
-    return;
+    goto out_check_signals;
   }
 
   if (regs->interrupt_number == TLB_FLUSH_IPI_VECTOR) {
     tlb_ipi_handler(regs);
-    return;
+    goto out_check_signals;
   }
 
   if (regs->interrupt_number == CALL_FUNCTION_IPI_VECTOR) {
     smp_call_ipi_handler();
-    return;
+    goto out_check_signals;
   }
 
   if (irq_handlers[regs->interrupt_number]) {
@@ -82,5 +101,10 @@ void __used __hot irq_common_stub(cpu_regs *regs) {
   if (regs->interrupt_number == IRQ_BASE_VECTOR) {
     scheduler_tick();
     check_preempt();
+  }
+
+out_check_signals:
+  if ((regs->cs & 3) != 0) {
+      do_signal(regs, false);
   }
 }

@@ -248,6 +248,13 @@ struct task_struct {
   uint64_t nvcsw;         /* Voluntary context switches */
   uint64_t nivcsw;        /* Involuntary context switches */
   uint64_t start_time_ns; /* Task start time */
+
+  /*
+   * Signal handling
+   */
+  uint64_t pending;           /* Per-thread pending signals */
+  uint64_t blocked;           /* Blocked signals */
+  struct signal_struct *signal; /* Shared signal state */
 };
 
 /*
