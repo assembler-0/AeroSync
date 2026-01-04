@@ -19,15 +19,11 @@
  */
 
 #include <arch/x86_64/mm/tlb.h>
-#include <arch/x86_64/cpu.h>
 #include <arch/x86_64/features/features.h>
-#include <kernel/sysintf/ic.h>
-#include <kernel/sched/sched.h>
 #include <mm/mm_types.h>
 #include <arch/x86_64/smp.h>
 #include <arch/x86_64/mm/paging.h>
 #include <mm/vma.h>
-#include <arch/x86_64/cpu.h>
 
 struct invpcid_desc {
     uint64_t pcid : 12;

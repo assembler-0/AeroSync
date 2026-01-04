@@ -43,8 +43,27 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="mm overhaul (again)">
+    <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="unified error codes">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/CMakeLists.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x86_64/features/features.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x86_64/features/features.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x86_64/mm/tlb.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x86_64/mm/tlb.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x86_64/mm/vmm.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x86_64/mm/vmm.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arch/x86_64/smp.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x86_64/smp.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/drivers/acpi/uacpi_glue.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/acpi/uacpi_glue.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/arch/x86_64/mm/vmm.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x86_64/mm/vmm.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/arch/x86_64/smp.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/arch/x86_64/smp.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/kernel/version.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/version.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/mm/slab.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/slab.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/mm/vm_object.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mm/vm_object.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mm/memory.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/memory.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mm/mmu_gather.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/mmu_gather.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mm/page_alloc.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/page_alloc.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mm/slab.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/slab.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mm/vm_object.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vm_object.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mm/vma.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vma.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mm/vmalloc.c" beforeDir="false" afterPath="$PROJECT_DIR$/mm/vmalloc.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -55,7 +74,7 @@
     <option name="formatViaClangd" value="false" />
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="551" />
+    <option name="cachedIndexableFilesCount" value="672" />
     <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
   </component>
   <component name="ExecutionTargetManager" SELECTED_TARGET="CMakeBuildProfile:Release" />
@@ -162,6 +181,11 @@
     </key>
   </component>
   <component name="RunManager" selected="CMake Application.vmw-run">
+    <configuration default="true" type="CLionExternalRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true">
+      <method v="2">
+        <option name="CLION.EXTERNAL.BUILD" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="bochs-run" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="VoidFrameX" TARGET_NAME="bochs-run" CONFIG_NAME="Release">
       <method v="2">
         <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
@@ -429,7 +453,8 @@
       <workItem from="1767410567322" duration="8695000" />
       <workItem from="1767420459760" duration="8000" />
       <workItem from="1767480747043" duration="7057000" />
-      <workItem from="1767488563179" duration="421000" />
+      <workItem from="1767488563179" duration="6835000" />
+      <workItem from="1767495972026" duration="9000" />
     </task>
     <task id="LOCAL-00001" summary="Mutexes and FKX spec">
       <option name="closed" value="true" />
@@ -719,7 +744,15 @@
       <option name="project" value="LOCAL" />
       <updated>1767488595620</updated>
     </task>
-    <option name="localTasksCounter" value="37" />
+    <task id="LOCAL-00037" summary="unified error codes">
+      <option name="closed" value="true" />
+      <created>1767490090148</created>
+      <option name="number" value="00037" />
+      <option name="presentableId" value="LOCAL-00037" />
+      <option name="project" value="LOCAL" />
+      <updated>1767490090148</updated>
+    </task>
+    <option name="localTasksCounter" value="38" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -734,7 +767,6 @@
     <isAutomaticReloadCMake value="true" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="SLUB allocator" />
     <MESSAGE value="vmalloc() enhancements" />
     <MESSAGE value="Fault handler, race condition fixed" />
     <MESSAGE value="EXPORT_SYMBOL()" />
@@ -759,7 +791,8 @@
     <MESSAGE value="faster vmalloc()" />
     <MESSAGE value="psf loader and time wasted" />
     <MESSAGE value="mm overhaul (again)" />
-    <option name="LAST_COMMIT_MESSAGE" value="mm overhaul (again)" />
+    <MESSAGE value="unified error codes" />
+    <option name="LAST_COMMIT_MESSAGE" value="unified error codes" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

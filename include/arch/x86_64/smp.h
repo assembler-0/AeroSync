@@ -3,6 +3,8 @@
 #include <kernel/types.h>
 #include <limine/limine.h>
 #include <kernel/atomic.h>
+#include <kernel/spinlock.h>
+#include <linux/list.h>
 
 // Initialize SMP (BSP calls this)
 void smp_init(void);
@@ -30,6 +32,22 @@ struct smp_call_data {
     smp_call_func_t func;
     void *info;
     atomic_t finished;
+};
+
+/* Structure for a single cross-CPU call request */
+struct call_single_data {
+    struct list_head list;
+    smp_call_func_t func;
+    void *info;
+    uint32_t flags; // CSD_FLAG_WAIT, etc.
+};
+
+#define CSD_FLAG_WAIT 0x01
+
+/* Per-CPU queue of pending calls */
+struct smp_call_queue {
+    struct list_head list;
+    spinlock_t lock;
 };
 
 /**

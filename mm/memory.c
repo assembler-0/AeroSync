@@ -180,7 +180,7 @@ int folio_reclaim(struct folio *folio) {
 /**
  * shrink_inactive_list - Scan the inactive LRU for pages to reclaim.
  */
-static size_t shrink_inactive_list(size_t nr_to_scan) {
+size_t shrink_inactive_list(size_t nr_to_scan) {
   size_t reclaimed = 0;
   struct list_head page_list;
   INIT_LIST_HEAD(&page_list);
@@ -192,8 +192,9 @@ static size_t shrink_inactive_list(size_t nr_to_scan) {
   }
   spinlock_unlock_irqrestore(&lru_lock, flags);
 
-  struct page *page, *tmp;
-  list_for_each_entry_safe(page, tmp, &page_list, lru) {
+  struct list_head *pos, *q;
+  list_for_each_safe(pos, q, &page_list) {
+    struct page *page = list_entry(pos, struct page, lru);
     struct folio *folio = page_folio(page);
     if (folio_reclaim(folio) == 0) {
       reclaimed++;

@@ -213,22 +213,25 @@ static void *__slab_alloc(kmem_cache_t *s, gfp_t gfpflags, int node, struct kmem
   }
 
   /* Try to get objects from the frozen page's freelist */
+  struct kmem_cache_node *n = s->node[page->node];
+  spinlock_lock(&n->list_lock);
   freelist = page->freelist;
   if (freelist) {
     page->freelist = NULL; /* Take the whole freelist */
     page->inuse = (unsigned short) page->objects;
+    spinlock_unlock(&n->list_lock);
     c->freelist = get_freelist_next(freelist, s->offset);
     restore_irq_flags(flags);
     return freelist;
   }
+  spinlock_unlock(&n->list_lock);
   /* Page is full, unfreeze it */
   page->frozen = 0;
 
   c->page = NULL;
 
 find_slab:;
-  /* Check partial list for the requested node */
-  struct kmem_cache_node *n = s->node[node];
+  n = s->node[node];
   spinlock_lock(&n->list_lock);
   if (!list_empty(&n->partial)) {
     page = list_first_entry(&n->partial, struct page, list);
@@ -357,6 +360,11 @@ void kmem_cache_free(kmem_cache_t *s, void *x) {
 
   if (unlikely(!x)) return;
 
+  /* Safety check for vmalloc addresses */
+  if ((uintptr_t)x >= VMALLOC_VIRT_BASE) {
+      panic("kmem_cache_free: attempt to free vmalloc address %p via slab %s", x, s->name);
+  }
+
   check_redzone(s, x);
   if (s->flags & SLAB_POISON) poison_obj(s, x, POISON_FREE);
 
@@ -482,7 +490,12 @@ static struct kmem_cache *create_boot_cache(const char *name, size_t size, unsig
   s->name = name;
   s->object_size = (int) size;
   s->size = (int) size;
-  s->align = 8;
+  
+  /* Enforce alignment: 8 bytes for small, 16 bytes for >= 16 to support cmpxchg16b */
+  if (size < 8) s->align = 8;
+  else if (size < 16) s->align = 8;
+  else s->align = 16;
+
   s->flags = flags;
   s->inuse = (int)size;
 
@@ -536,6 +549,14 @@ void *kmalloc(size_t size) {
   if (unlikely(idx < 0)) return NULL;
 
   return kmem_cache_alloc(kmalloc_caches[idx]);
+}
+
+void *kzalloc(size_t size) {
+  void *ptr = kmalloc(size);
+  if (ptr && size <= SLAB_MAX_SIZE) {
+    memset(ptr, 0, size);
+  }
+  return ptr;
 }
 
 void kfree(void *ptr) {

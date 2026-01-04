@@ -34,6 +34,8 @@
 /* Global zones */
 struct zone managed_zones[MAX_NR_ZONES];
 
+DECLARE_PER_CPU(struct per_cpu_pages, pcp_pages);
+
 /* Default zone names */
 static const char *const zone_names[MAX_NR_ZONES] = {
   "DMA",
@@ -197,15 +199,21 @@ static void __free_one_page(struct page *page, unsigned long pfn,
   if (order > zone->max_free_order) zone->max_free_order = order;
 }
 
+extern size_t shrink_inactive_list(size_t nr_to_scan);
+
 /*
  * Core Allocator
  */
 struct folio *alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order) {
   struct page *page = NULL;
+  struct pglist_data *pgdat = NULL;
   struct zone *z;
   int z_idx;
   unsigned long flags;
+  bool can_reclaim = !(gfp_mask & ___GFP_ATOMIC);
+  int reclaim_retries = 3;
 
+retry:
   if (nid < 0 || nid >= MAX_NUMNODES || !node_data[nid]) {
     nid = 0; // Fallback to node 0
   }
@@ -215,9 +223,43 @@ struct folio *alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order) {
   else if (gfp_mask & ___GFP_DMA32) start_zone = ZONE_DMA32;
 
   /*
+   * PCP Fastpath (Order 0, Normal/HighMem, Local Node)
+   */
+  if (order == 0 && percpu_ready() && (start_zone == ZONE_NORMAL) && (nid == this_node())) {
+      irq_flags_t irq_flags = save_irq_flags();
+      struct per_cpu_pages *pcp = this_cpu_ptr(pcp_pages);
+      
+      /* Ensure pgdat is set for 'found' label */
+      pgdat = node_data[nid];
+      if (unlikely(!pgdat)) {
+          restore_irq_flags(irq_flags);
+          return NULL;
+      }
+
+      if (list_empty(&pcp->list)) {
+          /* Refill from Normal Zone */
+          struct zone *refill_zone = &pgdat->node_zones[ZONE_NORMAL];
+          
+          if (refill_zone->nr_free_pages >= refill_zone->watermark[WMARK_LOW]) {
+             int count = rmqueue_bulk(refill_zone, 0, pcp->batch, &pcp->list);
+             pcp->count += count;
+          }
+      }
+
+      if (!list_empty(&pcp->list)) {
+          page = list_first_entry(&pcp->list, struct page, list);
+          list_del(&page->list);
+          pcp->count--;
+          restore_irq_flags(irq_flags);
+          goto found;
+      }
+      restore_irq_flags(irq_flags);
+  }
+
+  /*
    * Try preferred node first
    */
-  struct pglist_data *pgdat = node_data[nid];
+  pgdat = node_data[nid];
   for (z_idx = start_zone; z_idx >= 0; z_idx--) {
     z = &pgdat->node_zones[z_idx];
 
@@ -226,6 +268,11 @@ struct folio *alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order) {
     /* Check watermarks */
     if (z->nr_free_pages < z->watermark[WMARK_LOW]) {
       wakeup_kswapd(z);
+    }
+
+    /* If we are under the MIN watermark and can't reclaim, we might fail unless HIGH priority */
+    if (z->nr_free_pages < z->watermark[WMARK_MIN] && !can_reclaim && !(gfp_mask & ___GFP_HIGH)) {
+        continue;
     }
 
     flags = spinlock_lock_irqsave(&z->lock);
@@ -246,6 +293,7 @@ struct folio *alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order) {
     for (z_idx = start_zone; z_idx >= 0; z_idx--) {
       z = &pgdat->node_zones[z_idx];
       if (!z->present_pages || order > z->max_free_order) continue;
+      
       flags = spinlock_lock_irqsave(&z->lock);
       page = __rmqueue(z, order);
       spinlock_unlock_irqrestore(&z->lock, flags);
@@ -253,7 +301,24 @@ struct folio *alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order) {
     }
   }
 
-  printk(KERN_ERR PMM_CLASS "failed to allocate order %u from any node\n", order);
+  /*
+   * Direct Reclaim / Demand Allocation
+   * If we are allowed to sleep/reclaim, try to free some pages and retry.
+   */
+  if (can_reclaim && reclaim_retries > 0) {
+      // Try to free 32 pages (SWAP_CLUSTER_MAX equivalent)
+      size_t reclaimed = shrink_inactive_list(32);
+      
+      if (reclaimed > 0) {
+          reclaim_retries--;
+          goto retry;
+      }
+      
+      // If we couldn't reclaim anything, maybe OOM or just everything active.
+      // We could try compacting here if implemented.
+  }
+
+  printk(KERN_ERR PMM_CLASS "failed to allocate order %u from any node (gfp: %x)\n", order, gfp_mask);
   return NULL;
 
 found:
@@ -310,8 +375,6 @@ void put_page(struct page *page) {
     __free_pages(page, order);
   }
 }
-
-DECLARE_PER_CPU(struct per_cpu_pages, pcp_pages);
 
 void __free_pages(struct page *page, unsigned int order) {
   if (!page) return;

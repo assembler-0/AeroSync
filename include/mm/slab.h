@@ -70,6 +70,7 @@ void *kmem_cache_alloc(kmem_cache_t *cache);
 void kmem_cache_free(kmem_cache_t *cache, void *obj);
 
 void *kmalloc(size_t size);
+void *kzalloc(size_t size);
 void kfree(void *ptr);
 
 /* Helpers to convert between object and page */

@@ -9,6 +9,13 @@ typedef enum {
   VM_OBJECT_PHYS,
 } vm_object_type_t;
 
+struct page_node {
+  struct rb_node rb;
+  uint64_t pgoff;
+  struct page *page;
+  int order;
+};
+
 /**
  * vm_object_operations - Operations on a VM object
  */
@@ -43,7 +50,7 @@ void vm_object_get(struct vm_object *obj);
 void vm_object_put(struct vm_object *obj);
 
 /* Page management */
-int vm_object_add_page(struct vm_object *obj, uint64_t pgoff, struct page *page);
+int vm_object_add_page(struct vm_object *obj, uint64_t pgoff, struct page *page, struct page_node *node);
 struct page *vm_object_find_page(struct vm_object *obj, uint64_t pgoff);
 void vm_object_remove_page(struct vm_object *obj, uint64_t pgoff);
 

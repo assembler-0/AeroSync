@@ -500,13 +500,6 @@ static void acpi_irq_trampoline(cpu_regs *regs) {
   }
 
   ic_send_eoi(vector - 32); // Send EOI.
-                            // Wait, does irq_install_handler handle EOI?
-  // `irq_handler_t` usually is just the handler logic.
-  // `idt.asm` or `isr.asm` usually calls the C handler.
-  // If `drivers/apic/pic.c` handles EOI, we shouldn't.
-  // But generic handlers usually need to EOI if it's edge triggered?
-  // Let's check irq.c or isr.asm.
-  // Assuming we need to ACK.
 }
 
 void uacpi_notify_ic_ready(void) {

@@ -702,25 +702,29 @@ int vma_split(struct mm_struct *mm, struct vm_area_struct *vma, uint64_t addr) {
    * modify its end, re-insert it, and then insert the new part.
    * This ensures augmented metadata (max_gap) is correctly updated.
    */
-  vma_remove(mm, vma);
   uint64_t old_end = vma->vm_end;
+  vma_remove(mm, vma);
   vma->vm_end = addr;
 
   int ret = vma_insert(mm, vma);
   if (ret != 0) {
-    // Critical failure (should not happen if addr is valid)
+    /* Critical failure: restore and re-insert to avoid losing the VMA */
     vma->vm_end = old_end;
-    vma_insert(mm, vma); // Attempt recovery
+    if (vma_insert(mm, vma) != 0) {
+      panic("vma_split: failed to recover original VMA after failed resize\n");
+    }
     vma_free(new_vma);
     return ret;
   }
 
   ret = vma_insert(mm, new_vma);
   if (ret != 0) {
-    /* Restore original VMA */
+    /* Restore original VMA to full size */
     vma_remove(mm, vma);
     vma->vm_end = old_end;
-    vma_insert(mm, vma);
+    if (vma_insert(mm, vma) != 0) {
+       panic("vma_split: failed to recover original VMA after second half insert failed\n");
+    }
     vma_free(new_vma);
     return ret;
   }
@@ -970,16 +974,30 @@ int mm_populate_user_range(struct mm_struct *mm, uint64_t start, size_t size, ui
   start &= PAGE_MASK;
 
   /* Ensure VMAs exist */
-  vma_map_range(mm, start, end, flags | VM_USER);
+  int ret = vma_map_range(mm, start, end, flags | VM_USER);
+  if (ret != 0) return ret;
 
   uint64_t pml4_phys = (uint64_t) mm->pml_root;
   uint64_t pte_flags = PTE_PRESENT | PTE_USER;
   if (flags & VM_WRITE) pte_flags |= PTE_RW;
   if (!(flags & VM_EXEC)) pte_flags |= PTE_NX;
 
+  /* Protect VMA traversal */
+  down_read(&mm->mmap_lock);
+
   for (uint64_t addr = start; addr < end; addr += PAGE_SIZE) {
     struct vm_area_struct *vma = vma_find(mm, addr);
-    if (!vma || !vma->vm_obj) return -EINVAL;
+    if (!vma || !vma->vm_obj) {
+        up_read(&mm->mmap_lock);
+        return -EINVAL;
+    }
+
+    /* Pre-allocate node to avoid sleep under spinlock */
+    struct page_node *node = kmalloc(sizeof(struct page_node));
+    if (!node) {
+        up_read(&mm->mmap_lock);
+        return -ENOMEM;
+    }
 
     uint64_t pgoff = (addr - vma->vm_start) >> PAGE_SHIFT;
     if (vma->vm_pgoff) pgoff += vma->vm_pgoff;
@@ -992,11 +1010,21 @@ int mm_populate_user_range(struct mm_struct *mm, uint64_t start, size_t size, ui
       phys = pmm_alloc_page();
       if (!phys) {
         spinlock_unlock(&vma->vm_obj->lock);
+        kfree(node);
+        up_read(&mm->mmap_lock);
         return -ENOMEM;
       }
       page = phys_to_page(phys);
       memset(pmm_phys_to_virt(phys), 0, PAGE_SIZE);
-      vm_object_add_page(vma->vm_obj, pgoff, page);
+      
+      if (vm_object_add_page(vma->vm_obj, pgoff, page, node) < 0) {
+          spinlock_unlock(&vma->vm_obj->lock);
+          pmm_free_page(phys);
+          kfree(node);
+          up_read(&mm->mmap_lock);
+          return -EEXIST; // Should not happen if locked correctly
+      }
+      node = NULL; /* Consumed */
       
       /* If anonymous, setup RMAP */
       if (vma->vm_obj->type == VM_OBJECT_ANON && vma->anon_vma) {
@@ -1006,6 +1034,8 @@ int mm_populate_user_range(struct mm_struct *mm, uint64_t start, size_t size, ui
       phys = PFN_TO_PHYS(page_to_pfn(page));
     }
     spinlock_unlock(&vma->vm_obj->lock);
+
+    if (node) kfree(node);
 
     vmm_map_page(mm, addr, phys, pte_flags);
 
@@ -1018,6 +1048,7 @@ int mm_populate_user_range(struct mm_struct *mm, uint64_t start, size_t size, ui
     }
   }
 
+  up_read(&mm->mmap_lock);
   return 0;
 }
 
@@ -1127,7 +1158,7 @@ retry:
 
     uint64_t candidate = (prev_end + alignment - 1) & ~(alignment - 1);
 
-    if (prev && candidate == prev->vm_end) {
+    if (candidate == prev_end) {
       candidate += PAGE_SIZE;
       candidate = (candidate + alignment - 1) & ~(alignment - 1);
     }
@@ -1152,7 +1183,7 @@ retry:
     if (prev_end < range_start) prev_end = range_start;
 
     uint64_t addr = (prev_end + alignment - 1) & ~(alignment - 1);
-    if (prev && addr == prev->vm_end) {
+    if (addr == prev_end) {
       addr += PAGE_SIZE;
       addr = (addr + alignment - 1) & ~(alignment - 1);
     }

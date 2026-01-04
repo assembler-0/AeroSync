@@ -95,7 +95,7 @@ int vmm_map_pages_list(struct mm_struct *mm, uint64_t virt, const uint64_t *phys
  * @return 0 on success
  */
 int vmm_unmap_page(struct mm_struct *mm, uint64_t virt);
-int vmm_unmap_page_deferred(struct mm_struct *mm, uint64_t virt);
+uint64_t vmm_unmap_page_no_flush(struct mm_struct *mm, uint64_t virt);
 int vmm_unmap_pages(struct mm_struct *mm, uint64_t virt, size_t count);
 int vmm_unmap_pages_and_get_phys(struct mm_struct *mm, uint64_t virt,
                                  uint64_t *phys_list, size_t count);

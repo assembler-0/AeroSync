@@ -236,6 +236,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
            rsdp_request.response ? rsdp_request.response->address : NULL);
   vmm_init();
   slab_init();
+  lru_init();
 
   setup_per_cpu_areas();
   smp_prepare_boot_cpu();
@@ -315,7 +316,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   printk_init_async();
 
-  lru_init();
   kswapd_init();
   khugepaged_init();
 

@@ -45,6 +45,7 @@ void tlb_remove_page(struct mmu_gather *tlb, uint64_t phys, uint64_t virt) {
         tlb->nr_pages = 0;
         tlb->full_flush = true;
     }
+    tlb->pages[tlb->nr_pages++] = phys;
 }
 
 void tlb_finish_mmu(struct mmu_gather *tlb) {

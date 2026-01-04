@@ -65,7 +65,7 @@ static void vmalloc_unmap_pages(struct vm_area_struct *vma) {
     uint64_t end = virt + (1ULL << (pnode->order + PAGE_SHIFT));
     if (end > max_virt) max_virt = end;
     
-    vmm_unmap_page_deferred(&init_mm, virt);
+    vmm_unmap_page_no_flush(&init_mm, virt);
 
     node = rb_next(node);
   }

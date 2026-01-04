@@ -363,7 +363,7 @@ void cpu_features_dump(cpu_features_t *features) {
   if (!features)
     features = &g_cpu_features;
 
-  printk(CPU_CLASS "CPU Features:\n");
+  printk(CPU_CLASS "system processor capabilities (PC):\n");
   printk(CPU_CLASS "  SSE: %s\n", features->sse ? "Yes" : "No");
   printk(CPU_CLASS "  SSE2: %s\n", features->sse2 ? "Yes" : "No");
   printk(CPU_CLASS "  SSE3: %s\n", features->sse3 ? "Yes" : "No");

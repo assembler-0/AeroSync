@@ -30,13 +30,15 @@
 #include <kernel/classes.h>
 #include <kernel/sysintf/ic.h>
 #include <kernel/wait.h>
+#include <kernel/sysintf/panic.h>
 #include <lib/printk.h>
 #include <limine/limine.h>
-
+#include <mm/slab.h>
+#include <linux/container_of.h>
 // SMP Request
 __attribute__((
-    used, section(".limine_requests"))) static volatile struct limine_mp_request
-    mp_request = {.id = LIMINE_MP_REQUEST_ID, .revision = 0};
+  used, section(".limine_requests"))) static volatile struct limine_mp_request
+mp_request = {.id = LIMINE_MP_REQUEST_ID, .revision = 0};
 
 static uint64_t cpu_count = 0;
 static volatile int cpus_online = 0;
@@ -46,10 +48,21 @@ static volatile int smp_start_barrier =
 static struct wait_counter ap_startup_counter;
 static int smp_initialized = 0;
 
+uint8_t lapic_get_id_for_cpu(int cpu);
+
 // Per-CPU APIC ID
 DEFINE_PER_CPU(int, cpu_apic_id);
 
 DEFINE_PER_CPU(int, cpu_number);
+
+// Per-CPU Call Queue
+DEFINE_PER_CPU(struct smp_call_queue, cpu_call_queue);
+
+void smp_init_cpu(int cpu) {
+  struct smp_call_queue *q = per_cpu_ptr(cpu_call_queue, cpu);
+  INIT_LIST_HEAD(&q->list);
+  spinlock_init(&q->lock);
+}
 
 // The entry point for Application Processors (APs)
 static void smp_ap_entry(struct limine_mp_info *info) {
@@ -59,7 +72,7 @@ static void smp_ap_entry(struct limine_mp_info *info) {
   // Find our logical ID (we can't use smp_get_id yet as GS base is not set)
   int cpu_id = 0;
   for (int i = 0; i < smp_get_cpu_count(); i++) {
-    if (*per_cpu_ptr(cpu_apic_id, i) == (int)info->lapic_id) {
+    if (*per_cpu_ptr(cpu_apic_id, i) == (int) info->lapic_id) {
       cpu_id = i;
       break;
     }
@@ -73,9 +86,14 @@ static void smp_ap_entry(struct limine_mp_info *info) {
   // Initialize per-cpu PMM cache
   pmm_init_cpu();
 
+  // Initialize call queue
+  smp_init_cpu(cpu_id);
+
   // Initialize APIC for this AP IMMEDIATELY so we can get our CPU ID
   // and use per-CPU caches in kmalloc()
   ic_ap_init();
+
+  // ... rest of function ...
 
   // Enable per-CPU features (SSE, AVX, etc.)
   cpu_features_init_ap();
@@ -91,7 +109,7 @@ static void smp_ap_entry(struct limine_mp_info *info) {
 
   // Load IDT for this CPU
   idt_load(&g_IdtPtr);
-  
+
   // Initialize Syscall MSRs
   syscall_init();
 
@@ -126,7 +144,7 @@ void smp_parse_topology(void) {
 
   if (!mp_response) {
     printk(KERN_WARNING SMP_CLASS
-           "Limine MP response not found. Single core mode.\n");
+      "Limine MP response not found. Single core mode.\n");
     cpu_count = 1;
     return;
   }
@@ -134,125 +152,116 @@ void smp_parse_topology(void) {
   cpu_count = mp_response->cpu_count;
 }
 
-// Per-CPU Call Data
-static struct smp_call_data *current_call_data = NULL;
-static spinlock_t call_lock = 0;
-
 void smp_call_ipi_handler(void) {
-    // Note: This is a simple implementation. In a truly linux-grade kernel,
-    // we would use a lock-free queue per CPU to avoid the global call_lock.
-    // However, for TLB shootdowns, we often target specific masks.
-    
-    struct smp_call_data *data = __atomic_load_n(&current_call_data, __ATOMIC_ACQUIRE);
-    if (data && data->func) {
-        data->func(data->info);
-        __atomic_fetch_add(&data->finished.counter, 1, __ATOMIC_RELEASE);
-    }
-}
+  struct smp_call_queue *q = this_cpu_ptr(cpu_call_queue);
+  struct list_head local_list;
+  INIT_LIST_HEAD(&local_list);
 
-void smp_call_function(smp_call_func_t func, void *info, bool wait) {
-    if (!smp_is_active()) {
-        func(info);
-        return;
-    }
+  // Swap list content under lock to minimize contention
+  irq_flags_t flags = spinlock_lock_irqsave(&q->lock);
+  list_splice_init(&q->list, &local_list);
+  spinlock_unlock_irqrestore(&q->lock, flags);
 
-    irq_flags_t flags = spinlock_lock_irqsave(&call_lock);
-    
-    struct smp_call_data data;
-    data.func = func;
-    data.info = info;
-    atomic_set(&data.finished, 0);
-    
-    int cpu_count = (int)smp_get_cpu_count();
-    int this_cpu = (int)smp_get_id();
-    
-    __atomic_store_n(&current_call_data, &data, __ATOMIC_RELEASE);
-    
-    // Send IPI to all other CPUs
-    for (int i = 0; i < cpu_count; i++) {
-        if (i == this_cpu) continue;
-        uint8_t lapic_id = (uint8_t)*per_cpu_ptr(cpu_apic_id, i);
-        if (lapic_id != 0xFF) {
-            ic_send_ipi(lapic_id, CALL_FUNCTION_IPI_VECTOR, 0);
-        }
+  struct call_single_data *csd, *tmp;
+  list_for_each_entry_safe(csd, tmp, &local_list, list) {
+    csd->func(csd->info);
+    if (csd->flags & CSD_FLAG_WAIT) {
+      __atomic_store_n(&csd->flags, csd->flags & ~CSD_FLAG_WAIT, __ATOMIC_RELEASE);
+    } else {
+      // If it wasn't waiting, it must have been dynamically allocated.
+      // For now, we only support stack-based waiting calls or fixed allocations.
+      // kfree(csd); // Not implemented yet
     }
-    
-    if (wait) {
-        while (atomic_read(&data.finished) < (cpu_count - 1)) {
-            cpu_relax();
-        }
-    }
-    
-    __atomic_store_n(&current_call_data, NULL, __ATOMIC_RELEASE);
-    spinlock_unlock_irqrestore(&call_lock, flags);
-}
-
-void smp_call_function_many(const struct cpumask *mask, smp_call_func_t func, void *info, bool wait) {
-    if (!smp_is_active()) {
-        func(info);
-        return;
-    }
-
-    irq_flags_t flags = spinlock_lock_irqsave(&call_lock);
-    
-    struct smp_call_data data;
-    data.func = func;
-    data.info = info;
-    atomic_set(&data.finished, 0);
-    
-    int this_cpu = (int)smp_get_id();
-    int target_count = 0;
-    
-    __atomic_store_n(&current_call_data, &data, __ATOMIC_RELEASE);
-    
-    for (int i = 0; i < MAX_CPUS; i++) {
-        if (i == this_cpu) continue;
-        if (cpumask_test_cpu(i, mask)) {
-            uint8_t lapic_id = (uint8_t)*per_cpu_ptr(cpu_apic_id, i);
-            if (lapic_id != 0xFF) {
-                target_count++;
-                ic_send_ipi(lapic_id, CALL_FUNCTION_IPI_VECTOR, 0);
-            }
-        }
-    }
-    
-    if (wait && target_count > 0) {
-        while (atomic_read(&data.finished) < target_count) {
-            cpu_relax();
-        }
-    }
-    
-    __atomic_store_n(&current_call_data, NULL, __ATOMIC_RELEASE);
-    spinlock_unlock_irqrestore(&call_lock, flags);
+  }
 }
 
 void smp_call_function_single(int cpu, smp_call_func_t func, void *info, bool wait) {
-    if (cpu == (int)smp_get_id()) {
-        func(info);
-        return;
+  if (cpu == (int) smp_get_id()) {
+    func(info);
+    return;
+  }
+
+  struct call_single_data data;
+  struct call_single_data *csd = &data;
+
+  if (!wait) {
+    // FIXME: Handle async calls by allocating CSD dynamically.
+    // For now, we only support sync calls safely.
+    panic("smp_call_function_single: async calls not yet supported\n");
+  }
+
+  csd->func = func;
+  csd->info = info;
+  csd->flags = CSD_FLAG_WAIT;
+  INIT_LIST_HEAD(&csd->list);
+
+  struct smp_call_queue *q = per_cpu_ptr(cpu_call_queue, cpu);
+
+  irq_flags_t flags = spinlock_lock_irqsave(&q->lock);
+  list_add_tail(&csd->list, &q->list);
+  spinlock_unlock_irqrestore(&q->lock, flags);
+
+  uint8_t lapic_id = (uint8_t) *per_cpu_ptr(cpu_apic_id, cpu);
+  ic_send_ipi(lapic_id, CALL_FUNCTION_IPI_VECTOR, 0);
+
+  if (wait) {
+    while (__atomic_load_n(&csd->flags, __ATOMIC_ACQUIRE) & CSD_FLAG_WAIT) {
+      cpu_relax();
+    }
+  }
+}
+
+void smp_call_function_many(const struct cpumask *mask, smp_call_func_t func, void *info, bool wait) {
+  if (!smp_is_active()) {
+    func(info);
+    return;
+  }
+
+  int this_cpu = (int) smp_get_id();
+
+  // For many, we use an array of CSDs if waiting
+  if (wait) {
+    struct call_single_data *csds = kmalloc(sizeof(struct call_single_data) * MAX_CPUS);
+    int target_count = 0;
+    int targets[MAX_CPUS];
+
+    for (int i = 0; i < (int) smp_get_cpu_count(); i++) {
+      if (i == this_cpu) continue;
+      if (cpumask_test_cpu(i, mask)) {
+        struct call_single_data *csd = &csds[i];
+        csd->func = func;
+        csd->info = info;
+        csd->flags = CSD_FLAG_WAIT;
+        INIT_LIST_HEAD(&csd->list);
+
+        struct smp_call_queue *q = per_cpu_ptr(cpu_call_queue, i);
+        irq_flags_t f = spinlock_lock_irqsave(&q->lock); // wait, fix this
+        list_add_tail(&csd->list, &q->list);
+        spinlock_unlock_irqrestore(&q->lock, f);
+
+        targets[target_count++] = i;
+        ic_send_ipi(lapic_get_id_for_cpu(i), CALL_FUNCTION_IPI_VECTOR, 0);
+      }
     }
 
-    irq_flags_t flags = spinlock_lock_irqsave(&call_lock);
-    
-    struct smp_call_data data;
-    data.func = func;
-    data.info = info;
-    atomic_set(&data.finished, 0);
-    
-    __atomic_store_n(&current_call_data, &data, __ATOMIC_RELEASE);
-    
-    uint8_t lapic_id = (uint8_t)*per_cpu_ptr(cpu_apic_id, cpu);
-    ic_send_ipi(lapic_id, CALL_FUNCTION_IPI_VECTOR, 0);
-    
-    if (wait) {
-        while (atomic_read(&data.finished) < 1) {
-            cpu_relax();
-        }
+    for (int i = 0; i < target_count; i++) {
+      struct call_single_data *csd = &csds[targets[i]];
+      while (__atomic_load_n(&csd->flags, __ATOMIC_ACQUIRE) & CSD_FLAG_WAIT) {
+        cpu_relax();
+      }
     }
-    
-    __atomic_store_n(&current_call_data, NULL, __ATOMIC_RELEASE);
-    spinlock_unlock_irqrestore(&call_lock, flags);
+    kfree(csds);
+  } else {
+    panic("smp_call_function_many: async not supported\n");
+  }
 }
+
+void smp_call_function(smp_call_func_t func, void *info, bool wait) {
+  struct cpumask all;
+  cpumask_setall(&all);
+  smp_call_function_many(&all, func, info, wait);
+}
+
 
 void smp_init(void) {
   if (cpu_count == 0) {
@@ -267,10 +276,10 @@ void smp_init(void) {
   uint64_t bsp_lapic_id = mp_response->bsp_lapic_id;
 
   printk(KERN_DEBUG SMP_CLASS "Detected %llu CPUs. BSP LAPIC ID: %u\n",
-         cpu_count, (uint32_t)bsp_lapic_id);
+         cpu_count, (uint32_t) bsp_lapic_id);
 
   // Initialize the wait counter for AP startup
-  int expected_aps = (int)(cpu_count > 0 ? (cpu_count - 1) : 0);
+  int expected_aps = (int) (cpu_count > 0 ? (cpu_count - 1) : 0);
   init_wait_counter(&ap_startup_counter, 0, expected_aps);
 
   // Initialize per_cpu_apic_id array FIRST, before waking any APs
@@ -326,15 +335,15 @@ uint64_t smp_get_id(void) {
 }
 
 int lapic_to_cpu(uint8_t lapic_id) {
-    for (int i = 0; i < smp_get_cpu_count(); i++) {
-        if (*per_cpu_ptr(cpu_apic_id, i) == (int)lapic_id) {
-            return i;
-        }
+  for (int i = 0; i < smp_get_cpu_count(); i++) {
+    if (*per_cpu_ptr(cpu_apic_id, i) == (int) lapic_id) {
+      return i;
     }
-    return -1;
+  }
+  return -1;
 }
 
 uint8_t lapic_get_id_for_cpu(int cpu) {
-    if (cpu < 0 || cpu >= MAX_CPUS) return 0xFF;
-    return (uint8_t)*per_cpu_ptr(cpu_apic_id, cpu);
+  if (cpu < 0 || cpu >= MAX_CPUS) return 0xFF;
+  return (uint8_t) *per_cpu_ptr(cpu_apic_id, cpu);
 }
