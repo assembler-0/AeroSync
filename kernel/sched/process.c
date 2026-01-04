@@ -37,6 +37,7 @@
 #include <mm/vma.h>
 #include <mm/vmalloc.h>
 #include <lib/vsprintf.h>
+#include <fs/file.h>
 
 /*
  * Process/Thread Management
@@ -136,6 +137,22 @@ struct task_struct *copy_process(uint64_t clone_flags,
       }
   }
   p->active_mm = p->mm ? p->mm : parent->active_mm;
+
+  // Setup files
+  extern struct files_struct *copy_files(struct files_struct *old_files);
+  if (clone_flags & CLONE_FILES) {
+      p->files = parent->files;
+      atomic_inc(&p->files->count);
+  } else {
+      p->files = copy_files(parent->files);
+      if (!p->files) {
+          if (p->mm && p->mm != parent->mm) mm_put(p->mm);
+          vfree(p->stack);
+          release_pid(p->pid);
+          free_task_struct(p);
+          return NULL;
+      }
+  }
 
   // Setup FPU
   p->thread.fpu = fpu_alloc();
@@ -278,6 +295,18 @@ void free_task(struct task_struct *task) {
   if (task->thread.fpu) fpu_free(task->thread.fpu);
   if (task->mm) mm_put(task->mm);
   if (task->stack) vfree(task->stack);
+
+  if (task->files) {
+      if (atomic_dec_and_test(&task->files->count)) {
+          // Free files_struct and close all files
+          for (int i = 0; i < task->files->fdtab.max_fds; i++) {
+              if (task->files->fd_array[i]) {
+                  fput(task->files->fd_array[i]);
+              }
+          }
+          kfree(task->files);
+      }
+  }
   
   free_task_struct(task);
 }
@@ -353,7 +382,7 @@ struct task_struct *spawn_user_process_raw(void *data, size_t len, const char *n
 
     /* Map code and copy buffer content */
     uint64_t code_addr = 0x400000; // Standard base for simple ELFs/bins
-    if (mm_populate_user_range(p->mm, code_addr, len, VM_READ | VM_EXEC | VM_USER, data, len) != 0) {
+    if (mm_populate_user_range(p->mm, code_addr, len, VM_READ | VM_WRITE | VM_EXEC | VM_USER, data, len) != 0) {
         free_task(p);
         return NULL;
     }

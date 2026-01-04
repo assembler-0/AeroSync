@@ -24,6 +24,7 @@
 #include <arch/x86_64/mm/vmm.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>
+#include <kernel/sched/process.h>
 #include <kernel/sched/sched.h> // For current task
 #include <lib/printk.h>
 #include <mm/vma.h>
@@ -128,14 +129,12 @@ void do_page_fault(cpu_regs *regs) {
 
 signal_segv:
   if (user_mode) {
-    printk(KERN_ERR FAULT_CLASS "Segmentation Fault at %llx (User)\n", cr2);
-    // TODO: sys_exit or signal
-    // For now, just panic/kill to be safe
-    panic_exception(regs);
+    printk(KERN_ERR FAULT_CLASS "segmentation fault at %llx (User)\n", cr2);
+    sys_exit(-1);
     return;
   }
 
 kernel_panic:
-  printk(KERN_EMERG FAULT_CLASS "Kernel Page Fault at %llx\n", cr2);
+  printk(KERN_EMERG FAULT_CLASS "kernel fault at %llx\n", cr2);
   panic_exception(regs);
 }

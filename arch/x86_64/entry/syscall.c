@@ -17,6 +17,10 @@
 #include <lib/printk.h>
 #include <lib/uaccess.h>
 #include <arch/x86_64/entry.h>
+#include <fs/file.h>
+#include <fs/vfs.h>
+#include <mm/slab.h>
+#include <lib/bitmap.h>
 
 #define MSR_STAR 0xC0000081
 #define MSR_LSTAR 0xC0000082
@@ -37,6 +41,58 @@ static void sys_ni_syscall(struct syscall_regs *regs) {
     REGS_RETURN_VAL(regs, -1);
 }
 
+static void sys_read(struct syscall_regs *regs) {
+    int fd = (int)regs->rdi;
+    char *buf = (char *)regs->rsi;
+    size_t count = (size_t)regs->rdx;
+
+    struct file *file = fget(fd);
+    if (!file) {
+        REGS_RETURN_VAL(regs, -EBADF);
+        return;
+    }
+
+    if ((file->f_flags & O_ACCMODE) == O_WRONLY) {
+        fput(file);
+        REGS_RETURN_VAL(regs, -EBADF);
+        return;
+    }
+
+    size_t total_read = 0;
+    char *kbuf = kmalloc(4096);
+    if (!kbuf) {
+        fput(file);
+        REGS_RETURN_VAL(regs, -ENOMEM);
+        return;
+    }
+
+    while (count > 0) {
+        size_t to_read = (count > 4096) ? 4096 : count;
+        vfs_loff_t pos = file->f_pos;
+        ssize_t ret = vfs_read(file, kbuf, to_read, &pos);
+        
+        if (ret < 0) {
+            if (total_read == 0) total_read = ret;
+            break;
+        }
+        if (ret == 0) break;
+
+        if (copy_to_user(buf + total_read, kbuf, ret) != 0) {
+            if (total_read == 0) total_read = -EFAULT;
+            break;
+        }
+
+        file->f_pos = pos;
+        total_read += ret;
+        count -= ret;
+        if (ret < (ssize_t)to_read) break;
+    }
+
+    kfree(kbuf);
+    fput(file);
+    REGS_RETURN_VAL(regs, total_read);
+}
+
 static void sys_write(struct syscall_regs *regs) {
     int fd = (int)regs->rdi;
     const char *buf = (const char *)regs->rsi;
@@ -54,16 +110,147 @@ static void sys_write(struct syscall_regs *regs) {
             }
             
             kbuf[to_copy] = '\0';
-            printk(KERN_INFO "%s", kbuf); // TODO: NOT JUST PRINTK!, IMPLEMENT WRITE!
-            
+            if (fd == 1) printk(KERN_INFO "%s", kbuf);
+            if (fd == 2) printk(KERN_ERR "%s", kbuf);
+
             buf += to_copy;
             count -= to_copy;
             total += to_copy;
         }
         REGS_RETURN_VAL(regs, total);
-    } else {
-        REGS_RETURN_VAL(regs, -EBADF);
+        return;
     }
+
+    struct file *file = fget(fd);
+    if (!file) {
+        REGS_RETURN_VAL(regs, -EBADF);
+        return;
+    }
+
+    if ((file->f_flags & O_ACCMODE) == O_RDONLY) {
+        fput(file);
+        REGS_RETURN_VAL(regs, -EBADF);
+        return;
+    }
+
+    size_t total_written = 0;
+    char *kbuf = kmalloc(4096);
+    if (!kbuf) {
+        fput(file);
+        REGS_RETURN_VAL(regs, -ENOMEM);
+        return;
+    }
+
+    while (count > 0) {
+        size_t to_write = (count > 4096) ? 4096 : count;
+        if (copy_from_user(kbuf, buf + total_written, to_write) != 0) {
+            if (total_written == 0) total_written = -EFAULT;
+            break;
+        }
+
+        vfs_loff_t pos = file->f_pos;
+        ssize_t ret = vfs_write(file, kbuf, to_write, &pos);
+        if (ret < 0) {
+            if (total_written == 0) total_written = ret;
+            break;
+        }
+
+        file->f_pos = pos;
+        total_written += ret;
+        count -= ret;
+        if (ret < (ssize_t)to_write) break;
+    }
+
+    kfree(kbuf);
+    fput(file);
+    REGS_RETURN_VAL(regs, total_written);
+}
+
+static void sys_open(struct syscall_regs *regs) {
+    const char *filename_user = (const char *)regs->rdi;
+    int flags = (int)regs->rsi;
+    int mode = (int)regs->rdx;
+
+    char *filename = kmalloc(4096);
+    if (!filename) {
+        REGS_RETURN_VAL(regs, -ENOMEM);
+        return;
+    }
+
+    size_t i = 0;
+    for (; i < 4095; i++) {
+        if (copy_from_user(&filename[i], &filename_user[i], 1)) {
+            kfree(filename);
+            REGS_RETURN_VAL(regs, -EFAULT);
+            return;
+        }
+        if (filename[i] == '\0') break;
+    }
+    filename[i] = '\0';
+
+    struct file *file = vfs_open(filename, flags, mode);
+    kfree(filename);
+
+    if (!file) {
+        REGS_RETURN_VAL(regs, -ENOENT);
+        return;
+    }
+
+    int fd = get_unused_fd_flags(flags);
+    if (fd < 0) {
+        fput(file);
+        REGS_RETURN_VAL(regs, -EMFILE);
+        return;
+    }
+
+    fd_install(fd, file);
+    REGS_RETURN_VAL(regs, fd);
+}
+
+static void sys_close(struct syscall_regs *regs) {
+    int fd = (int)regs->rdi;
+    struct files_struct *files = current->files;
+
+    if (!files || fd < 0 || fd >= (int)files->fdtab.max_fds) {
+        REGS_RETURN_VAL(regs, -EBADF);
+        return;
+    }
+
+    spinlock_lock(&files->file_lock);
+    if (!test_bit(fd, files->fdtab.open_fds)) {
+        spinlock_unlock(&files->file_lock);
+        REGS_RETURN_VAL(regs, -EBADF);
+        return;
+    }
+
+    struct file *file = files->fdtab.fd[fd];
+    files->fdtab.fd[fd] = NULL;
+    clear_bit(fd, files->fdtab.open_fds);
+    if (fd < files->next_fd) {
+        files->next_fd = fd;
+    }
+    spinlock_unlock(&files->file_lock);
+
+    if (file) {
+        fput(file);
+    }
+    REGS_RETURN_VAL(regs, 0);
+}
+
+static void sys_lseek(struct syscall_regs *regs) {
+    int fd = (int)regs->rdi;
+    vfs_loff_t offset = (vfs_loff_t)regs->rsi;
+    int whence = (int)regs->rdx;
+
+    struct file *file = fget(fd);
+    if (!file) {
+        REGS_RETURN_VAL(regs, -EBADF);
+        return;
+    }
+
+    vfs_loff_t ret = vfs_llseek(file, offset, whence);
+    fput(file);
+    REGS_RETURN_VAL(regs, ret);
 }
 
 static void sys_exit_handler(struct syscall_regs *regs) {
@@ -87,7 +274,11 @@ static void sys_getpid_handler(struct syscall_regs *regs) {
 }
 
 static sys_call_ptr_t syscall_table[] = {
+    [0] = sys_read,
     [1] = sys_write,
+    [2] = sys_open,
+    [3] = sys_close,
+    [8] = sys_lseek,
     [39] = sys_getpid_handler,
     [56] = sys_clone_handler,
     [57] = sys_fork_handler,

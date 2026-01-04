@@ -23,7 +23,7 @@
 #include <arch/x86_64/features/features.h>
 #include <lib/printk.h>
 
-static cpu_features_t g_cpu_features;
+cpu_features_t g_cpu_features;
 
 // CR0 bits
 #define CR0_MP (1 << 1)

@@ -6,6 +6,9 @@
 
 #define DEADLOCK_TIMEOUT_CYCLES 100000000ULL
 #define MAX_BACKOFF_CYCLES 1024
+#define SPINLOCK_INIT 0
+#define SPINLOCK_LOCKED 1
+#define SPINLOCK_UNLOCKED 0
 
 // A spinlock is a simple integer flag stored inline; pass its address to APIs
 typedef volatile int spinlock_t;

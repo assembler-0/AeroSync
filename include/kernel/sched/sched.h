@@ -233,6 +233,11 @@ struct task_struct {
   struct list_head sibling;
 
   /*
+   * Filesystem information
+   */
+  struct files_struct *files;
+
+  /*
    * Task name and debugging
    */
   char comm[16]; /* Command name */

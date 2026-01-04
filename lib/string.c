@@ -20,7 +20,7 @@
 
 #include <lib/string.h>
 #include <kernel/fkx/fkx.h>
-#include <kernel/ctype.h>
+#include <mm/slab.h>
 
 bool is_word_boundary(char c) {
   return c == ' ' || c == '\t' || c == '\n' || c == '\0';
@@ -173,6 +173,14 @@ void strcat(char *dest, const char *src) {
   while (*dest)
     dest++;
   strcpy(dest, src); // Reuse optimized strcpy
+}
+
+
+char *kstrdup(const char *s) {
+  size_t len = strlen(s) + 1;
+  char *new = kmalloc(len);
+  if (new) memcpy(new, s, len);
+  return new;
 }
 
 void htoa(uint64_t n, char *buffer) {

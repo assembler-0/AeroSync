@@ -596,6 +596,10 @@ void sched_init_task(struct task_struct *initial_task) {
 
   cpumask_setall(&initial_task->cpus_allowed);
 
+  /* Initialize files */
+  extern struct files_struct init_files;
+  initial_task->files = &init_files;
+
   /* Initialize task hierarchy lists for the boot task */
   INIT_LIST_HEAD(&initial_task->tasks);
   INIT_LIST_HEAD(&initial_task->children);

@@ -592,6 +592,7 @@ void *kzalloc(size_t size) {
 
 void kfree(void *ptr) {
   struct page *page;
+  kmem_cache_t *s;
 
   if (unlikely(!ptr)) return;
 
@@ -600,25 +601,29 @@ void kfree(void *ptr) {
     return;
   }
 
-  // Check if this is an aligned allocation
-  if ((uintptr_t)ptr & 0xF) { // If not 16-byte aligned, might be from kmalloc_aligned
-    void **orig_ptr = (void**)((uintptr_t)ptr - sizeof(void*));
-    void *raw = *orig_ptr;
-    
-    // Validate that raw pointer looks reasonable
-    if ((uintptr_t)raw < (uintptr_t)ptr && 
-        ((uintptr_t)ptr - (uintptr_t)raw) < 64) { // Reasonable alignment offset
-      kfree(raw);
-      return;
-    }
-  }
-
   page = virt_to_head_page(ptr);
   if (unlikely(!PageSlab(page))) {
     return;
   }
 
-  kmem_cache_free(page->slab_cache, ptr);
+  s = page->slab_cache;
+
+  /*
+   * Check if this is an aligned allocation.
+   * Aligned allocations (from kmalloc_aligned) are not at the start of a slab object.
+   */
+  uintptr_t offset = (uintptr_t)ptr - (uintptr_t)page_address(page);
+  if (unlikely(offset % s->size)) {
+      void *raw = *((void **)((uintptr_t)ptr - sizeof(void *)));
+      
+      /* Validate that raw pointer is before ptr and within reasonable distance */
+      if (raw < ptr && (uintptr_t)ptr - (uintptr_t)raw < s->size + 64) {
+          kfree(raw);
+          return;
+      }
+  }
+
+  kmem_cache_free(s, ptr);
 }
 
 void slab_test(void) {
@@ -680,6 +685,18 @@ void slab_test(void) {
   kmem_cache_free(custom, obj1);
   kmem_cache_free(custom, obj2);
   printk(KERN_DEBUG SLAB_CLASS "  - Custom Cache with Hardening: OK\n");
+
+  /* Test 5: Aligned Allocations */
+  void *a1 = kmalloc_aligned(16, 64);
+  if (!a1) panic(SLAB_CLASS "aligned alloc 1 failed");
+  if ((uintptr_t)a1 & 63) panic(SLAB_CLASS "aligned alloc not 64-byte aligned!");
+  kfree(a1);
+
+  void *a2 = kmalloc_aligned(1024, 4096);
+  if (!a2) panic(SLAB_CLASS "aligned alloc 2 failed");
+  if ((uintptr_t)a2 & 4095) panic(SLAB_CLASS "aligned alloc not 4096-byte aligned!");
+  kfree(a2);
+  printk(KERN_DEBUG SLAB_CLASS "  - Aligned Allocations: OK\n");
 
   printk(KERN_DEBUG SLAB_CLASS "SLUB Stress Test Passed.\n");
 }
