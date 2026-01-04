@@ -595,13 +595,13 @@ int vma_insert(struct mm_struct *mm, struct vm_area_struct *vma) {
   struct vm_area_struct *tmp;
 
   if (!mm || !vma)
-    return -1;
+    return -EINVAL;
   if (vma->vm_start >= vma->vm_end)
-    return -1;
+    return -EINVAL;
 
   /* Check for overlap */
   if (vma_find_intersection(mm, vma->vm_start, vma->vm_end)) {
-    return -1;
+    return -ENOMEM;
   }
 
   /* Insert into RB-tree */
@@ -615,7 +615,7 @@ int vma_insert(struct mm_struct *mm, struct vm_area_struct *vma) {
     else if (vma->vm_start >= tmp->vm_end)
       new = &((*new)->rb_right);
     else
-      return -1;
+      return -ENOMEM; /* Should be caught by intersection check, but safe guard */
   }
 
   vma->vm_mm = mm;
@@ -673,15 +673,15 @@ int vma_split(struct mm_struct *mm, struct vm_area_struct *vma, uint64_t addr) {
   struct vm_area_struct *new_vma;
 
   if (!mm || !vma)
-    return -1;
+    return -EINVAL;
   if (addr <= vma->vm_start || addr >= vma->vm_end)
-    return -1;
+    return -EINVAL;
   if (addr & (PAGE_SIZE - 1))
-    return -1;
+    return -EINVAL;
 
   new_vma = vma_create(addr, vma->vm_end, vma->vm_flags);
   if (!new_vma)
-    return -1;
+    return -ENOMEM;
 
   /* 
    * Synchronization: 
@@ -706,21 +706,23 @@ int vma_split(struct mm_struct *mm, struct vm_area_struct *vma, uint64_t addr) {
   uint64_t old_end = vma->vm_end;
   vma->vm_end = addr;
 
-  if (vma_insert(mm, vma) != 0) {
+  int ret = vma_insert(mm, vma);
+  if (ret != 0) {
     // Critical failure (should not happen if addr is valid)
     vma->vm_end = old_end;
     vma_insert(mm, vma); // Attempt recovery
     vma_free(new_vma);
-    return -1;
+    return ret;
   }
 
-  if (vma_insert(mm, new_vma) != 0) {
+  ret = vma_insert(mm, new_vma);
+  if (ret != 0) {
     /* Restore original VMA */
     vma_remove(mm, vma);
     vma->vm_end = old_end;
     vma_insert(mm, vma);
     vma_free(new_vma);
-    return -1;
+    return ret;
   }
 
   return 0;
@@ -731,7 +733,7 @@ int vma_merge(struct mm_struct *mm, struct vm_area_struct *vma) {
   int merged = 0;
 
   if (!mm || !vma)
-    return -1;
+    return -EINVAL;
 
   /* Try to merge with previous */
   if (!list_is_first(&vma->vm_list, &mm->mmap_list)) {
@@ -772,20 +774,20 @@ int vma_merge(struct mm_struct *mm, struct vm_area_struct *vma) {
 int vma_expand(struct mm_struct *mm, struct vm_area_struct *vma,
                uint64_t new_start, uint64_t new_end) {
   if (!mm || !vma)
-    return -1;
+    return -EINVAL;
   if (new_start > vma->vm_start || new_end < vma->vm_end)
-    return -1;
+    return -EINVAL;
   if (new_start >= new_end)
-    return -1;
+    return -EINVAL;
 
   /* Check for conflicts */
   if (new_start < vma->vm_start) {
     if (vma_find_intersection(mm, new_start, vma->vm_start))
-      return -1;
+      return -ENOMEM;
   }
   if (new_end > vma->vm_end) {
     if (vma_find_intersection(mm, vma->vm_end, new_end))
-      return -1;
+      return -ENOMEM;
   }
 
   vma_remove(mm, vma);
@@ -797,11 +799,11 @@ int vma_expand(struct mm_struct *mm, struct vm_area_struct *vma,
 int vma_shrink(struct mm_struct *mm, struct vm_area_struct *vma,
                uint64_t new_start, uint64_t new_end) {
   if (!mm || !vma)
-    return -1;
+    return -EINVAL;
   if (new_start < vma->vm_start || new_end > vma->vm_end)
-    return -1;
+    return -EINVAL;
   if (new_start >= new_end)
-    return -1;
+    return -EINVAL;
 
   vma_remove(mm, vma);
   vma->vm_start = new_start;
@@ -836,11 +838,12 @@ struct vm_area_struct *vma_prev(struct vm_area_struct *vma) {
 int vma_map_range(struct mm_struct *mm, uint64_t start, uint64_t end,
                   uint64_t flags) {
   struct vm_area_struct *vma;
+  int ret;
 
   if (!mm)
-    return -1;
+    return -EINVAL;
   if (start >= end)
-    return -1;
+    return -EINVAL;
 
   /* Align to page boundaries */
   start &= ~(PAGE_SIZE - 1);
@@ -851,13 +854,13 @@ int vma_map_range(struct mm_struct *mm, uint64_t start, uint64_t end,
   vma = vma_create(start, end, flags);
   if (!vma) {
     up_write(&mm->mmap_lock);
-    return -1;
+    return -ENOMEM;
   }
 
-  if (vma_insert(mm, vma) != 0) {
+  if ((ret = vma_insert(mm, vma)) != 0) {
     vma_free(vma);
     up_write(&mm->mmap_lock);
-    return -1;
+    return ret;
   }
 
   /* Try to merge with adjacent VMAs */
@@ -872,7 +875,7 @@ int vma_unmap_range(struct mm_struct *mm, uint64_t start, uint64_t end) {
   struct mmu_gather tlb;
 
   if (!mm || start >= end)
-    return -1;
+    return -EINVAL;
 
   down_write(&mm->mmap_lock);
 
@@ -920,7 +923,7 @@ int vma_protect(struct mm_struct *mm, uint64_t start, uint64_t end,
   struct vm_area_struct *vma;
 
   if (!mm || start >= end)
-    return -1;
+    return -EINVAL;
 
   down_write(&mm->mmap_lock);
 
@@ -1270,11 +1273,11 @@ int vma_verify_list(struct mm_struct *mm) {
   for_each_vma(mm, vma) {
     if (prev && prev->vm_start >= vma->vm_start) {
       printk(VMA_CLASS "ERROR: List not sorted!\n");
-      return -1;
+      return -EINVAL;
     }
     if (prev && prev->vm_end > vma->vm_start) {
       printk(VMA_CLASS "ERROR: Overlapping VMAs in list!\n");
-      return -1;
+      return -EINVAL;
     }
     prev = vma;
   }
