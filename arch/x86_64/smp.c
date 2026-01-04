@@ -54,7 +54,7 @@ DEFINE_PER_CPU(int, cpu_number);
 // The entry point for Application Processors (APs)
 static void smp_ap_entry(struct limine_mp_info *info) {
   // Switch to kernel page table
-  vmm_switch_pml4(g_kernel_pml4);
+  vmm_switch_pml_root(g_kernel_pml_root);
 
   // Find our logical ID (we can't use smp_get_id yet as GS base is not set)
   int cpu_id = 0;
@@ -132,6 +132,126 @@ void smp_parse_topology(void) {
   }
 
   cpu_count = mp_response->cpu_count;
+}
+
+// Per-CPU Call Data
+static struct smp_call_data *current_call_data = NULL;
+static spinlock_t call_lock = 0;
+
+void smp_call_ipi_handler(void) {
+    // Note: This is a simple implementation. In a truly linux-grade kernel,
+    // we would use a lock-free queue per CPU to avoid the global call_lock.
+    // However, for TLB shootdowns, we often target specific masks.
+    
+    struct smp_call_data *data = __atomic_load_n(&current_call_data, __ATOMIC_ACQUIRE);
+    if (data && data->func) {
+        data->func(data->info);
+        __atomic_fetch_add(&data->finished.counter, 1, __ATOMIC_RELEASE);
+    }
+}
+
+void smp_call_function(smp_call_func_t func, void *info, bool wait) {
+    if (!smp_is_active()) {
+        func(info);
+        return;
+    }
+
+    irq_flags_t flags = spinlock_lock_irqsave(&call_lock);
+    
+    struct smp_call_data data;
+    data.func = func;
+    data.info = info;
+    atomic_set(&data.finished, 0);
+    
+    int cpu_count = (int)smp_get_cpu_count();
+    int this_cpu = (int)smp_get_id();
+    
+    __atomic_store_n(&current_call_data, &data, __ATOMIC_RELEASE);
+    
+    // Send IPI to all other CPUs
+    for (int i = 0; i < cpu_count; i++) {
+        if (i == this_cpu) continue;
+        uint8_t lapic_id = (uint8_t)*per_cpu_ptr(cpu_apic_id, i);
+        if (lapic_id != 0xFF) {
+            ic_send_ipi(lapic_id, CALL_FUNCTION_IPI_VECTOR, 0);
+        }
+    }
+    
+    if (wait) {
+        while (atomic_read(&data.finished) < (cpu_count - 1)) {
+            cpu_relax();
+        }
+    }
+    
+    __atomic_store_n(&current_call_data, NULL, __ATOMIC_RELEASE);
+    spinlock_unlock_irqrestore(&call_lock, flags);
+}
+
+void smp_call_function_many(const struct cpumask *mask, smp_call_func_t func, void *info, bool wait) {
+    if (!smp_is_active()) {
+        func(info);
+        return;
+    }
+
+    irq_flags_t flags = spinlock_lock_irqsave(&call_lock);
+    
+    struct smp_call_data data;
+    data.func = func;
+    data.info = info;
+    atomic_set(&data.finished, 0);
+    
+    int this_cpu = (int)smp_get_id();
+    int target_count = 0;
+    
+    __atomic_store_n(&current_call_data, &data, __ATOMIC_RELEASE);
+    
+    for (int i = 0; i < MAX_CPUS; i++) {
+        if (i == this_cpu) continue;
+        if (cpumask_test_cpu(i, mask)) {
+            uint8_t lapic_id = (uint8_t)*per_cpu_ptr(cpu_apic_id, i);
+            if (lapic_id != 0xFF) {
+                target_count++;
+                ic_send_ipi(lapic_id, CALL_FUNCTION_IPI_VECTOR, 0);
+            }
+        }
+    }
+    
+    if (wait && target_count > 0) {
+        while (atomic_read(&data.finished) < target_count) {
+            cpu_relax();
+        }
+    }
+    
+    __atomic_store_n(&current_call_data, NULL, __ATOMIC_RELEASE);
+    spinlock_unlock_irqrestore(&call_lock, flags);
+}
+
+void smp_call_function_single(int cpu, smp_call_func_t func, void *info, bool wait) {
+    if (cpu == (int)smp_get_id()) {
+        func(info);
+        return;
+    }
+
+    irq_flags_t flags = spinlock_lock_irqsave(&call_lock);
+    
+    struct smp_call_data data;
+    data.func = func;
+    data.info = info;
+    atomic_set(&data.finished, 0);
+    
+    __atomic_store_n(&current_call_data, &data, __ATOMIC_RELEASE);
+    
+    uint8_t lapic_id = (uint8_t)*per_cpu_ptr(cpu_apic_id, cpu);
+    ic_send_ipi(lapic_id, CALL_FUNCTION_IPI_VECTOR, 0);
+    
+    if (wait) {
+        while (atomic_read(&data.finished) < 1) {
+            cpu_relax();
+        }
+    }
+    
+    __atomic_store_n(&current_call_data, NULL, __ATOMIC_RELEASE);
+    spinlock_unlock_irqrestore(&call_lock, flags);
 }
 
 void smp_init(void) {

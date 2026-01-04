@@ -265,6 +265,8 @@ void cpu_features_init(void) {
     cpuid(0x80000001, &eax, &ebx, &ecx, &edx);
     if (edx & (1 << 20))
       g_cpu_features.nx = true;
+    if (edx & (1 << 26))
+      g_cpu_features.pdpe1gb = true;
   }
 
   // Enable NX
@@ -378,6 +380,7 @@ void cpu_features_dump(cpu_features_t *features) {
   printk(CPU_CLASS "  BMI2: %s\n", features->bmi2 ? "Yes" : "No");
   printk(CPU_CLASS "  PAT: %s\n", features->pat ? "Yes" : "No");
   printk(CPU_CLASS "  LA57: %s\n", features->la57 ? "Yes" : "No");
+  printk(CPU_CLASS "  1GB Pages: %s\n", features->pdpe1gb ? "Yes" : "No");
   printk(CPU_CLASS "  NX: %s\n", features->nx ? "Yes" : "No");
   printk(CPU_CLASS "  WP: %s\n", features->wp ? "Yes" : "No");
   printk(CPU_CLASS "  PCID: %s\n", features->pcid ? "Yes" : "No");

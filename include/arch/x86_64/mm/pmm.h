@@ -10,19 +10,6 @@
 #define PHYS_TO_PFN(addr) ((addr) >> PAGE_SHIFT)
 #define PFN_TO_PHYS(pfn) ((pfn) << PAGE_SHIFT)
 
-// Memory region types (matching Limine)
-typedef enum {
-  MEM_USABLE = 0,
-  MEM_RESERVED = 1,
-  MEM_ACPI_RECLAIMABLE = 2,
-  MEM_ACPI_NVS = 3,
-  MEM_BAD_MEMORY = 4,
-  MEM_BOOTLOADER_RECLAIMABLE = 5,
-  MEM_KERNEL_AND_MODULES = 6,
-  MEM_FRAMEBUFFER = 7,
-  MEM_ACPI_TABLES = 8,
-} mem_region_type_t;
-
 // PMM statistics
 typedef struct {
   uint64_t total_pages;     // Total physical pages
@@ -70,6 +57,15 @@ uint64_t pmm_alloc_page(void);
  * @return Physical address of the first page, or 0 on failure
  */
 uint64_t pmm_alloc_pages(size_t count);
+
+/**
+ * Allocate a physical huge page of a specific size.
+ * Automatically checks for architectural support and uses fail-fast paths.
+ * 
+ * @param size Size in bytes (e.g., VMM_PAGE_SIZE_2M, VMM_PAGE_SIZE_1G)
+ * @return Physical address of the block, or 0 on failure.
+ */
+uint64_t pmm_alloc_huge(size_t size);
 
 /**
  * Free a single physical page.
@@ -138,4 +134,15 @@ static inline struct page *virt_to_page(void *addr) {
 }
 
 /* Simple PMM smoke test */
+
 void pmm_test(void);
+
+
+
+/**
+
+ * Report system memory capabilities and potential limitations.
+
+ */
+
+void pmm_report_capabilities(void);

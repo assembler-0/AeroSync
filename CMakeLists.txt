@@ -391,7 +391,7 @@ if(VBOXMANAGE)
          --vram 16
          --cpus 4
          --boot1 disk
-        --hpet on
+         --hpet on
          --boot2 dvd
          --boot3 none
          --boot4 none

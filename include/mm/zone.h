@@ -55,6 +55,7 @@ struct zone {
   /* Watermarks */
   unsigned long watermark[3]; /* MIN, LOW, HIGH */
   unsigned long nr_free_pages;
+  unsigned int max_free_order; /* Highest order with at least one free block */
 
   const char *name;
 
@@ -92,6 +93,10 @@ void free_area_init(void);
 
 struct folio *alloc_pages(gfp_t gfp_mask, unsigned int order);
 struct folio *alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order);
+
+int rmqueue_bulk(struct zone *zone, unsigned int order, unsigned int count,
+                 struct list_head *list);
+void free_pcp_pages(struct zone *zone, int count, struct list_head *list);
 
 void __free_pages(struct page *page, unsigned int order);
 

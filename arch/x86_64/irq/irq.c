@@ -70,6 +70,11 @@ void __used __hot irq_common_stub(cpu_regs *regs) {
     return;
   }
 
+  if (regs->interrupt_number == CALL_FUNCTION_IPI_VECTOR) {
+    smp_call_ipi_handler();
+    return;
+  }
+
   if (irq_handlers[regs->interrupt_number]) {
     irq_handlers[regs->interrupt_number](regs);
   }

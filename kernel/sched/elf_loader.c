@@ -64,7 +64,7 @@ static int create_elf_tables(struct linux_binprm *bprm, Elf64_Ehdr *exec) {
     // In a real kernel, we would copy argv strings to the stack and then 
     // setup the pointers. For now, let's just push argc = 0 and NULL.
     
-    uint64_t *stack = (uint64_t *)pmm_phys_to_virt(vmm_virt_to_phys((uint64_t)bprm->mm->pml4, bprm->p - 16));
+    uint64_t *stack = (uint64_t *)pmm_phys_to_virt(vmm_virt_to_phys(bprm->mm, bprm->p - 16));
     // Note: This is hacky because we access via HHDM.
     
     // Push argc, argv[0], NULL
@@ -130,7 +130,7 @@ static int load_elf_binary(struct task_struct *p, struct linux_binprm *bprm) {
 
     // If we are loading into 'current', we must switch PML4 immediately
     if (p == get_current()) {
-        vmm_switch_pml4((uint64_t)p->mm->pml4);
+        vmm_switch_pml_root((uint64_t)p->mm->pml_root);
         if (old_mm && old_mm != &init_mm) mm_destroy(old_mm);
     }
 

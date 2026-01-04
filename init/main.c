@@ -230,6 +230,8 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     panic(KERN_CLASS "memmap/HHDM not available");
   }
 
+  cpu_features_init();
+
   pmm_init(memmap_request.response, hhdm_request.response->offset, 
            rsdp_request.response ? rsdp_request.response->address : NULL);
   vmm_init();
@@ -280,7 +282,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   fkx_init_module_class(FKX_IC_CLASS);
   ic_register_lapic_get_id_early();
 
-  cpu_features_init();
   uacpi_kernel_init_early();
   interrupt_controller_t ic_type = ic_install();
   uacpi_notify_ic_ready();

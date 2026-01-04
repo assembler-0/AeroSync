@@ -63,10 +63,6 @@ static inline unsigned long next_tid(unsigned long tid) {
     return tid + 1;
 }
 
-/* ... existing helpers ... */
-
-
-
 static inline int kmalloc_index(size_t size) {
     if (!size) return 0;
     if (size <= 8) return 0;

@@ -167,11 +167,11 @@ static void switch_mm(struct mm_struct *prev, struct mm_struct *next,
     cpumask_clear_cpu(cpu, &prev->cpu_mask);
   }
 
-  if (next && next->pml4) {
+  if (next && next->pml_root) {
     cpumask_set_cpu(cpu, &next->cpu_mask);
-    vmm_switch_pml4((uint64_t)next->pml4);
+    vmm_switch_pml_root((uint64_t)next->pml_root);
   } else {
-    vmm_switch_pml4(g_kernel_pml4);
+    vmm_switch_pml_root(g_kernel_pml_root);
   }
 }
 

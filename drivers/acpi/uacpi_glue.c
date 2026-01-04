@@ -35,6 +35,7 @@
 #include <lib/string.h>
 #include <limine/limine.h>
 #include <mm/slab.h>
+#include <mm/vma.h>
 #include <mm/vmalloc.h>
 #include <uacpi/kernel_api.h>
 #include <uacpi/types.h>
@@ -101,7 +102,7 @@ uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr *out_rsdp_address) {
   // rsdp_request.response->address is a void*.
 
   uint64_t virt = (uint64_t)rsdp_request.response->address;
-  *out_rsdp_address = vmm_virt_to_phys(g_kernel_pml4, virt);
+  *out_rsdp_address = vmm_virt_to_phys(&init_mm, virt);
 
   // Fallback if virt_to_phys fails (returns 0) but address is non-null?
   // Usually 0 is valid physical, but vmm_virt_to_phys returns 0 on error?

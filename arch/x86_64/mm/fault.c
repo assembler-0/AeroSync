@@ -111,8 +111,7 @@ void do_page_fault(cpu_regs *regs) {
     // Legacy/PTE COW Handling: If it's a write fault on a present page in a writable VMA
     // This is a fallback for kernel/modules or VMAs not yet using vm_objects fully.
     if (write_fault && (error_code & PF_PROT)) {
-      uint64_t pml4_phys = (uint64_t) mm->pml4;
-      if (vmm_handle_cow(pml4_phys, cr2) == 0) {
+      if (vmm_handle_cow(mm, cr2) == 0) {
         up_read(&mm->mmap_lock);
         return; // Success, retry write
       }

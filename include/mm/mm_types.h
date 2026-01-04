@@ -83,6 +83,7 @@ struct __aligned(sizeof(long)) vm_area_struct {
   struct list_head vm_list;
 
   uint64_t vm_flags; /* Flags as listed above */
+  int preferred_node; /* Preferred NUMA node for this VMA (-1 for none) */
 
   /* Operations for this VMA */
   const struct vm_operations_struct *vm_ops;
@@ -113,7 +114,7 @@ struct mm_struct {
   uint64_t vmacache_seqnum;   /* Per-thread VMA cache invalidation sequence */
   struct list_head mmap_list; /* List of VMAs */
 
-  uint64_t *pml4; /* Physical address of the top-level page table */
+  uint64_t *pml_root; /* Physical address of the top-level page table */
 
   spinlock_t page_table_lock; /* Protects page table modifications (fallback) */
   struct rw_semaphore mmap_lock; /* Protects VMA list/tree modifications */
@@ -125,6 +126,8 @@ struct mm_struct {
 
   uint64_t start_code, end_code, start_data, end_data;
   uint64_t start_brk, brk, start_stack;
+
+  int preferred_node; /* Default NUMA node for this address space */
 
   struct cpumask cpu_mask; /* CPUs currently using this mm */
 };

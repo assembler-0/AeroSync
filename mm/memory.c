@@ -77,8 +77,8 @@ int try_to_unmap_folio(struct folio *folio) {
       if (address < vma->vm_start || address >= vma->vm_end) continue;
 
       /* Unmap from this process's page table */
-      if (vma->vm_mm->pml4) {
-        vmm_unmap_page((uint64_t) vma->vm_mm->pml4, address);
+      if (vma->vm_mm->pml_root) {
+        vmm_unmap_page(vma->vm_mm, address);
       }
     }
 
@@ -97,8 +97,8 @@ int try_to_unmap_folio(struct folio *folio) {
 
     if (address < vma->vm_start || address >= vma->vm_end) continue;
 
-    if (vma->vm_mm->pml4) {
-      vmm_unmap_page((uint64_t) vma->vm_mm->pml4, address);
+    if (vma->vm_mm->pml_root) {
+      vmm_unmap_page(vma->vm_mm, address);
     }
   }
 
@@ -124,10 +124,10 @@ int folio_referenced(struct folio *folio) {
 
       if (address < vma->vm_start || address >= vma->vm_end) continue;
 
-      if (vma->vm_mm->pml4) {
-        if (vmm_is_accessed((uint64_t) vma->vm_mm->pml4, address)) {
+      if (vma->vm_mm->pml_root) {
+        if (vmm_is_accessed(vma->vm_mm, address)) {
           referenced++;
-          vmm_clear_accessed((uint64_t) vma->vm_mm->pml4, address);
+          vmm_clear_accessed(vma->vm_mm, address);
         }
       }
     }
@@ -143,10 +143,10 @@ int folio_referenced(struct folio *folio) {
 
       if (address < vma->vm_start || address >= vma->vm_end) continue;
 
-      if (vma->vm_mm->pml4) {
-        if (vmm_is_accessed((uint64_t) vma->vm_mm->pml4, address)) {
+      if (vma->vm_mm->pml_root) {
+        if (vmm_is_accessed(vma->vm_mm, address)) {
           referenced++;
-          vmm_clear_accessed((uint64_t) vma->vm_mm->pml4, address);
+          vmm_clear_accessed(vma->vm_mm, address);
         }
       }
     }
@@ -355,10 +355,10 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
     uint64_t phys = folio_to_phys(folio);
 
     if (PageHead(&folio->page) && folio->page.order == 9) {
-      vmm_map_huge_page((uint64_t) vma->vm_mm->pml4, vmf.address & 0xFFFFFFFFFFE00000ULL,
+      vmm_map_huge_page(vma->vm_mm, vmf.address & 0xFFFFFFFFFFE00000ULL,
                         phys, pte_flags, VMM_PAGE_SIZE_2M);
     } else {
-      vmm_map_page((uint64_t) vma->vm_mm->pml4, vmf.address, phys, pte_flags);
+      vmm_map_page(vma->vm_mm, vmf.address, phys, pte_flags);
     }
   }
 

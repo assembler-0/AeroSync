@@ -2,6 +2,7 @@
 
 #include <kernel/types.h>
 #include <arch/x86_64/mm/paging.h>
+#include <mm/mm_types.h>
 
 // Page Table Entry Flags
 #define PTE_PRESENT (1ULL << 0)
@@ -71,88 +72,95 @@ void vmm_init(void);
 /**
  * Map a virtual page to a physical frame.
  *
- * @param pml4_phys Physical address of the PML4 table
+ * @param mm        The address space to map in
  * @param virt      Virtual address to map (must be page aligned)
  * @param phys      Physical address to map to (must be page aligned)
  * @param flags     PTE flags (PTE_PRESENT | PTE_RW, etc.)
  * @return 0 on success, -1 on allocation failure
  */
-int vmm_map_page(uint64_t pml4_phys, uint64_t virt, uint64_t phys,
+int vmm_map_page(struct mm_struct *mm, uint64_t virt, uint64_t phys,
                  uint64_t flags);
-int vmm_map_huge_page(uint64_t pml4_phys, uint64_t virt, uint64_t phys,
+int vmm_map_huge_page(struct mm_struct *mm, uint64_t virt, uint64_t phys,
                       uint64_t flags, uint64_t page_size);
-int vmm_map_pages(uint64_t pml4_phys, uint64_t virt, uint64_t phys,
+int vmm_map_pages(struct mm_struct *mm, uint64_t virt, uint64_t phys,
                   size_t count, uint64_t flags);
-int vmm_map_pages_list(uint64_t pml4_phys, uint64_t virt, uint64_t *phys_list,
+int vmm_map_pages_list(struct mm_struct *mm, uint64_t virt, const uint64_t *phys_list,
                        size_t count, uint64_t flags);
 
 /**
  * Unmap a virtual page.
  *
- * @param pml4_phys Physical address of the PML4 table
+ * @param mm        The address space to unmap from
  * @param virt      Virtual address to unmap
  * @return 0 on success
  */
-int vmm_unmap_page(uint64_t pml4_phys, uint64_t virt);
-int vmm_unmap_page_deferred(uint64_t pml4_phys, uint64_t virt);
-int vmm_unmap_pages(uint64_t pml4_phys, uint64_t virt, size_t count);
-int vmm_unmap_pages_and_get_phys(uint64_t pml4_phys, uint64_t virt,
+int vmm_unmap_page(struct mm_struct *mm, uint64_t virt);
+int vmm_unmap_page_deferred(struct mm_struct *mm, uint64_t virt);
+int vmm_unmap_pages(struct mm_struct *mm, uint64_t virt, size_t count);
+int vmm_unmap_pages_and_get_phys(struct mm_struct *mm, uint64_t virt,
                                  uint64_t *phys_list, size_t count);
 
 /**
  * Copy user page tables for fork (COW).
- * @param src_pml4 Physical address of source PML root
- * @param dst_pml4 Physical address of destination PML root
+ * @param src_mm Source address space
+ * @param dst_mm Destination address space
  * @return 0 on success
  */
-int vmm_copy_page_tables(uint64_t src_pml4, uint64_t dst_pml4);
+int vmm_copy_page_tables(struct mm_struct *src_mm, const struct mm_struct *dst_mm);
 
 /**
  * Handle a Copy-On-Write fault.
  */
-int vmm_handle_cow(uint64_t pml4_phys, uint64_t virt);
+int vmm_handle_cow(struct mm_struct *mm, uint64_t virt);
 
 /**
  * Get the physical address mapped to a virtual address. *
- * @param pml4_phys Physical address of the PML4 table
+ * @param mm        Address space to query
  * @param virt      Virtual address query
  * @return Physical address, or 0 if not mapped
  */
-uint64_t vmm_virt_to_phys(uint64_t pml4_phys, uint64_t virt);
+uint64_t vmm_virt_to_phys(struct mm_struct *mm, uint64_t virt);
 
 /**
  * Recursively free all page table levels for a given address space.
  * Only frees user-space mappings.
- * @param pml_root Physical address of the PML root.
+ * @param mm The address space to free.
  */
-void vmm_free_page_tables(uint64_t pml_root);
+void vmm_free_page_tables(struct mm_struct *mm);
 
 /**
  * Modern VMM functions
  */
-int vmm_set_flags(uint64_t pml4_phys, uint64_t virt, uint64_t flags);
-int vmm_is_dirty(uint64_t pml4_phys, uint64_t virt);
-void vmm_clear_dirty(uint64_t pml4_phys, uint64_t virt);
-int vmm_is_accessed(uint64_t pml4_phys, uint64_t virt);
-void vmm_clear_accessed(uint64_t pml4_phys, uint64_t virt);
+int vmm_set_flags(struct mm_struct *mm, uint64_t virt, uint64_t flags);
+int vmm_is_dirty(struct mm_struct *mm, uint64_t virt);
+void vmm_clear_dirty(struct mm_struct *mm, uint64_t virt);
+int vmm_is_accessed(struct mm_struct *mm, uint64_t virt);
+void vmm_clear_accessed(struct mm_struct *mm, uint64_t virt);
 
 /**
  * Huge Page Helpers
  */
 struct mm_struct;
 int vmm_merge_to_huge(struct mm_struct *mm, uint64_t virt, uint64_t target_huge_size);
-int vmm_shatter_huge_page(uint64_t pml_root_phys, uint64_t virt, uint64_t large_page_size);
-void vmm_merge_range(uint64_t pml_root_phys, uint64_t start, uint64_t end);
+int vmm_shatter_huge_page(struct mm_struct *mm, uint64_t virt, uint64_t large_page_size);
+void vmm_merge_range(struct mm_struct *mm, uint64_t start, uint64_t end);
+
+/**
+ * Check if a specific page size is supported by the hardware.
+ * @param size The page size in bytes (4KB, 2MB, 1GB).
+ * @return 1 if supported, 0 otherwise.
+ */
+int vmm_page_size_supported(size_t size);
 
 /**
  * Switch the active Page Table (CR3).
  *
- * @param pml4_phys Physical address of the new PML4
+ * @param pml_root_phys Physical address of the new PML root
  */
-void vmm_switch_pml4(uint64_t pml4_phys);
-void vmm_switch_pml4_pcid(uint64_t pml4_phys, uint16_t pcid, bool no_flush);
+void vmm_switch_pml_root(uint64_t pml_root_phys);
+void vmm_switch_pml_root_pcid(uint64_t pml_root_phys, uint16_t pcid, bool no_flush);
 
 /* Smoke test */
 void vmm_test(void);
 
-extern uint64_t g_kernel_pml4;
+extern uint64_t g_kernel_pml_root;

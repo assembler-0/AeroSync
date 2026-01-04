@@ -19,6 +19,7 @@ typedef struct {
   bool avx512f;
   bool pat;
   bool la57;
+  bool pdpe1gb;
   bool nx;
   bool wp;
   bool pcid;

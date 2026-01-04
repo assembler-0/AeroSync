@@ -65,7 +65,7 @@ static void vmalloc_unmap_pages(struct vm_area_struct *vma) {
     uint64_t end = virt + (1ULL << (pnode->order + PAGE_SHIFT));
     if (end > max_virt) max_virt = end;
     
-    vmm_unmap_page_deferred(g_kernel_pml4, virt);
+    vmm_unmap_page_deferred(&init_mm, virt);
 
     node = rb_next(node);
   }
@@ -74,7 +74,7 @@ static void vmalloc_unmap_pages(struct vm_area_struct *vma) {
 
   // Shoot down only the range that was actually faulted in
   if (min_virt != 0) {
-    vmm_tlb_shootdown(NULL, min_virt, max_virt);
+    vmm_tlb_shootdown(&init_mm, min_virt, max_virt);
   }
 }
 
@@ -235,7 +235,7 @@ void *viomap(uint64_t phys_addr, size_t size) {
   }
 
   // IO mappings are always eager
-  vmm_map_pages(g_kernel_pml4, virt_start, phys_start,
+  vmm_map_pages(&init_mm, virt_start, phys_start,
                 page_aligned_size / PAGE_SIZE,
                 PTE_PRESENT | PTE_RW | VMM_CACHE_UC | PTE_NX);
 
@@ -287,7 +287,7 @@ void *viomap_wc(uint64_t phys_addr, size_t size) {
     return NULL;
   }
 
-  vmm_map_pages(g_kernel_pml4, virt_start, phys_start,
+  vmm_map_pages(&init_mm, virt_start, phys_start,
                 page_aligned_size / PAGE_SIZE,
                 PTE_PRESENT | PTE_RW | VMM_CACHE_WC | PTE_NX);
 

@@ -21,6 +21,8 @@
 #include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/percpu.h>
 #include <compiler.h>
+#include <arch/x86_64/features/features.h>
+#include <arch/x86_64/mm/vmm.h>
 #include <kernel/classes.h>
 #include <kernel/fkx/fkx.h>
 #include <lib/printk.h>
@@ -90,16 +92,17 @@ static void register_zone_pages(uint64_t start_pfn, uint64_t end_pfn) {
   for (pfn = start_pfn; pfn < end_pfn; pfn++) {
     struct page *page = &mem_map[pfn];
     ClearPageReserved(page); // It was reserved during mem_map init
-    __free_pages(page, 0);   // Free to buddy
+    __free_pages(page, 0); // Free to buddy
   }
 }
 
 extern void numa_init(void *rsdp);
+
 extern int pfn_to_nid(uint64_t pfn);
 
 int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
   struct limine_memmap_response *memmap =
-      (struct limine_memmap_response *)memmap_response_ptr;
+      (struct limine_memmap_response *) memmap_response_ptr;
 
   if (!memmap || memmap->entry_count == 0) {
     printk(KERN_ERR PMM_CLASS "Invalid memory map\n");
@@ -147,7 +150,7 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
   }
 
   uint64_t mm_phys = PAGE_ALIGN_UP(mm_region->base);
-  mem_map = (struct page *)pmm_phys_to_virt(mm_phys);
+  mem_map = (struct page *) pmm_phys_to_virt(mm_phys);
   memset(mem_map, 0, memmap_size);
 
   // Init all pages as Reserved
@@ -164,48 +167,48 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
 
   // Set up Zones for each node with accurate boundaries
   for (int n = 0; n < MAX_NUMNODES; n++) {
-      if (!node_data[n]) continue;
-      
-      struct pglist_data *pgdat = node_data[n];
+    if (!node_data[n]) continue;
 
-      // Fix for UMA fallback where numa_init might not know the max PFN yet
-      if (n == 0 && pgdat->node_spanned_pages == 0xFFFFFFFF) {
-          pgdat->node_spanned_pages = pmm_max_pages;
-      }
+    struct pglist_data *pgdat = node_data[n];
 
-      unsigned long node_start = pgdat->node_start_pfn;
-      unsigned long node_end = node_start + pgdat->node_spanned_pages;
+    // Fix for UMA fallback where numa_init might not know the max PFN yet
+    if (n == 0 && pgdat->node_spanned_pages == 0xFFFFFFFF) {
+      pgdat->node_spanned_pages = pmm_max_pages;
+    }
 
-      // ZONE_DMA: [0, 16MB]
-      pgdat->node_zones[ZONE_DMA].zone_start_pfn = node_start;
-      if (node_start < 4096) {
-          unsigned long end = node_end < 4096 ? node_end : 4096;
-          pgdat->node_zones[ZONE_DMA].spanned_pages = end - node_start;
-      } else {
-          pgdat->node_zones[ZONE_DMA].spanned_pages = 0;
-      }
-      pgdat->node_zones[ZONE_DMA].present_pages = 0;
+    unsigned long node_start = pgdat->node_start_pfn;
+    unsigned long node_end = node_start + pgdat->node_spanned_pages;
 
-      // ZONE_DMA32: [16MB, 4GB]
-      pgdat->node_zones[ZONE_DMA32].zone_start_pfn = node_start < 4096 ? 4096 : node_start;
-      if (node_end > 4096 && node_start < 1048576) {
-          unsigned long start = node_start < 4096 ? 4096 : node_start;
-          unsigned long end = node_end < 1048576 ? node_end : 1048576;
-          pgdat->node_zones[ZONE_DMA32].spanned_pages = (end > start) ? (end - start) : 0;
-      } else {
-          pgdat->node_zones[ZONE_DMA32].spanned_pages = 0;
-      }
-      pgdat->node_zones[ZONE_DMA32].present_pages = 0;
+    // ZONE_DMA: [0, 16MB]
+    pgdat->node_zones[ZONE_DMA].zone_start_pfn = node_start;
+    if (node_start < 4096) {
+      unsigned long end = node_end < 4096 ? node_end : 4096;
+      pgdat->node_zones[ZONE_DMA].spanned_pages = end - node_start;
+    } else {
+      pgdat->node_zones[ZONE_DMA].spanned_pages = 0;
+    }
+    pgdat->node_zones[ZONE_DMA].present_pages = 0;
 
-      // ZONE_NORMAL: [4GB, ...]
-      pgdat->node_zones[ZONE_NORMAL].zone_start_pfn = node_start < 1048576 ? 1048576 : node_start;
-      if (node_end > 1048576) {
-          unsigned long start = node_start < 1048576 ? 1048576 : node_start;
-          pgdat->node_zones[ZONE_NORMAL].spanned_pages = node_end - start;
-      } else {
-          pgdat->node_zones[ZONE_NORMAL].spanned_pages = 0;
-      }
-      pgdat->node_zones[ZONE_NORMAL].present_pages = 0;
+    // ZONE_DMA32: [16MB, 4GB]
+    pgdat->node_zones[ZONE_DMA32].zone_start_pfn = node_start < 4096 ? 4096 : node_start;
+    if (node_end > 4096 && node_start < 1048576) {
+      unsigned long start = node_start < 4096 ? 4096 : node_start;
+      unsigned long end = node_end < 1048576 ? node_end : 1048576;
+      pgdat->node_zones[ZONE_DMA32].spanned_pages = (end > start) ? (end - start) : 0;
+    } else {
+      pgdat->node_zones[ZONE_DMA32].spanned_pages = 0;
+    }
+    pgdat->node_zones[ZONE_DMA32].present_pages = 0;
+
+    // ZONE_NORMAL: [4GB, ...]
+    pgdat->node_zones[ZONE_NORMAL].zone_start_pfn = node_start < 1048576 ? 1048576 : node_start;
+    if (node_end > 1048576) {
+      unsigned long start = node_start < 1048576 ? 1048576 : node_start;
+      pgdat->node_zones[ZONE_NORMAL].spanned_pages = node_end - start;
+    } else {
+      pgdat->node_zones[ZONE_NORMAL].spanned_pages = 0;
+    }
+    pgdat->node_zones[ZONE_NORMAL].present_pages = 0;
   }
 
   // Pass 2: Feed free pages to allocator
@@ -225,73 +228,121 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
     if (start_pfn == 0)
       start_pfn = 1;
 
-    for (uint64_t pfn = start_pfn; pfn < end_pfn; pfn++) {
-      if (pfn >= mm_start_pfn && pfn < mm_end_pfn)
+    uint64_t cur_pfn = start_pfn;
+    while (cur_pfn < end_pfn) {
+      if (cur_pfn >= mm_start_pfn && cur_pfn < mm_end_pfn) {
+        cur_pfn++;
         continue;
+      }
 
-      int nid = pfn_to_nid(pfn);
+      // Find largest order that fits and is aligned
+      unsigned int order = 0;
+      uint64_t max_count = end_pfn - cur_pfn;
 
+      // We also must stop before hitting the mem_map region
+      if (cur_pfn < mm_start_pfn && (cur_pfn + max_count) > mm_start_pfn) {
+        max_count = mm_start_pfn - cur_pfn;
+      }
+
+      for (unsigned int o = 0; o < MAX_ORDER - 1; o++) {
+        if ((cur_pfn & (1UL << (o + 1))) != 0) break;
+        if ((1UL << (o + 1)) > max_count) break;
+        order = o + 1;
+      }
+
+      int nid = pfn_to_nid(cur_pfn);
       struct pglist_data *pgdat = node_data[nid];
       if (!pgdat) {
-          nid = 0;
-          pgdat = node_data[0];
+        nid = 0;
+        pgdat = node_data[0];
       }
 
-      // Register page
-      struct page *page = &mem_map[pfn];
-      ClearPageReserved(page);
-      page->node = nid;
+      // Register pages in the block
+      uint64_t count = 1UL << order;
+      for (uint64_t i = 0; i < count; i++) {
+        struct page *page = &mem_map[cur_pfn + i];
+        ClearPageReserved(page);
+        page->node = nid;
 
-      // Determine zone for stats
-      struct zone *z = NULL;
-      int z_idx = 0;
-      if (pfn < 4096) {
-        z = &pgdat->node_zones[ZONE_DMA];
-        z_idx = ZONE_DMA;
-      } else if (pfn < 1048576) {
-        z = &pgdat->node_zones[ZONE_DMA32];
-        z_idx = ZONE_DMA32;
-      } else {
-        z = &pgdat->node_zones[ZONE_NORMAL];
-        z_idx = ZONE_NORMAL;
+        int z_idx = 0;
+        if ((cur_pfn + i) < 4096) z_idx = ZONE_DMA;
+        else if ((cur_pfn + i) < 1048576) z_idx = ZONE_DMA32;
+        else z_idx = ZONE_NORMAL;
+
+        page->zone = z_idx;
+        pgdat->node_zones[z_idx].present_pages++;
       }
 
-      if (z)
-        z->present_pages++;
-      page->zone = z_idx;
-
-      __free_pages(page, 0);
+      __free_pages(&mem_map[cur_pfn], order);
+      cur_pfn += count;
     }
   }
 
   pmm_initialized = true;
 
-  // Calculate watermarks for each zone in each node
+  // Calculate watermarks and log summary
   for (int n = 0; n < MAX_NUMNODES; n++) {
-      if (!node_data[n]) continue;
-      struct pglist_data *pgdat = node_data[n];
-      
-      for (int i = 0; i < MAX_NR_ZONES; i++) {
-          struct zone *z = &pgdat->node_zones[i];
-          if (z->present_pages > 0) {
-              z->watermark[WMARK_MIN] = z->present_pages / 100;      // 1%
-              z->watermark[WMARK_LOW] = z->present_pages * 3 / 100;  // 3%
-              z->watermark[WMARK_HIGH] = z->present_pages * 5 / 100; // 5%
-              
-              printk(KERN_DEBUG PMM_CLASS "node %d Zone %s: %lu pages, watermarks [min:%lu low:%lu high:%lu]\n",
-                     n, z->name, z->present_pages, z->watermark[WMARK_MIN], 
-                     z->watermark[WMARK_LOW], z->watermark[WMARK_HIGH]);
-          }
-      }
-  }
+    if (!node_data[n]) continue;
+    struct pglist_data *pgdat = node_data[n];
 
+    for (int i = 0; i < MAX_NR_ZONES; i++) {
+      struct zone *z = &pgdat->node_zones[i];
+      if (z->present_pages > 0) {
+        z->watermark[WMARK_MIN] = z->present_pages / 100;
+        z->watermark[WMARK_LOW] = z->present_pages * 3 / 100;
+        z->watermark[WMARK_HIGH] = z->present_pages * 5 / 100;
+
+        printk(KERN_DEBUG PMM_CLASS "node %d Zone %s: %lu pages\n",
+               n, z->name, z->present_pages);
+      }
+    }
+  }
   // Stats
   pmm_stats.total_pages = total_usable_bytes / PAGE_SIZE; // Approximate
   pmm_stats.highest_address = highest_addr;
 
   printk(KERN_DEBUG PMM_CLASS "Initialized. Max PFN: %llu\n", pmm_max_pages);
 
+  pmm_report_capabilities();
+
   return 0;
+}
+
+void pmm_report_capabilities(void) {
+  int active_nodes = 0;
+  bool can_do_1g = false;
+  uint64_t total_ram_mb = pmm_stats.total_pages * PAGE_SIZE / 1024 / 1024;
+
+  for (int n = 0; n < MAX_NUMNODES; n++) {
+    if (!node_data[n]) continue;
+    active_nodes++;
+
+    // Check if this node has an order 18 block
+    struct pglist_data *pgdat = node_data[n];
+    for (int i = 0; i < MAX_NR_ZONES; i++) {
+      if (pgdat->node_zones[i].free_area[18].nr_free > 0) {
+        can_do_1g = true;
+        break;
+      }
+    }
+  }
+
+  printk(KERN_INFO PMM_CLASS "system physical memory capabilities report (PMCR) ---\n");
+  printk(KERN_INFO PMM_CLASS "Total Usable RAM: %llu MB\n", total_ram_mb);
+  printk(KERN_INFO PMM_CLASS "NUMA Nodes: %d (Max supported: %d)\n", active_nodes, MAX_NUMNODES);
+
+  if (can_do_1g) {
+    printk(KERN_INFO PMM_CLASS "Contiguous 1GB Blocks: Available\n");
+  } else {
+    printk(KERN_WARNING PMM_CLASS "no 1GB contiguous memory block found (Memory too low or fragmented)\n");
+    printk(KERN_WARNING PMM_CLASS "1GB hugepages will fail even though hardware supports them.\n");
+  }
+
+
+  if (total_ram_mb < 512) {
+    printk(KERN_WARNING PMM_CLASS "Low Memory Warning: System has less than 512MB RAM.\n");
+    printk(KERN_WARNING PMM_CLASS "Performance may be degraded and large allocations will fail.\n");
+  }
 }
 
 void pmm_test(void) {
@@ -303,7 +354,7 @@ void pmm_test(void) {
   if (!p1) {
     printk(KERN_ERR PMM_CLASS "Smoke test failed (alloc 1)\n");
   } else {
-    uint64_t *v1 = (uint64_t *)pmm_phys_to_virt(p1);
+    uint64_t *v1 = (uint64_t *) pmm_phys_to_virt(p1);
     *v1 = 0xDEADBEEFCAFEBABE;
     if (*v1 != 0xDEADBEEFCAFEBABE) {
       printk(KERN_ERR PMM_CLASS "Smoke test failed (read/write 1)\n");
@@ -326,7 +377,7 @@ void pmm_test(void) {
              p2);
     }
 
-    uint64_t *v2 = (uint64_t *)pmm_phys_to_virt(p2);
+    uint64_t *v2 = (uint64_t *) pmm_phys_to_virt(p2);
     v2[0] = 0xAAAAAAAA;
     v2[512 * 3] = 0xBBBBBBBB; // Write to 4th page
 
@@ -343,6 +394,47 @@ void pmm_test(void) {
 
 uint64_t pmm_alloc_page(void) { return pmm_alloc_pages(1); }
 
+uint64_t pmm_alloc_huge(size_t size) {
+    if (!pmm_initialized || !vmm_page_size_supported(size))
+        return 0;
+
+    unsigned int order = 0;
+    if (size > PAGE_SIZE) {
+        order = 64 - __builtin_clzll((size >> PAGE_SHIFT) - 1);
+    }
+
+    struct folio *folio = alloc_pages(GFP_KERNEL, order);
+    if (!folio) return 0;
+
+    return folio_to_phys(folio);
+}
+
+static int pcp_refill(struct per_cpu_pages *pcp) {
+    int nid = (int)smp_get_id(); // Default to this CPU's node
+    struct pglist_data *pgdat = node_data[cpu_to_node(nid)];
+    if (!pgdat) pgdat = node_data[0];
+    
+    struct zone *zone = &pgdat->node_zones[ZONE_NORMAL];
+    // Find a zone with present pages
+    for (int i = ZONE_NORMAL; i >= 0; i--) {
+        if (pgdat->node_zones[i].present_pages > 0) {
+            zone = &pgdat->node_zones[i];
+            break;
+        }
+    }
+
+    struct list_head refill_list;
+    INIT_LIST_HEAD(&refill_list);
+    
+    int allocated = rmqueue_bulk(zone, 0, pcp->batch, &refill_list);
+    if (allocated > 0) {
+        list_splice(&refill_list, &pcp->list);
+        pcp->count += allocated;
+    }
+    
+    return allocated;
+}
+
 uint64_t pmm_alloc_pages(size_t count) {
   if (!pmm_initialized)
     return 0;
@@ -351,6 +443,10 @@ uint64_t pmm_alloc_pages(size_t count) {
   if (count == 1 && percpu_ready()) {
     irq_flags_t flags = save_irq_flags();
     struct per_cpu_pages *pcp = this_cpu_ptr(pcp_pages);
+
+    if (pcp->count == 0) {
+        pcp_refill(pcp);
+    }
 
     if (pcp->count > 0) {
       struct page *page = list_first_entry(&pcp->list, struct page, list);
@@ -366,12 +462,8 @@ uint64_t pmm_alloc_pages(size_t count) {
       return PFN_TO_PHYS((uint64_t)(page - mem_map));
     }
 
-    // Refill batch
-    // For now simple refill 1 page from global
-    // TODO: Implement batch refill
     restore_irq_flags(flags);
   }
-
   // Calculate order
   unsigned int order = 0;
   if (count > 1) {
@@ -395,8 +487,8 @@ void pmm_free_pages(uint64_t phys_addr, size_t count) {
   struct page *page = &mem_map[pfn];
 
   if (count > 0 && count != (1UL << page->order)) {
-      printk(KERN_WARNING PMM_CLASS "pmm_free_pages: count %zu does not match page order %u (pfn %llu)\n",
-             count, page->order, pfn);
+    printk(KERN_WARNING PMM_CLASS "pmm_free_pages: count %zu does not match page order %u (pfn %llu)\n",
+           count, page->order, pfn);
   }
 
   put_page(page);

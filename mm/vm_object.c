@@ -186,9 +186,12 @@ static int anon_obj_fault(struct vm_object *obj, struct vm_area_struct *vma, str
     struct folio *folio = NULL;
     bool is_huge = false;
 
+    int nid = vma->preferred_node;
+    if (nid == -1 && vma->vm_mm) nid = vma->vm_mm->preferred_node;
+
     // Try Huge Page (2MB) if aligned and supported
     if ((vma->vm_flags & VM_HUGE) && (vmf->pgoff % 512 == 0) && (vmf->pgoff + 512 <= (obj->size >> PAGE_SHIFT))) {
-        folio = alloc_pages(GFP_KERNEL, 9);
+        folio = alloc_pages_node(nid, GFP_KERNEL, 9);
         if (folio) {
             memset(pmm_phys_to_virt(folio_to_phys(folio)), 0, VMM_PAGE_SIZE_2M);
             is_huge = true;
@@ -197,7 +200,7 @@ static int anon_obj_fault(struct vm_object *obj, struct vm_area_struct *vma, str
 
     // Fallback to 4KB if huge failed or wasn't applicable
     if (!folio) {
-        folio = alloc_pages(GFP_KERNEL, 0);
+        folio = alloc_pages_node(nid, GFP_KERNEL, 0);
         if (!folio) return VM_FAULT_OOM;
         memset(pmm_phys_to_virt(folio_to_phys(folio)), 0, PAGE_SIZE);
         is_huge = false;
@@ -259,7 +262,7 @@ static int device_obj_fault(struct vm_object *obj, struct vm_area_struct *vma, s
   else if (vma->vm_flags & VM_CACHE_UC) pte_flags |= VMM_CACHE_UC;
   else if (vma->vm_flags & VM_CACHE_WT) pte_flags |= VMM_CACHE_WT;
 
-  vmm_map_page((uint64_t) vma->vm_mm->pml4, vmf->address, phys, pte_flags);
+  vmm_map_page(vma->vm_mm, vmf->address, phys, pte_flags);
 
   return VM_FAULT_COMPLETED; /* Signal that mapping is already done */
 }
@@ -311,14 +314,18 @@ static int shadow_obj_fault(struct vm_object *obj, struct vm_area_struct *vma, s
 
   /* 3. If it's a WRITE fault, we MUST "promote" (copy) the page to the shadow object */
   if (vmf->flags & FAULT_FLAG_WRITE) {
-    uint64_t phys = pmm_alloc_page();
-    if (!phys) {
+    int nid = vma->preferred_node;
+    if (nid == -1 && vma->vm_mm) nid = vma->vm_mm->preferred_node;
+
+    struct folio *new_folio = alloc_pages_node(nid, GFP_KERNEL, 0);
+    if (!new_folio) {
       put_page(page);
       spinlock_unlock(&obj->lock);
       return VM_FAULT_OOM;
     }
 
-    struct page *new_page = phys_to_page(phys);
+    struct page *new_page = &new_folio->page;
+    uint64_t phys = folio_to_phys(new_folio);
     void *src = pmm_phys_to_virt(page_to_phys(page));
     void *dst = pmm_phys_to_virt(phys);
     memcpy(dst, src, PAGE_SIZE);

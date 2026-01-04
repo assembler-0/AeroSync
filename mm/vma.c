@@ -156,11 +156,12 @@ void mm_init(struct mm_struct *mm) {
   INIT_LIST_HEAD(&mm->mmap_list);
   mm->map_count = 0;
   mm->mmap_base = 0;
-  mm->pml4 = NULL;
+  mm->pml_root = NULL;
   spinlock_init(&mm->page_table_lock);
   rwsem_init(&mm->mmap_lock);
   atomic_set(&mm->mm_count, 1);
   mm->vmacache_seqnum = 0;
+  mm->preferred_node = -1; // No preference by default
   cpumask_clear(&mm->cpu_mask);
 
   /* Initialize memory layout fields */
@@ -234,13 +235,13 @@ struct mm_struct *mm_create(void) {
   memset(pml4_virt, 0, PAGE_SIZE);
 
   // Copy kernel space (higher half, entries 256-511)
-  uint64_t *kernel_pml4_virt = (uint64_t *) pmm_phys_to_virt(g_kernel_pml4);
+  uint64_t *kernel_pml4_virt = (uint64_t *) pmm_phys_to_virt(g_kernel_pml_root);
 
   // Copy higher half (entries 256-511). In x86_64, the root table (PML4 or PML5)
   // always splits the address space in half at index 256.
   memcpy(pml4_virt + 256, kernel_pml4_virt + 256, 256 * sizeof(uint64_t));
 
-  mm->pml4 = (uint64_t *) pml4_phys;
+  mm->pml_root = (uint64_t *) pml4_phys;
   return mm;
 }
 
@@ -316,7 +317,7 @@ struct mm_struct *mm_copy(struct mm_struct *old_mm) {
   }
 
   /* Copy page tables (COW) */
-  if (vmm_copy_page_tables((uint64_t) old_mm->pml4, (uint64_t) new_mm->pml4) < 0) {
+  if (vmm_copy_page_tables(old_mm, new_mm) < 0) {
     mm_free(new_mm);
     up_write(&old_mm->mmap_lock);
     return NULL;
@@ -342,9 +343,9 @@ void mm_destroy(struct mm_struct *mm) {
   }
 
   // Free the page tables if it's not the kernel's
-  if (mm->pml4 && (uint64_t) mm->pml4 != g_kernel_pml4) {
-    vmm_free_page_tables((uint64_t) mm->pml4);
-    mm->pml4 = NULL;
+  if (mm->pml_root && (uint64_t) mm->pml_root != g_kernel_pml_root) {
+    vmm_free_page_tables(mm);
+    mm->pml_root = NULL;
   }
 
   up_write(&mm->mmap_lock);
@@ -424,6 +425,7 @@ struct vm_area_struct *vma_create(uint64_t start, uint64_t end,
   vma->vm_end = end;
   vma->vm_flags = flags;
   vma->vm_mm = NULL;
+  vma->preferred_node = -1;
   
   vma->vm_ops = NULL;
   vma->vm_private_data = NULL;
@@ -894,10 +896,10 @@ int vma_unmap_range(struct mm_struct *mm, uint64_t start, uint64_t end) {
       break;
 
     // Unmap physical pages
-    if (mm->pml4) {
+    if (mm->pml_root) {
       for (uint64_t addr = vma->vm_start; addr < vma->vm_end; addr += PAGE_SIZE) {
         uint64_t phys;
-        vmm_unmap_pages_and_get_phys((uint64_t) mm->pml4, addr, &phys, 1);
+        vmm_unmap_pages_and_get_phys(mm, addr, &phys, 1);
         if (phys) {
           tlb_remove_page(&tlb, phys, addr);
         }
@@ -946,9 +948,9 @@ int vma_protect(struct mm_struct *mm, uint64_t start, uint64_t end,
     if (vma->vm_flags & VM_WRITE) pte_flags |= PTE_RW;
     if (!(vma->vm_flags & VM_EXEC)) pte_flags |= PTE_NX;
 
-    if (mm->pml4) {
+    if (mm->pml_root) {
       for (uint64_t addr = vma->vm_start; addr < vma->vm_end; addr += PAGE_SIZE) {
-        vmm_set_flags((uint64_t) mm->pml4, addr, pte_flags);
+        vmm_set_flags(mm, addr, pte_flags);
       }
     }
   }
@@ -967,7 +969,7 @@ int mm_populate_user_range(struct mm_struct *mm, uint64_t start, size_t size, ui
   /* Ensure VMAs exist */
   vma_map_range(mm, start, end, flags | VM_USER);
 
-  uint64_t pml4_phys = (uint64_t) mm->pml4;
+  uint64_t pml4_phys = (uint64_t) mm->pml_root;
   uint64_t pte_flags = PTE_PRESENT | PTE_USER;
   if (flags & VM_WRITE) pte_flags |= PTE_RW;
   if (!(flags & VM_EXEC)) pte_flags |= PTE_NX;
@@ -1002,7 +1004,7 @@ int mm_populate_user_range(struct mm_struct *mm, uint64_t start, size_t size, ui
     }
     spinlock_unlock(&vma->vm_obj->lock);
 
-    vmm_map_page(pml4_phys, addr, phys, pte_flags);
+    vmm_map_page(mm, addr, phys, pte_flags);
 
     // If we have data to copy into this page
     size_t offset = addr - start;
@@ -1045,6 +1047,21 @@ uint64_t vma_find_free_region_aligned(struct mm_struct *mm, size_t size,
     return 0;
 
   size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+
+  /* Fail-fast 1: Size larger than requested range */
+  if (size > (range_end - range_start))
+      return 0;
+
+  /* Fail-fast 2: Augmented RB-tree root check.
+   * If the largest gap in the whole tree is smaller than our request, fail immediately.
+   * Note: This only works if we search the full range (which is common).
+   */
+  if (mm->mm_rb.rb_node) {
+      struct vm_area_struct *root_vma = rb_entry(mm->mm_rb.rb_node, struct vm_area_struct, vm_rb);
+      if (root_vma->vm_rb_max_gap < size && range_start == 0 && range_end >= vmm_get_max_user_address()) {
+          return 0;
+      }
+  }
 
   /*
    * Cached Hole Search Optimization:
