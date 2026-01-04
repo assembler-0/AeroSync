@@ -186,7 +186,6 @@ static int anon_obj_fault(struct vm_object *obj, struct vm_area_struct *vma, str
 
     /* 3. Prepare new page (ALLOCATION OUTSIDE LOCK) */
     struct folio *folio = NULL;
-    bool is_huge = false;
 
     int nid = vma->preferred_node;
     if (nid == -1 && vma->vm_mm) nid = vma->vm_mm->preferred_node;
@@ -196,7 +195,6 @@ static int anon_obj_fault(struct vm_object *obj, struct vm_area_struct *vma, str
         folio = alloc_pages_node(nid, GFP_KERNEL, 9);
         if (folio) {
             memset(pmm_phys_to_virt(folio_to_phys(folio)), 0, VMM_PAGE_SIZE_2M);
-            is_huge = true;
         }
     }
 
@@ -208,7 +206,6 @@ static int anon_obj_fault(struct vm_object *obj, struct vm_area_struct *vma, str
             return VM_FAULT_OOM;
         }
         memset(pmm_phys_to_virt(folio_to_phys(folio)), 0, PAGE_SIZE);
-        is_huge = false;
     }
 
     /* 4. Try to insert the new page (RACING RE-CHECK) */
@@ -298,6 +295,9 @@ void vm_object_collapse(struct vm_object *obj) {
             return;
         }
 
+        /* Take reference to prevent backing from being freed during collapse */
+        vm_object_get(backing);
+
         /* 
          * Move all pages from backing into obj.
          * obj's pages take precedence over backing's pages.
@@ -351,15 +351,21 @@ skip_page:
         /* Update shadow chain */
         struct vm_object *new_backing = backing->backing_object;
         if (new_backing) vm_object_get(new_backing);
+        
+        /* Clear backing's backing_object before releasing locks to prevent recursive put */
+        struct vm_object *old_backing = backing->backing_object;
+        backing->backing_object = NULL;
+        
         obj->backing_object = new_backing;
         obj->shadow_offset += backing->shadow_offset;
 
         spinlock_unlock(&obj->lock);
         spinlock_unlock(&backing->lock);
 
-        /* Backing refcount was 1, so this will free it */
-        backing->backing_object = NULL; /* Prevent recursive put of the new_backing */
+        /* Release our temporary reference */
         vm_object_put(backing);
+        /* Release the original reference (should free it) */
+        vm_object_put(old_backing);
         
         /* Loop to try collapsing the next level */
     }

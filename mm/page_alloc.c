@@ -133,22 +133,29 @@ static struct page *__rmqueue(struct zone *zone, unsigned int order) {
   return NULL;
 }
 
+static void __free_one_page(struct page *page, unsigned long pfn,
+                            struct zone *zone, unsigned int order);
+
 int rmqueue_bulk(struct zone *zone, unsigned int order, unsigned int count,
                  struct list_head *list) {
   int i;
+  
+  /* Validate zone boundaries before bulk allocation */
+  if (!zone || !zone->present_pages || count == 0) return 0;
+  
   spinlock_lock(&zone->lock);
+  
   for (i = 0; i < (int) count; ++i) {
     struct page *page = __rmqueue(zone, order);
     if (unlikely(page == NULL))
       break;
+    
     list_add_tail(&page->list, list);
   }
+  
   spinlock_unlock(&zone->lock);
   return i;
 }
-
-static void __free_one_page(struct page *page, unsigned long pfn,
-                            struct zone *zone, unsigned int order);
 
 void free_pcp_pages(struct zone *zone, int count, struct list_head *list) {
   spinlock_lock(&zone->lock);
@@ -165,6 +172,13 @@ static void __free_one_page(struct page *page, unsigned long pfn,
   unsigned long buddy_pfn;
   struct page *buddy;
 
+  // Validate page before starting merge process
+  if (PageBuddy(page)) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), PMM_CLASS "Double free detected: pfn %lu", pfn);
+    panic(buf);
+  }
+
   while (order < MAX_ORDER - 1) {
     buddy_pfn = __find_buddy_pfn(pfn, order);
 
@@ -177,14 +191,27 @@ static void __free_one_page(struct page *page, unsigned long pfn,
 
     buddy = &mem_map[buddy_pfn];
 
+    // Comprehensive buddy validation
     if (!page_is_buddy(page, buddy, order))
       break;
+      
+    // Additional safety: verify buddy is in same zone
+    if (buddy->zone != page->zone)
+      break;
+      
+    // Verify buddy is not corrupted
+    if (buddy->order != order) {
+      printk(KERN_ERR PMM_CLASS "Buddy order mismatch: expected %u, got %u\n", 
+             order, buddy->order);
+      break;
+    }
 
     /* Our buddy is free, merge with it */
     list_del(&buddy->list);
     zone->free_area[order].nr_free--;
     zone->nr_free_pages -= (1UL << order);
     ClearPageBuddy(buddy);
+    buddy->order = 0; // Clear buddy order
 
     pfn &= ~(1UL << order);
     page = &mem_map[pfn];
@@ -214,8 +241,20 @@ struct folio *alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order) {
   int reclaim_retries = 3;
 
 retry:
+  // Validate and fallback NUMA node (moved outside retry loop)
   if (nid < 0 || nid >= MAX_NUMNODES || !node_data[nid]) {
-    nid = 0; // Fallback to node 0
+    // Find first valid node instead of assuming node 0
+    nid = -1;
+    for (int i = 0; i < MAX_NUMNODES; i++) {
+      if (node_data[i]) {
+        nid = i;
+        break;
+      }
+    }
+    if (nid == -1) {
+      printk(KERN_ERR PMM_CLASS "No valid NUMA nodes available\n");
+      return NULL;
+    }
   }
 
   int start_zone = ZONE_NORMAL;
@@ -265,15 +304,16 @@ retry:
 
     if (!z->present_pages || order > z->max_free_order) continue;
 
-    /* Check watermarks */
-    if (z->nr_free_pages < z->watermark[WMARK_LOW]) {
-      wakeup_kswapd(z);
-    }
+  /* Check watermarks with atomic operations */
+  if (__atomic_load_n(&z->nr_free_pages, __ATOMIC_ACQUIRE) < z->watermark[WMARK_LOW]) {
+    wakeup_kswapd(z);
+  }
 
-    /* If we are under the MIN watermark and can't reclaim, we might fail unless HIGH priority */
-    if (z->nr_free_pages < z->watermark[WMARK_MIN] && !can_reclaim && !(gfp_mask & ___GFP_HIGH)) {
-        continue;
-    }
+  /* If we are under the MIN watermark and can't reclaim, we might fail unless HIGH priority */
+  if (__atomic_load_n(&z->nr_free_pages, __ATOMIC_ACQUIRE) < z->watermark[WMARK_MIN] && 
+      !can_reclaim && !(gfp_mask & ___GFP_HIGH)) {
+      continue;
+  }
 
     flags = spinlock_lock_irqsave(&z->lock);
     page = __rmqueue(z, order);

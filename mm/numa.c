@@ -27,6 +27,11 @@ struct numa_mem_range {
 static struct numa_mem_range numa_ranges[MAX_NUMA_RANGES];
 static int numa_range_count = 0;
 
+/* NUMA distance matrix */
+#define NUMA_NO_DISTANCE 255
+static uint8_t numa_distance[MAX_NUMNODES][MAX_NUMNODES];
+static bool numa_distance_valid = false;
+
 /* Physical LAPIC ID to Node mapping */
 static struct {
     uint8_t lapic_id;
@@ -52,6 +57,39 @@ int pfn_to_nid(uint64_t pfn) {
         }
     }
     return 0;
+}
+
+int numa_distance_get(int from, int to) {
+    if (!numa_distance_valid || from >= MAX_NUMNODES || to >= MAX_NUMNODES)
+        return NUMA_NO_DISTANCE;
+    return numa_distance[from][to];
+}
+
+int numa_find_best_node(int preferred_node) {
+    if (preferred_node >= 0 && preferred_node < MAX_NUMNODES && node_data[preferred_node])
+        return preferred_node;
+    
+    /* Find closest node if distance matrix is available */
+    if (numa_distance_valid && preferred_node >= 0 && preferred_node < MAX_NUMNODES) {
+        int best_node = -1;
+        int best_distance = NUMA_NO_DISTANCE;
+        
+        for (int i = 0; i < MAX_NUMNODES; i++) {
+            if (!node_data[i]) continue;
+            int dist = numa_distance[preferred_node][i];
+            if (dist < best_distance) {
+                best_distance = dist;
+                best_node = i;
+            }
+        }
+        if (best_node >= 0) return best_node;
+    }
+    
+    /* Fallback to first available node */
+    for (int i = 0; i < MAX_NUMNODES; i++) {
+        if (node_data[i]) return i;
+    }
+    return -1;
 }
 
 static void parse_srat(struct acpi_srat *srat) {

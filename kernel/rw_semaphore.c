@@ -34,6 +34,14 @@ void rwsem_init(struct rw_semaphore *sem) {
     init_waitqueue_head(&sem->wait_list);
 }
 
+int rwsem_is_write_locked(const struct rw_semaphore *sem) {
+    return atomic_read(&sem->count) == -1;
+}
+
+int rwsem_is_locked(const struct rw_semaphore *sem) {
+    return atomic_read(&sem->count) < 0;
+}
+
 void down_read(struct rw_semaphore *sem) {
     while (1) {
         int old = atomic_read(&sem->count);

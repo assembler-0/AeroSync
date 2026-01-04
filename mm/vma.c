@@ -80,29 +80,39 @@ static void vma_cache_update(struct mm_struct *mm, struct vm_area_struct *vma) {
   if (!mm || !vma) return;
 
   struct task_struct *curr = current;
-  // Only cache if we are running in the context of the requested mm
   if (!curr || curr->mm != mm) return;
 
-  // check if already at head
-  if (curr->vmacache[0] == vma) return;
+  // Atomic cache update to prevent races
+  irq_flags_t flags = local_irq_save();
+  
+  // Validate cache sequence number
+  if (curr->vmacache_seqnum != mm->vmacache_seqnum) {
+    for (int i = 0; i < MM_VMA_CACHE_SIZE; i++) 
+      curr->vmacache[i] = NULL;
+    curr->vmacache_seqnum = mm->vmacache_seqnum;
+  }
 
-  // check if present elsewhere
+  if (curr->vmacache[0] == vma) {
+    local_irq_restore(flags);
+    return;
+  }
+
   for (int i = 1; i < MM_VMA_CACHE_SIZE; i++) {
     if (curr->vmacache[i] == vma) {
-      // move to head, shift others down
       for (int j = i; j > 0; j--) {
         curr->vmacache[j] = curr->vmacache[j - 1];
       }
       curr->vmacache[0] = vma;
+      local_irq_restore(flags);
       return;
     }
   }
 
-  // not found, insert at head, shift everything down
   for (int i = MM_VMA_CACHE_SIZE - 1; i > 0; i--) {
     curr->vmacache[i] = curr->vmacache[i - 1];
   }
   curr->vmacache[0] = vma;
+  local_irq_restore(flags);
 }
 
 
@@ -124,11 +134,11 @@ void vma_cache_free(struct vm_area_struct *vma) { kfree(vma); }
 #define BOOTSTRAP_MM_COUNT 16
 
 static struct vm_area_struct bootstrap_vmas[BOOTSTRAP_VMA_COUNT];
-static bool bootstrap_vma_in_use[BOOTSTRAP_VMA_COUNT];
+static unsigned char bootstrap_vma_in_use[BOOTSTRAP_VMA_COUNT];
 static spinlock_t bootstrap_vma_lock = 0;
 
 static struct mm_struct bootstrap_mms[BOOTSTRAP_MM_COUNT];
-static bool bootstrap_mm_in_use[BOOTSTRAP_MM_COUNT];
+static unsigned char bootstrap_mm_in_use[BOOTSTRAP_MM_COUNT];
 static spinlock_t bootstrap_mm_lock = 0;
 
 static inline bool is_bootstrap_vma(struct vm_area_struct *vma) {
@@ -183,7 +193,7 @@ struct mm_struct *mm_alloc(void) {
     spinlock_lock(&bootstrap_mm_lock);
     for (int i = 0; i < BOOTSTRAP_MM_COUNT; i++) {
       if (!bootstrap_mm_in_use[i]) {
-        bootstrap_mm_in_use[i] = true;
+        bootstrap_mm_in_use[i] = 1;
         mm = &bootstrap_mms[i];
         break;
       }
@@ -208,7 +218,7 @@ void mm_free(struct mm_struct *mm) {
   if (is_bootstrap_mm(mm)) {
     uint64_t index = mm - bootstrap_mms;
     spinlock_lock(&bootstrap_mm_lock);
-    bootstrap_mm_in_use[index] = false;
+    bootstrap_mm_in_use[index] = 0;
     spinlock_unlock(&bootstrap_mm_lock);
     return;
   }
@@ -361,15 +371,13 @@ struct vm_area_struct *vma_alloc(void) {
   vma = vma_cache_alloc();
 
   if (!vma) {
-    spinlock_lock(&bootstrap_vma_lock);
+    // Atomic bootstrap allocation to prevent races
     for (int i = 0; i < BOOTSTRAP_VMA_COUNT; i++) {
-      if (!bootstrap_vma_in_use[i]) {
-        bootstrap_vma_in_use[i] = true;
+      if (!__atomic_test_and_set(&bootstrap_vma_in_use[i], __ATOMIC_ACQUIRE)) {
         vma = &bootstrap_vmas[i];
         break;
       }
     }
-    spinlock_unlock(&bootstrap_vma_lock);
   }
 
   if (vma) {
@@ -403,9 +411,7 @@ void vma_free(struct vm_area_struct *vma) {
 
   if (is_bootstrap_vma(vma)) {
     uint64_t index = vma - bootstrap_vmas;
-    spinlock_lock(&bootstrap_vma_lock);
-    bootstrap_vma_in_use[index] = false;
-    spinlock_unlock(&bootstrap_vma_lock);
+    __atomic_clear(&bootstrap_vma_in_use[index], __ATOMIC_RELEASE);
     return;
   }
 
@@ -599,6 +605,12 @@ int vma_insert(struct mm_struct *mm, struct vm_area_struct *vma) {
   if (vma->vm_start >= vma->vm_end)
     return -EINVAL;
 
+  // Must hold mmap_lock in write mode for gap tracking safety
+  if (!rwsem_is_write_locked(&mm->mmap_lock)) {
+    printk(KERN_ERR VMA_CLASS "vma_insert called without write lock on mmap_lock\n");
+    return -EINVAL;
+  }
+
   /* Check for overlap */
   if (vma_find_intersection(mm, vma->vm_start, vma->vm_end)) {
     return -ENOMEM;
@@ -623,7 +635,7 @@ int vma_insert(struct mm_struct *mm, struct vm_area_struct *vma) {
   /* Insert into sorted list */
   __vma_link_list(mm, vma);
 
-  /* Insert into RB-tree */
+  /* Insert into RB-tree with gap tracking - this must be atomic */
   rb_link_node(&vma->vm_rb, parent, new);
   rb_insert_augmented(&vma->vm_rb, &mm->mm_rb, &vma_gap_callbacks);
 
@@ -684,7 +696,7 @@ int vma_split(struct mm_struct *mm, struct vm_area_struct *vma, uint64_t addr) {
     return -ENOMEM;
 
   /* 
-   * Synchronization: 
+   * Critical: Proper VM object reference management during split
    * new_vma was created with a new anonymous object (by vma_create default).
    * We MUST replace it with the original VMA's object to ensure they share pages.
    */
@@ -739,18 +751,29 @@ int vma_merge(struct mm_struct *mm, struct vm_area_struct *vma) {
   if (!mm || !vma)
     return -EINVAL;
 
+  /* Ensure mmap_lock is held for atomic merge operations */
+  if (!rwsem_is_write_locked(&mm->mmap_lock)) {
+    printk(KERN_ERR VMA_CLASS "vma_merge called without write lock on mmap_lock\n");
+    return -EINVAL;
+  }
+
   /* Try to merge with previous */
   if (!list_is_first(&vma->vm_list, &mm->mmap_list)) {
     prev = list_entry(vma->vm_list.prev, struct vm_area_struct, vm_list);
     if (vma_can_merge(prev, vma)) {
       uint64_t new_end = vma->vm_end;
+      
+      /* Atomic merge: remove both, modify, re-insert */
       vma_remove(mm, vma);
-      vma_free(vma);
-
       vma_remove(mm, prev);
+      
       prev->vm_end = new_end;
-      vma_insert(mm, prev);
-
+      
+      if (vma_insert(mm, prev) != 0) {
+        panic("vma_merge: failed to re-insert merged VMA\n");
+      }
+      
+      vma_free(vma);
       vma = prev;
       merged |= VMA_MERGE_PREV;
     }
@@ -761,13 +784,18 @@ int vma_merge(struct mm_struct *mm, struct vm_area_struct *vma) {
     next = list_entry(vma->vm_list.next, struct vm_area_struct, vm_list);
     if (vma_can_merge(vma, next)) {
       uint64_t new_end = next->vm_end;
+      
+      /* Atomic merge: remove both, modify, re-insert */
       vma_remove(mm, next);
-      vma_free(next);
-
       vma_remove(mm, vma);
+      
       vma->vm_end = new_end;
-      vma_insert(mm, vma);
-
+      
+      if (vma_insert(mm, vma) != 0) {
+        panic("vma_merge: failed to re-insert merged VMA\n");
+      }
+      
+      vma_free(next);
       merged |= VMA_MERGE_NEXT;
     }
   }

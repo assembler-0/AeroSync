@@ -60,7 +60,10 @@ static kmem_cache_t *find_mergeable(size_t size, size_t align, unsigned long fla
  * Incrementing tid on every transition.
  */
 static inline unsigned long next_tid(unsigned long tid) {
-    return tid + 1;
+    /* Prevent TID overflow by using only lower 48 bits and wrapping safely */
+    tid = (tid + 1) & 0xFFFFFFFFFFFFULL;
+    /* Skip 0 to avoid confusion with uninitialized state */
+    return tid ? tid : 1;
 }
 
 static inline int kmalloc_index(size_t size) {
@@ -402,6 +405,25 @@ static void init_kmem_cache_cpu(struct kmem_cache_cpu *c) {
   c->tid = 0;
 }
 
+void *kmalloc_aligned(size_t size, size_t align) {
+  if (align <= 8) return kmalloc(size);
+
+  // For larger alignments, allocate extra space and align manually
+  size_t total_size = size + align - 1 + sizeof(void*);
+  void *raw = kmalloc(total_size);
+  if (!raw) return NULL;
+
+  // Calculate aligned address
+  uintptr_t aligned = (uintptr_t)raw + sizeof(void*);
+  aligned = (aligned + align - 1) & ~(align - 1);
+
+  // Store original pointer before aligned address
+  void **orig_ptr = (void**)(aligned - sizeof(void*));
+  *orig_ptr = raw;
+
+  return (void*)aligned;
+}
+
 kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align, unsigned long flags) {
   kmem_cache_t *s;
 
@@ -443,12 +465,21 @@ kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align, uns
 
   s->min_partial = 5;
 
-  /* Allocate per-CPU slabs - use kmalloc for now, but 16-byte align for cmpxchg16b */
-  s->cpu_slab = kmalloc(sizeof(struct kmem_cache_cpu) * MAX_CPUS);
+  /* Allocate per-CPU slabs - ensure 16-byte alignment for cmpxchg16b */
+  s->cpu_slab = kmalloc_aligned(sizeof(struct kmem_cache_cpu) * MAX_CPUS, 16);
   if (!s->cpu_slab) {
       kfree(s);
       return NULL;
   }
+  
+  // Verify alignment for cmpxchg16b safety
+  if ((uintptr_t)s->cpu_slab & 0xF) {
+    printk(KERN_ERR SLAB_CLASS "CPU slab not 16-byte aligned: %p\n", s->cpu_slab);
+    kfree(s->cpu_slab);
+    kfree(s);
+    return NULL;
+  }
+  
   memset(s->cpu_slab, 0, sizeof(struct kmem_cache_cpu) * MAX_CPUS);
 
   for (int i = 0; i < MAX_CPUS; i++) {
@@ -567,6 +598,19 @@ void kfree(void *ptr) {
   if ((uintptr_t) ptr >= VMALLOC_VIRT_BASE && (uintptr_t) ptr < VMALLOC_VIRT_END) {
     vfree(ptr);
     return;
+  }
+
+  // Check if this is an aligned allocation
+  if ((uintptr_t)ptr & 0xF) { // If not 16-byte aligned, might be from kmalloc_aligned
+    void **orig_ptr = (void**)((uintptr_t)ptr - sizeof(void*));
+    void *raw = *orig_ptr;
+    
+    // Validate that raw pointer looks reasonable
+    if ((uintptr_t)raw < (uintptr_t)ptr && 
+        ((uintptr_t)ptr - (uintptr_t)raw) < 64) { // Reasonable alignment offset
+      kfree(raw);
+      return;
+    }
   }
 
   page = virt_to_head_page(ptr);

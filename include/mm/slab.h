@@ -70,6 +70,7 @@ void *kmem_cache_alloc(kmem_cache_t *cache);
 void kmem_cache_free(kmem_cache_t *cache, void *obj);
 
 void *kmalloc(size_t size);
+void *kmalloc_aligned(size_t size, size_t align);
 void *kzalloc(size_t size);
 void kfree(void *ptr);
 

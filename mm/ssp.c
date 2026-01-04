@@ -2,8 +2,8 @@
 /**
  * VoidFrameX monolithic kernel
  *
- * @file mm/stack.c
- * @brief Stack protection implementation
+ * @file mm/ssp.c
+ * @brief Freestanding libssp helpers
  * @copyright (C) 2025 assembler-0
  *
  * This file is part of the VoidFrameX kernel.

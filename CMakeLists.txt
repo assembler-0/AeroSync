@@ -146,7 +146,6 @@ target_compile_options(voidframex.krnl PRIVATE
         -fno-pic
         -fno-pie
         -mcmodel=kernel
-        -fcf-protection=full
         -fvisibility=hidden
     >
     $<$<COMPILE_LANGUAGE:ASM_NASM>:
@@ -157,7 +156,8 @@ target_compile_options(voidframex.krnl PRIVATE
 if(STACK_PROTECTION)
     target_compile_options(voidframex.krnl PRIVATE 
         $<$<COMPILE_LANGUAGE:C>:
-            -fcf-protection=full
+            -fstack-protector-all
+            -D_FORTIFY_SOURCE=2
         >
     )
 endif()

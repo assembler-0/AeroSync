@@ -26,6 +26,7 @@ struct anon_vma_chain {
   struct anon_vma *anon_vma;
   struct list_head same_vma;     /* Node in vma->anon_vma_chain */
   struct list_head same_anon_vma; /* Node in anon_vma->head */
+  struct list_head unmap_list;   /* Temporary list for RMAP operations */
 };
 
 /*

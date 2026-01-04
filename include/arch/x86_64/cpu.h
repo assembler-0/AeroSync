@@ -31,6 +31,8 @@ typedef uint64_t irq_flags_t;
 
 irq_flags_t save_irq_flags(void);
 void restore_irq_flags(irq_flags_t flags);
+irq_flags_t local_irq_save(void);
+void local_irq_restore(irq_flags_t flags);
 
 ///@warning DO NOT TOUCH THIS STRUCTURE!!
 typedef struct cpu_regs {

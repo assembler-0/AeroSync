@@ -21,6 +21,9 @@ struct rw_semaphore {
 #define RWSEM_ACTIVE_READ_BIAS RWSEM_ACTIVE_BIAS
 #define RWSEM_ACTIVE_WRITE_BIAS (RWSEM_WAITING_BIAS + RWSEM_ACTIVE_BIAS)
 
+int rwsem_is_locked(const struct rw_semaphore *sem);
+int rwsem_is_write_locked(const struct rw_semaphore *sem);
+
 void rwsem_init(struct rw_semaphore *sem);
 void down_read(struct rw_semaphore *sem);
 int down_read_trylock(struct rw_semaphore *sem);

@@ -84,6 +84,9 @@ void vmm_tlb_shootdown(struct mm_struct *mm, uint64_t start, uint64_t end) {
     info.end = end;
     info.full_flush = (end - start > 0x10000);
 
+    /* Memory barrier to ensure page table updates are visible before TLB flush */
+    __asm__ volatile("mfence" ::: "memory");
+
     // 1. Flush local TLB
     tlb_shootdown_callback(&info);
 
@@ -97,6 +100,9 @@ void vmm_tlb_shootdown(struct mm_struct *mm, uint64_t start, uint64_t end) {
             smp_call_function_many(&mm->cpu_mask, tlb_shootdown_callback, &info, true);
         }
     }
+    
+    /* Memory barrier to ensure TLB flushes complete before returning */
+    __asm__ volatile("mfence" ::: "memory");
 }
 
 void vmm_tlb_init(void) {

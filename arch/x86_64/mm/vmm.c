@@ -189,6 +189,7 @@ int vmm_merge_to_huge(struct mm_struct *mm, uint64_t virt, uint64_t target_huge_
     }
   }
 
+  /* Critical: Validate physical alignment before merging */
   if (base_phys & (target_huge_size - 1)) {
     spinlock_unlock_irqrestore(&mm->page_table_lock, irq);
     return -EINVAL;
@@ -268,48 +269,40 @@ void vmm_merge_range(struct mm_struct *mm, uint64_t start, uint64_t end) {
 
 static uint64_t *get_next_level(uint64_t *current_table, uint64_t index,
                                 bool alloc, int level, uint64_t virt, int nid, int *out_level) {
-  uint64_t entry = __atomic_load_n(&current_table[index], __ATOMIC_ACQUIRE);
+  struct page *parent_page = phys_to_page(pmm_virt_to_phys(current_table));
+  irq_flags_t parent_flags = spinlock_lock_irqsave(&parent_page->ptl);
+  
+  uint64_t entry = current_table[index];
 
   if (entry & PTE_PRESENT) {
     if (entry & PTE_HUGE) {
       if (!alloc) {
         if (out_level) *out_level = level;
-        return &current_table[index];
+        uint64_t *result = &current_table[index];
+        spinlock_unlock_irqrestore(&parent_page->ptl, parent_flags);
+        return result;
       }
-      struct page *table_page = phys_to_page(pmm_virt_to_phys(current_table));
-      irq_flags_t flags = spinlock_lock_irqsave(&table_page->ptl);
       
-      entry = current_table[index];
-      if (!(entry & PTE_PRESENT) || !(entry & PTE_HUGE)) {
-          spinlock_unlock_irqrestore(&table_page->ptl, flags);
-          return get_next_level(current_table, index, alloc, level, virt, nid, out_level);
-      }
-
       if (vmm_split_huge_page(current_table, index, level, virt, nid) < 0) {
-        spinlock_unlock_irqrestore(&table_page->ptl, flags);
+        spinlock_unlock_irqrestore(&parent_page->ptl, parent_flags);
         return NULL;
       }
       
-      spinlock_unlock_irqrestore(&table_page->ptl, flags);
-      entry = __atomic_load_n(&current_table[index], __ATOMIC_ACQUIRE);
+      entry = current_table[index];
     }
-    return (uint64_t *) phys_to_virt(PTE_GET_ADDR(entry));
+    uint64_t *result = (uint64_t *) phys_to_virt(PTE_GET_ADDR(entry));
+    spinlock_unlock_irqrestore(&parent_page->ptl, parent_flags);
+    return result;
   }
 
-  if (!alloc) return NULL;
-
-  struct page *parent_page = phys_to_page(pmm_virt_to_phys(current_table));
-  irq_flags_t flags = spinlock_lock_irqsave(&parent_page->ptl);
-
-  entry = current_table[index];
-  if (entry & PTE_PRESENT) {
-      spinlock_unlock_irqrestore(&parent_page->ptl, flags);
-      return get_next_level(current_table, index, alloc, level, virt, nid, out_level);
+  if (!alloc) {
+    spinlock_unlock_irqrestore(&parent_page->ptl, parent_flags);
+    return NULL;
   }
 
   uint64_t new_table_phys = vmm_alloc_table_node(nid);
   if (!new_table_phys) {
-    spinlock_unlock_irqrestore(&parent_page->ptl, flags);
+    spinlock_unlock_irqrestore(&parent_page->ptl, parent_flags);
     return NULL;
   }
 
@@ -317,9 +310,9 @@ static uint64_t *get_next_level(uint64_t *current_table, uint64_t index,
   spinlock_init(&pg->ptl);
 
   uint64_t new_entry = new_table_phys | PTE_PRESENT | PTE_RW | PTE_USER;
-  __atomic_store_n(&current_table[index], new_entry, __ATOMIC_RELEASE);
+  current_table[index] = new_entry;
 
-  spinlock_unlock_irqrestore(&parent_page->ptl, flags);
+  spinlock_unlock_irqrestore(&parent_page->ptl, parent_flags);
   return (uint64_t *) phys_to_virt(new_table_phys);
 }
 
@@ -444,9 +437,21 @@ int vmm_set_flags(struct mm_struct *mm, uint64_t virt, uint64_t flags) {
   uint64_t phys = PTE_GET_ADDR(pte);
   
   uint64_t entry_flags = flags;
+  
+  /* Validate and convert cache attributes based on page level */
   if (level > 1) {
-      if (entry_flags & PTE_PAT) { entry_flags &= ~PTE_PAT; entry_flags |= PDE_PAT; }
+      /* Huge page: use PDE cache attribute bits */
+      if (entry_flags & PTE_PAT) { 
+          entry_flags &= ~PTE_PAT; 
+          entry_flags |= PDE_PAT; 
+      }
       entry_flags |= PTE_HUGE;
+  } else {
+      /* 4KB page: use PTE cache attribute bits */
+      if (entry_flags & PDE_PAT) {
+          entry_flags &= ~PDE_PAT;
+          entry_flags |= PTE_PAT;
+      }
   }
   
   *pte_p = phys | entry_flags | PTE_PRESENT;
@@ -526,8 +531,11 @@ static uint64_t vmm_unmap_page_locked(uint64_t pml_root_phys, uint64_t virt, int
         struct page *table_page = phys_to_page(pmm_virt_to_phys(current_table));
         irq_flags_t ptl_flags = spinlock_lock_irqsave(&table_page->ptl);
         uint64_t phys = PTE_GET_ADDR(current_table[index]);
-        current_table[index] = 0;
+        __atomic_store_n(&current_table[index], 0, __ATOMIC_RELEASE);
         spinlock_unlock_irqrestore(&table_page->ptl, ptl_flags);
+        
+        /* Memory barrier to ensure store is visible before TLB flush */
+        __asm__ volatile("mfence" ::: "memory");
         
         uint64_t current_cr3;
         __asm__ volatile("mov %%cr3, %0" : "=r"(current_cr3));
@@ -544,14 +552,21 @@ static uint64_t vmm_unmap_page_locked(uint64_t pml_root_phys, uint64_t virt, int
   irq_flags_t ptl_flags = spinlock_lock_irqsave(&table_page->ptl);
   uint64_t pt_index = PT_INDEX(virt);
   uint64_t entry = current_table[pt_index];
-  if (!(entry & PTE_PRESENT)) { spinlock_unlock_irqrestore(&table_page->ptl, ptl_flags); return 0; }
+  if (!(entry & PTE_PRESENT)) { 
+    spinlock_unlock_irqrestore(&table_page->ptl, ptl_flags); 
+    return 0; 
+  }
   uint64_t phys = PTE_GET_ADDR(entry);
-  current_table[pt_index] = 0;
+  __atomic_store_n(&current_table[pt_index], 0, __ATOMIC_RELEASE);
   spinlock_unlock_irqrestore(&table_page->ptl, ptl_flags);
+
+  /* Memory barrier to ensure store is visible before TLB flush */
+  __asm__ volatile("mfence" ::: "memory");
 
   uint64_t current_cr3;
   __asm__ volatile("mov %%cr3, %0" : "=r"(current_cr3));
-  if ((current_cr3 & PTE_ADDR_MASK) == pml_root_phys) __asm__ volatile("invlpg (%0)" ::"r"(virt) : "memory");
+  if ((current_cr3 & PTE_ADDR_MASK) == pml_root_phys) 
+    __asm__ volatile("invlpg (%0)" ::"r"(virt) : "memory");
   return phys;
 }
 
@@ -698,26 +713,52 @@ int vmm_handle_cow(struct mm_struct *mm, uint64_t virt) {
   struct page *table_page = phys_to_page(pmm_virt_to_phys((void *) ((uint64_t) pte_p & PAGE_MASK)));
   irq_flags_t flags = spinlock_lock_irqsave(&table_page->ptl);
   uint64_t entry = *pte_p;
-  if (!(entry & PTE_PRESENT)) { spinlock_unlock_irqrestore(&table_page->ptl, flags); return -ENOENT; }
-  struct page *old_page = phys_to_page(PTE_GET_ADDR(entry));
-
-  if (page_ref_count(old_page) == 1) {
-    *pte_p |= PTE_RW; spinlock_unlock_irqrestore(&table_page->ptl, flags);
-    vmm_tlb_flush_local(virt); return 0;
+  if (!(entry & PTE_PRESENT)) { 
+    spinlock_unlock_irqrestore(&table_page->ptl, flags); 
+    return -ENOENT; 
   }
+  
+  struct page *old_page = phys_to_page(PTE_GET_ADDR(entry));
+  
+  /* Atomic reference count check and single-reference optimization */
+  if (atomic_read(&old_page->_refcount) == 1) {
+    *pte_p |= PTE_RW; 
+    spinlock_unlock_irqrestore(&table_page->ptl, flags);
+    vmm_tlb_flush_local(virt); 
+    return 0;
+  }
+  
+  /* Take reference to prevent old_page from being freed */
+  get_page(old_page);
   spinlock_unlock_irqrestore(&table_page->ptl, flags);
 
   uint64_t new_phys = pmm_alloc_page();
-  if (!new_phys) return -ENOMEM;
+  if (!new_phys) {
+    put_page(old_page);
+    return -ENOMEM;
+  }
+  
   memcpy(phys_to_virt(new_phys), phys_to_virt(PTE_GET_ADDR(entry)), PAGE_SIZE);
 
   flags = spinlock_lock_irqsave(&table_page->ptl);
-  if (*pte_p != entry) { spinlock_unlock_irqrestore(&table_page->ptl, flags); pmm_free_page(new_phys);
-      if (vmm_virt_to_phys(mm, virt) == PTE_GET_ADDR(entry)) return vmm_handle_cow(mm, virt);
-      return 0; }
+  /* Re-check entry hasn't changed during allocation */
+  if (*pte_p != entry) { 
+    spinlock_unlock_irqrestore(&table_page->ptl, flags); 
+    pmm_free_page(new_phys);
+    put_page(old_page);
+    /* Retry if the mapping still exists */
+    if (vmm_virt_to_phys(mm, virt) == PTE_GET_ADDR(entry)) 
+      return vmm_handle_cow(mm, virt);
+    return 0; 
+  }
+  
   *pte_p = new_phys | (PTE_GET_FLAGS(entry) | PTE_RW);
   spinlock_unlock_irqrestore(&table_page->ptl, flags);
+  
+  /* Release both references: our temporary one and the original mapping */
   put_page(old_page);
+  put_page(old_page);
+  
   vmm_tlb_flush_local(virt);
   return 0;
 }
@@ -762,18 +803,43 @@ void vmm_switch_pml_root(uint64_t pml_root_phys) { vmm_switch_pml_root_pcid(pml_
 
 void vmm_init(void) {
   printk(VMM_CLASS "Initializing VMM...\n");
+  
+  // Validate CPU capabilities before proceeding
+  cpu_features_t *features = get_cpu_features();
+  if (!features) {
+    panic(VMM_CLASS "Failed to get CPU features");
+  }
+  
+  // Verify we have the minimum required features
+  if (!features->nx) {
+    printk(KERN_WARNING VMM_CLASS "NX bit not supported - security reduced\n");
+  }
+  
+  if (!features->pdpe1gb) {
+    printk(KERN_INFO VMM_CLASS "1GB pages not supported\n");
+  }
+  
   g_kernel_pml_root = vmm_alloc_table();
   if (!g_kernel_pml_root) panic(VMM_CLASS "Failed to allocate kernel PML root");
+  
   uint64_t boot_pml_root_phys;
   __asm__ volatile("mov %%cr3, %0" : "=r"(boot_pml_root_phys));
   boot_pml_root_phys &= PTE_ADDR_MASK;
+  
   uint64_t *boot_pml_root = (uint64_t *) phys_to_virt(boot_pml_root_phys);
   uint64_t *kernel_pml_root = (uint64_t *) phys_to_virt(g_kernel_pml_root);
-  memcpy(kernel_pml_root + 256, boot_pml_root + 256, 256 * sizeof(uint64_t));
+  
+  // Copy higher half based on actual paging levels
+  int levels = vmm_get_paging_levels();
+  int kernel_entries = (levels == 5) ? 256 : 256; // Both 4-level and 5-level use 256 entries for kernel
+  memcpy(kernel_pml_root + 256, boot_pml_root + 256, kernel_entries * sizeof(uint64_t));
+  
   vmm_switch_pml_root(g_kernel_pml_root);
   mm_init(&init_mm);
   init_mm.pml_root = (uint64_t *) g_kernel_pml_root;
-  printk(VMM_CLASS "VMM Initialized (%d levels active).\n", vmm_get_paging_levels());
+  
+  printk(VMM_CLASS "VMM Initialized (%d levels active, NX:%s, 1GB:%s).\n", 
+         levels, features->nx ? "yes" : "no", features->pdpe1gb ? "yes" : "no");
 }
 
 void vmm_test(void) {
