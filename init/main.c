@@ -137,30 +137,6 @@ volatile struct limine_framebuffer_request *get_framebuffer_request(void) {
 
 EXPORT_SYMBOL(get_framebuffer_request);
 
-static int __init signal_test_thread(void *unused) {
-    (void)unused;
-
-    /* 
-     * Test Code for Ring 3:
-     * 1. Send SIGUSR1 to self (9, 10 is SIGUSR1 in signal.h)
-     * 2. Trigger a Page Fault (access 0x0)
-     */
-    unsigned char test_code[] = {
-        0x48, 0xC7, 0xC0, 0x27, 0x00, 0x00, 0x00, // mov rax, 39 (getpid)
-        0x0F, 0x05,                               // syscall
-        0x48, 0x89, 0xC7,                         // mov rdi, rax (pid)
-        0x48, 0xC7, 0xC6, 0x0A, 0x00, 0x00, 0x00, // mov rsi, 10 (SIGUSR1)
-        0x48, 0xC7, 0xC0, 0x3E, 0x00, 0x00, 0x00, // mov rax, 62 (kill)
-        0x0F, 0x05,                               // syscall
-        0x48, 0x31, 0xC0,                         // xor rax, rax
-        0x8A, 0x00,                               // mov al, [rax] (Trigger SEGV)
-        0xEB, 0xFE                                // jmp $
-    };
-
-    spawn_user_process_raw(test_code, sizeof(test_code), "signal_test");
-    return 0;
-}
-
 static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
   (void) unused;
 
@@ -171,8 +147,6 @@ static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
   // TODO: Implement run_init_process() which calls do_execve()
   // For now, since we have no init binary on disk, we just stay in kernel
   printk(KERN_NOTICE KERN_CLASS "no init binary found. System idle.\n");
-
-  kthread_run(kthread_create(signal_test_thread, NULL, "sigtest"));
 
   printk(KERN_CLASS "VoidFrameX initialization complete.\n");
 
