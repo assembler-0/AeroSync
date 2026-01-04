@@ -45,16 +45,7 @@
   <component name="ChangeListManager">
     <list default="true" id="55059266-3419-4668-a328-936b36fa5de4" name="Changes" comment="VFS &amp; extra syscall + critial fix">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x86_64/cpu.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x86_64/cpu.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x86_64/entry/syscall.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x86_64/entry/syscall.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x86_64/irq/irq.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x86_64/irq/irq.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x86_64/mm/fault.c" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x86_64/mm/fault.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/drivers/uart/serial.c" beforeDir="false" afterPath="$PROJECT_DIR$/drivers/uart/serial.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/sched/process.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/sched/process.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/kernel/sched/sched.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/sched/sched.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/include/kernel/version.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/kernel/version.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/init/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/init/main.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/sched/process.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/sched/process.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -159,7 +150,7 @@
   }
 }</component>
   <component name="RecapUselessUpdatesCounter">
-    <option name="suspendCountdown" value="5" />
+    <option name="suspendCountdown" value="4" />
   </component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
@@ -175,6 +166,11 @@
     </key>
   </component>
   <component name="RunManager" selected="CMake Application.vmw-run">
+    <configuration default="true" type="CLionExternalRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true">
+      <method v="2">
+        <option name="CLION.EXTERNAL.BUILD" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="bochs-run" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="VoidFrameX" TARGET_NAME="bochs-run" CONFIG_NAME="Release">
       <method v="2">
         <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
