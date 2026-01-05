@@ -26,22 +26,27 @@
 #include <kernel/spinlock.h>
 #include <kernel/sysintf/panic.h>
 
+#include <lib/log.h>
+
 #define PANIC KERN_EMERG PANIC_CLASS
 
 static spinlock_t lock = 0;
 
 void __exit __noinline __noreturn __sysv_abi builtin_panic_early_() {
+  log_mark_panic();
   system_hlt();
   __unreachable();
 }
 
 void __exit __noinline __noreturn __sysv_abi builtin_panic_(const char *msg) {
+  log_mark_panic();
   printk(PANIC"panic - not syncing: %s", msg);
   system_hlt();
   __unreachable();
 }
 
 void __exit __noinline __noreturn __sysv_abi builtin_panic_exception_(cpu_regs *regs) {
+  log_mark_panic();
   spinlock_lock(&lock);
   char exception[256];
   get_exception_as_str(exception, regs->interrupt_number);

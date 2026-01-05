@@ -98,10 +98,6 @@ static void smp_ap_entry(struct limine_mp_info *info) {
   // Enable per-CPU features (SSE, AVX, etc.)
   cpu_features_init_ap();
 
-  // Basic per-CPU init for APs
-  printk(KERN_DEBUG SMP_CLASS "CPU LAPIC ID %u starting up...\n",
-         info->lapic_id);
-
   ic_set_timer(IC_DEFAULT_TICK);
 
   // Initialize GDT and TSS for this AP
@@ -169,8 +165,7 @@ void smp_call_ipi_handler(void) {
       __atomic_store_n(&csd->flags, csd->flags & ~CSD_FLAG_WAIT, __ATOMIC_RELEASE);
     } else {
       // If it wasn't waiting, it must have been dynamically allocated.
-      // For now, we only support stack-based waiting calls or fixed allocations.
-      // kfree(csd); // Not implemented yet
+      kfree(csd);
     }
   }
 }
@@ -185,9 +180,7 @@ void smp_call_function_single(int cpu, smp_call_func_t func, void *info, bool wa
   struct call_single_data *csd = &data;
 
   if (!wait) {
-    // FIXME: Handle async calls by allocating CSD dynamically.
-    // For now, we only support sync calls safely.
-    panic("smp_call_function_single: async calls not yet supported\n");
+    csd = kmalloc(sizeof(struct call_single_data));
   }
 
   csd->func = func;

@@ -32,10 +32,11 @@
 static const printk_backend_t *registered_backends[MAX_PRINTK_BACKENDS];
 static int num_registered_backends = 0;
 static const printk_backend_t *active_backend = NULL;
+static const printk_backend_t *last_active_backend = NULL;
+static bool printk_disabled = false;
 
 void printk_register_backend(const printk_backend_t *backend) {
-  if (num_registered_backends >= MAX_PRINTK_BACKENDS) {
-    // Can't printk here safely maybe? or fallback to internal ring
+  if (!backend || num_registered_backends >= MAX_PRINTK_BACKENDS) {
     return;
   }
   registered_backends[num_registered_backends++] = backend;
@@ -47,13 +48,13 @@ void printk_auto_configure(void *payload, const int reinit) {
 
   for (int i = 0; i < num_registered_backends; i++) {
     const printk_backend_t *b = registered_backends[i];
-    if (!b)
+    if (!b || !b->probe)
       continue;
 
     if (!b->probe())
       continue;
 
-    if (b->init(payload) != 0)
+    if (b->init && b->init(payload) != 0)
       continue;
 
     if (!best || b->priority > best->priority)
@@ -64,17 +65,34 @@ void printk_auto_configure(void *payload, const int reinit) {
     // Fallback to internal ringbuffer only
     if (reinit) log_set_console_sink(NULL);
     else log_init(NULL);
-    printk(KERN_ERR KERN_CLASS "no active printk backend, logging to ringbuffer only\n");
+    
+    // We can still printk, it will go to ringbuffer
     active_backend = NULL;
+    printk(KERN_ERR KERN_CLASS "no active printk backend, logging to ringbuffer only\n");
     return;
   }
 
-  printk(KERN_INFO KERN_CLASS
-         "printk backend selected: %s (prio=%d)\n",
-         best->name, best->priority);
-  active_backend = best;
-  if (reinit) log_set_console_sink(best->putc);
-  else log_init(best->putc);
+  if (active_backend != best) {
+    active_backend = best;
+    last_active_backend = best;
+  }
+
+  if (!printk_disabled) {
+    if (reinit) {
+      log_set_console_sink(best->putc);
+    } else {
+      log_init(best->putc);
+    }
+    
+    printk(KERN_CLASS "printk backend selected: %s (prio=%d)\n",
+            best->name, best->priority);
+  } else {
+    if (reinit) {
+      log_set_console_sink(NULL);
+    } else {
+      log_init(NULL);
+    }
+  }
 }
 
 void printk_init_async(void) {
@@ -83,32 +101,74 @@ void printk_init_async(void) {
 }
 
 int printk_set_sink(const char *backend_name, bool cleanup) {
-  if (!backend_name) printk_shutdown();
+  if (!backend_name) {
+    printk_shutdown();
+    return 0;
+  }
 
   for (int i = 0; i < num_registered_backends; i++) {
     const printk_backend_t *b = registered_backends[i];
     if (b && b->name && strcmp(b->name, backend_name) == 0) {
       if (active_backend && active_backend->cleanup && cleanup) {
-        // null dereference check - not all backends implement cleanup
         active_backend->cleanup();
       }
 
-      if (b->is_active && b->init) {
-        // same as above
-        if (!b->is_active() && b->init(NULL) != 0) {
+      if (b->init) {
+        int needs_init = 1;
+        if (b->is_active) needs_init = !b->is_active();
+        
+        if (needs_init && b->init(NULL) != 0) {
           printk(KERN_ERR KERN_CLASS "failed to reinit printk backend %s\n", backend_name);
+          // Fallback to auto select if preferred backend failed
+          const printk_backend_t *fallback = printk_auto_select_backend(backend_name);
+          if (fallback) return printk_set_sink(fallback->name, false);
           return -1;
         }
       }
 
-      log_set_console_sink(b->putc);
       active_backend = b;
+      last_active_backend = b;
+      
+      if (!printk_disabled) {
+        log_set_console_sink(b->putc);
+      }
       return 0;
     }
   }
-  return -1; // Not found
+  
+  // Backend not found, try fallback
+  printk(KERN_ERR KERN_CLASS "printk backend %s not found, falling back\n", backend_name);
+  const printk_backend_t *fallback = printk_auto_select_backend(backend_name);
+  if (fallback) return printk_set_sink(fallback->name, false);
+  
+  return -1;
 }
 EXPORT_SYMBOL(printk_set_sink);
+
+void printk_disable(void) {
+  if (printk_disabled) return;
+  
+  printk_disabled = true;
+  last_active_backend = active_backend;
+  active_backend = NULL;
+  log_set_console_sink(NULL);
+}
+EXPORT_SYMBOL(printk_disable);
+
+void printk_enable(void) {
+  if (!printk_disabled) return;
+  
+  printk_disabled = false;
+  if (last_active_backend) {
+    if (printk_set_sink(last_active_backend->name, false) == 0) {
+      return;
+    }
+  }
+  
+  // Restore failed or none saved, re-configure
+  printk_auto_configure(NULL, 1);
+}
+EXPORT_SYMBOL(printk_enable);
 
 const printk_backend_t *printk_auto_select_backend(const char *not) {
   const printk_backend_t *best = NULL;
@@ -131,13 +191,14 @@ void printk_shutdown(void) {
     active_backend->cleanup();
   }
   active_backend = NULL;
+  last_active_backend = NULL;
   log_set_console_sink(NULL);
 }
 EXPORT_SYMBOL(printk_shutdown);
 
 static const char *parse_level_prefix(const char *fmt, int *level_io) {
   // Safety check for null or too-short strings
-  if (!fmt || !fmt[0] || !fmt[1] || !fmt[2])
+  if (!fmt[0] || !fmt[1] || !fmt[2])
     return fmt;
 
   // format: $<0-7>$ (see include/lib/printk.h for level definitions)
@@ -175,3 +236,32 @@ int printk(const char *fmt, ...) {
   return ret;
 }
 EXPORT_SYMBOL(printk);
+
+int ___ratelimit(ratelimit_state_t *rs, const char *func) {
+  if (!rs) return 1;
+
+  irq_flags_t flags = spinlock_lock_irqsave(&rs->lock);
+  uint64_t now = get_time_ns();
+  uint64_t interval_ns = (uint64_t)rs->interval * 1000000ULL;
+
+  if (!rs->begin || (now - rs->begin) >= interval_ns) {
+    if (rs->missed > 0) {
+      // Use raw printk to avoid recursive ratelimit check
+      printk(KERN_WARNING KERN_CLASS "%d messages suppressed by %s\n", rs->missed, func);
+    }
+    rs->begin = now;
+    rs->printed = 0;
+    rs->missed = 0;
+  }
+
+  if (rs->printed < rs->burst) {
+    rs->printed++;
+    spinlock_unlock_irqrestore(&rs->lock, flags);
+    return 1;
+  }
+
+  rs->missed++;
+  spinlock_unlock_irqrestore(&rs->lock, flags);
+  return 0;
+}
+EXPORT_SYMBOL(___ratelimit);
