@@ -172,7 +172,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   printk_init_early();
   tsc_calibrate_early();
 
-  printk(KERN_CLASS "VoidFrameX (R) v%s - %s\n", VOIDFRAMEX_VERSION,
+  printk(KERN_CLASS "VoidFrameX (R) %s - %s\n", VOIDFRAMEX_VERSION,
          VOIDFRAMEX_COMPILER_VERSION);
   printk(KERN_CLASS "copyright (C) 2025 assembler-0\n");
 
