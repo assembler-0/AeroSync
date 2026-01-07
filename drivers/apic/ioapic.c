@@ -1,12 +1,12 @@
 ///SPDX-License-Identifier: GPL-2.0-only
 /**
- * VoidFrameX monolithic kernel
+ * AeroSync monolithic kernel
  *
  * @file drivers/apic/ioapic.c
  * @brief I/O APIC driver implementation
  * @copyright (C) 2025 assembler-0
  *
- * This file is part of the VoidFrameX kernel.
+ * This file is part of the AeroSync kernel.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -18,7 +18,7 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/mm/paging.h>
+#include <arch/x86_64/mm/paging.h>
 #include <drivers/apic/ioapic.h>
 #include <kernel/classes.h>
 #include <kernel/fkx/fkx.h>

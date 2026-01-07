@@ -1,6 +1,6 @@
 /// SPDX-License-Identifier: GPL-2.0-only
 /**
- * VoidFrameX monolithic kernel
+ * AeroSync monolithic kernel
  *
  * @file lib/id_alloc.c
  * @brief Generic ID Allocator (IDA) implementation

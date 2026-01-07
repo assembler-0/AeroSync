@@ -1,6 +1,6 @@
 ///SPDX-License-Identifier: GPL-2.0-only
 /**
- * VoidFrameX monolithic kernel
+ * AeroSync monolithic kernel
  *
  * @file drivers/apic/x2apic.c
  * @brief x2APIC driver
@@ -11,7 +11,7 @@
 #include <drivers/apic/x2apic.h> 
 #include <drivers/apic/apic_internal.h> 
 #include <kernel/fkx/fkx.h> 
-#include <arch/x64/cpu.h> 
+#include <arch/x86_64/cpu.h> 
 #include <lib/printk.h> 
 #include <kernel/spinlock.h> 
 
@@ -90,8 +90,7 @@ static int x2apic_init_lapic(void) {
         printk(KERN_ERR APIC_CLASS  "x2APIC feature not supported by CPU\n");
         return 0;
     }
-    
-    printk(KERN_DEBUG APIC_CLASS "Enabling x2APIC mode\n");
+
     wrmsr(APIC_BASE_MSR, lapic_base_msr | APIC_BASE_MSR_ENABLE | APIC_BASE_MSR_X2APIC_ENABLE);
 
     for (volatile int i = 0; i < 1000; i++) {
@@ -104,7 +103,6 @@ static int x2apic_init_lapic(void) {
         return 0;
     }
 
-    printk(KERN_DEBUG APIC_CLASS "x2APIC Version: 0x%llx\n", version & 0xFF);
     x2apic_write(X2APIC_SVR, 0x1FF);
     x2apic_write(X2APIC_TPR, 0);
     return 1;
@@ -117,8 +115,6 @@ static void x2apic_timer_set_frequency_op(uint32_t ticks_per_target) {
     x2apic_write(X2APIC_TIMER_INIT_CNT, ticks_per_target);
     uint32_t lvt_timer = 32 | (1 << 17) | (0 << 16);
     x2apic_write(X2APIC_LVT_TIMER, lvt_timer);
-
-    printk(KERN_DEBUG APIC_CLASS "Timer configured: LVT=0x%x, Ticks=%u, Div=0x3\n", lvt_timer, ticks_per_target);
 }
 
 static void x2apic_shutdown_op(void) {

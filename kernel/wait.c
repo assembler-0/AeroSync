@@ -1,12 +1,12 @@
 /// SPDX-License-Identifier: GPL-2.0-only
 /**
- * VoidFrameX monolithic kernel
+ * AeroSync monolithic kernel
  *
  * @file kernel/wait.c
  * @brief Wait queue implementation
  * @copyright (C) 2025 assembler-0
  *
- * This file is part of the VoidFrameX kernel.
+ * This file is part of the AeroSync kernel.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -18,15 +18,15 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/percpu.h>
-#include <arch/x64/tsc.h>
+#include <arch/x86_64/percpu.h>
+#include <arch/x86_64/tsc.h>
 #include <kernel/sched/sched.h>
 #include <kernel/wait.h>
 #include <lib/printk.h>
 #include <linux/container_of.h>
 
 /*
- * Wait queue implementation for VoidFrameX kernel
+ * Wait queue implementation for AeroSync kernel
  * Provides Linux-like wait queue functionality integrated with CFS scheduler
  */
 
@@ -100,13 +100,14 @@ long prepare_to_wait(wait_queue_head_t *wq_head, wait_queue_t *wait,
   irq_flags_t flags = spinlock_lock_irqsave(&wq_head->lock);
 
   // Add ourselves to the wait queue if not already there
+  // Note: we don't call add_wait_queue here to avoid recursive locking
   if (list_empty(&wait->entry)) {
-    add_wait_queue(wq_head, wait);
+    list_add_tail(&wait->entry, &wq_head->task_list);
   }
 
   // Set the task state to sleep
   struct task_struct *curr = get_current();
-  if (curr->state == TASK_RUNNING) {
+  if (curr && curr->state == TASK_RUNNING) {
     curr->state = state;
   }
 
@@ -133,173 +134,6 @@ void finish_wait(wait_queue_head_t *wq_head, wait_queue_t *wait) {
   if (curr && curr->state != TASK_RUNNING) {
     curr->state = TASK_RUNNING;
   }
-}
-
-/**
- * __wait_event - Wait for a condition to become true
- * @wq: Wait queue to wait on
- * @condition: Condition to wait for
- */
-long __wait_event(wait_queue_head_t *wq, int condition) {
-  wait_queue_t wait;
-  init_wait(&wait);
-
-  while (1) {
-    if (condition)
-      break;
-
-    prepare_to_wait(wq, &wait, TASK_UNINTERRUPTIBLE);
-
-    if (condition)
-      break;
-
-    schedule();
-  }
-
-  finish_wait(wq, &wait);
-  return 0;
-}
-
-/**
- * __wait_event_interruptible - Wait for a condition with interrupt support
- * @wq: Wait queue to wait on
- * @condition: Condition to wait for
- */
-long __wait_event_interruptible(wait_queue_head_t *wq, int condition) {
-  wait_queue_t wait;
-  init_wait(&wait);
-  int ret = 0;
-
-  while (1) {
-    if (condition)
-      break;
-
-    prepare_to_wait(wq, &wait, TASK_INTERRUPTIBLE);
-
-    if (condition)
-      break;
-
-    schedule();
-
-    // Check if we were interrupted
-    if (get_current()->state == TASK_RUNNING) {
-      // We were woken up by a signal or interrupt
-      if (!condition) {
-        ret = -1; // Indicate interruption
-        break;
-      }
-    }
-  }
-
-  finish_wait(wq, &wait);
-  return ret;
-}
-
-/**
- * __wait_event_timeout - Wait for a condition with timeout
- * @wq: Wait queue to wait on
- * @condition: Condition to wait for
- * @timeout: Timeout in jiffies (currently treated as seconds for simplicity)
- */
-long __wait_event_timeout(wait_queue_head_t *wq, int condition, long timeout) {
-  wait_queue_t wait;
-  init_wait(&wait);
-  uint64_t start_time = get_time_ns();
-  // Convert timeout from jiffies/seconds to nanoseconds (simplified as 1 jiffy
-  // = 1 second)
-  uint64_t timeout_ns = timeout * 1000000000ULL;
-  uint64_t elapsed_ns;
-  uint64_t current_time;
-
-  while (timeout > 0) {
-    if (condition)
-      break;
-
-    prepare_to_wait(wq, &wait, TASK_UNINTERRUPTIBLE);
-
-    if (condition)
-      break;
-
-    schedule();
-
-    current_time = get_time_ns();
-    elapsed_ns = current_time - start_time;
-
-    if (elapsed_ns >= timeout_ns) {
-      timeout = 0;
-      break;
-    } else {
-      // Calculate remaining time in jiffies/seconds
-      timeout = (timeout_ns - elapsed_ns) / 1000000000ULL;
-    }
-  }
-
-  finish_wait(wq, &wait);
-  return timeout;
-}
-
-/**
- * __wait_event_interruptible_timeout - Wait for a condition with timeout and
- * interrupt support
- * @wq: Wait queue to wait on
- * @condition: Condition to wait for
- * @timeout: Timeout in jiffies (currently treated as seconds for simplicity)
- */
-long __wait_event_interruptible_timeout(wait_queue_head_t *wq, int condition,
-                                        long timeout) {
-  wait_queue_t wait;
-  init_wait(&wait);
-  uint64_t start_time = get_time_ns();
-  // Convert timeout from jiffies/seconds to nanoseconds (simplified as 1 jiffy
-  // = 1 second)
-  uint64_t timeout_ns = timeout * 1000000000ULL;
-  uint64_t elapsed_ns;
-  uint64_t current_time;
-  int ret = 0;
-
-  while (timeout > 0) {
-    if (condition) {
-      ret = timeout;
-      break;
-    }
-
-    prepare_to_wait(wq, &wait, TASK_INTERRUPTIBLE);
-
-    if (condition) {
-      ret = timeout;
-      break;
-    }
-
-    schedule();
-
-    // Check if we were interrupted
-    if (get_current()->state == TASK_RUNNING) {
-      // We were woken up by a signal or interrupt
-      if (!condition) {
-        ret = -1; // Indicate interruption
-        break;
-      }
-    }
-
-    current_time = get_time_ns();
-    elapsed_ns = current_time - start_time;
-
-    if (elapsed_ns >= timeout_ns) {
-      ret = 0; // Timeout
-      break;
-    } else {
-      // Calculate remaining time in jiffies/seconds
-      timeout = (timeout_ns - elapsed_ns) / 1000000000ULL;
-    }
-
-    if (timeout <= 0) {
-      ret = 0; // Timeout
-      break;
-    }
-  }
-
-  finish_wait(wq, &wait);
-  return ret;
 }
 
 /**
@@ -389,6 +223,32 @@ void wake_up_interruptible(wait_queue_head_t *wq_head) {
   }
 
   spinlock_unlock_irqrestore(&wq_head->lock, flags);
+}
+
+long __wait_event_timeout(wait_queue_head_t *wq, int (*condition)(void *), void *data, long timeout) {
+  long start = (long)(get_time_ns() / 1000000ULL);
+  long remaining = timeout;
+  wait_queue_t wait;
+  init_wait(&wait);
+
+  while (1) {
+    prepare_to_wait(wq, &wait, TASK_UNINTERRUPTIBLE);
+    if (condition(data)) {
+      break;
+    }
+    
+    long now = (long)(get_time_ns() / 1000000ULL);
+    remaining = timeout - (now - start);
+    if (remaining <= 0) {
+      remaining = 0;
+      break;
+    }
+
+    schedule();
+  }
+  
+  finish_wait(wq, &wait);
+  return remaining;
 }
 
 /**

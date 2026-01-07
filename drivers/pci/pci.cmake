@@ -1,7 +1,5 @@
 set(PCI_SOURCE_DIR ${CMAKE_SOURCE_DIR}/drivers/pci)
 
-set(PCI_SOURCES
-        ${PCI_SOURCE_DIR}/pci.c
-)
+file(GLOB_RECURSE PCI_SOURCES "${PCI_SOURCE_DIR}/*.c")
 
 add_fkx_module(pci ${PCI_SOURCES})

@@ -1,12 +1,12 @@
 /// SPDX-License-Identifier: GPL-2.0-only
 /**
- * VoidFrameX monolithic kernel
+ * AeroSync monolithic kernel
  *
  * @file kernel/sched/rt.c
  * @brief Real-Time Scheduler (SCHED_FIFO, SCHED_RR) implementation
  * @copyright (C) 2025 assembler-0
  *
- * This file is part of the VoidFrameX kernel.
+ * This file is part of the AeroSync kernel.
  *
  * Implements the Real-Time scheduling class with support for:
  * - SCHED_FIFO: First-In-First-Out real-time scheduling
@@ -15,7 +15,7 @@
  * RT tasks have higher priority than CFS tasks and lower than Deadline tasks.
  */
 
-#include <arch/x64/tsc.h>
+#include <arch/x86_64/tsc.h>
 #include <kernel/classes.h>
 #include <kernel/sched/sched.h>
 #include <lib/printk.h>

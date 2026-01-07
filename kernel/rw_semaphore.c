@@ -1,3 +1,23 @@
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * AeroSync monolithic kernel
+ *
+ * @file kernel/rw_semaphore.c
+ * @brief RW-semaphore implementation
+ * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the AeroSync kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #include <kernel/rw_semaphore.h>
 #include <kernel/sched/sched.h>
 #include <kernel/atomic.h>
@@ -12,6 +32,14 @@ void rwsem_init(struct rw_semaphore *sem) {
     atomic_set(&sem->count, RWSEM_UNLOCKED_VALUE);
     spinlock_init(&sem->wait_lock);
     init_waitqueue_head(&sem->wait_list);
+}
+
+int rwsem_is_write_locked(const struct rw_semaphore *sem) {
+    return atomic_read(&sem->count) == -1;
+}
+
+int rwsem_is_locked(const struct rw_semaphore *sem) {
+    return atomic_read(&sem->count) < 0;
 }
 
 void down_read(struct rw_semaphore *sem) {

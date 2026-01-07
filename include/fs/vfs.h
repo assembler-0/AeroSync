@@ -2,6 +2,7 @@
 
 #include <kernel/types.h>
 #include <kernel/spinlock.h>
+#include <kernel/atomic.h>
 #include <linux/list.h>
 
 // Forward declarations for VFS structures
@@ -74,6 +75,7 @@ struct timespec {
 #define O_DSYNC    010000 // Write with data integrity sync
 #define O_FSYNC    020000 // Write with file integrity sync (implies O_DSYNC)
 #define O_ASYNC    0200000 // Asynchronous I/O
+#define O_CLOEXEC  02000000 // Set close-on-exec
 
 // VFS object operations forward declarations
 struct file_operations;
@@ -139,6 +141,7 @@ struct dentry {
 // struct file: Represents an open file description
 struct file {
     struct list_head    f_list;           // List of all open files
+    atomic_t            f_count;          // Reference count
     struct dentry       *f_dentry;        // Dentry of the file
     struct inode        *f_inode;         // Inode of the file
     const struct file_operations *f_op;   // File operations (can be inherited from inode)

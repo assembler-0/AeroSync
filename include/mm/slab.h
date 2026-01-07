@@ -3,8 +3,8 @@
 #include <kernel/spinlock.h>
 #include <kernel/types.h>
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/mm/pmm.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/mm/pmm.h>
 #include <kernel/spinlock.h>
 #include <kernel/types.h>
 #include <mm/page.h>
@@ -21,7 +21,7 @@ struct kmem_cache_cpu {
   void *freelist;    /* Pointer to next available object */
   unsigned long tid; /* Transaction ID for lockless cmpxchg */
   struct page *page; /* The slab from which we are allocating */
-} __aligned(64);
+} __aligned(16);
 
 struct kmem_cache_node {
   spinlock_t list_lock;
@@ -34,7 +34,7 @@ struct kmem_cache_node {
 };
 
 typedef struct kmem_cache {
-  struct kmem_cache_cpu cpu_slab[MAX_CPUS];
+  struct kmem_cache_cpu __percpu *cpu_slab;
 
   /* Used for slowpath */
   unsigned long flags;
@@ -44,14 +44,21 @@ typedef struct kmem_cache {
   int offset;         /* Free pointer offset. */
   unsigned int order; /* PMM allocation order */
 
-  /* Slabs per node (simplified for now to single node) */
-  struct kmem_cache_node node;
+  /* Slabs per node */
+  struct kmem_cache_node *node[MAX_NUMNODES];
 
   const char *name;
   struct list_head list; /* List of all slabs */
 
   /* Alignment */
   int align;
+
+  /* Redzone and poisoning */
+  int inuse; /* offset to redzone / end of object */
+
+  /* Management Stats */
+  atomic_long_t active_slabs;
+  atomic_long_t total_objects;
 } kmem_cache_t;
 
 /* API */
@@ -63,6 +70,8 @@ void *kmem_cache_alloc(kmem_cache_t *cache);
 void kmem_cache_free(kmem_cache_t *cache, void *obj);
 
 void *kmalloc(size_t size);
+void *kmalloc_aligned(size_t size, size_t align);
+void *kzalloc(size_t size);
 void kfree(void *ptr);
 
 /* Helpers to convert between object and page */

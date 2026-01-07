@@ -1,12 +1,12 @@
 /// SPDX-License-Identifier: GPL-2.0-only
 /**
- * VoidFrameX monolithic kernel
+ * AeroSync monolithic kernel
  *
  * @file kernel/sysintf/time.c
  * @brief Unified Time Subsystem implementation
  * @copyright (C) 2025 assembler-0
  *
- * This file is part of the VoidFrameX kernel.
+ * This file is part of the AeroSync kernel.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -18,8 +18,8 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/tsc.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/tsc.h>
 #include <kernel/sysintf/time.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>
@@ -81,7 +81,7 @@ int time_init(void) {
   }
 
   if (!selected) {
-    panic(TIME_CLASS "No suitable time source found!");
+    panic(TIME_CLASS "No suitable time source found");
   }
 
   current_time_source = selected;

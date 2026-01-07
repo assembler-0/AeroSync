@@ -2,11 +2,11 @@
 
 #include <kernel/spinlock.h>
 #include <kernel/wait.h>
-#include <kernel/types.h>
+#include <kernel/atomic.h>
 
 /**
  * @file include/kernel/rw_semaphore.h
- * @brief Read-Write Semaphore implementation for VoidFrameX
+ * @brief Read-Write Semaphore implementation for AeroSync
  */
 
 struct rw_semaphore {
@@ -20,6 +20,9 @@ struct rw_semaphore {
 #define RWSEM_WAITING_BIAS   (-0x00010000)
 #define RWSEM_ACTIVE_READ_BIAS RWSEM_ACTIVE_BIAS
 #define RWSEM_ACTIVE_WRITE_BIAS (RWSEM_WAITING_BIAS + RWSEM_ACTIVE_BIAS)
+
+int rwsem_is_locked(const struct rw_semaphore *sem);
+int rwsem_is_write_locked(const struct rw_semaphore *sem);
 
 void rwsem_init(struct rw_semaphore *sem);
 void down_read(struct rw_semaphore *sem);

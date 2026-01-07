@@ -115,3 +115,5 @@ do { \
 #define smp_mb()    asm volatile("lock; addl $0, -4(%%rsp)" ::: "memory", "cc")
 #define smp_rmb()   barrier() // x86 loads are ordered
 #define smp_wmb()   barrier() // x86 stores are ordered
+
+#define __percpu

@@ -1,20 +1,30 @@
 /// SPDX-License-Identifier: GPL-2.0-only
 /**
- * VoidFrameX monolithic kernel
+ * AeroSync monolithic kernel
  *
  * @file kernel/sched/core.c
  * @brief Core scheduler implementation
  * @copyright (C) 2025 assembler-0
  *
- * This file is part of the VoidFrameX kernel.
+ * This file is part of the AeroSync kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/fpu.h>
-#include <arch/x64/mm/vmm.h>
-#include <arch/x64/percpu.h>
-#include <arch/x64/smp.h>
-#include <arch/x64/tsc.h>      /* Added for get_time_ns */
+
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/fpu.h>
+#include <arch/x86_64/mm/vmm.h>
+#include <arch/x86_64/percpu.h>
+#include <arch/x86_64/smp.h>
+#include <arch/x86_64/tsc.h>      /* Added for get_time_ns */
 #include <drivers/apic/apic.h> /* Added for IPI functions */
 #include <kernel/classes.h>
 #include <kernel/panic.h>
@@ -29,6 +39,7 @@
 #include <mm/slab.h>
 #include <mm/vma.h>
 #include <vsprintf.h>
+#include <arch/x86_64/gdt/gdt.h>
 
 /*
  * Scheduler Core Implementation
@@ -148,13 +159,19 @@ void move_task_to_rq(struct task_struct *task, int dest_cpu) {
 
 static void switch_mm(struct mm_struct *prev, struct mm_struct *next,
                       struct task_struct *tsk) {
+  int cpu = cpu_id();
   if (prev == next)
     return;
 
-  if (next && next->pml4) {
-    vmm_switch_pml4((uint64_t)next->pml4);
+  if (prev) {
+    cpumask_clear_cpu(cpu, &prev->cpu_mask);
+  }
+
+  if (next && next->pml_root) {
+    cpumask_set_cpu(cpu, &next->cpu_mask);
+    vmm_switch_pml_root((uint64_t)next->pml_root);
   } else {
-    vmm_switch_pml4(g_kernel_pml4);
+    vmm_switch_pml_root(g_kernel_pml_root);
   }
 }
 
@@ -249,15 +266,31 @@ void task_wake_up_all(void) {
 }
 
 /*
- * Cleanup for the previous task after a context switch.
+ * schedule_tail - Finish the context switch.
+ * This is called by every task after it is switched in.
+ * For new tasks, it's called via the entry stub.
  */
-static void finish_task_switch(struct task_struct *prev) {
-  if (prev && prev->state == TASK_DEAD) {
-    free_task(prev);
-  } else if (prev && prev->state == TASK_ZOMBIE) {
-    /* Used to be TASK_ZOMBIE for cleanup */
-    free_task(prev);
-  }
+void schedule_tail(struct task_struct *prev) {
+    struct rq *rq = this_rq();
+
+    /* Release the runqueue lock held since schedule() */
+    spinlock_unlock(&rq->lock);
+    cpu_sti(); // Matches spinlock_lock_irqsave behavior
+
+    /* Restore FPU state for the current task */
+    if (current->thread.fpu) {
+      if (current->thread.fpu_used) {
+        fpu_restore(current->thread.fpu);
+      } else {
+        fpu_init_task(current->thread.fpu);
+        fpu_restore(current->thread.fpu);
+        current->thread.fpu_used = true;
+      }
+    }
+
+    if (prev && (prev->state == TASK_DEAD || prev->state == TASK_ZOMBIE)) {
+        free_task(prev);
+    }
 }
 
 void set_task_nice(struct task_struct *p, int nice) {
@@ -364,24 +397,14 @@ void schedule(void) {
       fpu_save(prev_task->thread.fpu);
     }
 
-    spinlock_unlock_irqrestore(&rq->lock, flags);
+    /* Update TSS RSP0 for the next task (Ring 0 stack pointer) */
+    if (next_task->stack) {
+        set_tss_rsp0((uint64_t)((uint8_t *)next_task->stack + (PAGE_SIZE * 4)));
+    }
 
     prev_task = switch_to(prev_task, next_task);
 
-    /* Restore FPU state for next task (now current) */
-    if (current->thread.fpu) {
-      if (current->thread.fpu_used) {
-        fpu_restore(current->thread.fpu);
-      } else {
-        /* Initialize FPU to clean state for this thread */
-        fpu_init_task(current->thread.fpu);
-        fpu_restore(current->thread.fpu);
-        /* Mark as used so we save it next time */
-        current->thread.fpu_used = true;
-      }
-    }
-
-    finish_task_switch(prev_task);
+    schedule_tail(prev_task);
     return;
   }
 
@@ -554,6 +577,8 @@ void sched_init_task(struct task_struct *initial_task) {
   struct rq *rq = this_rq();
   initial_task->mm = &init_mm;
   initial_task->active_mm = &init_mm;
+  initial_task->node_id = cpu_to_node(initial_task->cpu);
+  cpumask_set_cpu(cpu_id(), &init_mm.cpu_mask);
   initial_task->state = TASK_RUNNING;
   initial_task->flags = PF_KTHREAD;
   initial_task->cpu = cpu_id();
@@ -570,6 +595,19 @@ void sched_init_task(struct task_struct *initial_task) {
   initial_task->se.exec_start_ns = get_time_ns();
 
   cpumask_setall(&initial_task->cpus_allowed);
+
+  /* Initialize files */
+  extern struct files_struct init_files;
+  initial_task->files = &init_files;
+
+  /* Initialize task hierarchy lists for the boot task */
+  INIT_LIST_HEAD(&initial_task->tasks);
+  INIT_LIST_HEAD(&initial_task->children);
+  INIT_LIST_HEAD(&initial_task->sibling);
+
+  /* Add initial task to global task list */
+  extern struct list_head task_list;
+  list_add_tail(&initial_task->tasks, &task_list);
 
   rq->curr = initial_task;
   // rq->idle = initial_task; // Will be set in sched_init_ap for APs, logic for
@@ -595,14 +633,21 @@ void sched_init_ap(void) {
   memset(idle, 0, sizeof(*idle));
   snprintf(idle->comm, sizeof(idle->comm), "idle/%d", cpu);
   idle->cpu = cpu;
+  idle->node_id = cpu_to_node(cpu);
   idle->flags = PF_KTHREAD | PF_IDLE;
   idle->state = TASK_RUNNING;
   idle->sched_class = &idle_sched_class;
   idle->preempt_count = 0;
   cpumask_set_cpu(cpu, &idle->cpus_allowed);
 
+  INIT_LIST_HEAD(&idle->tasks);
+  INIT_LIST_HEAD(&idle->children);
+  INIT_LIST_HEAD(&idle->sibling);
+
   struct rq *rq = this_rq();
   rq->curr = idle;
   rq->idle = idle;
+  idle->active_mm = &init_mm;
+  cpumask_set_cpu(cpu, &init_mm.cpu_mask);
   set_current(idle);
 }

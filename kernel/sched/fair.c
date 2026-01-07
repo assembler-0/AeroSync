@@ -1,16 +1,16 @@
 /// SPDX-License-Identifier: GPL-2.0-only
 /**
- * VoidFrameX monolithic kernel
+ * AeroSync monolithic kernel
  *
  * @file kernel/sched/fair.c
  * @brief Completely Fair Scheduler (CFS) implementation
  * @copyright (C) 2025 assembler-0
  *
- * This file is part of the VoidFrameX kernel.
+ * This file is part of the AeroSync kernel.
  */
 
-#include <arch/x64/mm/paging.h>
-#include <arch/x64/tsc.h> /* For get_time_ns */
+#include <arch/x86_64/mm/paging.h>
+#include <arch/x86_64/tsc.h> /* For get_time_ns */
 #include <kernel/sched/sched.h>
 #include <lib/math.h>
 #include <lib/printk.h>

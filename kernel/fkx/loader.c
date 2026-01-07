@@ -4,14 +4,7 @@
 #include <mm/vmalloc.h>
 #include <lib/printk.h>
 #include <lib/string.h>
-#include <lib/vsprintf.h>
-#include <arch/x64/mm/pmm.h>
-#include <arch/x64/mm/vmm.h>
-#include <arch/x64/io.h>
-#include <kernel/sysintf/time.h>
-#include <kernel/sysintf/ic.h>
 #include <kernel/classes.h>
-#include <kernel/panic.h>
 
 #define FKX_DEBUG 1
 

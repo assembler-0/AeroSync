@@ -2,7 +2,17 @@
 /**
  * @file drivers/misc/splash.c
  * @brief Boot splash screen FKX module
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
+
 
 #include <kernel/classes.h>
 #include <kernel/version.h>
@@ -47,8 +57,8 @@ static int splash_thread_fn(void *data) {
   // Header gradient
   linearfb_fill_rect_gradient(card_x + 2, card_y + 2, card_w - 4, 40, primary_acc, secondary_acc, 0);
   
-  // "VoidFrameX" Title in the header
-  linearfb_draw_text("VoidFrameX v" VOIDFRAMEX_VERSION_LEAN , card_x + 20, card_y + 12, text_color);
+  // "AeroSync" Title in the header
+  linearfb_draw_text("AeroSync v" VOIDFRAMEX_VERSION_LEAN , card_x + 20, card_y + 12, text_color);
   
   // Subtitle / Version
   uint32_t dim_text = linearfb_color_brightness(text_color, 0.6f);
@@ -109,7 +119,7 @@ int splash_mod_init(void) {
   // Use helpers to select a different backend for printk
   // We want to avoid using linearfb for printk so we can draw our splash
   const printk_backend_t *fallback = printk_auto_select_backend("linearfb");
-  printk_set_sink(PRINTK_LOG_OR_NO_LOG(fallback), false);
+  printk_set_sink(PRINTK_BACKEND_NAME(fallback), false);
   // Spawn a kernel thread for the splash screen
   struct task_struct *task = kthread_create(splash_thread_fn, NULL, "splash_screen");
   if (task) {

@@ -2,3 +2,4 @@
 *cache*
 include/kernel/version.h
 .venv
+.idea

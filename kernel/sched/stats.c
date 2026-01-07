@@ -1,16 +1,16 @@
 /// SPDX-License-Identifier: GPL-2.0-only
 /**
- * VoidFrameX monolithic kernel
+ * AeroSync monolithic kernel
  *
  * @file kernel/sched/stats.c
  * @brief Scheduler statistics
  * @copyright (C) 2025 assembler-0
  *
- * This file is part of the VoidFrameX kernel.
+ * This file is part of the AeroSync kernel.
  */
 
-#include <arch/x64/percpu.h>
-#include <arch/x64/smp.h>
+#include <arch/x86_64/percpu.h>
+#include <arch/x86_64/smp.h>
 #include <kernel/sched/sched.h>
 #include <lib/printk.h>
 

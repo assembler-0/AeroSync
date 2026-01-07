@@ -1,19 +1,19 @@
 /// SPDX-License-Identifier: GPL-2.0-only
 /**
- * VoidFrameX monolithic kernel
+ * AeroSync monolithic kernel
  *
  * @file include/kernel/sched/cpumask.h
  * @brief CPU affinity mask implementation
  * @copyright (C) 2025 assembler-0
  *
- * This file is part of the VoidFrameX kernel.
+ * This file is part of the AeroSync kernel.
  */
 
 #pragma once
 
-#include <arch/x64/smp.h>
+#include <arch/x86_64/smp.h>
 #include <kernel/types.h>
-#include <arch/x64/cpu.h>
+#include <arch/x86_64/cpu.h>
 
 /* Number of 64-bit words needed to hold MAX_CPUS bits */
 #define CPUMASK_BITS ((MAX_CPUS + 63) / 64)

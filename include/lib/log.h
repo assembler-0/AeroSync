@@ -10,17 +10,17 @@
 #define KLOG_INFO    6
 #define KLOG_DEBUG   7
 
-// Set the minimum level stored in the ring buffer (inclusive)
-void log_set_level(int level);
-int  log_get_level(void);
-
 // Console sink management
 fnd(void, log_sink_putc_t, char c);
+
 void log_init(log_sink_putc_t backend);
 // Start asynchronous logging consumer (klogd). Safe to call once after
 // scheduler is up. Subsequent calls are no-ops.
 void log_init_async(void);
 void log_set_console_sink(log_sink_putc_t sink);
+
+// Mark that the system is panicking to allow bypassing locks
+void log_mark_panic(void);
 
 // Write a complete, already formatted message (no implicit newline added)
 // Returns number of bytes accepted (may be truncated to ring capacity)

@@ -1,13 +1,13 @@
 # ============================================================================
 # SPDX-License-Identifier: GPL-2.0-only
 #
-# VoidFrameX monolithic kernel
+# AeroSync monolithic kernel
 #
 # @file CMakeLists.txt
 # @brief Kernel build configuration
 # @copyright (C) 2025 assembler-0
 #
-# This file is part of the VoidFrameX kernel.
+# This file is part of the AeroSync kernel.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -20,10 +20,10 @@
 # ============================================================================
 cmake_minimum_required(VERSION 3.30)
 set_property(GLOBAL PROPERTY RULE_MESSAGES OFF)
-project(VoidFrameX
-        VERSION 1.0.1 # <EPOCH>.<FEATURE>.<PATCH>
+project(AeroSync
+        VERSION 2.2.3 # <EPOCH>.<FEATURE>.<PATCH>
         LANGUAGES C CXX ASM_NASM
-        HOMEPAGE_URL "https://github.com/assembler-0/VoidFrameX"
+        HOMEPAGE_URL "https://github.com/assembler-0/AeroSync"
         DESCRIPTION "A modern monolithic operating system kernel designed for performance and modularity."
 )
 enable_language(ASM_NASM)
@@ -42,8 +42,10 @@ execute_process(
         OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-set(VOIDFRAMEX_ABI_LEVEL "0" CACHE STRING "VoidFrameX ABI level")
-set(VOIDFRAMEX_CODENAME "Invariant" CACHE STRING "VoidFrameX codename")
+set(VOIDFRAMEX_RELEASE "0" CACHE STRING "AeroSync release")
+set(VOIDFRAMEX_CANDIDATE "1" CACHE STRING "AeroSync release candidate")
+set(VOIDFRAMEX_ABI_LEVEL "0" CACHE STRING "AeroSync ABI level")
+set(VOIDFRAMEX_CODENAME "Invariant" CACHE STRING "AeroSync codename")
 configure_file(
         ${CMAKE_CURRENT_SOURCE_DIR}/include/kernel/version.h.in
         ${CMAKE_CURRENT_SOURCE_DIR}/include/kernel/version.h
@@ -65,11 +67,12 @@ include(lib/uACPI/uacpi.cmake)
 include(source)
 include(fkx)
 include(lib/linearfb/linearfb.cmake)
-# include(drivers/misc/splash.cmake)
+#include(drivers/misc/splash.cmake)
 include(drivers/uart/uart.cmake)
 include(drivers/apic/ic.cmake)
 include(drivers/pci/pci.cmake)
 include(drivers/timer/timer.cmake)
+include(FetchContent)
 
 # ============================================================================
 # Platform Checks
@@ -89,6 +92,11 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
     set(Rust_CARGO_TARGET "x86_64-unknown-none")
 else()
     message(WARNING "Unsupported target architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+
+if(CMAKE_C_COMPILER MATCHES ${ALLOWED_C_COMPILER})
+else()
+    message(FATAL_ERROR "Unsupported C compiler: ${CMAKE_C_COMPILER}")
 endif()
 
 message(STATUS "CMake Generator: ${CMAKE_GENERATOR}")
@@ -112,16 +120,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # ============================================================================
 # Kernel Linking
 # ============================================================================
-add_executable(voidframex.krnl
+add_executable(aerosync.krnl
     ${VOIDFRAMEX_SOURCES}
 )
 
-target_sources(voidframex.krnl 
+target_sources(aerosync.krnl 
 	PRIVATE
 	${UACPI_SOURCES}
 )
 
-target_compile_options(voidframex.krnl PRIVATE 
+target_compile_options(aerosync.krnl PRIVATE 
     $<$<COMPILE_LANGUAGE:C>:
         -m64
         -target ${CLANG_TARGET_TRIPLE}
@@ -141,7 +149,6 @@ target_compile_options(voidframex.krnl PRIVATE
         -fno-pic
         -fno-pie
         -mcmodel=kernel
-        -fcf-protection=full
         -fvisibility=hidden
     >
     $<$<COMPILE_LANGUAGE:ASM_NASM>:
@@ -150,15 +157,16 @@ target_compile_options(voidframex.krnl PRIVATE
 )
 
 if(STACK_PROTECTION)
-    target_compile_options(voidframex.krnl PRIVATE 
+    target_compile_options(aerosync.krnl PRIVATE 
         $<$<COMPILE_LANGUAGE:C>:
-            -fcf-protection=full
+            -fstack-protector-all
+            -D_FORTIFY_SOURCE=2
         >
     )
 endif()
 
 if(INTEL_CET)
-    target_compile_options(voidframex.krnl PRIVATE 
+    target_compile_options(aerosync.krnl PRIVATE 
         $<$<COMPILE_LANGUAGE:C>:
             -fcf-protection=full
         >
@@ -166,7 +174,7 @@ if(INTEL_CET)
 endif()
 
 if (LTO)
-    target_compile_options(voidframex.krnl PRIVATE 
+    target_compile_options(aerosync.krnl PRIVATE 
         $<$<COMPILE_LANGUAGE:C>:
             -flto
         >
@@ -174,7 +182,7 @@ if (LTO)
 endif()
 
 if(SANITIZER)
-    target_compile_options(voidframex.krnl PRIVATE
+    target_compile_options(aerosync.krnl PRIVATE
         $<$<COMPILE_LANGUAGE:C>:
             -fsanitize=undefined,bounds,null,return,vla-bound
         >
@@ -182,21 +190,21 @@ if(SANITIZER)
 endif()
 
 # Configure the linker to use ld.lld with proper arguments
-set_target_properties(voidframex.krnl PROPERTIES
-    LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/voidframex.ld"
+set_target_properties(aerosync.krnl PROPERTIES
+    LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/aerosync.ld"
 )
 
 # Set linker flags for this specific target
-target_link_options(voidframex.krnl PRIVATE
+target_link_options(aerosync.krnl PRIVATE
     -fuse-ld=lld
-    -T ${CMAKE_CURRENT_SOURCE_DIR}/voidframex.ld
+    -T ${CMAKE_CURRENT_SOURCE_DIR}/aerosync.ld
     -nostdlib
     -static
     -Wl,-melf_x86_64
 )
 
 if (LTO)
-    target_link_options(voidframex.krnl PRIVATE
+    target_link_options(aerosync.krnl PRIVATE
         $<$<COMPILE_LANGUAGE:C>:
             -flto
             -Wl,--gc-sections
@@ -207,7 +215,23 @@ endif()
 # ============================================================================
 # ISO Generation with Limine Bootloader
 # ============================================================================
-set(LIMINE_RESOURCE_DIR "/usr/share/limine" CACHE STRING "Limine binary directory")
+set(DEFAULT_LIMINE_DIR "/usr/share/limine")
+if(EXISTS "${DEFAULT_LIMINE_DIR}")
+    set(LIMINE_RESOURCE_DIR "${DEFAULT_LIMINE_DIR}" CACHE STRING "Limine binary directory")
+    message(STATUS "Using system Limine: ${LIMINE_RESOURCE_DIR}")
+else()
+    message(STATUS "Limine not found at ${DEFAULT_LIMINE_DIR}. Fetching from GitHub... (https://github.com/limine-bootloader/limine/tree/v10.x-binary)")
+
+    FetchContent_Declare(
+            limine
+            GIT_REPOSITORY https://github.com/limine-bootloader/limine.git
+            GIT_TAG        v10.x-binary
+    )
+    FetchContent_MakeAvailable(limine)
+
+    set(LIMINE_RESOURCE_DIR "${limine_SOURCE_DIR}" CACHE STRING "Limine binary directory" FORCE)
+    message(STATUS "Limine fetched to: ${LIMINE_RESOURCE_DIR}")
+endif()
 
 # Generate limine.conf from template
 get_property(FKX_MODULE_LIST GLOBAL PROPERTY FKX_MODULES)
@@ -234,12 +258,12 @@ add_custom_command(
         COMMAND ${CMAKE_COMMAND} -E copy ${LIMINE_RESOURCE_DIR}/BOOTX64.EFI
         ${CMAKE_CURRENT_BINARY_DIR}/bootdir/EFI/BOOT/BOOTX64.EFI
         # Copy kernel
-        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:voidframex.krnl>
-        ${CMAKE_CURRENT_BINARY_DIR}/bootdir/kernel/voidframex.krnl
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:aerosync.krnl>
+        ${CMAKE_CURRENT_BINARY_DIR}/bootdir/kernel/aerosync.krnl
         # Copy Limine config
         COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/limine.conf
         ${CMAKE_CURRENT_BINARY_DIR}/bootdir/limine.conf
-        DEPENDS voidframex.krnl ${CMAKE_BINARY_DIR}/limine.conf ${FKX_MODULE_FILES}
+        DEPENDS aerosync.krnl ${CMAKE_BINARY_DIR}/limine.conf ${FKX_MODULE_FILES}
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         COMMENT "Setting up boot directory with Limine"
         VERBATIM
@@ -253,7 +277,7 @@ if (FKX_MODULE_LIST)
 endif()
 
 add_custom_command(
-    OUTPUT voidframex.hybrid.iso
+    OUTPUT aerosync.hybrid.iso
     # 1. Copy UEFI boot binary
     COMMAND ${CMAKE_COMMAND} -E copy
         ${LIMINE_RESOURCE_DIR}/limine-uefi-cd.bin
@@ -278,20 +302,20 @@ add_custom_command(
         --efi-boot-part                 # EFI boot partition
         --efi-boot-image                # Mark as EFI bootable
         --protective-msdos-label        # Hybrid MBR
-        -o ${CMAKE_CURRENT_BINARY_DIR}/voidframex.hybrid.iso
+        -o ${CMAKE_CURRENT_BINARY_DIR}/aerosync.hybrid.iso
         ${CMAKE_CURRENT_BINARY_DIR}/bootdir
 
-    DEPENDS bootd $<TARGET_FILE:voidframex.krnl>
+    DEPENDS bootd $<TARGET_FILE:aerosync.krnl>
         ${LIMINE_RESOURCE_DIR}/limine-uefi-cd.bin
         ${LIMINE_RESOURCE_DIR}/limine-bios.sys
         ${LIMINE_RESOURCE_DIR}/limine-bios-cd.bin
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    COMMENT "Generating hybrid ISO (voidframex.hybrid.iso)..."
+    COMMENT "Generating hybrid ISO (aerosync.hybrid.iso)..."
     VERBATIM
 )
 
-set(ISO_PATH ${CMAKE_CURRENT_BINARY_DIR}/voidframex.hybrid.iso)
-add_custom_target(iso ALL DEPENDS voidframex.hybrid.iso)
+set(ISO_PATH ${CMAKE_CURRENT_BINARY_DIR}/aerosync.hybrid.iso)
+add_custom_target(iso ALL DEPENDS aerosync.hybrid.iso)
 
 # Add FKX module dependencies to ISO target
 get_property(FKX_MODULE_LIST GLOBAL PROPERTY FKX_MODULES)
@@ -319,7 +343,7 @@ if (BOCHS)
          COMMAND ${BOCHS} -q -f ${BOCHS_CONFIG}
          DEPENDS iso
          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-         COMMENT "Running VoidFrameX kernel in Bochs"
+         COMMENT "Running AeroSync kernel in Bochs"
     )
 endif()
 
@@ -330,8 +354,12 @@ if(QEMU_SYSTEM_X86_64)
         -cpu max,+la57
         -accel tcg
         -no-reboot -no-shutdown
-        -m 1G
-        -smp 4
+        -m 4G
+        -smp sockets=2,cores=2
+        -numa node,nodeid=0,cpus=0-1,memdev=mem0
+        -numa node,nodeid=1,cpus=2-3,memdev=mem1
+        -object memory-backend-ram,id=mem0,size=2G
+        -object memory-backend-ram,id=mem1,size=2G
         -bios ${ROM_IMAGE}
         -debugcon file:bootstrap.log
         -serial stdio
@@ -339,7 +367,7 @@ if(QEMU_SYSTEM_X86_64)
         -cdrom ${ISO_PATH}
         DEPENDS iso
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        COMMENT "Running voidframex kernel in QEMU"
+        COMMENT "Running aerosync kernel in QEMU"
     )
 
     add_custom_target(run-bios
@@ -354,12 +382,12 @@ if(QEMU_SYSTEM_X86_64)
         -cdrom ${ISO_PATH}
         DEPENDS iso
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        COMMENT "Running voidframex kernel in QEMU"
+        COMMENT "Running aerosync kernel in QEMU"
     )
 endif()
 
 if(VBOXMANAGE OR VMRUN)
-    set(VM_NAME "VoidFrameX-${PROJECT_VERSION}" CACHE STRING "VM name for VBox/VMware")
+    set(VM_NAME "AeroSync-${PROJECT_VERSION}" CACHE STRING "VM name for VBox/VMware")
 endif()
 
 if(VBOXMANAGE)
@@ -382,7 +410,7 @@ if(VBOXMANAGE)
          --vram 16
          --cpus 4
          --boot1 disk
-        --hpet on
+         --hpet on
          --boot2 dvd
          --boot3 none
          --boot4 none
@@ -442,7 +470,7 @@ endif()
 
 if(VMRUN_EXECUTABLE)
     set(VMWARE_DIR ${CMAKE_BINARY_DIR}/vmware)
-    set(VMWARE_VMX ${VMWARE_DIR}/voidframex.vmx)
+    set(VMWARE_VMX ${VMWARE_DIR}/aerosync.vmx)
     set(VMWARE_SERIAL_FILE "${CMAKE_CURRENT_BINARY_DIR}/vmware.serial.log" CACHE STRING "VMware serial output")
 
     add_custom_target(vmw-setup
@@ -478,16 +506,16 @@ if(VMRUN_EXECUTABLE)
         start ${VMWARE_VMX}
 
         WORKING_DIRECTORY ${VMWARE_DIR}
-        COMMENT "Running VoidFrameX in VMware"
+        COMMENT "Running AeroSync in VMware"
         VERBATIM
     )
 endif()
 
 if(LLVM_OBJDUMP)
     add_custom_target(dump
-        COMMAND ${LLVM_OBJDUMP} -d $<TARGET_FILE:voidframex.krnl> > voidframex.dump
-        COMMAND ${LLVM_OBJDUMP} -t $<TARGET_FILE:voidframex.krnl> > voidframex.sym
-        DEPENDS voidframex.krnl
+        COMMAND ${LLVM_OBJDUMP} -d $<TARGET_FILE:aerosync.krnl> > aerosync.dump
+        COMMAND ${LLVM_OBJDUMP} -t $<TARGET_FILE:aerosync.krnl> > aerosync.sym
+        DEPENDS aerosync.krnl
         COMMENT "Generating disassembly and symbols"
     )
 endif()

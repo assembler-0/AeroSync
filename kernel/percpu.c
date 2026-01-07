@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/mm/pmm.h>
-#include <arch/x64/percpu.h>
-#include <arch/x64/smp.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/mm/pmm.h>
+#include <arch/x86_64/percpu.h>
+#include <arch/x86_64/smp.h>
 #include <kernel/classes.h>
 #include <kernel/fkx/fkx.h>
 #include <kernel/panic.h>
@@ -67,6 +67,10 @@ void setup_per_cpu_areas(void) {
     // %reg We need GS_BASE + &var = ptr + (&var - _percpu_start) GS_BASE = ptr
     // - _percpu_start.
     __per_cpu_offset[i] = (unsigned long)ptr - (unsigned long)_percpu_start;
+
+    // Set 'this_cpu_off' inside the per-cpu area
+    DECLARE_PER_CPU(unsigned long, this_cpu_off);
+    *(unsigned long *)((uint8_t *)ptr + ((unsigned long)&this_cpu_off - (unsigned long)_percpu_start)) = __per_cpu_offset[i];
 
     printk(KERN_DEBUG PERCPU_CLASS "  CPU %lu: per-cpu area @ %p\n", i, ptr);
   }

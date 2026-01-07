@@ -1,6 +1,6 @@
 #pragma once
 
-#include <arch/x64/percpu.h>
+#include <arch/x86_64/percpu.h>
 #include <kernel/sched/cpumask.h>
 #include <kernel/spinlock.h>
 #include <kernel/types.h>
@@ -86,8 +86,6 @@ struct fpu_state;
 extern const unsigned int prio_to_weight[40];
 
 DECLARE_PER_CPU(int, cpu_apic_id);
-
-struct mm_struct; /* Forward declaration for memory management struct */
 
 /* Represents a task's load weight */
 struct load_weight {
@@ -197,6 +195,7 @@ struct task_struct {
   struct cpumask cpus_allowed; /* CPUs this task can run on */
   int nr_cpus_allowed;         /* Number of CPUs in cpus_allowed */
   int cpu;                     /* Current/last CPU */
+  int node_id;                 /* NUMA node ID of the task (usually based on CPU) */
 
   /*
    * Task relationships
@@ -209,6 +208,11 @@ struct task_struct {
    */
   struct mm_struct *mm;
   struct mm_struct *active_mm;
+
+  /* Per-thread VMA Cache */
+  #define MM_VMA_CACHE_SIZE 4
+  struct vm_area_struct *vmacache[MM_VMA_CACHE_SIZE];
+  uint64_t vmacache_seqnum;
 
   /*
    * Context for context switching
@@ -229,6 +233,11 @@ struct task_struct {
   struct list_head sibling;
 
   /*
+   * Filesystem information
+   */
+  struct files_struct *files;
+
+  /*
    * Task name and debugging
    */
   char comm[16]; /* Command name */
@@ -239,6 +248,13 @@ struct task_struct {
   uint64_t nvcsw;         /* Voluntary context switches */
   uint64_t nivcsw;        /* Involuntary context switches */
   uint64_t start_time_ns; /* Task start time */
+
+  /*
+   * Signal handling
+   */
+  uint64_t pending;           /* Per-thread pending signals */
+  uint64_t blocked;           /* Blocked signals */
+  struct signal_struct *signal; /* Shared signal state */
 };
 
 /*
@@ -336,7 +352,7 @@ struct cfs_rq {
 };
 
 /**
- * struct rq - Per-CPU runqueue
+  * struct rq - Per-CPU runqueue
  */
 struct rq {
   spinlock_t lock;
@@ -379,6 +395,7 @@ void sched_init_task(struct task_struct *initial_task);
 void sched_init_ap(void);
 void scheduler_tick(void);
 void check_preempt(void);
+void schedule_tail(struct task_struct *prev);
 
 void set_task_nice(struct task_struct *p, int nice);
 

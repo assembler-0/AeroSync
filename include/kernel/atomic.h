@@ -1,78 +1,64 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <arch/x86_64/atomic.h>
 
 /**
  * @file include/kernel/atomic.h
- * @brief Atomic operations using compiler built-ins
+ * @brief Generic atomic operations interface
  */
 
-static inline int atomic_read(const atomic_t *v) {
-    return __atomic_load_n(&v->counter, __ATOMIC_RELAXED);
+/*
+ * atomic_long_t operations - map to atomic_t or atomic64_t based on architecture
+ */
+#ifdef __x86_64__
+typedef atomic64_t atomic_long_t;
+
+#define atomic_long_read(v) atomic64_read(v)
+#define atomic_long_set(v, i) atomic64_set(v, i)
+#define atomic_long_add(i, v) atomic64_add(i, v)
+#define atomic_long_sub(i, v) atomic64_sub(i, v)
+#define atomic_long_inc(v) atomic64_inc(v)
+#define atomic_long_dec(v) atomic64_dec(v)
+#define atomic_long_add_return(i, v) atomic64_add_return(i, v)
+#define atomic_long_sub_return(i, v) atomic64_sub_return(i, v)
+#define atomic_long_inc_return(v) atomic64_inc_return(v)
+#define atomic_long_dec_return(v) atomic64_dec_return(v)
+#define atomic_long_xchg(v, n) atomic64_xchg(v, n)
+#define atomic_long_cmpxchg(v, o, n) atomic64_cmpxchg(v, o, n)
+
+#else
+typedef atomic_t atomic_long_t;
+
+#define atomic_long_read(v) atomic_read(v)
+#define atomic_long_set(v, i) atomic_set(v, i)
+#define atomic_long_add(i, v) atomic_add(i, v)
+#define atomic_long_sub(i, v) atomic_sub(i, v)
+#define atomic_long_inc(v) atomic_inc(v)
+#define atomic_long_dec(v) atomic_dec(v)
+#define atomic_long_xchg(v, n) atomic_xchg(v, n)
+#define atomic_long_cmpxchg(v, o, n) atomic_cmpxchg(v, o, n)
+#endif
+
+/*
+ * Additional helper macros
+ */
+#define ATOMIC_INIT(i) { (i) }
+
+/**
+ * atomic_add_unless - add unless the number is already a given value
+ * @v: pointer of type atomic_t
+ * @a: the amount to add to v...
+ * @u: ...unless v is equal to u.
+ *
+ * Atomically adds @a to @v, so long as it was not @u.
+ * Returns non-zero if the add was done, and zero otherwise.
+ */
+static inline int atomic_add_unless(atomic_t *v, int a, int u) {
+    int c, old;
+    c = atomic_read(v);
+    while (c != u && (old = atomic_cmpxchg(v, c, c + a)) != c)
+        c = old;
+    return c != u;
 }
 
-static inline void atomic_set(atomic_t *v, int i) {
-    __atomic_store_n(&v->counter, i, __ATOMIC_RELAXED);
-}
-
-static inline void atomic_add(int i, atomic_t *v) {
-    __atomic_add_fetch(&v->counter, i, __ATOMIC_SEQ_CST);
-}
-
-static inline void atomic_sub(int i, atomic_t *v) {
-    __atomic_sub_fetch(&v->counter, i, __ATOMIC_SEQ_CST);
-}
-
-static inline int atomic_add_return(int i, atomic_t *v) {
-    return __atomic_add_fetch(&v->counter, i, __ATOMIC_SEQ_CST);
-}
-
-static inline int atomic_sub_return(int i, atomic_t *v) {
-    return __atomic_sub_fetch(&v->counter, i, __ATOMIC_SEQ_CST);
-}
-
-static inline void atomic_inc(atomic_t *v) {
-    atomic_add(1, v);
-}
-
-static inline void atomic_dec(atomic_t *v) {
-    atomic_sub(1, v);
-}
-
-static inline int atomic_inc_return(atomic_t *v) {
-    return atomic_add_return(1, v);
-}
-
-static inline int atomic_dec_return(atomic_t *v) {
-    return atomic_sub_return(1, v);
-}
-
-static inline int atomic_cmpxchg(atomic_t *v, int old, int new) {
-    int expected = old;
-    __atomic_compare_exchange_n(&v->counter, &expected, new, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
-    return expected;
-}
-
-static inline int atomic_xchg(atomic_t *v, int new) {
-    return __atomic_exchange_n(&v->counter, new, __ATOMIC_SEQ_CST);
-}
-
-typedef struct {
-    volatile long counter;
-} atomic_long_t;
-
-static inline long atomic_long_read(const atomic_long_t *v) {
-    return __atomic_load_n(&v->counter, __ATOMIC_RELAXED);
-}
-
-static inline void atomic_long_set(atomic_long_t *v, long i) {
-    __atomic_store_n(&v->counter, i, __ATOMIC_RELAXED);
-}
-
-static inline void atomic_long_add(long i, atomic_long_t *v) {
-    __atomic_add_fetch(&v->counter, i, __ATOMIC_SEQ_CST);
-}
-
-static inline void atomic_long_sub(long i, atomic_long_t *v) {
-    __atomic_sub_fetch(&v->counter, i, __ATOMIC_SEQ_CST);
-}
+#define atomic_inc_not_zero(v) atomic_add_unless((v), 1, 0)

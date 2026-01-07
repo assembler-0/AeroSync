@@ -3,7 +3,7 @@
 > "I can't unload this module, it's fused!"
 
 ## Overview
-FKX is a load-time only kernel extension framework for VoidFrameX. Modules are standard ELF shared objects (`ET_DYN`) that are loaded into kernel memory, relocated, and linked via a global kernel API table.
+FKX is a load-time only kernel extension framework for AeroSync. Modules are standard ELF shared objects (`ET_DYN`) that are loaded into kernel memory, relocated, and linked via a global kernel API table.
 
 ## Features
 - **Load-time only**: Modules are loaded at boot via Limine or specific checkpoints.

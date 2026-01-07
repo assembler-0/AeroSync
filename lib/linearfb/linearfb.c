@@ -1,26 +1,41 @@
-/// SPDX-License-Identifier: GPL-2.0-only
+///SPDX-License-Identifier: GPL-2.0-only
 /**
  * linearfb - Linear Framebuffer library
  *
  * @file lib/linearfb/linearfb.c
  * @brief simple linear framebuffer graphics and console library
  * @copyright (C) 2025 assembler-0
+ *
+ * This file is part of the AeroSync kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
 #include <lib/linearfb/linearfb.h>
 #include <kernel/fkx/fkx.h>
-#include <lib/linearfb/font.h>
+#include <lib/linearfb/psf.h>
 #include <lib/string.h>
 #include <lib/math.h>
 #include <mm/vmalloc.h>
-#include <arch/x64/mm/pmm.h>
+#include <arch/x86_64/mm/pmm.h>
 #include <kernel/spinlock.h>
+
+extern const uint8_t embedded_console_font[];
+extern const uint32_t embedded_console_font_size;
 
 static int fb_initialized = 0;
 static struct limine_framebuffer *fb = NULL;
 static linearfb_font_t fb_font = {0};
 static uint32_t font_glyph_count = 0;
 static uint32_t font_glyph_w = 0, font_glyph_h = 0;
+static uint32_t font_pitch = 0;
 
 // --- Console state ---
 static uint32_t console_col = 0, console_row = 0;
@@ -31,12 +46,11 @@ static uint32_t console_fg = 0xFFFFFFFF;
 
 #define CONSOLE_BUF_MAX (128 * 1024)
 static char console_buffer[CONSOLE_BUF_MAX];
+static void *shadow_fb = NULL;
 
 // This is provided by the kernel via the API, but we can also use a symbol lookup if we wanted.
 // For now, let's keep the framebuffer_request as a pointer that we set in mod_init.
 static volatile struct limine_framebuffer_request *framebuffer_request = NULL;
-
-static void linearfb_console_redraw(void);
 
 static int linearfb_init(volatile struct limine_framebuffer_request *fb_req) {
   if (!fb_req || !fb_req->response || fb_req->response->framebuffer_count == 0)
@@ -53,6 +67,15 @@ static int linearfb_init(volatile struct limine_framebuffer_request *fb_req) {
       }
   }
 
+  // Allocate shadow framebuffer for fast scrolling and redrawing
+  if (shadow_fb) {
+      vfree(shadow_fb);
+  }
+  shadow_fb = vmalloc(size);
+  if (shadow_fb) {
+      memset(shadow_fb, 0, size);
+  }
+
   if (fb && font_glyph_w && font_glyph_h) {
     console_cols = fb->width / font_glyph_w;
     console_rows = fb->height / font_glyph_h;
@@ -65,10 +88,19 @@ static int linearfb_init(volatile struct limine_framebuffer_request *fb_req) {
 int linearfb_init_standard(void *data) {
   (void) data;
   linearfb_init(framebuffer_request);
-  linearfb_font_t font = {
-    .width = 8, .height = 16, .data = (uint8_t *) console_font
-  };
-  linearfb_load_font(&font, 256);
+  
+  psf_font_t psf;
+  if (psf_parse(embedded_console_font, embedded_console_font_size, &psf) == 0) {
+      linearfb_font_t font = {
+          .width = psf.width,
+          .height = psf.height,
+          .data = psf.glyph_data,
+          .pitch = psf.bytes_per_line,
+          .bpp = 1
+      };
+      linearfb_load_font(&font, psf.num_glyphs);
+  }
+
   linearfb_console_clear(0x00000000);
   linearfb_console_set_cursor(0, 0);
   return fb ? 0 : -1;
@@ -78,23 +110,13 @@ int linearfb_is_initialized(void) {
   return fb_initialized;
 }
 
-static printk_backend_t fb_backend = {
-  .name = "linearfb",
-  .priority = 100,
-  .putc = linearfb_console_putc,
-  .probe = linearfb_probe,
-  .init = linearfb_init_standard,
-  .cleanup = linearfb_cleanup,
-  .is_active = linearfb_is_initialized
-};
-
 void linearfb_cleanup(void) {
   fb_initialized = 0;
+  if (shadow_fb) {
+      vfree(shadow_fb);
+      shadow_fb = NULL;
+  }
   fb = NULL;
-}
-
-const printk_backend_t *linearfb_get_backend(void) {
-  return &fb_backend;
 }
 
 int linearfb_probe(void) {
@@ -160,8 +182,7 @@ void linearfb_get_screen_surface(linearfb_surface_t *surface) {
 EXPORT_SYMBOL(linearfb_get_screen_surface);
 
 void linearfb_blit(linearfb_surface_t *dst, linearfb_surface_t *src, uint32_t dx, uint32_t dy, uint32_t sx, uint32_t sy, uint32_t w, uint32_t h) {
-    if (!dst || !src) return;
-    
+    if (!dst || !src) return;    
     // Bounds check
     if (dx >= dst->width || dy >= dst->height) return;
     if (sx >= src->width || sy >= src->height) return;
@@ -175,6 +196,12 @@ void linearfb_blit(linearfb_surface_t *dst, linearfb_surface_t *src, uint32_t dx
     for (uint32_t i = 0; i < h; i++) {
         uint8_t *dst_ptr = (uint8_t *)dst->address + (dy + i) * dst->pitch + dx * bpp_bytes;
         uint8_t *src_ptr = (uint8_t *)src->address + (sy + i) * src->pitch + sx * bpp_bytes;
+
+        if (shadow_fb && dst->address == fb->address) {
+            uint8_t *sp = (uint8_t *)shadow_fb + (dy + i) * dst->pitch + dx * bpp_bytes;
+            memcpy(sp, src_ptr, w * bpp_bytes);
+        }
+
         memcpy(dst_ptr, src_ptr, w * bpp_bytes);
     }
 }
@@ -182,6 +209,16 @@ EXPORT_SYMBOL(linearfb_blit);
 
 void linearfb_put_pixel(uint32_t x, uint32_t y, uint32_t color) {
   if (!fb || x >= fb->width || y >= fb->height) return;
+
+  if (shadow_fb) {
+      uint8_t *sp = (uint8_t *)shadow_fb + y * fb->pitch + x * (fb->bpp / 8);
+      if (fb->bpp == 32) {
+          *(uint32_t *)sp = color;
+      } else {
+          memcpy(sp, &color, fb->bpp / 8);
+      }
+  }
+
   uint8_t *p = (uint8_t *) fb->address + y * fb->pitch + x * (fb->bpp / 8);
   if (fb->bpp == 32) {
       *(uint32_t*)p = color;
@@ -234,6 +271,14 @@ EXPORT_SYMBOL(linearfb_fill_rect_blend);
 
 uint32_t linearfb_get_pixel(uint32_t x, uint32_t y) {
     if (!fb || x >= fb->width || y >= fb->height) return 0;
+
+    if (shadow_fb) {
+        uint8_t *sp = (uint8_t *) shadow_fb + y * fb->pitch + x * (fb->bpp / 8);
+        uint32_t color = 0;
+        memcpy(&color, sp, fb->bpp / 8);
+        return color;
+    }
+
     uint8_t *p = (uint8_t *) fb->address + y * fb->pitch + x * (fb->bpp / 8);
     uint32_t color = 0;
     memcpy(&color, p, fb->bpp / 8);
@@ -279,10 +324,27 @@ void linearfb_draw_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t
 EXPORT_SYMBOL(linearfb_draw_rect);
 
 void linearfb_fill_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
-    if (!fb) return;
-    for (uint32_t i = 0; i < h; ++i) {
-        for (uint32_t j = 0; j < w; ++j) {
-            linearfb_put_pixel(x + j, y + i, color);
+    if (!fb) return;    
+    // Simple clipping
+    if (x >= fb->width || y >= fb->height) return;
+    if (x + w > fb->width) w = fb->width - x;
+    if (y + h > fb->height) h = fb->height - y;
+    if (w == 0 || h == 0) return;
+
+    if (fb->bpp == 32) {
+        for (uint32_t i = 0; i < h; i++) {
+            if (shadow_fb) {
+                uint32_t *sp = (uint32_t *)((uint8_t *)shadow_fb + (y + i) * fb->pitch + x * 4);
+                memset32(sp, color, w);
+            }
+            uint32_t *p = (uint32_t *)((uint8_t *)fb->address + (y + i) * fb->pitch + x * 4);
+            memset32(p, color, w);
+        }
+    } else {
+        for (uint32_t i = 0; i < h; ++i) {
+            for (uint32_t j = 0; j < w; ++j) {
+                linearfb_put_pixel(x + j, y + i, color);
+            }
         }
     }
 }
@@ -468,17 +530,35 @@ EXPORT_SYMBOL(linearfb_draw_shadow_rect);
 void linearfb_draw_text(const char *text, uint32_t x, uint32_t y, uint32_t color) {
     if (!text || !fb || !fb_font.data) return;
     uint32_t cx = x, cy = y;
+    uint32_t stride = font_pitch ? font_pitch : (font_glyph_w + 7) / 8;
+    uint32_t glyph_size = font_glyph_h * stride;
+
     while (*text) {
         char c = *text++;
         uint8_t ch = (uint8_t) c;
         if (ch >= font_glyph_count) ch = '?';
-        const uint8_t *glyph = fb_font.data + ch * font_glyph_h;
+        const uint8_t *glyph = fb_font.data + ch * glyph_size;
         
-        for (uint32_t r = 0; r < font_glyph_h; ++r) {
-            uint8_t bits = glyph[r];
-            for (uint32_t gx = 0; gx < font_glyph_w; ++gx) {
-                if (bits & (1 << (7 - gx))) {
-                    linearfb_put_pixel(cx + gx, cy + r, color);
+        if (shadow_fb && fb->bpp == 32) {
+            for (uint32_t r = 0; r < font_glyph_h; ++r) {
+                const uint8_t *row_data = glyph + r * stride;
+                uint32_t *sp = (uint32_t *)((uint8_t *)shadow_fb + (cy + r) * fb->pitch + cx * 4);
+                uint32_t *vp = (uint32_t *)((uint8_t *)fb->address + (cy + r) * fb->pitch + cx * 4);
+                
+                for (uint32_t gx = 0; gx < font_glyph_w; ++gx) {
+                    if (row_data[gx / 8] & (1 << (7 - (gx % 8)))) {
+                        sp[gx] = color;
+                    }
+                }
+                memcpy(vp, sp, font_glyph_w * 4);
+            }
+        } else {
+            for (uint32_t r = 0; r < font_glyph_h; ++r) {
+                const uint8_t *row_data = glyph + r * stride;
+                for (uint32_t gx = 0; gx < font_glyph_w; ++gx) {
+                    if (row_data[gx / 8] & (1 << (7 - (gx % 8)))) {
+                        linearfb_put_pixel(cx + gx, cy + r, color);
+                    }
                 }
             }
         }
@@ -489,7 +569,12 @@ EXPORT_SYMBOL(linearfb_draw_text);
 
 void linearfb_console_clear(uint32_t color) {
   if (!fb) return;
-  linearfb_fill_rect(0, 0, fb->width, fb->height, color);
+  if (fb->bpp == 32 && fb->pitch == fb->width * 4) {
+      if (shadow_fb) memset32(shadow_fb, color, fb->width * fb->height);
+      memset32(fb->address, color, fb->width * fb->height);
+  } else {
+      linearfb_fill_rect(0, 0, fb->width, fb->height, color);
+  }
   memset(console_buffer, ' ', sizeof(console_buffer));
   console_col = 0;
   console_row = 0;
@@ -504,26 +589,91 @@ static void linearfb_draw_glyph_at(uint32_t col, uint32_t row, char c) {
   uint32_t py = row * font_glyph_h;
   uint8_t ch = (uint8_t) c;
   if (ch >= font_glyph_count) ch = '?';
-  const uint8_t *glyph = fb_font.data + ch * font_glyph_h;
 
-  for (uint32_t r = 0; r < font_glyph_h; ++r) {
-    uint8_t bits = glyph[r];
-    for (uint32_t cx = 0; cx < font_glyph_w; ++cx) {
-      uint32_t color = (bits & (1 << (7 - cx))) ? console_fg : console_bg;
-      linearfb_put_pixel(px + cx, py + r, color);
+  uint32_t stride = font_pitch ? font_pitch : (font_glyph_w + 7) / 8;
+  const uint8_t *glyph = fb_font.data + ch * font_glyph_h * stride;
+
+  if (shadow_fb && fb->bpp == 32) {
+      for (uint32_t r = 0; r < font_glyph_h; ++r) {
+        const uint8_t *row_data = glyph + r * stride;
+        uint32_t *sp = (uint32_t *)((uint8_t *)shadow_fb + (py + r) * fb->pitch + px * 4);
+        uint32_t *vp = (uint32_t *)((uint8_t *)fb->address + (py + r) * fb->pitch + px * 4);
+        
+        for (uint32_t cx = 0; cx < font_glyph_w; ++cx) {
+          sp[cx] = (row_data[cx / 8] & (1 << (7 - (cx % 8)))) ? console_fg : console_bg;
+        }
+        // Blit line to VRAM
+        memcpy(vp, sp, font_glyph_w * 4);
+      }
+  } else {
+      for (uint32_t r = 0; r < font_glyph_h; ++r) {
+        const uint8_t *row_data = glyph + r * stride;
+        for (uint32_t cx = 0; cx < font_glyph_w; ++cx) {
+          uint32_t color = (row_data[cx / 8] & (1 << (7 - (cx % 8)))) ? console_fg : console_bg;
+          linearfb_put_pixel(px + cx, py + r, color);
+        }
+      }
+  }
+}
+
+static void linearfb_draw_glyph_at_shadow(uint32_t col, uint32_t row, char c) {
+  if (!shadow_fb || !fb_font.data) return;
+  if (col >= console_cols || row >= console_rows) return;
+
+  uint32_t px = col * font_glyph_w;
+  uint32_t py = row * font_glyph_h;
+  uint8_t ch = (uint8_t) c;
+  if (ch >= font_glyph_count) ch = '?';
+
+  uint32_t stride = font_pitch ? font_pitch : (font_glyph_w + 7) / 8;
+  const uint8_t *glyph = fb_font.data + ch * font_glyph_h * stride;
+
+  if (fb->bpp == 32) {
+    for (uint32_t r = 0; r < font_glyph_h; ++r) {
+      const uint8_t *row_data = glyph + r * stride;
+      uint32_t *sp = (uint32_t *)((uint8_t *)shadow_fb + (py + r) * fb->pitch + px * 4);
+      for (uint32_t cx = 0; cx < font_glyph_w; ++cx) {
+        sp[cx] = (row_data[cx / 8] & (1 << (7 - (cx % 8)))) ? console_fg : console_bg;
+      }
+    }
+  } else {
+    // Fallback for non-32bpp
+    for (uint32_t r = 0; r < font_glyph_h; ++r) {
+      const uint8_t *row_data = glyph + r * stride;
+      for (uint32_t gx = 0; gx < font_glyph_w; ++gx) {
+        uint32_t color = (row_data[gx / 8] & (1 << (7 - (gx % 8)))) ? console_fg : console_bg;
+        uint32_t x = px + gx;
+        uint32_t y = py + r;
+        uint8_t *sp = (uint8_t *)shadow_fb + y * fb->pitch + x * (fb->bpp / 8);
+        memcpy(sp, &color, fb->bpp / 8);
+      }
     }
   }
 }
 
 static void linearfb_console_redraw(void) {
   if (!fb) return;
-  for (uint32_t y = 0; y < console_rows; ++y) {
-    for (uint32_t x = 0; x < console_cols; ++x) {
-      size_t idx = y * console_cols + x;
-      if (idx < CONSOLE_BUF_MAX) {
-        linearfb_draw_glyph_at(x, y, console_buffer[idx]);
+  if (shadow_fb && fb->bpp == 32) {
+      // Draw everything to shadow buffer first
+      for (uint32_t y = 0; y < console_rows; ++y) {
+        for (uint32_t x = 0; x < console_cols; ++x) {
+          size_t idx = y * console_cols + x;
+          if (idx < CONSOLE_BUF_MAX) {
+            linearfb_draw_glyph_at_shadow(x, y, console_buffer[idx]);
+          }
+        }
       }
-    }
+      // Then blit once
+      memcpy(fb->address, shadow_fb, fb->height * fb->pitch);
+  } else {
+      for (uint32_t y = 0; y < console_rows; ++y) {
+        for (uint32_t x = 0; x < console_cols; ++x) {
+          size_t idx = y * console_cols + x;
+          if (idx < CONSOLE_BUF_MAX) {
+            linearfb_draw_glyph_at(x, y, console_buffer[idx]);
+          }
+        }
+      }
   }
 }
 
@@ -533,11 +683,32 @@ static void linearfb_console_scroll(void) {
   size_t total_chars = console_rows * console_cols;
   if (total_chars > CONSOLE_BUF_MAX) total_chars = CONSOLE_BUF_MAX;
   size_t copy_size = (console_rows - 1) * line_size;
+  
   if (copy_size < CONSOLE_BUF_MAX) {
     memmove(console_buffer, console_buffer + line_size, copy_size);
     memset(console_buffer + copy_size, ' ', line_size);
   }
-  linearfb_console_redraw();
+
+  if (shadow_fb && fb->bpp == 32) {
+      uint32_t font_h = font_glyph_h;
+      uint32_t fb_pitch = fb->pitch;
+      uint32_t fb_h = fb->height;
+
+      // Scroll shadow buffer (RAM to RAM - extremely fast)
+      memmove(shadow_fb, (uint8_t*)shadow_fb + font_h * fb_pitch, (fb_h - font_h) * fb_pitch);
+      
+      // Clear last line in shadow buffer
+      for (uint32_t i = 0; i < font_h; i++) {
+          uint32_t *line = (uint32_t *)((uint8_t *)shadow_fb + (fb_h - font_h + i) * fb_pitch);
+          memset32(line, console_bg, fb->width);
+      }
+
+      // Blit entire screen to VRAM (ONE BIG WRITE - high throughput with WC)
+      memcpy(fb->address, shadow_fb, fb_h * fb_pitch);
+  } else {
+    linearfb_console_redraw();
+  }
+
   console_row = console_rows - 1;
   console_col = 0;
 }
@@ -568,22 +739,39 @@ void linearfb_console_putc(char c) {
 }
 
 void linearfb_console_puts(const char *s) {
-  while (*s) linearfb_console_putc(*s++);
+  while (*s++) linearfb_console_putc(*s++);
 }
 
 int linearfb_load_font(const linearfb_font_t *font, const uint32_t count) {
   if (!font) return -1;
+  irq_flags_t flags = spinlock_lock_irqsave(&fb_lock);
   fb_font = *font;
   font_glyph_w = font->width;
   font_glyph_h = font->height;
+  font_pitch = font->pitch;
   font_glyph_count = count;
   if (fb && font_glyph_w && font_glyph_h) {
     console_cols = fb->width / font_glyph_w;
     console_rows = fb->height / font_glyph_h;
   }
+  spinlock_unlock_irqrestore(&fb_lock, flags);
   return 0;
 }
 EXPORT_SYMBOL(linearfb_load_font);
+
+static printk_backend_t fb_backend = {
+  .name = "linearfb",
+  .priority = 100,
+  .putc = linearfb_console_putc,
+  .probe = linearfb_probe,
+  .init = linearfb_init_standard,
+  .cleanup = linearfb_cleanup,
+  .is_active = linearfb_is_initialized
+};
+
+const printk_backend_t *linearfb_get_backend(void) {
+  return &fb_backend;
+}
 
 int linearfb_mod_init(void) {
   extern volatile struct limine_framebuffer_request *get_framebuffer_request(void);
@@ -594,7 +782,7 @@ int linearfb_mod_init(void) {
 
 FKX_MODULE_DEFINE(
   linearfb,
-  "0.0.1",
+  "0.0.2",
   "assembler-0",
   "Linear Framebuffer Graphics Module",
   0,

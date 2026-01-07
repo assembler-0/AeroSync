@@ -1,12 +1,12 @@
 /// SPDX-License-Identifier: GPL-2.0-only
 /**
- * VoidFrameX monolithic kernel
+ * AeroSync monolithic kernel
  *
  * @file kernel/sysintf/panic.c
  * @brief Kernel panic handlers management system
  * @copyright (C) 2025 assembler-0
  *
- * This file is part of the VoidFrameX kernel.
+ * This file is part of the AeroSync kernel.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -20,7 +20,8 @@
 
 #define MAX_PANIC_HANDLERS 8
 
-#include <string.h>
+#include <lib/string.h>
+#include <vsprintf.h>
 #include <kernel/classes.h>
 #include <kernel/fkx/fkx.h>
 #include <kernel/sysintf/panic.h>
@@ -77,8 +78,13 @@ void panic_switch_handler(const char *name) {
   }
 }
 
-void __exit __noinline __noreturn __sysv_abi panic(const char *msg) {
-  active_backend->panic(msg);
+void __exit __noinline __noreturn __sysv_abi panic(const char *msg, ...) {
+  va_list va;
+  va_start(va, msg);
+  char buff[128];
+  vsnprintf(buff, sizeof(buff), msg, va);
+  active_backend->panic(buff);
+  va_end(va);
 }
 
 void __exit __noinline __noreturn __sysv_abi panic_exception(cpu_regs *regs) {

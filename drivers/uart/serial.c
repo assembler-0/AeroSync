@@ -1,12 +1,12 @@
 ///SPDX-License-Identifier: GPL-2.0-only
 /**
- * VoidFrameX monolithic kernel
+ * AeroSync monolithic kernel
  *
  * @file drivers/uart/serial.c
  * @brief serial UART printk backend
  * @copyright (C) 2025 assembler-0
  *
- * This file is part of the VoidFrameX kernel.
+ * This file is part of the AeroSync kernel.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -20,7 +20,7 @@
 
 #include <kernel/fkx/fkx.h>
 #include <drivers/uart/serial.h>
-#include <arch/x64/io.h>
+#include <arch/x86_64/io.h>
 
 // Serial port register offsets
 #define SERIAL_DATA_REG     0

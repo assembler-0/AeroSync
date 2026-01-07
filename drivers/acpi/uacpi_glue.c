@@ -1,12 +1,12 @@
 /// SPDX-License-Identifier: GPL-2.0-only
 /**
- * VoidFrameX monolithic kernel
+ * AeroSync monolithic kernel
  *
  * @file drivers/acpi/uacpi_glue.c
  * @brief uACPI kernel glue layer
  * @copyright (C) 2025 assembler-0
  *
- * This file is part of the VoidFrameX kernel.
+ * This file is part of the AeroSync kernel.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -18,12 +18,12 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x64/cpu.h>
-#include <arch/x64/io.h>
-#include <arch/x64/irq.h>
-#include <arch/x64/mm/layout.h>
-#include <arch/x64/mm/vmm.h>
-#include <arch/x64/tsc.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/io.h>
+#include <arch/x86_64/irq.h>
+#include <arch/x86_64/mm/layout.h>
+#include <arch/x86_64/mm/vmm.h>
+#include <arch/x86_64/tsc.h>
 #include <kernel/sysintf/ic.h>
 #include <kernel/classes.h>
 #include <kernel/mutex.h>
@@ -35,6 +35,7 @@
 #include <lib/string.h>
 #include <limine/limine.h>
 #include <mm/slab.h>
+#include <mm/vma.h>
 #include <mm/vmalloc.h>
 #include <uacpi/kernel_api.h>
 #include <uacpi/types.h>
@@ -101,7 +102,7 @@ uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr *out_rsdp_address) {
   // rsdp_request.response->address is a void*.
 
   uint64_t virt = (uint64_t)rsdp_request.response->address;
-  *out_rsdp_address = vmm_virt_to_phys(g_kernel_pml4, virt);
+  *out_rsdp_address = vmm_virt_to_phys(&init_mm, virt);
 
   // Fallback if virt_to_phys fails (returns 0) but address is non-null?
   // Usually 0 is valid physical, but vmm_virt_to_phys returns 0 on error?
@@ -499,13 +500,6 @@ static void acpi_irq_trampoline(cpu_regs *regs) {
   }
 
   ic_send_eoi(vector - 32); // Send EOI.
-                            // Wait, does irq_install_handler handle EOI?
-  // `irq_handler_t` usually is just the handler logic.
-  // `idt.asm` or `isr.asm` usually calls the C handler.
-  // If `drivers/apic/pic.c` handles EOI, we shouldn't.
-  // But generic handlers usually need to EOI if it's edge triggered?
-  // Let's check irq.c or isr.asm.
-  // Assuming we need to ACK.
 }
 
 void uacpi_notify_ic_ready(void) {

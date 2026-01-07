@@ -17,8 +17,13 @@
 #define VM_DONTCOPY 0x00020000   /* Don't copy on fork */
 #define VM_DONTEXPAND 0x00040000 /* Cannot expand with mremap */
 #define VM_LOCKED 0x00100000     /* Pages are locked */
-#define VM_PFNMAP 0x00400000     /* Physical frame number mapping */
-#define VM_HUGE   0x00800000     /* VMA is backed by huge pages */
+#define VM_USER   0x00200000     /* User-space accessible */
+#define VM_STACK  0x00400000     /* VMA is a stack */
+#define VM_PFNMAP 0x00800000     /* Physical frame number mapping */
+#define VM_HUGE   0x10000000     /* VMA is backed by huge pages */
+#define VM_HUGEPAGE 0x20000000   /* User-requested Huge Page (advise) */
+#define VM_NOHUGEPAGE 0x40000000 /* User-requested No Huge Page */
+#define VM_ALLOC_LAZY 0x80000000 /* True Lazy Allocation */
 
 /* Cache Policy Flags */
 #define VM_CACHE_WB 0x00000000
@@ -32,6 +37,19 @@
 #define VMA_MERGE_PREV 0x1
 #define VMA_MERGE_NEXT 0x2
 
+/* Fault flags */
+#define FAULT_FLAG_WRITE 0x01
+#define FAULT_FLAG_USER  0x02
+#define FAULT_FLAG_INSTR 0x04
+
+/* Standard fault return codes */
+#define VM_FAULT_OOM    0x0001
+#define VM_FAULT_SIGBUS 0x0002
+#define VM_FAULT_SIGSEGV 0x0004
+#define VM_FAULT_MAJOR  0x0008
+#define VM_FAULT_RETRY  0x0010
+#define VM_FAULT_COMPLETED 0x0020
+
 /* MM Operations */
 void mm_init(struct mm_struct *mm);
 void mm_destroy(struct mm_struct *mm);
@@ -39,6 +57,8 @@ struct mm_struct *mm_alloc(void);
 struct mm_struct *mm_create(void);
 struct mm_struct *mm_copy(struct mm_struct *old_mm);
 void mm_free(struct mm_struct *mm);
+void mm_get(struct mm_struct *mm);
+void mm_put(struct mm_struct *mm);
 
 /* VMA Operations */
 struct vm_area_struct *vma_alloc(void);
@@ -75,6 +95,7 @@ int vma_map_range(struct mm_struct *mm, uint64_t start, uint64_t end,
 int vma_unmap_range(struct mm_struct *mm, uint64_t start, uint64_t end);
 int vma_protect(struct mm_struct *mm, uint64_t start, uint64_t end,
                 uint64_t new_flags);
+int mm_populate_user_range(struct mm_struct *mm, uint64_t start, size_t size, uint64_t flags, const uint8_t *data, size_t data_len);
 
 /* VMA Iteration */
 struct vm_area_struct *vma_next(struct vm_area_struct *vma);
@@ -85,6 +106,24 @@ void vma_dump(struct mm_struct *mm);
 void vma_dump_single(struct vm_area_struct *vma);
 size_t mm_total_size(struct mm_struct *mm);
 size_t mm_map_count(struct mm_struct *mm);
+
+/* Generic fault handler */
+int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int flags);
+
+/* RMAP Helpers */
+void anon_vma_free(struct anon_vma *av);
+int anon_vma_prepare(struct vm_area_struct *vma);
+int anon_vma_chain_link(struct vm_area_struct *vma, struct anon_vma *av);
+
+/* Reclamation */
+void lru_init(void);
+void kswapd_init(void);
+void khugepaged_init(void);
+
+struct folio;
+int try_to_unmap_folio(struct folio *folio);
+int folio_referenced(struct folio *folio);
+int folio_reclaim(struct folio *folio);
 
 /* Validation */
 int vma_verify_tree(struct mm_struct *mm);
@@ -122,3 +161,8 @@ void vma_cache_free(struct vm_area_struct *vma);
              1;                                                                \
            });                                                                 \
        __pos = __n, __n = __pos->next)
+
+
+/* VMA ops */
+extern const struct vm_operations_struct anon_vm_ops;
+extern const struct vm_operations_struct shmem_vm_ops;
