@@ -1,16 +1,16 @@
-# VoidFrameX
+# AeroSync
 
 **Version:** v1.0.1
 **License:** GPL-2.0
 
 <p align="center">
-  <img src="https://img.shields.io/github/languages/top/assembler-0/VoidFrameX?style=for-the-badge&color=blueviolet" />
-  <img src="https://img.shields.io/github/repo-size/assembler-0/VoidFrameX?style=for-the-badge&color=44cc11" />
-  <img src="https://img.shields.io/github/license/assembler-0/VoidFrameX?style=for-the-badge&color=informational" />
+  <img src="https://img.shields.io/github/languages/top/assembler-0/AeroSync?style=for-the-badge&color=blueviolet" />
+  <img src="https://img.shields.io/github/repo-size/assembler-0/AeroSync?style=for-the-badge&color=44cc11" />
+  <img src="https://img.shields.io/github/license/assembler-0/AeroSync?style=for-the-badge&color=informational" />
   <img src="https://img.shields.io/badge/compiler-Clang/LLVM-9C27B0?style=for-the-badge&logo=llvm" />
 </p>
 
-VoidFrameX is a monolithic, higher-half, 64-bit x86_64 kernel (a KERNEL!, NOT AN OS!) built for modern systems. It is designed with a focus on a clean architecture and draws inspiration from the Linux kernel for many of its subsystems.
+AeroSync is a monolithic, higher-half, 64-bit x86_64 kernel (a KERNEL!, NOT AN OS!) built for modern systems. It is designed with a focus on a clean architecture and draws inspiration from the Linux kernel for many of its subsystems.
 
 ## Contributors
 
@@ -46,7 +46,7 @@ VoidFrameX is a monolithic, higher-half, 64-bit x86_64 kernel (a KERNEL!, NOT AN
 
 ## Architecture
 
-VoidFrameX follows a monolithic design, where all core services run in kernel space. The kernel initialization process (`start_kernel`) provides a clear overview of the architecture:
+AeroSync follows a monolithic design, where all core services run in kernel space. The kernel initialization process (`start_kernel`) provides a clear overview of the architecture:
 
 1.  **Bootloader:** The kernel is loaded by the Limine bootloader.
 2.  **Core Initialization:** Basic subsystems like the GDT and IDT are initialized.
@@ -59,7 +59,7 @@ The design is heavily influenced by the Linux kernel, adopting concepts like the
 
 ## Third-Party Projects
 
-VoidFrameX leverages several excellent open-source projects:
+AeroSync leverages several excellent open-source projects:
 
 *   **[Limine](https://github.com/limine-bootloader/limine):** A modern, robust bootloader.
 *   **[uACPI](https://github.com/uacpi/uacpi):** A lightweight, portable ACPI implementation.
@@ -68,11 +68,11 @@ VoidFrameX leverages several excellent open-source projects:
 
 ## Prerequisites
 
-To build VoidFrameX, you will need the following tools:
+To build AeroSync, you will need the following tools:
 
 *   **CMake:** Version 3.30 or newer
 *   **clang** The LLVM C compiler frontend
-> ⚠️ VoidFrameX ONLY supports LLVM-based compiler (eg. clang, icx), compiling with GCC may break the kernel image!
+> ⚠️ AeroSync ONLY supports LLVM-based compiler (eg. clang, icx), compiling with GCC may break the kernel image!
 *   **NASM:** The Netwide Assembler
 *   **xorriso:** A tool to create and manipulate ISO 9660 images
 *   **lld:** The LLVM linker
@@ -84,8 +84,8 @@ To build VoidFrameX, you will need the following tools:
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/assembler-0/VoidFrameX.git
-    cd VoidFrameX
+    git clone https://github.com/assembler-0/AeroSync.git
+    cd AeroSync
     ```
 
 2.  **Configure and build with CMake:**
@@ -95,11 +95,11 @@ To build VoidFrameX, you will need the following tools:
     ```
 
 3.  **Run with QEMU:**
-    The build process generates a (hybrid) bootable ISO image named `voidframex.hybrid.iso` in the `build/` directory. You can run it with QEMU:
+    The build process generates a (hybrid) bootable ISO image named `aerosync.hybrid.iso` in the `build/` directory. You can run it with QEMU:
     ```bash
-    qemu-system-x86_64 -cdrom build/voidframex.hybrid.iso
+    qemu-system-x86_64 -cdrom build/aerosync.hybrid.iso
     ```
 
 ## License
 
-VoidFrameX is licensed under the **GNU General Public License v2.0**. See the [LICENSE](LICENSE) file for more details.
+AeroSync is licensed under the **GNU General Public License v2.0**. See the [LICENSE](LICENSE) file for more details.

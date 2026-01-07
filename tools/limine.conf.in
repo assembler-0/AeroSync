@@ -1,13 +1,13 @@
 timeout: 5
 
-/VoidFrameX (verbose)
+/AeroSync (verbose)
     protocol: limine
-    path: boot():/kernel/voidframex.krnl
+    path: boot():/kernel/aerosync.krnl
     cmdline: verbose
 @LIMINE_MODULES@
 
-/VoidFrameX
+/AeroSync
     protocol: limine
-    path: boot():/kernel/voidframex.krnl
+    path: boot():/kernel/aerosync.krnl
     cmdline:
 @LIMINE_MODULES@

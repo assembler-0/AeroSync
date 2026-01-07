@@ -57,8 +57,8 @@ static int splash_thread_fn(void *data) {
   // Header gradient
   linearfb_fill_rect_gradient(card_x + 2, card_y + 2, card_w - 4, 40, primary_acc, secondary_acc, 0);
   
-  // "VoidFrameX" Title in the header
-  linearfb_draw_text("VoidFrameX v" VOIDFRAMEX_VERSION_LEAN , card_x + 20, card_y + 12, text_color);
+  // "AeroSync" Title in the header
+  linearfb_draw_text("AeroSync v" VOIDFRAMEX_VERSION_LEAN , card_x + 20, card_y + 12, text_color);
   
   // Subtitle / Version
   uint32_t dim_text = linearfb_color_brightness(text_color, 0.6f);

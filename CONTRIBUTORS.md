@@ -1,4 +1,4 @@
-# VoidFrameX contributors
+# AeroSync contributors
 
 > This project is developed and validated across multiple machines thanks to the following contributors who tested the kernel on their hardware.
 

@@ -1,12 +1,12 @@
 /// SPDX-License-Identifier: GPL-2.0-only
 /**
- * VoidFrameX monolithic kernel
+ * AeroSync monolithic kernel
  *
  * @file init/main.c
  * @brief Kernel entry point and initialization
  * @copyright (C) 2025 assembler-0
  *
- * This file is part of the VoidFrameX kernel.
+ * This file is part of the AeroSync kernel.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -148,7 +148,7 @@ static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
   // For now, since we have no init binary on disk, we just stay in kernel
   printk(KERN_NOTICE KERN_CLASS "no init binary found. System idle.\n");
 
-  printk(KERN_CLASS "VoidFrameX initialization complete.\n");
+  printk(KERN_CLASS "AeroSync initialization complete.\n");
 
   while (1) {
     check_preempt();
@@ -157,7 +157,7 @@ static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
 }
 
 /**
- * @brief VoidFrameX kernel main entry point
+ * @brief AeroSync kernel main entry point
  * @note NO RETURN!
  */
 void __init __noreturn __noinline __sysv_abi start_kernel(void) {
@@ -172,7 +172,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   printk_init_early();
   tsc_calibrate_early();
 
-  printk(KERN_CLASS "VoidFrameX (R) %s - %s\n", VOIDFRAMEX_VERSION,
+  printk(KERN_CLASS "AeroSync (R) %s - %s\n", VOIDFRAMEX_VERSION,
          VOIDFRAMEX_COMPILER_VERSION);
   printk(KERN_CLASS "copyright (C) 2025 assembler-0\n");
 
@@ -272,7 +272,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     printk(KERN_NOTICE FKX_CLASS
       "no FKX module found/loaded"
       ", you probably do not want this"
-      ", this build of VoidFrameX does not have "
+      ", this build of AeroSync does not have "
       "any built-in hardware drivers"
       ", expect exponential lack of hardware support.\n");
   }

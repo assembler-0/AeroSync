@@ -1,6 +1,6 @@
 /// SPDX-License-Identifier: GPL-2.0-only
 /**
- * VoidFrameX monolithic kernel
+ * AeroSync monolithic kernel
  *
  * @file mm/numa.c
  * @brief Early NUMA topology discovery using raw ACPI parsing

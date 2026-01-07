@@ -1,6 +1,6 @@
 ; SPDX-License-Identifier: GPL-2.0-only
 ;
-; VoidFrameX monolithic kernel
+; AeroSync monolithic kernel
 ;
 ; @file arch/x86_64/lib/uaccess.asm
 ; @brief User memory access routines with exception handling

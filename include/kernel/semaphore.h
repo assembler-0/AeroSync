@@ -4,7 +4,7 @@
 #include <kernel/spinlock.h>
 
 /*
- * Semaphore implementation using wait queues for VoidFrameX kernel
+ * Semaphore implementation using wait queues for AeroSync kernel
  */
 
 struct semaphore {

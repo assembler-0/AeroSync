@@ -6,7 +6,7 @@
 
 /**
  * @file include/kernel/rw_semaphore.h
- * @brief Read-Write Semaphore implementation for VoidFrameX
+ * @brief Read-Write Semaphore implementation for AeroSync
  */
 
 struct rw_semaphore {

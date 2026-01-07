@@ -30,14 +30,14 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 /**
- * VoidFrameX monolithic kernel
+ * AeroSync monolithic kernel
  *
  * @file lib/vsprintf.c
  * @brief vsnprintf() implementation by (c) Marco Paland
  * @copyright (C) 2025 assembler-0
  *
- * This file is part of the VoidFrameX kernel.
- * The implementation is ported to VoidFrameX by assembler-0.
+ * This file is part of the AeroSync kernel.
+ * The implementation is ported to AeroSync by assembler-0.
  */
 
 #include <lib/string.h>

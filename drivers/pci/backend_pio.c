@@ -1,6 +1,6 @@
 /// SPDX-License-Identifier: GPL-2.0-only
 /**
- * VoidFrameX monolithic kernel
+ * AeroSync monolithic kernel
  *
  * @file drivers/pci/backend_pio.c
  * @brief PCI Port I/O backend

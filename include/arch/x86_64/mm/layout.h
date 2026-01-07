@@ -3,7 +3,7 @@
 #include <kernel/types.h>
 
 /*
- * VoidFrameX Memory Map (x86_64)
+ * AeroSync Memory Map (x86_64)
  *
  * Virtual Address Space Layout (Canonical Higher Half):
  *

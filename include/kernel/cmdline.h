@@ -8,7 +8,7 @@ extern "C" {
 #endif
 
 /* 
- * VoidFrameX Enhanced Command-Line Parser
+ * AeroSync Enhanced Command-Line Parser
  * 
  * Supports:
  * - Registered options (type-checked)

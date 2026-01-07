@@ -1,6 +1,6 @@
 /// SPDX-License-Identifier: GPL-2.0-only
 /**
- * VoidFrameX monolithic kernel
+ * AeroSync monolithic kernel
  *
  * @file include/kernel/sysintf/bus.h
  * @brief Unified Driver Model - Bus structure

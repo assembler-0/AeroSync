@@ -1,12 +1,12 @@
 /// SPDX-License-Identifier: GPL-2.0-only
 /**
- * VoidFrameX monolithic kernel
+ * AeroSync monolithic kernel
  *
  * @file include/kernel/sched/sched_class.h
  * @brief Scheduler class abstraction interface
  * @copyright (C) 2025 assembler-0
  *
- * This file is part of the VoidFrameX kernel.
+ * This file is part of the AeroSync kernel.
  *
  * This implements a Linux-like scheduler class hierarchy where different
  * scheduling policies (CFS, RT, Deadline) can coexist. Classes are ordered

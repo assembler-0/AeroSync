@@ -1,7 +1,7 @@
 #pragma once
 
 /**
-* VoidFrameX version header
+* AeroSync version header
 * @scheme r<RELEASE>c<CANDIDATE> <EPOCH>.<FEATURE>.<PATCH>-<CODENAME>+branch.<GIT_DESCRIBE>[+abi.<ABI_LEVEL>]
 * @version @PROJECT_VERSION@
 */

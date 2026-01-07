@@ -1,12 +1,12 @@
 /// SPDX-License-Identifier: GPL-2.0-only
 /**
- * VoidFrameX monolithic kernel
+ * AeroSync monolithic kernel
  *
  * @file kernel/sched/idle.c
  * @brief Idle Task Scheduler Class
  * @copyright (C) 2025 assembler-0
  *
- * This file is part of the VoidFrameX kernel.
+ * This file is part of the AeroSync kernel.
  *
  * The idle class is the lowest priority scheduler class. It only runs
  * when no other tasks are runnable. The idle task is per-CPU and

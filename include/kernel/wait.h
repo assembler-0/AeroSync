@@ -5,7 +5,7 @@
 #include <linux/list.h>
 
 /*
- * Wait queue implementation for VoidFrameX kernel
+ * Wait queue implementation for AeroSync kernel
  * Similar to Linux wait queues but adapted for the CFS scheduler
  */
 
