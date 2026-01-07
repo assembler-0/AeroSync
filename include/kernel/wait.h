@@ -1,8 +1,8 @@
 #pragma once
 
 #include <kernel/sched/sched.h>
-#include <linux/list.h>
 #include <kernel/spinlock.h>
+#include <linux/list.h>
 
 /*
  * Wait queue implementation for VoidFrameX kernel
@@ -10,17 +10,18 @@
  */
 
 struct __wait_queue_head {
-    spinlock_t lock;
-    struct list_head task_list;
+  spinlock_t lock;
+  struct list_head task_list;
 };
 
 typedef struct __wait_queue_head wait_queue_head_t;
 
 struct __wait_queue {
-    unsigned int flags;
-    struct task_struct *task;
-    struct list_head entry;
-    int (*func)(wait_queue_head_t *wq_head, struct __wait_queue *wait, int mode, unsigned long key);
+  unsigned int flags;
+  struct task_struct *task;
+  struct list_head entry;
+  int (*func)(wait_queue_head_t *wq_head, struct __wait_queue *wait, int mode,
+              unsigned long key);
 };
 
 typedef struct __wait_queue wait_queue_t;
@@ -30,20 +31,17 @@ typedef struct __wait_queue wait_queue_t;
 #define WQ_FLAG_WOKEN 0x02
 
 /* Wait queue initialization macros */
-#define __WAIT_QUEUE_HEAD_INITIALIZER(name) { \
-    .lock = 0, \
-    .task_list = LIST_HEAD_INIT(name.task_list) \
-}
+#define __WAIT_QUEUE_HEAD_INITIALIZER(name)                                    \
+  {.lock = 0, .task_list = LIST_HEAD_INIT(name.task_list)}
 
-#define DECLARE_WAIT_QUEUE_HEAD(name) \
-    wait_queue_head_t name = __WAIT_QUEUE_HEAD_INITIALIZER(name)
+#define DECLARE_WAIT_QUEUE_HEAD(name)                                          \
+  wait_queue_head_t name = __WAIT_QUEUE_HEAD_INITIALIZER(name)
 
-#define __WAITQUEUE_INITIALIZER(name, tsk) { \
-    .flags = 0, \
-    .task = tsk, \
-    .entry = LIST_HEAD_INIT(name.entry), \
-    .func = default_wake_function \
-}
+#define __WAITQUEUE_INITIALIZER(name, tsk)                                     \
+  {.flags = 0,                                                                 \
+   .task = tsk,                                                                \
+   .entry = LIST_HEAD_INIT(name.entry),                                        \
+   .func = default_wake_function}
 
 /* Wait condition macros */
 #define wait_event(wq, condition)                                              \
@@ -90,19 +88,18 @@ typedef struct __wait_queue wait_queue_t;
 //     __ret; \
 // })
 
-#define wait_event_interruptible_timeout(wq, condition, timeout) \
-({ \
-    long __ret = timeout; \
-    if (!(condition)) \
-        __ret = __wait_event_interruptible_timeout(wq, condition, timeout); \
-    __ret; \
-})
+#define wait_event_interruptible_timeout(wq, condition, timeout)               \
+  ({                                                                           \
+    long __ret = timeout;                                                      \
+    if (!(condition))                                                          \
+      __ret = __wait_event_interruptible_timeout(wq, condition, timeout);      \
+    __ret;                                                                     \
+  })
 
 /* Initialization functions */
-static inline void init_waitqueue_head(wait_queue_head_t *wq_head)
-{
-    spinlock_init(&wq_head->lock);
-    INIT_LIST_HEAD(&wq_head->task_list);
+static inline void init_waitqueue_head(wait_queue_head_t *wq_head) {
+  spinlock_init(&wq_head->lock);
+  INIT_LIST_HEAD(&wq_head->task_list);
 }
 
 /* Wait queue functions */
@@ -110,12 +107,15 @@ void add_wait_queue(wait_queue_head_t *wq_head, wait_queue_t *wait);
 void remove_wait_queue(wait_queue_head_t *wq_head, wait_queue_t *wait);
 
 /* Default wake function */
-int default_wake_function(wait_queue_head_t *wq_head, struct __wait_queue *wait, int mode, unsigned long key);
+int default_wake_function(wait_queue_head_t *wq_head, struct __wait_queue *wait,
+                          int mode, unsigned long key);
 
 /* Prepare to sleep functions */
 long prepare_to_wait(wait_queue_head_t *wq_head, wait_queue_t *wait, int state);
 void finish_wait(wait_queue_head_t *wq_head, wait_queue_t *wait);
-// long __wait_event_timeout(wait_queue_head_t *wq, int (*condition)(void *), void *data, long timeout);
+extern long __wait_event_timeout(wait_queue_head_t *wq,
+                                 int (*condition)(void *), void *data,
+                                 long timeout);
 
 /* Wake up functions */
 void wake_up(wait_queue_head_t *wq_head);
@@ -128,24 +128,22 @@ void sleep_on(wait_queue_head_t *wq);
 void interruptible_sleep_on(wait_queue_head_t *wq);
 
 /* Helper macros for common patterns */
-#define DEFINE_WAIT_FUNC(name, function) \
-    wait_queue_t name = { \
-        .flags = 0, \
-        .task = get_current(), \
-        .entry = LIST_HEAD_INIT(name.entry), \
-        .func = function \
-    }
+#define DEFINE_WAIT_FUNC(name, function)                                       \
+  wait_queue_t name = {.flags = 0,                                             \
+                       .task = get_current(),                                  \
+                       .entry = LIST_HEAD_INIT(name.entry),                    \
+                       .func = function}
 
 #define DEFINE_WAIT(name) DEFINE_WAIT_FUNC(name, default_wake_function)
 
 /* Initialization macro for wait queue entries */
-#define init_wait(wait) \
-do { \
-    (wait)->task = get_current(); \
-    (wait)->flags = 0; \
-    INIT_LIST_HEAD(&(wait)->entry); \
-    (wait)->func = default_wake_function; \
-} while (0)
+#define init_wait(wait)                                                        \
+  do {                                                                         \
+    (wait)->task = get_current();                                              \
+    (wait)->flags = 0;                                                         \
+    INIT_LIST_HEAD(&(wait)->entry);                                            \
+    (wait)->func = default_wake_function;                                      \
+  } while (0)
 
 /* Wait queue sleep states */
 #define TASK_NORMAL 0
@@ -154,48 +152,46 @@ do { \
 
 /* Counter-based synchronization primitive */
 struct wait_counter {
-    wait_queue_head_t wait_q;
-    volatile int count;
-    volatile int target;
-    spinlock_t lock;
+  wait_queue_head_t wait_q;
+  volatile int count;
+  volatile int target;
+  spinlock_t lock;
 };
 
-static inline void init_wait_counter(struct wait_counter *wc, int initial, int target_val)
-{
-    init_waitqueue_head(&wc->wait_q);
-    wc->count = initial;
-    wc->target = target_val;
-    spinlock_init(&wc->lock);
+static inline void init_wait_counter(struct wait_counter *wc, int initial,
+                                     int target_val) {
+  init_waitqueue_head(&wc->wait_q);
+  wc->count = initial;
+  wc->target = target_val;
+  spinlock_init(&wc->lock);
 }
 
-static inline void wait_counter_inc(struct wait_counter *wc)
-{
+static inline void wait_counter_inc(struct wait_counter *wc) {
+  irq_flags_t flags = spinlock_lock_irqsave(&wc->lock);
+  wc->count++;
+  if (wc->count >= wc->target) {
+    wake_up_all(&wc->wait_q);
+  }
+  spinlock_unlock_irqrestore(&wc->lock, flags);
+}
+
+static inline void wait_counter_wait(struct wait_counter *wc) {
+  wait_queue_t wait;
+  init_wait(&wait);
+
+  while (1) {
     irq_flags_t flags = spinlock_lock_irqsave(&wc->lock);
-    wc->count++;
     if (wc->count >= wc->target) {
-        wake_up_all(&wc->wait_q);
+      spinlock_unlock_irqrestore(&wc->lock, flags);
+      break;
     }
+    add_wait_queue(&wc->wait_q, &wait);
     spinlock_unlock_irqrestore(&wc->lock, flags);
-}
 
-static inline void wait_counter_wait(struct wait_counter *wc)
-{
-    wait_queue_t wait;
-    init_wait(&wait);
+    schedule();
 
-    while (1) {
-        irq_flags_t flags = spinlock_lock_irqsave(&wc->lock);
-        if (wc->count >= wc->target) {
-            spinlock_unlock_irqrestore(&wc->lock, flags);
-            break;
-        }
-        add_wait_queue(&wc->wait_q, &wait);
-        spinlock_unlock_irqrestore(&wc->lock, flags);
-
-        schedule();
-
-        remove_wait_queue(&wc->wait_q, &wait);
-    }
+    remove_wait_queue(&wc->wait_q, &wait);
+  }
 }
 
 /* Exported functions for scheduler integration */
