@@ -50,6 +50,9 @@
 #include <mm/vma.h>
 #include <mm/vmalloc.h>
 #include <uacpi/uacpi.h>
+#include <mm/vm_object.h>
+
+#include "bitmap.h"
 
 // Set Limine Request Start Marker
 __attribute__((used,
@@ -172,36 +175,36 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   printk_init_early();
   tsc_calibrate_early();
 
-  printk(KERN_CLASS "AeroSync (R) %s - %s\n", VOIDFRAMEX_VERSION,
-         VOIDFRAMEX_COMPILER_VERSION);
+  printk(KERN_CLASS "AeroSync (R) %s - %s\n", AEROSYNC_VERSION,
+         AEROSYNC_COMPILER_VERSION);
   printk(KERN_CLASS "copyright (C) 2025 assembler-0\n");
 
   if (bootloader_info_request.response &&
       bootloader_performance_request.response) {
     printk(KERN_CLASS
-     "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
-     bootloader_info_request.response->name
-       ? bootloader_info_request.response->name
-       : "(null)",
-     bootloader_info_request.response->version
-       ? bootloader_info_request.response->version
-       : "(null-version)",
-     bootloader_performance_request.response->exec_usec,
-     bootloader_performance_request.response->init_usec
+           "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
+           bootloader_info_request.response->name
+             ? bootloader_info_request.response->name
+             : "(null)",
+           bootloader_info_request.response->version
+             ? bootloader_info_request.response->version
+             : "(null-version)",
+           bootloader_performance_request.response->exec_usec,
+           bootloader_performance_request.response->init_usec
     );
   }
 
   if (fw_request.response) {
     printk(FW_CLASS "firmware type: %s\n",
-     fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI64
-     ? "UEFI (64-bit)"
-     : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI32
-     ? "UEFI (32-bit)"
-     : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_X86BIOS
-     ? "BIOS (x86)"
-     : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_SBI
-     ? "SBI"
-     : "(unknown)"
+           fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI64
+           ? "UEFI (64-bit)"
+           : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI32
+           ? "UEFI (32-bit)"
+           : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_X86BIOS
+           ? "BIOS (x86)"
+           : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_SBI
+           ? "SBI"
+           : "(unknown)"
     );
   }
 
@@ -232,10 +235,11 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   cpu_features_init();
 
-  pmm_init(memmap_request.response, hhdm_request.response->offset, 
+  pmm_init(memmap_request.response, hhdm_request.response->offset,
            rsdp_request.response ? rsdp_request.response->address : NULL);
   vmm_init();
   slab_init();
+  rcu_init();
   lru_init();
 
   setup_per_cpu_areas();
@@ -318,6 +322,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   kswapd_init();
   khugepaged_init();
+  vm_writeback_init();
 
   // Start kernel_init thread
   struct task_struct *init_task = kthread_create(kernel_init, NULL, "kernel_init");

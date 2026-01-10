@@ -32,50 +32,50 @@
 #include <kernel/classes.h>
 #include <kernel/panic.h>
 #include <kernel/fkx/fkx.h>
+#include <linux/container_of.h>
 
 /**
  * vmalloc_unmap_pages - Unmaps pages from the vmalloc region.
  * Optimized: Only unmap pages that are actually present in the vm_object.
- * Uses deferred TLB shootdown to avoid IPI storms.
+ * Uses deferred TLB shootdown via mmu_gather to avoid IPI storms.
  */
+#include <mm/mmu_gather.h>
+
 static void vmalloc_unmap_pages(struct vm_area_struct *vma) {
   if (!vma->vm_obj) return;
 
   struct vm_object *obj = vma->vm_obj;
-  irq_flags_t flags = spinlock_lock_irqsave(&obj->lock);
+  down_write(&obj->lock);
 
   struct rb_node *node = rb_first(&obj->page_tree);
   if (!node) {
-    spinlock_unlock_irqrestore(&obj->lock, flags);
+    up_write(&obj->lock);
     return;
   }
 
-  uint64_t min_virt = 0, max_virt = 0;
+  struct mmu_gather tlb;
+  tlb_gather_mmu(&tlb, &init_mm, vma->vm_start, vma->vm_end);
 
-  while (node) {
-    struct page_node {
-      struct rb_node rb;
-      uint64_t pgoff;
-      struct page *page;
-      int order;
-    } *pnode = (struct page_node *)node;
+  while ((node = rb_first(&obj->page_tree))) {
+    struct folio *folio = rb_entry(node, struct folio, rb_node);
     
-    uint64_t virt = vma->vm_start + (pnode->pgoff << PAGE_SHIFT);
-    if (min_virt == 0 || virt < min_virt) min_virt = virt;
-    uint64_t end = virt + (1ULL << (pnode->order + PAGE_SHIFT));
-    if (end > max_virt) max_virt = end;
+    uint64_t virt = vma->vm_start + (folio->index << PAGE_SHIFT);
     
+    /* 1. Unmap from page tables (no flush) */
     vmm_unmap_page_no_flush(&init_mm, virt);
 
-    node = rb_next(node);
+    /* 2. Remove from object tree */
+    rb_erase(&folio->rb_node, &obj->page_tree);
+    folio->mapping = NULL;
+
+    /* 3. Add to gather list for TLB flush and final put_folio */
+    tlb_remove_folio(&tlb, folio, virt);
   }
 
-  spinlock_unlock_irqrestore(&obj->lock, flags);
+  up_write(&obj->lock);
 
-  // Shoot down only the range that was actually faulted in
-  if (min_virt != 0) {
-    vmm_tlb_shootdown(&init_mm, min_virt, max_virt);
-  }
+  /* 4. Perform batched TLB shootdown and free folios */
+  tlb_finish_mmu(&tlb);
 }
 
 static void *__vmalloc_internal(size_t size, uint64_t vma_flags, uint64_t vmm_flags) {
@@ -95,34 +95,37 @@ static void *__vmalloc_internal(size_t size, uint64_t vma_flags, uint64_t vmm_fl
   // 3. Force True Lazy Allocation for all vmalloc
   vma_flags |= VM_ALLOC_LAZY;
 
-  size_t reserve_size = alloc_size + PAGE_SIZE; // Guard page
+  /*
+   * ARCHITECTURAL OPTIMIZATION: O(1) vmalloc
+   * Instead of creating a VMA that includes a guard page, we just search for 
+   * a region that is 'alloc_size + PAGE_SIZE' but create a VMA of only 'alloc_size'.
+   * The RB-Tree gap tracking naturally ensures the next VMA won't touch us.
+   * This avoids managing a separate object size vs VMA size.
+   */
+  size_t search_size = alloc_size + PAGE_SIZE; 
 
   down_write(&init_mm.mmap_lock);
 
-  // 4. Find free virtual address space
-  uint64_t virt_start = vma_find_free_region_aligned(&init_mm, reserve_size, alignment,
+  // 4. Find free virtual address space (O(1) with Cached Hole Search)
+  uint64_t virt_start = vma_find_free_region_aligned(&init_mm, search_size, alignment,
                                                      VMALLOC_VIRT_BASE,
                                                      VMALLOC_VIRT_END);
 
   if (virt_start == 0) {
     up_write(&init_mm.mmap_lock);
-    printk(KERN_ERR "vmalloc: failed to find suitable virtual address region of size %llu\n", reserve_size);
+    printk(KERN_ERR "vmalloc: failed to find suitable virtual address region of size %llu\n", search_size);
     return NULL;
   }
 
-  // 5. Create VMA (Automatically creates an anonymous vm_object)
-  struct vm_area_struct *vma = vma_create(virt_start, virt_start + reserve_size, vma_flags);
+  // 5. Create VMA (O(1) from slab cache)
+  // No vm_object is created yet (True Lazy)
+  struct vm_area_struct *vma = vma_create(virt_start, virt_start + alloc_size, vma_flags);
   if (!vma) {
     up_write(&init_mm.mmap_lock);
     return NULL;
   }
 
-  // Set the vm_object size to the actual allocation size, excluding the guard page.
-  // This ensures the fault handler (anon_obj_fault) rejects access to the guard page.
-  if (vma->vm_obj) {
-    vma->vm_obj->size = alloc_size;
-  }
-
+  // 6. Insert into tree (O(log V))
   if (vma_insert(&init_mm, vma) < 0) {
     vma_free(vma);
     up_write(&init_mm.mmap_lock);
@@ -131,7 +134,6 @@ static void *__vmalloc_internal(size_t size, uint64_t vma_flags, uint64_t vmm_fl
 
   up_write(&init_mm.mmap_lock);
 
-  // No eager mapping here. O(1) performance.
   return (void *) virt_start;
 }
 

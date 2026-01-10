@@ -139,20 +139,20 @@ static void __free_one_page(struct page *page, unsigned long pfn,
 int rmqueue_bulk(struct zone *zone, unsigned int order, unsigned int count,
                  struct list_head *list) {
   int i;
-  
+
   /* Validate zone boundaries before bulk allocation */
   if (!zone || !zone->present_pages || count == 0) return 0;
-  
+
   spinlock_lock(&zone->lock);
-  
+
   for (i = 0; i < (int) count; ++i) {
     struct page *page = __rmqueue(zone, order);
     if (unlikely(page == NULL))
       break;
-    
+
     list_add_tail(&page->list, list);
   }
-  
+
   spinlock_unlock(&zone->lock);
   return i;
 }
@@ -194,14 +194,14 @@ static void __free_one_page(struct page *page, unsigned long pfn,
     // Comprehensive buddy validation
     if (!page_is_buddy(page, buddy, order))
       break;
-      
+
     // Additional safety: verify buddy is in same zone
     if (buddy->zone != page->zone)
       break;
-      
+
     // Verify buddy is not corrupted
     if (buddy->order != order) {
-      printk(KERN_ERR PMM_CLASS "Buddy order mismatch: expected %u, got %u\n", 
+      printk(KERN_ERR PMM_CLASS "Buddy order mismatch: expected %u, got %u\n",
              order, buddy->order);
       break;
     }
@@ -265,34 +265,40 @@ retry:
    * PCP Fastpath (Order 0, Normal/HighMem, Local Node)
    */
   if (order == 0 && percpu_ready() && (start_zone == ZONE_NORMAL) && (nid == this_node())) {
-      irq_flags_t irq_flags = save_irq_flags();
-      struct per_cpu_pages *pcp = this_cpu_ptr(pcp_pages);
-      
-      /* Ensure pgdat is set for 'found' label */
-      pgdat = node_data[nid];
-      if (unlikely(!pgdat)) {
-          restore_irq_flags(irq_flags);
-          return NULL;
-      }
+    irq_flags_t irq_flags = save_irq_flags();
+    struct per_cpu_pages *pcp = this_cpu_ptr(pcp_pages);
 
-      if (list_empty(&pcp->list)) {
-          /* Refill from Normal Zone */
-          struct zone *refill_zone = &pgdat->node_zones[ZONE_NORMAL];
-          
-          if (refill_zone->nr_free_pages >= refill_zone->watermark[WMARK_LOW]) {
-             int count = rmqueue_bulk(refill_zone, 0, pcp->batch, &pcp->list);
-             pcp->count += count;
-          }
-      }
-
-      if (!list_empty(&pcp->list)) {
-          page = list_first_entry(&pcp->list, struct page, list);
-          list_del(&page->list);
-          pcp->count--;
-          restore_irq_flags(irq_flags);
-          goto found;
-      }
+    /* Ensure pgdat is set for 'found' label */
+    pgdat = node_data[nid];
+    if (unlikely(!pgdat)) {
       restore_irq_flags(irq_flags);
+      return NULL;
+    }
+
+    if (list_empty(&pcp->list)) {
+      /* Refill from Normal Zone */
+      struct zone *refill_zone = &pgdat->node_zones[ZONE_NORMAL];
+
+      if (refill_zone->nr_free_pages >= refill_zone->watermark[WMARK_LOW]) {
+        int count = rmqueue_bulk(refill_zone, 0, pcp->batch, &pcp->list);
+        pcp->count += count;
+      }
+    }
+
+    if (!list_empty(&pcp->list)) {
+      page = list_first_entry(&pcp->list, struct page, list);
+      list_del(&page->list);
+      pcp->count--;
+
+      struct folio *folio = (struct folio *) page;
+      folio->order = 0;
+      SetPageHead(&folio->page);
+      atomic_set(&folio->_refcount, 1);
+
+      restore_irq_flags(irq_flags);
+      goto found;
+    }
+    restore_irq_flags(irq_flags);
   }
 
   /*
@@ -304,16 +310,16 @@ retry:
 
     if (!z->present_pages || order > z->max_free_order) continue;
 
-  /* Check watermarks with atomic operations */
-  if (__atomic_load_n(&z->nr_free_pages, __ATOMIC_ACQUIRE) < z->watermark[WMARK_LOW]) {
-    wakeup_kswapd(z);
-  }
+    /* Check watermarks with atomic operations */
+    if (__atomic_load_n(&z->nr_free_pages, __ATOMIC_ACQUIRE) < z->watermark[WMARK_LOW]) {
+      wakeup_kswapd(z);
+    }
 
-  /* If we are under the MIN watermark and can't reclaim, we might fail unless HIGH priority */
-  if (__atomic_load_n(&z->nr_free_pages, __ATOMIC_ACQUIRE) < z->watermark[WMARK_MIN] && 
-      !can_reclaim && !(gfp_mask & ___GFP_HIGH)) {
+    /* If we are under the MIN watermark and can't reclaim, we might fail unless HIGH priority */
+    if (__atomic_load_n(&z->nr_free_pages, __ATOMIC_ACQUIRE) < z->watermark[WMARK_MIN] &&
+        !can_reclaim && !(gfp_mask & ___GFP_HIGH)) {
       continue;
-  }
+    }
 
     flags = spinlock_lock_irqsave(&z->lock);
     page = __rmqueue(z, order);
@@ -333,7 +339,7 @@ retry:
     for (z_idx = start_zone; z_idx >= 0; z_idx--) {
       z = &pgdat->node_zones[z_idx];
       if (!z->present_pages || order > z->max_free_order) continue;
-      
+
       flags = spinlock_lock_irqsave(&z->lock);
       page = __rmqueue(z, order);
       spinlock_unlock_irqrestore(&z->lock, flags);
@@ -346,16 +352,16 @@ retry:
    * If we are allowed to sleep/reclaim, try to free some pages and retry.
    */
   if (can_reclaim && reclaim_retries > 0) {
-      // Try to free 32 pages (SWAP_CLUSTER_MAX equivalent)
-      size_t reclaimed = shrink_inactive_list(32);
-      
-      if (reclaimed > 0) {
-          reclaim_retries--;
-          goto retry;
-      }
-      
-      // If we couldn't reclaim anything, maybe OOM or just everything active.
-      // We could try compacting here if implemented.
+    // Try to free 32 pages (SWAP_CLUSTER_MAX equivalent)
+    size_t reclaimed = shrink_inactive_list(32);
+
+    if (reclaimed > 0) {
+      reclaim_retries--;
+      goto retry;
+    }
+
+    // If we couldn't reclaim anything, maybe OOM or just everything active.
+    // We could try compacting here if implemented.
   }
 
   printk(KERN_ERR PMM_CLASS "failed to allocate order %u from any node (gfp: %x)\n", order, gfp_mask);
@@ -363,9 +369,12 @@ retry:
 
 found:
   check_page_sanity(page, order);
-  page->order = order;
-  page->node = pgdat->node_id;
-  SetPageHead(page);
+  struct folio *folio = (struct folio *) page;
+
+  folio->order = order;
+  folio->node = pgdat->node_id;
+  folio->zone = page->zone; // Ensure zone is preserved
+  SetPageHead(&folio->page);
 
   /* Initialize tail pages if order > 0 */
   if (order > 0) {
@@ -379,8 +388,8 @@ found:
     }
   }
 
-  atomic_set(&page->_refcount, 1);
-  return (struct folio *) page;
+  atomic_set(&folio->_refcount, 1);
+  return folio;
 }
 
 struct folio *alloc_pages(gfp_t gfp_mask, unsigned int order) {
@@ -394,25 +403,24 @@ void put_page(struct page *page) {
   if (!page || PageReserved(page)) return;
 
   struct folio *folio = page_folio(page);
-  page = &folio->page;
 
-  if (atomic_dec_and_test(&page->_refcount)) {
+  if (atomic_dec_and_test(&folio->_refcount)) {
     unsigned int order = 0;
-    if (PageHead(page)) {
-      order = page->order;
-      ClearPageHead(page);
+    if (PageHead(&folio->page)) {
+      order = folio->order;
+      ClearPageHead(&folio->page);
 
       /* Cleanup tail pages */
       if (order > 0) {
         size_t nr = 1UL << order;
         for (size_t i = 1; i < nr; i++) {
-          struct page *tail = page + i;
+          struct page *tail = &folio->page + i;
           ClearPageTail(tail);
           tail->head = NULL;
         }
       }
     }
-    __free_pages(page, order);
+    __free_pages(&folio->page, order);
   }
 }
 

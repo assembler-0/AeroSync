@@ -454,9 +454,10 @@ uint64_t pmm_alloc_pages(size_t count) {
       pcp->count--;
       
       // Initialize folio metadata for PCP page
-      page->order = 0;
-      SetPageHead(page);
-      atomic_set(&page->_refcount, 1);
+      struct folio *folio = (struct folio *)page;
+      folio->order = 0;
+      SetPageHead(&folio->page);
+      atomic_set(&folio->_refcount, 1);
       
       restore_irq_flags(flags);
       return PFN_TO_PHYS((uint64_t)(page - mem_map));

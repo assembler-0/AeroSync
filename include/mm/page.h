@@ -13,24 +13,23 @@
 #define PG_lru        (1 << 5)
 #define PG_head       (1 << 6) /* Page is the head of a compound page (folio) */
 #define PG_tail       (1 << 7) /* Page is a tail of a compound page */
+#define PG_dirty      (1 << 8) /* Page has been modified and needs writeback */
 
 struct kmem_cache;
 
 #include <kernel/spinlock.h>
+
+#include <linux/rbtree.h>
 
 /**
  * struct page - Represents a physical page frame
  */
 struct page {
   unsigned long flags; /* Page flags */
+  struct rb_node obj_node; /* Node for vm_object->page_tree (deprecated) */
   union {
     struct list_head list; /* List node for free lists / generic */
     struct list_head lru; /* Node in active/inactive lists */
-    struct {
-      struct page *next; /* Next page in a list (e.g. SLUB partial) */
-      int pages; /* Number of pages (compound) */
-      int pobjects; /* Approximate number of objects */
-    };
   };
 
   union {
@@ -77,8 +76,28 @@ struct page {
  * index, and reference count for the entire block.
  */
 struct folio {
-  struct page page;
+  union {
+    struct {
+      unsigned long flags;
+
+      struct rb_node rb_node; /* For vm_object tree */
+      union {
+        struct list_head lru;
+      };
+
+      void *mapping;
+      unsigned long index;
+      void *private;
+      unsigned int order;
+      uint32_t zone;
+      uint32_t node;
+      atomic_t _refcount;
+    };
+
+    struct page page;
+  };
 };
+
 
 /* Helper macros */
 #define PageReserved(page)   ((page)->flags & PG_reserved)

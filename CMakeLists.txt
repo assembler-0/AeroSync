@@ -42,10 +42,10 @@ execute_process(
         OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-set(VOIDFRAMEX_RELEASE "0" CACHE STRING "AeroSync release")
-set(VOIDFRAMEX_CANDIDATE "1" CACHE STRING "AeroSync release candidate")
-set(VOIDFRAMEX_ABI_LEVEL "0" CACHE STRING "AeroSync ABI level")
-set(VOIDFRAMEX_CODENAME "Invariant" CACHE STRING "AeroSync codename")
+set(AEROSYNC_RELEASE "0" CACHE STRING "AeroSync release")
+set(AEROSYNC_CANDIDATE "1" CACHE STRING "AeroSync release candidate")
+set(AEROSYNC_ABI_LEVEL "0" CACHE STRING "AeroSync ABI level")
+set(AEROSYNC_CODENAME "Invariant" CACHE STRING "AeroSync codename")
 configure_file(
         ${CMAKE_CURRENT_SOURCE_DIR}/include/kernel/version.h.in
         ${CMAKE_CURRENT_SOURCE_DIR}/include/kernel/version.h
@@ -121,7 +121,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Kernel Linking
 # ============================================================================
 add_executable(aerosync.krnl
-    ${VOIDFRAMEX_SOURCES}
+    ${AEROSYNC_SOURCES}
 )
 
 target_sources(aerosync.krnl 

@@ -12,6 +12,10 @@ struct sched_class;
 struct fpu_state;
 
 /* Task States */
+/* Wait queue sleep states */
+#define TASK_NORMAL 0
+#define TASK_INTERRUPTIBLE_WAIT 1
+#define TASK_UNINTERRUPTIBLE_WAIT 2
 #define TASK_RUNNING 0
 #define TASK_INTERRUPTIBLE 1
 #define TASK_UNINTERRUPTIBLE 2
@@ -276,7 +280,8 @@ struct task_struct {
  */
 #define preempt_disable()                                                      \
   do {                                                                         \
-    current->preempt_count++;                                                  \
+    struct task_struct *_________curr = get_current();                        \
+    if (_________curr) _________curr->preempt_count++;                         \
     barrier();                                                                 \
   } while (0)
 
@@ -288,7 +293,8 @@ struct task_struct {
 #define preempt_enable_no_resched()                                            \
   do {                                                                         \
     barrier();                                                                 \
-    current->preempt_count--;                                                  \
+    struct task_struct *_________curr = get_current();                        \
+    if (_________curr) _________curr->preempt_count--;                         \
   } while (0)
 
 /**
@@ -299,8 +305,11 @@ struct task_struct {
 #define preempt_enable()                                                       \
   do {                                                                         \
     barrier();                                                                 \
-    if (--current->preempt_count == 0 && this_cpu_read(need_resched))          \
-      schedule();                                                              \
+    struct task_struct *_________curr = get_current();                        \
+    if (_________curr) {                                                       \
+        if (--_________curr->preempt_count == 0 && this_cpu_read(need_resched))\
+            schedule();                                                        \
+    }                                                                          \
   } while (0)
 
 /**

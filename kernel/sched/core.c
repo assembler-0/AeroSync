@@ -536,6 +536,8 @@ void __hot scheduler_tick(void) {
     load_balance();
   }
 
+  rcu_check_callbacks();
+
   spinlock_unlock((volatile int *)&rq->lock);
 }
 

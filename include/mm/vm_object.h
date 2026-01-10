@@ -1,6 +1,7 @@
 #pragma once
 
 #include <mm/mm_types.h>
+#include <kernel/rw_semaphore.h>
 
 typedef enum {
   VM_OBJECT_ANON,
@@ -9,18 +10,16 @@ typedef enum {
   VM_OBJECT_PHYS,
 } vm_object_type_t;
 
-struct page_node {
-  struct rb_node rb;
-  uint64_t pgoff;
-  struct page *page;
-  int order;
-};
-
 /**
  * vm_object_operations - Operations on a VM object
  */
+struct folio;
+struct page;
 struct vm_object_operations {
   int (*fault)(struct vm_object *obj, struct vm_area_struct *vma, struct vm_fault *vmf);
+  int (*page_mkwrite)(struct vm_object *obj, struct vm_area_struct *vma, struct vm_fault *vmf);
+  int (*read_folio)(struct vm_object *obj, struct folio *folio);
+  int (*write_folio)(struct vm_object *obj, struct folio *folio);
   void (*free)(struct vm_object *obj);
 };
 
@@ -31,17 +30,21 @@ struct vm_object_operations {
 struct vm_object {
   vm_object_type_t type;
   void *priv;               /* Owner/Backing data (e.g., struct inode) */
-  struct rb_root page_tree; /* All pages currently in this object */
-  spinlock_t lock;
+  struct rb_root page_tree; /* All pages currently in this object (indexed by pgoff) */
+  struct rw_semaphore lock;
   struct list_head i_mmap;  /* List of all VMAs mapping this object */
+  struct list_head dirty_list; /* Node in global dirty_objects list */
   const struct vm_object_operations *ops;
   atomic_t refcount;
+  uint32_t flags;
   size_t size;
-    struct vm_object *backing_object; /* For Shadow Objects / COW */
-    uint64_t shadow_offset;           /* Offset into the backing object */
+  struct vm_object *backing_object; /* For Shadow Objects / COW */
+  uint64_t shadow_offset;           /* Offset into the backing object */
 
-    uint64_t phys_addr; /* For VM_OBJECT_DEVICE and VM_OBJECT_PHYS */
+  uint64_t phys_addr; /* For VM_OBJECT_DEVICE and VM_OBJECT_PHYS */
 };
+
+#define VM_OBJECT_DIRTY 0x01
 
 /* API */
 struct vm_object *vm_object_alloc(vm_object_type_t type);
@@ -49,8 +52,21 @@ void vm_object_free(struct vm_object *obj);
 void vm_object_get(struct vm_object *obj);
 void vm_object_put(struct vm_object *obj);
 
-/* Page management */
-int vm_object_add_page(struct vm_object *obj, uint64_t pgoff, struct page *page, struct page_node *node);
+/* Writeback and Throttling */
+void vm_object_mark_dirty(struct vm_object *obj);
+void vm_writeback_init(void);
+void balance_dirty_pages(struct vm_object *obj);
+void wakeup_writeback(void);
+void account_page_dirtied(void);
+void account_page_cleaned(void);
+
+/* Page/Folio management */
+int vm_object_add_folio(struct vm_object *obj, uint64_t pgoff, struct folio *folio);
+struct folio *vm_object_find_folio(struct vm_object *obj, uint64_t pgoff);
+void vm_object_remove_folio(struct vm_object *obj, uint64_t pgoff);
+
+/* Deprecated helpers (prefer folio versions) */
+int vm_object_add_page(struct vm_object *obj, uint64_t pgoff, struct page *page);
 struct page *vm_object_find_page(struct vm_object *obj, uint64_t pgoff);
 void vm_object_remove_page(struct vm_object *obj, uint64_t pgoff);
 

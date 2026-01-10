@@ -3,115 +3,173 @@
  * AeroSync monolithic kernel
  *
  * @file lib/bitmap.c
- * @brief Bitmap manipulation functions
+ * @brief High-performance Bitmap management
  * @copyright (C) 2025 assembler-0
- *
- * This file is part of the AeroSync kernel.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <lib/bitmap.h>
+#include <kernel/bitops.h>
 
-int find_first_zero_bit(const unsigned long *addr, unsigned size) {
-    unsigned long idx, tmp;
-    
-    for (idx = 0; idx * BITS_PER_LONG < size; idx++) {
-        if (addr[idx] != ~0UL) {
-            tmp = addr[idx];
-            for (int bit = 0; bit < BITS_PER_LONG && idx * BITS_PER_LONG + bit < size; bit++) {
-                if (!(tmp & (1UL << bit))) {
-                    return idx * BITS_PER_LONG + bit;
-                }
-            }
-        }
+unsigned long bitmap_find_next_bit(const unsigned long *addr, unsigned long nbits, unsigned long start) {
+    if (start >= nbits)
+        return nbits;
+
+    unsigned long tmp;
+    unsigned long word = start / BITS_PER_LONG;
+    unsigned long offset = start % BITS_PER_LONG;
+
+    // Handle partial first word
+    tmp = addr[word] & (~0UL << offset);
+    if (tmp)
+        goto found;
+
+    // Search whole words
+    while (++word < (nbits + BITS_PER_LONG - 1) / BITS_PER_LONG) {
+        tmp = addr[word];
+        if (tmp)
+            goto found;
     }
-    return size;
+
+    return nbits;
+
+found:
+    return word * BITS_PER_LONG + __builtin_ctzl(tmp);
 }
 
-int find_next_zero_bit(const unsigned long *addr, unsigned size, unsigned offset) {
-    if (offset >= size)
+unsigned long bitmap_find_next_zero_bit(const unsigned long *addr, unsigned long nbits, unsigned long start) {
+    if (start >= nbits)
+        return nbits;
+
+    unsigned long tmp;
+    unsigned long word = start / BITS_PER_LONG;
+    unsigned long offset = start % BITS_PER_LONG;
+
+    // Handle partial first word (invert bits to find zero)
+    tmp = ~addr[word] & (~0UL << offset);
+    if (tmp)
+        goto found;
+
+    // Search whole words
+    while (++word < (nbits + BITS_PER_LONG - 1) / BITS_PER_LONG) {
+        tmp = ~addr[word];
+        if (tmp)
+            goto found;
+    }
+
+    return nbits;
+
+found:
+    return word * BITS_PER_LONG + __builtin_ctzl(tmp);
+}
+
+unsigned long bitmap_find_next_zero_area(unsigned long *map,
+                                         unsigned long size,
+                                         unsigned long start,
+                                         unsigned int nr,
+                                         unsigned long align_mask) {
+    unsigned long index, end, i;
+again:
+    index = bitmap_find_next_zero_bit(map, size, start);
+
+    /* Align the allocation */
+    index = (index + align_mask) & ~align_mask;
+
+    end = index + nr;
+    if (end > size)
         return size;
-    
-    unsigned long idx = offset / BITS_PER_LONG;
-    unsigned long tmp = addr[idx];
-    
-    // Mask off bits before offset
-    tmp |= (1UL << (offset % BITS_PER_LONG)) - 1;
-    
-    if (tmp != ~0UL) {
-        for (int bit = offset % BITS_PER_LONG; bit < BITS_PER_LONG && idx * BITS_PER_LONG + bit < size; bit++) {
-            if (!(tmp & (1UL << bit))) {
-                return idx * BITS_PER_LONG + bit;
-            }
+
+    for (i = index; i < end; i++) {
+        if (test_bit(i, map)) {
+            start = i + 1;
+            goto again;
         }
     }
-    
-    // Search remaining words
-    for (idx++; idx * BITS_PER_LONG < size; idx++) {
-        if (addr[idx] != ~0UL) {
-            tmp = addr[idx];
-            for (int bit = 0; bit < BITS_PER_LONG && idx * BITS_PER_LONG + bit < size; bit++) {
-                if (!(tmp & (1UL << bit))) {
-                    return idx * BITS_PER_LONG + bit;
-                }
-            }
-        }
-    }
-    return size;
+    return index;
 }
 
-int find_first_bit(const unsigned long *addr, unsigned size) {
-    unsigned long idx, tmp;
-    
-    for (idx = 0; idx * BITS_PER_LONG < size; idx++) {
-        if (addr[idx] != 0) {
-            tmp = addr[idx];
-            for (int bit = 0; bit < BITS_PER_LONG && idx * BITS_PER_LONG + bit < size; bit++) {
-                if (tmp & (1UL << bit)) {
-                    return idx * BITS_PER_LONG + bit;
-                }
-            }
-        }
+void bitmap_set(unsigned long *map, unsigned int start, int len) {
+    unsigned long *p = map + BIT_WORD(start);
+    const unsigned int size = start + len;
+    int bits_to_set = BITS_PER_LONG - (start % BITS_PER_LONG);
+    unsigned long mask_to_set = ~0UL << (start % BITS_PER_LONG);
+
+    while (len - bits_to_set >= 0) {
+        *p |= mask_to_set;
+        len -= bits_to_set;
+        bits_to_set = BITS_PER_LONG;
+        mask_to_set = ~0UL;
+        p++;
     }
-    return size;
+    if (len) {
+        mask_to_set &= ~(~0UL << (size % BITS_PER_LONG));
+        *p |= mask_to_set;
+    }
 }
 
-int find_next_bit(const unsigned long *addr, unsigned size, unsigned offset) {
-    if (offset >= size)
-        return size;
-    
-    unsigned long idx = offset / BITS_PER_LONG;
-    unsigned long tmp = addr[idx];
-    
-    // Mask off bits before offset
-    tmp &= ~((1UL << (offset % BITS_PER_LONG)) - 1);
-    
-    if (tmp != 0) {
-        for (int bit = offset % BITS_PER_LONG; bit < BITS_PER_LONG && idx * BITS_PER_LONG + bit < size; bit++) {
-            if (tmp & (1UL << bit)) {
-                return idx * BITS_PER_LONG + bit;
-            }
-        }
+void bitmap_clear(unsigned long *map, unsigned int start, int len) {
+    unsigned long *p = map + BIT_WORD(start);
+    const unsigned int size = start + len;
+    int bits_to_clear = BITS_PER_LONG - (start % BITS_PER_LONG);
+    unsigned long mask_to_clear = ~0UL << (start % BITS_PER_LONG);
+
+    while (len - bits_to_clear >= 0) {
+        *p &= ~mask_to_clear;
+        len -= bits_to_clear;
+        bits_to_clear = BITS_PER_LONG;
+        mask_to_clear = ~0UL;
+        p++;
     }
-    
-    // Search remaining words
-    for (idx++; idx * BITS_PER_LONG < size; idx++) {
-        if (addr[idx] != 0) {
-            tmp = addr[idx];
-            for (int bit = 0; bit < BITS_PER_LONG && idx * BITS_PER_LONG + bit < size; bit++) {
-                if (tmp & (1UL << bit)) {
-                    return idx * BITS_PER_LONG + bit;
-                }
-            }
-        }
+    if (len) {
+        mask_to_clear &= ~(~0UL << (size % BITS_PER_LONG));
+        *p &= ~mask_to_clear;
     }
-    return size;
+}
+
+bool bitmap_full(const unsigned long *src, unsigned int nbits) {
+    unsigned int words = nbits / BITS_PER_LONG;
+    unsigned int left = nbits % BITS_PER_LONG;
+
+    for (unsigned int i = 0; i < words; i++) {
+        if (src[i] != ~0UL) return false;
+    }
+
+    if (left) {
+        unsigned long mask = (1UL << left) - 1;
+        if ((src[words] & mask) != mask) return false;
+    }
+
+    return true;
+}
+
+bool bitmap_empty(const unsigned long *src, unsigned int nbits) {
+    unsigned int words = nbits / BITS_PER_LONG;
+    unsigned int left = nbits % BITS_PER_LONG;
+
+    for (unsigned int i = 0; i < words; i++) {
+        if (src[i] != 0) return false;
+    }
+
+    if (left) {
+        unsigned long mask = (1UL << left) - 1;
+        if ((src[words] & mask) != 0) return false;
+    }
+
+    return true;
+}
+
+unsigned int bitmap_weight(const unsigned long *src, unsigned int nbits) {
+    unsigned int words = nbits / BITS_PER_LONG;
+    unsigned int left = nbits % BITS_PER_LONG;
+    unsigned int weight = 0;
+
+    for (unsigned int i = 0; i < words; i++) {
+        weight += __builtin_popcountl(src[i]);
+    }
+
+    if (left) {
+        unsigned long mask = (1UL << left) - 1;
+        weight += __builtin_popcountl(src[words] & mask);
+    }
+
+    return weight;
 }

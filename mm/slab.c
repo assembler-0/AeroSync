@@ -43,47 +43,47 @@ static kmem_cache_t *kmalloc_caches[15];
  * If a cache with the same size/align/flags exists, reuse it.
  */
 static kmem_cache_t *find_mergeable(size_t size, size_t align, unsigned long flags) {
-    kmem_cache_t *s;
-    
-    if (flags & (SLAB_POISON | SLAB_RED_ZONE)) return NULL;
+  kmem_cache_t *s;
 
-    list_for_each_entry(s, &slab_caches, list) {
-        if (s->object_size == (int)size && s->align == (int)align && s->flags == flags) {
-            return s;
-        }
+  if (flags & (SLAB_POISON | SLAB_RED_ZONE)) return NULL;
+
+  list_for_each_entry(s, &slab_caches, list) {
+    if (s->object_size == (int) size && s->align == (int) align && s->flags == flags) {
+      return s;
     }
-    return NULL;
+  }
+  return NULL;
 }
 
-/* 
- * ABA Prevention TID 
+/*
+ * ABA Prevention TID
  * Incrementing tid on every transition.
  */
 static inline unsigned long next_tid(unsigned long tid) {
-    /* Prevent TID overflow by using only lower 48 bits and wrapping safely */
-    tid = (tid + 1) & 0xFFFFFFFFFFFFULL;
-    /* Skip 0 to avoid confusion with uninitialized state */
-    return tid ? tid : 1;
+  /* Prevent TID overflow by using only lower 48 bits and wrapping safely */
+  tid = (tid + 1) & 0xFFFFFFFFFFFFULL;
+  /* Skip 0 to avoid confusion with uninitialized state */
+  return tid ? tid : 1;
 }
 
 static inline int kmalloc_index(size_t size) {
-    if (!size) return 0;
-    if (size <= 8) return 0;
-    if (size <= 16) return 1;
-    if (size <= 32) return 2;
-    if (size <= 64) return 3;
-    if (size <= 128) return 4;
-    if (size <= 256) return 5;
-    if (size <= 512) return 6;
-    if (size <= 1024) return 7;
-    if (size <= 2048) return 8;
-    if (size <= 4096) return 9;
-    if (size <= 8192) return 10;
-    if (size <= 16384) return 11;
-    if (size <= 32768) return 12;
-    if (size <= 65536) return 13;
-    if (size <= 131072) return 14;
-    return -1;
+  if (!size) return 0;
+  if (size <= 8) return 0;
+  if (size <= 16) return 1;
+  if (size <= 32) return 2;
+  if (size <= 64) return 3;
+  if (size <= 128) return 4;
+  if (size <= 256) return 5;
+  if (size <= 512) return 6;
+  if (size <= 1024) return 7;
+  if (size <= 2048) return 8;
+  if (size <= 4096) return 9;
+  if (size <= 8192) return 10;
+  if (size <= 16384) return 11;
+  if (size <= 32768) return 12;
+  if (size <= 65536) return 13;
+  if (size <= 131072) return 14;
+  return -1;
 }
 
 /*
@@ -93,35 +93,35 @@ static inline int kmalloc_index(size_t size) {
 #define POISON_ALLOC 0xa5
 
 static void poison_obj(kmem_cache_t *s, void *obj, uint8_t val) {
-    memset(obj, val, s->object_size);
+  memset(obj, val, s->object_size);
 }
 
 static void check_poison(kmem_cache_t *s, void *obj) {
-    uint8_t *p = obj;
-    for (int i = 0; i < s->object_size; i++) {
-        /* Skip freelist pointer if it's within the object */
-        if (i >= s->offset && i < s->offset + (int)sizeof(void *))
-            continue;
+  uint8_t *p = obj;
+  for (int i = 0; i < s->object_size; i++) {
+    /* Skip freelist pointer if it's within the object */
+    if (i >= s->offset && i < s->offset + (int) sizeof(void *))
+      continue;
 
-        if (p[i] != POISON_FREE) {
-            panic("SLUB: Use-after-free detected in %s at %p (offset %d, val 0x%02x)\n", 
-                  s->name, obj, i, p[i]);
-        }
+    if (p[i] != POISON_FREE) {
+      panic("SLUB: Use-after-free detected in %s at %p (offset %d, val 0x%02x)\n",
+            s->name, obj, i, p[i]);
     }
+  }
 }
 
 static void set_redzone(kmem_cache_t *s, void *obj) {
-    if (!(s->flags & SLAB_RED_ZONE)) return;
-    uint64_t *redzone = (uint64_t *)((char *)obj + s->inuse);
-    *redzone = 0xdeadbeefdeadbeef;
+  if (!(s->flags & SLAB_RED_ZONE)) return;
+  uint64_t *redzone = (uint64_t *) ((char *) obj + s->inuse);
+  *redzone = 0xdeadbeefdeadbeef;
 }
 
 static void check_redzone(kmem_cache_t *s, void *obj) {
-    if (!(s->flags & SLAB_RED_ZONE)) return;
-    uint64_t *redzone = (uint64_t *)((char *)obj + s->inuse);
-    if (*redzone != 0xdeadbeefdeadbeef) {
-        panic("SLUB: Redzone corruption detected in %s at %p\n", s->name, obj);
-    }
+  if (!(s->flags & SLAB_RED_ZONE)) return;
+  uint64_t *redzone = (uint64_t *) ((char *) obj + s->inuse);
+  if (*redzone != 0xdeadbeefdeadbeef) {
+    panic("SLUB: Redzone corruption detected in %s at %p\n", s->name, obj);
+  }
 }
 
 /* Helper to get the next object in the freelist */
@@ -139,12 +139,12 @@ static inline void set_freelist_next(void *obj, int offset, void *next) {
  * Must be 16-byte aligned.
  */
 static inline bool cmpxchg16b_local(void *ptr, void *o1, unsigned long o2, void *n1, unsigned long n2) {
-    bool ret;
-    asm volatile("lock; cmpxchg16b %1; setz %0"
-                 : "=a"(ret), "+m"(*(char *)ptr), "+d"(o2), "+a"(o1)
-                 : "b"(n1), "c"(n2)
-                 : "memory");
-    return ret;
+  bool ret;
+  asm volatile("lock; cmpxchg16b %1; setz %0"
+    : "=a"(ret), "+m"(*(char *) ptr), "+d"(o2), "+a"(o1)
+    : "b"(n1), "c"(n2)
+    : "memory");
+  return ret;
 }
 
 static struct page *allocate_slab(kmem_cache_t *s, gfp_t flags, int node) {
@@ -162,7 +162,7 @@ static struct page *allocate_slab(kmem_cache_t *s, gfp_t flags, int node) {
   page = &folio->page;
   start = page_address(page);
   page->slab_cache = s;
-  page->objects = (unsigned short)((PAGE_SIZE << s->order) / s->size);
+  page->objects = (unsigned short) ((PAGE_SIZE << s->order) / s->size);
   page->inuse = 0;
   page->frozen = 0;
   page->node = node;
@@ -177,7 +177,7 @@ static struct page *allocate_slab(kmem_cache_t *s, gfp_t flags, int node) {
     set_redzone(s, p);
     set_freelist_next(p, s->offset, (char *) p + s->size);
   }
-  
+
   /* Last object */
   p = (char *) start + (page->objects - 1) * s->size;
   if (s->flags & SLAB_POISON) poison_obj(s, p, POISON_FREE);
@@ -209,10 +209,10 @@ static void *__slab_alloc(kmem_cache_t *s, gfp_t gfpflags, int node, struct kmem
 
   /* If page is from wrong node, unfreeze it and get a new one */
   if (node != -1 && page->node != node) {
-      page->frozen = 0;
-      c->page = NULL;
-      c->freelist = NULL;
-      goto find_slab;
+    page->frozen = 0;
+    c->page = NULL;
+    c->freelist = NULL;
+    goto find_slab;
   }
 
   /* Try to get objects from the frozen page's freelist */
@@ -239,25 +239,27 @@ find_slab:;
   if (!list_empty(&n->partial)) {
     page = list_first_entry(&n->partial, struct page, list);
     list_del(&page->list);
-    n->nr_partial--;spinlock_unlock(&n->list_lock);
+    n->nr_partial--;
+    spinlock_unlock(&n->list_lock);
     goto freeze;
   }
   spinlock_unlock(&n->list_lock);
 
   /* NUMA Fallback: Check other nodes */
-  for (int i = 0; i < MAX_NUMNODES; i++) {if (i == node) continue;
+  for (int i = 0; i < MAX_NUMNODES; i++) {
+    if (i == node) continue;
     n = s->node[i];
     if (!n) continue;
 
-      spinlock_lock(&n->list_lock);
-      if (!list_empty(&n->partial)) {
-          page = list_first_entry(&n->partial, struct page, list);
-          list_del(&page->list);
-          n->nr_partial--;
-          spinlock_unlock(&n->list_lock);
-          goto freeze;
-      }
+    spinlock_lock(&n->list_lock);
+    if (!list_empty(&n->partial)) {
+      page = list_first_entry(&n->partial, struct page, list);
+      list_del(&page->list);
+      n->nr_partial--;
       spinlock_unlock(&n->list_lock);
+      goto freeze;
+    }
+    spinlock_unlock(&n->list_lock);
   }
 
   /* Allocate new slab */
@@ -284,34 +286,27 @@ freeze:
 void *kmem_cache_alloc(kmem_cache_t *s) {
   void *object;
   struct kmem_cache_cpu *c;
-  unsigned long tid;
   int cpu;
 
-  /* Extreme fastpath using cmpxchg16b */
+  /* Fastpath: disable interrupts to protect per-CPU structure */
   irq_flags_t flags = save_irq_flags();
-  cpu = smp_is_active() ? (int)smp_get_id() : 0;
+  cpu = smp_is_active() ? (int) smp_get_id() : 0;
   c = &s->cpu_slab[cpu];
 
-  do {
-      tid = c->tid;
-      object = c->freelist;
-
-      if (unlikely(!object || !c->page || c->page->node != this_node())) {
-          object = __slab_alloc(s, GFP_KERNEL, -1, c);
-          break;
-      }
-
-      /* ABA protection: increment TID on every transition */
-      if (cmpxchg16b_local(c, object, tid, get_freelist_next(object, s->offset), next_tid(tid))) {
-          break;
-      }
-  } while (1);
+  object = c->freelist;
+  if (unlikely(!object || !c->page || c->page->node != this_node())) {
+    object = __slab_alloc(s, GFP_KERNEL, -1, c);
+  } else {
+    /* Successful fastpath allocation */
+    c->freelist = get_freelist_next(object, s->offset);
+    c->tid = next_tid(c->tid);
+  }
 
   restore_irq_flags(flags);
 
   if (object) {
-      if (s->flags & SLAB_POISON) check_poison(s, object);
-      check_redzone(s, object);
+    if (s->flags & SLAB_POISON) check_poison(s, object);
+    check_redzone(s, object);
   }
 
   return object;
@@ -358,14 +353,13 @@ static void __slab_free(kmem_cache_t *s, struct page *page, void *x) {
 void kmem_cache_free(kmem_cache_t *s, void *x) {
   struct page *page;
   struct kmem_cache_cpu *c;
-  unsigned long tid;
   int cpu;
 
   if (unlikely(!x)) return;
 
   /* Safety check for vmalloc addresses */
-  if ((uintptr_t)x >= VMALLOC_VIRT_BASE) {
-      panic("kmem_cache_free: attempt to free vmalloc address %p via slab %s", x, s->name);
+  if ((uintptr_t) x >= VMALLOC_VIRT_BASE) {
+    panic("kmem_cache_free: attempt to free vmalloc address %p via slab %s", x, s->name);
   }
 
   check_redzone(s, x);
@@ -373,23 +367,19 @@ void kmem_cache_free(kmem_cache_t *s, void *x) {
 
   page = virt_to_head_page(x);
 
-  /* Extreme fastpath free */
+  /* Fastpath: disable interrupts to protect per-CPU structure */
   irq_flags_t flags = save_irq_flags();
-  cpu = smp_is_active() ? (int)smp_get_id() : 0;
+  cpu = smp_is_active() ? (int) smp_get_id() : 0;
   c = &s->cpu_slab[cpu];
 
   if (likely(page == c->page)) {
-      do {
-          tid = c->tid;
-          set_freelist_next(x, s->offset, c->freelist);
-          if (cmpxchg16b_local(c, c->freelist, tid, x, next_tid(tid)))
-              break;
-      } while (1);
-      restore_irq_flags(flags);
-  }
-  else {
-      restore_irq_flags(flags);
-      __slab_free(s, page, x);
+    set_freelist_next(x, s->offset, c->freelist);
+    c->freelist = x;
+    c->tid = next_tid(c->tid);
+    restore_irq_flags(flags);
+  } else {
+    restore_irq_flags(flags);
+    __slab_free(s, page, x);
   }
 }
 
@@ -409,19 +399,19 @@ void *kmalloc_aligned(size_t size, size_t align) {
   if (align <= 8) return kmalloc(size);
 
   // For larger alignments, allocate extra space and align manually
-  size_t total_size = size + align - 1 + sizeof(void*);
+  size_t total_size = size + align - 1 + sizeof(void *);
   void *raw = kmalloc(total_size);
   if (!raw) return NULL;
 
   // Calculate aligned address
-  uintptr_t aligned = (uintptr_t)raw + sizeof(void*);
+  uintptr_t aligned = (uintptr_t) raw + sizeof(void *);
   aligned = (aligned + align - 1) & ~(align - 1);
 
   // Store original pointer before aligned address
-  void **orig_ptr = (void**)(aligned - sizeof(void*));
+  void **orig_ptr = (void **) (aligned - sizeof(void *));
   *orig_ptr = raw;
 
-  return (void*)aligned;
+  return (void *) aligned;
 }
 
 kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align, unsigned long flags) {
@@ -430,8 +420,8 @@ kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align, uns
   spinlock_lock(&slab_lock);
   s = find_mergeable(size, align, flags);
   if (s) {
-      spinlock_unlock(&slab_lock);
-      return s;
+    spinlock_unlock(&slab_lock);
+    return s;
   }
   spinlock_unlock(&slab_lock);
 
@@ -447,12 +437,12 @@ kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align, uns
   /* Calculate size with alignment and meta-data */
   if (align < 8) align = 8;
   size = (size + align - 1) & ~(align - 1);
-  s->inuse = (int)size;
-  
+  s->inuse = (int) size;
+
   if (flags & SLAB_RED_ZONE) {
-      size += sizeof(uint64_t); /* Redzone */
+    size += sizeof(uint64_t); /* Redzone */
   }
-  
+
   if (size < sizeof(void *)) size = sizeof(void *);
   s->size = (int) size;
   s->offset = 0;
@@ -468,18 +458,18 @@ kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align, uns
   /* Allocate per-CPU slabs - ensure 16-byte alignment for cmpxchg16b */
   s->cpu_slab = kmalloc_aligned(sizeof(struct kmem_cache_cpu) * MAX_CPUS, 16);
   if (!s->cpu_slab) {
-      kfree(s);
-      return NULL;
+    kfree(s);
+    return NULL;
   }
-  
+
   // Verify alignment for cmpxchg16b safety
-  if ((uintptr_t)s->cpu_slab & 0xF) {
+  if ((uintptr_t) s->cpu_slab & 0xF) {
     printk(KERN_ERR SLAB_CLASS "CPU slab not 16-byte aligned: %p\n", s->cpu_slab);
     kfree(s->cpu_slab);
     kfree(s);
     return NULL;
   }
-  
+
   memset(s->cpu_slab, 0, sizeof(struct kmem_cache_cpu) * MAX_CPUS);
 
   for (int i = 0; i < MAX_CPUS; i++) {
@@ -488,9 +478,9 @@ kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align, uns
 
   /* Allocate nodes */
   for (int i = 0; i < MAX_NUMNODES; i++) {
-      s->node[i] = kmalloc(sizeof(struct kmem_cache_node));
-      if (!s->node[i]) continue;
-      init_kmem_cache_node(s->node[i]);
+    s->node[i] = kmalloc(sizeof(struct kmem_cache_node));
+    if (!s->node[i]) continue;
+    init_kmem_cache_node(s->node[i]);
   }
 
   spinlock_lock(&slab_lock);
@@ -500,8 +490,8 @@ kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align, uns
   return s;
 }
 
-/* 
- * The Boot Cache problem: 
+/*
+ * The Boot Cache problem:
  * If VFS starts before kmalloc is fully dynamic, we need more capacity.
  */
 #define BOOT_CACHES_MAX 64
@@ -521,14 +511,14 @@ static struct kmem_cache *create_boot_cache(const char *name, size_t size, unsig
   s->name = name;
   s->object_size = (int) size;
   s->size = (int) size;
-  
+
   /* Enforce alignment: 8 bytes for small, 16 bytes for >= 16 to support cmpxchg16b */
   if (size < 8) s->align = 8;
   else if (size < 16) s->align = 8;
   else s->align = 16;
 
   s->flags = flags;
-  s->inuse = (int)size;
+  s->inuse = (int) size;
 
   s->order = 0;
   while ((PAGE_SIZE << s->order) < size * 4 && s->order < SLAB_MAX_ORDER) {
@@ -542,8 +532,8 @@ static struct kmem_cache *create_boot_cache(const char *name, size_t size, unsig
   }
 
   for (int i = 0; i < MAX_NUMNODES; i++) {
-      s->node[i] = &static_nodes[static_idx][i];
-      init_kmem_cache_node(s->node[i]);
+    s->node[i] = &static_nodes[static_idx][i];
+    init_kmem_cache_node(s->node[i]);
   }
 
   static_idx++;
@@ -612,15 +602,15 @@ void kfree(void *ptr) {
    * Check if this is an aligned allocation.
    * Aligned allocations (from kmalloc_aligned) are not at the start of a slab object.
    */
-  uintptr_t offset = (uintptr_t)ptr - (uintptr_t)page_address(page);
+  uintptr_t offset = (uintptr_t) ptr - (uintptr_t) page_address(page);
   if (unlikely(offset % s->size)) {
-      void *raw = *((void **)((uintptr_t)ptr - sizeof(void *)));
-      
-      /* Validate that raw pointer is before ptr and within reasonable distance */
-      if (raw < ptr && (uintptr_t)ptr - (uintptr_t)raw < s->size + 64) {
-          kfree(raw);
-          return;
-      }
+    void *raw = *((void **) ((uintptr_t) ptr - sizeof(void *)));
+
+    /* Validate that raw pointer is before ptr and within reasonable distance */
+    if (raw < ptr && (uintptr_t) ptr - (uintptr_t) raw < s->size + 64) {
+      kfree(raw);
+      return;
+    }
   }
 
   kmem_cache_free(s, ptr);
@@ -689,12 +679,12 @@ void slab_test(void) {
   /* Test 5: Aligned Allocations */
   void *a1 = kmalloc_aligned(16, 64);
   if (!a1) panic(SLAB_CLASS "aligned alloc 1 failed");
-  if ((uintptr_t)a1 & 63) panic(SLAB_CLASS "aligned alloc not 64-byte aligned!");
+  if ((uintptr_t) a1 & 63) panic(SLAB_CLASS "aligned alloc not 64-byte aligned!");
   kfree(a1);
 
   void *a2 = kmalloc_aligned(1024, 4096);
   if (!a2) panic(SLAB_CLASS "aligned alloc 2 failed");
-  if ((uintptr_t)a2 & 4095) panic(SLAB_CLASS "aligned alloc not 4096-byte aligned!");
+  if ((uintptr_t) a2 & 4095) panic(SLAB_CLASS "aligned alloc not 4096-byte aligned!");
   kfree(a2);
   printk(KERN_DEBUG SLAB_CLASS "  - Aligned Allocations: OK\n");
 

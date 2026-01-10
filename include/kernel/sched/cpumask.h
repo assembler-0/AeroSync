@@ -217,6 +217,8 @@ static inline bool cpumask_equal(const struct cpumask *mask1,
   return true;
 }
 
+extern struct cpumask cpu_online_mask;
+
 /**
  * for_each_cpu - Iterate over all CPUs in a mask
  * @cpu: Loop variable (int)

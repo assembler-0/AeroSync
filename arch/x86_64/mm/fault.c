@@ -2,8 +2,8 @@
 /**
  * AeroSync monolithic kernel
  *
- * @file init/main.c
- * @brief Kernel entry point and limine requests
+ * @file arch/x86_64/mm/fault.c
+ * @brief Page fault handling
  * @copyright (C) 2025 assembler-0
  *
  * This file is part of the AeroSync kernel.
@@ -24,8 +24,7 @@
 #include <arch/x86_64/mm/vmm.h>
 #include <kernel/classes.h>
 #include <kernel/panic.h>
-#include <kernel/sched/process.h>
-#include <kernel/sched/sched.h> // For current task
+#include <kernel/sched/sched.h>
 #include <kernel/signal.h>
 #include <lib/printk.h>
 #include <mm/vma.h>
@@ -78,12 +77,71 @@ void do_page_fault(cpu_regs *regs) {
     }
   }
 
-  // Try to find VMA covering this address
-  down_read(&mm->mmap_lock);
+  /*
+   * SPECULATIVE PAGE FAULT (RCU path)
+   * We attempt to handle the fault without taking the mmap_lock semaphore.
+   */
+  uint32_t mm_seq = atomic_read(&mm->mmap_seq);
+  rcu_read_lock();
+  
   struct vm_area_struct *vma = vma_find(mm, cr2);
+  if (vma) {
+    // 1. Snapshot VMA data
+    uint64_t vm_flags = vma->vm_flags;
+    uint32_t vma_seq = vma->vma_seq;
+    
+    // 2. Quick permission check
+    bool write_fault = (error_code & PF_WRITE);
+    bool exec_fault = (error_code & PF_INSTR);
+    
+    if ((write_fault && !(vm_flags & VM_WRITE)) || (exec_fault && !(vm_flags & VM_EXEC))) {
+        rcu_read_unlock();
+        goto signal_segv;
+    }
+
+    // 3. Verify sequence hasn't changed before doing heavy work
+    if (atomic_read(&mm->mmap_seq) == mm_seq && vma->vma_seq == vma_seq) {
+        unsigned int fault_flags = 0;
+        if (write_fault) fault_flags |= FAULT_FLAG_WRITE;
+        if (user_mode) fault_flags |= FAULT_FLAG_USER;
+        if (exec_fault) fault_flags |= FAULT_FLAG_INSTR;
+
+        /* 
+         * PRODUCTION-GRADE LOCKING:
+         * We take the per-VMA lock. This allows parallel faults in different
+         * VMAs without touching the global mmap_lock.
+         */
+        vma_lock(vma);
+        
+        // Re-verify sequence under VMA lock to ensure layout is still stable
+        if (atomic_read(&mm->mmap_seq) != mm_seq || vma->vma_seq != vma_seq) {
+            vma_unlock(vma);
+            rcu_read_unlock();
+            goto slow_path;
+        }
+
+        int res = handle_mm_fault(vma, cr2, fault_flags);
+        vma_unlock(vma);
+        
+        // 4. Final validation: Did the VMA layout change during the fault?
+        if (atomic_read(&mm->mmap_seq) == mm_seq && vma->vma_seq == vma_seq) {
+            rcu_read_unlock();
+            if (res == 0) return;
+            if (res == VM_FAULT_OOM) goto kernel_panic;
+            goto slow_path; // Retry with lock on other errors
+        }
+    }
+  }
+  rcu_read_unlock();
+ slow_path:
+  /*
+   * FALLBACK: Slow path with mmap_lock
+   */
+  down_read(&mm->mmap_lock);
+  vma = vma_find(mm, cr2);
 
   if (vma && cr2 >= vma->vm_start && cr2 < vma->vm_end) {
-    // Valid VMA found. Check permissions.
+    // ... permission checks ...
     bool write_fault = (error_code & PF_WRITE);
     bool exec_fault = (error_code & PF_INSTR);
 
@@ -104,7 +162,10 @@ void do_page_fault(cpu_regs *regs) {
     if (user_mode) fault_flags |= FAULT_FLAG_USER;
     if (exec_fault) fault_flags |= FAULT_FLAG_INSTR;
 
+    vma_lock(vma);
     int res = handle_mm_fault(vma, cr2, fault_flags);
+    vma_unlock(vma);
+
     if (res == 0) {
         up_read(&mm->mmap_lock);
         return;

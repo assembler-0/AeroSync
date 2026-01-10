@@ -118,6 +118,7 @@ struct inode {
     struct timespec     i_mtime;          // Last modification time
     struct timespec     i_ctime;          // Last status change time
     struct super_block  *i_sb;            // Pointer to superblock
+    struct vm_object    *i_mapping;       // The page cache for this inode
     const struct inode_operations *i_op;  // Inode operations
     const struct file_operations  *i_fop; // Default file operations
     void                *i_fs_info;       // Filesystem private data
@@ -151,11 +152,13 @@ struct file {
     // ... more fields like reference count, etc.
 };
 
+struct vm_area_struct;
 // struct file_operations: Operations for an open file
 struct file_operations {
     fn(vfs_off_t, llseek, struct file *file, vfs_off_t offset, int whence);
     fn(ssize_t, read, struct file *file, char *buf, size_t count, vfs_loff_t *ppos);
     fn(ssize_t, write, struct file *file, const char *buf, size_t count, vfs_loff_t *ppos);
+    fn(int, mmap, struct file *file, struct vm_area_struct *vma);
     fn(int, open, struct inode *inode, struct file *file);
     fn(int, release, struct inode *inode, struct file *file);
     // Add more operations as needed, e.g., ioctl, mmap, poll, etc.

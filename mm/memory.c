@@ -23,6 +23,7 @@
 #include <mm/vm_object.h>
 #include <mm/page.h>
 #include <mm/slab.h>
+#include <mm/mmu_gather.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/mm/vmm.h>
 #include <kernel/classes.h>
@@ -42,7 +43,17 @@ DEFINE_PER_CPU(struct list_head, active_list);
 DEFINE_PER_CPU(spinlock_t, lru_lock);
 
 static DECLARE_WAIT_QUEUE_HEAD(kswapd_wait);
-static struct zone *volatile kswapd_zone = NULL;
+
+/**
+ * struct scan_control - Control parameters for a reclamation pass.
+ */
+struct scan_control {
+  size_t nr_to_reclaim;
+  gfp_t gfp_mask;
+  int priority; /* 0 (max) to 12 (min) */
+  size_t nr_reclaimed;
+  size_t nr_scanned;
+};
 
 /**
  * folio_add_lru - Add a folio to the inactive LRU list.
@@ -52,29 +63,17 @@ void folio_add_lru(struct folio *folio) {
 
   struct list_head *inactive = this_cpu_ptr(inactive_list);
   spinlock_t *lock = this_cpu_ptr(lru_lock);
-  
+
   irq_flags_t flags = spinlock_lock_irqsave(lock);
-  
-  /* Validate folio state before adding to LRU */
-  if (folio->page.flags & PG_lru) {
-    /* Already on LRU - validate list integrity */
-    if (list_empty(&folio->page.lru)) {
-      printk(KERN_ERR SWAP_CLASS "Folio marked PG_lru but not on list\n");
-      folio->page.flags &= ~PG_lru;
-    } else {
-      spinlock_unlock_irqrestore(lock, flags);
-      return;
-    }
+
+  if (folio->flags & PG_lru) {
+    spinlock_unlock_irqrestore(lock, flags);
+    return;
   }
-  
-  /* Validate list head integrity */
-  if (!inactive->next || !inactive->prev) {
-    INIT_LIST_HEAD(inactive);
-  }
-  
-  list_add(&folio->page.lru, inactive);
-  folio->page.flags |= PG_lru;
-  
+
+  list_add(&folio->lru, inactive);
+  folio->flags |= PG_lru;
+
   spinlock_unlock_irqrestore(lock, flags);
 }
 
@@ -82,76 +81,90 @@ void folio_add_lru(struct folio *folio) {
  * try_to_unmap_folio - The core of memory reclamation.
  * Unmaps a folio from all VMAs that reference it.
  */
-int try_to_unmap_folio(struct folio *folio) {
-  if (!folio->page.mapping) return 0;
+int try_to_unmap_folio(struct folio *folio, struct mmu_gather *tlb) {
+  void *mapping = folio->mapping;
+  if (!mapping) return 0;
+
+  rcu_read_lock();
 
   /* Check if it's anonymous (bit 0 set) */
-  if ((uintptr_t) folio->page.mapping & 0x1) {
-    struct anon_vma *av = (struct anon_vma *) ((uintptr_t) folio->page.mapping & ~0x1);
+  if ((uintptr_t) mapping & 0x1) {
+    struct anon_vma *av = (struct anon_vma *) ((uintptr_t) mapping & ~0x1);
 
     // Validate anon_vma before use
     if (!av || atomic_read(&av->refcount) == 0) {
-      folio->page.mapping = NULL;
+      folio->mapping = NULL;
+      rcu_read_unlock();
       return 0;
     }
 
     irq_flags_t flags = spinlock_lock_irqsave(&av->lock);
-    
+
     // Re-check after acquiring lock
     if (atomic_read(&av->refcount) == 0) {
       spinlock_unlock_irqrestore(&av->lock, flags);
-      folio->page.mapping = NULL;
+      folio->mapping = NULL;
+      rcu_read_unlock();
       return 0;
     }
-    
+
     struct anon_vma_chain *avc;
-    struct list_head unmap_list;
-    INIT_LIST_HEAD(&unmap_list);
-    
-    // Collect VMAs to unmap (to avoid holding anon_vma lock during unmap)
+
     list_for_each_entry(avc, &av->head, same_anon_vma) {
       struct vm_area_struct *vma = avc->vma;
       if (!vma || !vma->vm_mm) continue;
-      
-      uint64_t address = vma->vm_start + (folio->page.index << PAGE_SHIFT);
+
+      uint64_t address = vma->vm_start + (folio->index << PAGE_SHIFT);
       if (address < vma->vm_start || address >= vma->vm_end) continue;
-      
-      // Add to unmap list (we'll process after releasing anon_vma lock)
-      list_add(&avc->unmap_list, &unmap_list);
-    }
-    
-    spinlock_unlock_irqrestore(&av->lock, flags);
-    
-    // Now unmap from collected VMAs
-    list_for_each_entry(avc, &unmap_list, unmap_list) {
-      struct vm_area_struct *vma = avc->vma;
-      uint64_t address = vma->vm_start + (folio->page.index << PAGE_SHIFT);
-      
+
       if (vma->vm_mm->pml_root) {
-        vmm_unmap_page(vma->vm_mm, address);
+        if (tlb) {
+          uint64_t phys = vmm_unmap_page_no_flush(vma->vm_mm, address);
+          if (phys) {
+            tlb->mm = vma->vm_mm; // Track last modified mm
+            tlb_remove_folio(tlb, folio, address);
+          }
+        } else {
+          vmm_unmap_page(vma->vm_mm, address);
+        }
       }
     }
 
-    folio->page.mapping = NULL;
+    spinlock_unlock_irqrestore(&av->lock, flags);
+    folio->mapping = NULL;
+    rcu_read_unlock();
     return 1;
   }
 
-  /* Check if it's a VM Object (bit 0 NOT set) */
-  struct vm_object *obj = (struct vm_object *) folio->page.mapping;
-  irq_flags_t flags = spinlock_lock_irqsave(&obj->lock);
+  /* Shared Memory / File-backed (bit 0 NOT set) */
+  struct vm_object *obj = (struct vm_object *) mapping;
+  down_read(&obj->lock);
   struct vm_area_struct *vma;
 
   list_for_each_entry(vma, &obj->i_mmap, vm_shared) {
-    uint64_t address = vma->vm_start + ((folio->page.index - vma->vm_pgoff) << PAGE_SHIFT);
+    if (folio->index < vma->vm_pgoff) continue;
 
-    if (address < vma->vm_start || address >= vma->vm_end) continue;
+    uint64_t pgoff_in_vma = folio->index - vma->vm_pgoff;
+    if (pgoff_in_vma >= vma_pages(vma)) continue;
+
+    uint64_t address = vma->vm_start + (pgoff_in_vma << PAGE_SHIFT);
 
     if (vma->vm_mm->pml_root) {
-      vmm_unmap_page(vma->vm_mm, address);
+      if (tlb) {
+        uint64_t phys = vmm_unmap_page_no_flush(vma->vm_mm, address);
+        if (phys) {
+          tlb->mm = vma->vm_mm;
+          tlb_remove_folio(tlb, folio, address);
+        }
+      } else {
+        vmm_unmap_page(vma->vm_mm, address);
+      }
     }
   }
 
-  spinlock_unlock_irqrestore(&obj->lock, flags);
+  up_read(&obj->lock);
+  folio->mapping = NULL;
+  rcu_read_unlock();
   return 1;
 }
 
@@ -160,16 +173,19 @@ int try_to_unmap_folio(struct folio *folio) {
  */
 int folio_referenced(struct folio *folio) {
   int referenced = 0;
-  if (!folio->page.mapping) return 0;
+  void *mapping = folio->mapping;
+  if (!mapping) return 0;
 
-  if ((uintptr_t) folio->page.mapping & 0x1) {
-    struct anon_vma *av = (struct anon_vma *) ((uintptr_t) folio->page.mapping & ~0x1);
+  rcu_read_lock();
+
+  if ((uintptr_t) mapping & 0x1) {
+    struct anon_vma *av = (struct anon_vma *) ((uintptr_t) mapping & ~0x1);
     irq_flags_t flags = spinlock_lock_irqsave(&av->lock);
     struct anon_vma_chain *avc;
 
     list_for_each_entry(avc, &av->head, same_anon_vma) {
       struct vm_area_struct *vma = avc->vma;
-      uint64_t address = vma->vm_start + (folio->page.index << PAGE_SHIFT);
+      uint64_t address = vma->vm_start + (folio->index << PAGE_SHIFT);
 
       if (address < vma->vm_start || address >= vma->vm_end) continue;
 
@@ -183,12 +199,12 @@ int folio_referenced(struct folio *folio) {
     spinlock_unlock_irqrestore(&av->lock, flags);
   } else {
     /* VM Object */
-    struct vm_object *obj = (struct vm_object *) folio->page.mapping;
-    irq_flags_t flags = spinlock_lock_irqsave(&obj->lock);
+    struct vm_object *obj = (struct vm_object *) mapping;
+    down_read(&obj->lock);
     struct vm_area_struct *vma;
 
     list_for_each_entry(vma, &obj->i_mmap, vm_shared) {
-      uint64_t address = vma->vm_start + ((folio->page.index - vma->vm_pgoff) << PAGE_SHIFT);
+      uint64_t address = vma->vm_start + ((folio->index - vma->vm_pgoff) << PAGE_SHIFT);
 
       if (address < vma->vm_start || address >= vma->vm_end) continue;
 
@@ -199,27 +215,30 @@ int folio_referenced(struct folio *folio) {
         }
       }
     }
-    spinlock_unlock_irqrestore(&obj->lock, flags);
+    up_read(&obj->lock);
   }
 
+  rcu_read_unlock();
   return referenced;
 }
 
 /**
  * folio_reclaim - Attempt to free a folio by unmapping it from all users.
  */
-int folio_reclaim(struct folio *folio) {
+int folio_reclaim(struct folio *folio, struct mmu_gather *tlb) {
   if (folio_referenced(folio)) {
-    irq_flags_t flags = spinlock_lock_irqsave(&lru_lock);
-    list_move(&folio->page.lru, &active_list);
-    folio->page.flags |= PG_active;
-    spinlock_unlock_irqrestore(&lru_lock, flags);
-    return -1;
+    /* Recently accessed, move to active list (if on inactive) */
+    return -EAGAIN;
   }
 
-  if (try_to_unmap_folio(folio)) {
-    uint64_t phys = folio_to_phys(folio);
-    pmm_free_page(phys);
+  if (try_to_unmap_folio(folio, tlb)) {
+    /* 
+     * If TLB context is provided, we don't free pages immediately.
+     * The TLB finish pass will free them after the shootdown.
+     */
+    if (!tlb) {
+      pmm_free_pages(folio_to_phys(folio), folio_nr_pages(folio));
+    }
     return 0;
   }
 
@@ -227,42 +246,129 @@ int folio_reclaim(struct folio *folio) {
 }
 
 /**
+ * shrink_active_list - Move pages from active to inactive if they aren't referenced.
+ */
+void shrink_active_list(size_t nr_to_scan, struct scan_control *sc) {
+  struct list_head *active = this_cpu_ptr(active_list);
+  spinlock_t *lock = this_cpu_ptr(lru_lock);
+  struct list_head folio_list;
+  INIT_LIST_HEAD(&folio_list);
+
+  irq_flags_t flags = spinlock_lock_irqsave(lock);
+  for (size_t i = 0; i < nr_to_scan && !list_empty(active); i++) {
+    struct folio *folio = list_last_entry(active, struct folio, lru);
+    list_move(&folio->lru, &folio_list);
+    folio->flags &= ~PG_active;
+  }
+  spinlock_unlock_irqrestore(lock, flags);
+
+  struct list_head *pos, *q;
+  list_for_each_safe(pos, q, &folio_list) {
+    struct folio *folio = list_entry(pos, struct folio, lru);
+
+    if (folio_referenced(folio)) {
+      /* Still active, move back to head of active list */
+      flags = spinlock_lock_irqsave(lock);
+      list_add(&folio->lru, active);
+      folio->flags |= PG_active;
+      spinlock_unlock_irqrestore(lock, flags);
+    } else {
+      /* Not referenced, move to inactive list */
+      flags = spinlock_lock_irqsave(lock);
+      list_add(&folio->lru, this_cpu_ptr(inactive_list));
+      spinlock_unlock_irqrestore(lock, flags);
+    }
+    sc->nr_scanned++;
+  }
+}
+
+/**
  * shrink_inactive_list - Scan the inactive LRU for pages to reclaim.
  */
 size_t shrink_inactive_list(size_t nr_to_scan) {
   size_t reclaimed = 0;
-  struct list_head page_list;
-  INIT_LIST_HEAD(&page_list);
+  struct list_head folio_list;
+  INIT_LIST_HEAD(&folio_list);
 
-  irq_flags_t flags = spinlock_lock_irqsave(&lru_lock);
-  for (size_t i = 0; i < nr_to_scan && !list_empty(&inactive_list); i++) {
-    struct page *page = list_last_entry(&inactive_list, struct page, lru);
-    list_move(&page->lru, &page_list);
+  struct list_head *inactive = this_cpu_ptr(inactive_list);
+  spinlock_t *lock = this_cpu_ptr(lru_lock);
+
+  irq_flags_t flags = spinlock_lock_irqsave(lock);
+  for (size_t i = 0; i < nr_to_scan && !list_empty(inactive); i++) {
+    struct folio *folio = list_last_entry(inactive, struct folio, lru);
+    list_move(&folio->lru, &folio_list);
+    folio->flags &= ~PG_lru;
   }
-  spinlock_unlock_irqrestore(&lru_lock, flags);
+  spinlock_unlock_irqrestore(lock, flags);
+
+  /*
+   * Batch TLB shootdown for all pages unmapped during this pass.
+   * This prevents "IPI Storms" on SMP.
+   */
+  struct mmu_gather tlb;
+  tlb_gather_mmu(&tlb, &init_mm, 0, 0); // Dynamic range
 
   struct list_head *pos, *q;
-  list_for_each_safe(pos, q, &page_list) {
-    struct page *page = list_entry(pos, struct page, lru);
-    struct folio *folio = page_folio(page);
-    if (folio_reclaim(folio) == 0) {
+  list_for_each_safe(pos, q, &folio_list) {
+    struct folio *folio = list_entry(pos, struct folio, lru);
+
+    int ret = folio_reclaim(folio, &tlb);
+    if (ret == 0) {
       reclaimed++;
+    } else if (ret == -EAGAIN) {
+      /* Re-activate */
+      flags = spinlock_lock_irqsave(lock);
+      list_add(&folio->lru, this_cpu_ptr(active_list));
+      folio->flags |= (PG_lru | PG_active);
+      spinlock_unlock_irqrestore(lock, flags);
+    } else {
+      /* Re-insert into inactive */
+      flags = spinlock_lock_irqsave(lock);
+      list_add(&folio->lru, inactive);
+      folio->flags |= PG_lru;
+      spinlock_unlock_irqrestore(lock, flags);
     }
   }
+
+  tlb_finish_mmu(&tlb);
 
   return reclaimed;
 }
 
+/**
+ * shrink_zone - Standard reclamation for a single zone.
+ */
+static void shrink_zone(struct zone *zone, struct scan_control *sc) {
+  /*
+   * In a production kernel, we would scan proportional to list sizes.
+   * Here we scan a fixed batch based on priority.
+   */
+  size_t nr_active = 32 >> (12 - sc->priority);
+  size_t nr_inactive = 64 >> (12 - sc->priority);
+
+  /* Aging */
+  shrink_active_list(nr_active, sc);
+
+  /* Reclamation */
+  sc->nr_reclaimed += shrink_inactive_list(nr_inactive);
+}
+
 void wakeup_kswapd(struct zone *zone) {
   if (!zone) return;
-  if (kswapd_zone == NULL) {
-    kswapd_zone = zone;
-    wake_up(&kswapd_wait);
-  }
+  wake_up(&kswapd_wait);
 }
 
 static int kswapd_should_run(void) {
-  return kswapd_zone != NULL;
+  /* Run if any zone is below high watermark */
+  for (int n = 0; n < MAX_NUMNODES; n++) {
+    if (!node_data[n]) continue;
+    for (int i = 0; i < MAX_NR_ZONES; i++) {
+      struct zone *z = &node_data[n]->node_zones[i];
+      if (z->present_pages > 0 && z->nr_free_pages < z->watermark[WMARK_HIGH])
+        return 1;
+    }
+  }
+  return 0;
 }
 
 static int kswapd_thread(void *data) {
@@ -272,18 +378,30 @@ static int kswapd_thread(void *data) {
   while (1) {
     wait_event(&kswapd_wait, kswapd_should_run());
 
-    struct zone *z = kswapd_zone;
-    if (!z) continue;
+    struct scan_control sc = {
+      .gfp_mask = GFP_KERNEL,
+      .nr_to_reclaim = 128,
+      .priority = 12, /* Start with lowest priority */
+    };
 
-    /* Reclaim until we hit high watermark */
-    int loops = 0;
-    while (z->nr_free_pages < z->watermark[WMARK_HIGH]) {
-      size_t reclaimed = shrink_inactive_list(32);
-      if (reclaimed == 0) break;
-      if (++loops > 1000) break;
+    while (sc.priority >= 0) {
+      for (int n = 0; n < MAX_NUMNODES; n++) {
+        if (!node_data[n]) continue;
+        for (int i = MAX_NR_ZONES - 1; i >= 0; i--) {
+          struct zone *z = &node_data[n]->node_zones[i];
+          if (z->present_pages == 0) continue;
+
+          if (z->nr_free_pages < z->watermark[WMARK_HIGH]) {
+            shrink_zone(z, &sc);
+          }
+        }
+      }
+
+      if (sc.nr_reclaimed >= sc.nr_to_reclaim) break;
+
+      /* If not enough reclaimed, increase pressure */
+      sc.priority--;
     }
-
-    kswapd_zone = NULL;
   }
   return 0;
 }
@@ -299,7 +417,7 @@ void lru_init(void) {
     struct list_head *inactive = per_cpu_ptr(inactive_list, cpu);
     struct list_head *active = per_cpu_ptr(active_list, cpu);
     spinlock_t *lock = per_cpu_ptr(lru_lock, cpu);
-    
+
     INIT_LIST_HEAD(inactive);
     INIT_LIST_HEAD(active);
     spinlock_init(lock);
@@ -354,9 +472,26 @@ void anon_vma_free(struct anon_vma *av) {
  * folio_add_anon_rmap - Links a physical folio to an anonymous VMA.
  */
 void folio_add_anon_rmap(struct folio *folio, struct vm_area_struct *vma, uint64_t address) {
-  if (!folio->page.mapping) {
-    folio->page.mapping = (void *) ((uintptr_t) vma->anon_vma | 0x1);
-    folio->page.index = (address - vma->vm_start) >> PAGE_SHIFT;
+  /*
+   * Anonymous mapping: bit 0 is set.
+   * If the folio is already mapped, we skip adding it to the LRU again,
+   * but we ensure the mapping is correct (e.g. for COW).
+   */
+  if (!folio->mapping) {
+    folio->mapping = (void *) ((uintptr_t) vma->anon_vma | 0x1);
+    folio->index = (address - vma->vm_start) >> PAGE_SHIFT;
+    folio_add_lru(folio);
+  }
+}
+
+/**
+ * folio_add_file_rmap - Links a physical folio to its owning VM Object.
+ */
+void folio_add_file_rmap(struct folio *folio, struct vm_object *obj, uint64_t pgoff) {
+  if (!folio->mapping) {
+    /* VM Object mapping: bit 0 is NOT set */
+    folio->mapping = (void *) obj;
+    folio->index = pgoff;
     folio_add_lru(folio);
   }
 }
@@ -365,6 +500,7 @@ void folio_add_anon_rmap(struct folio *folio, struct vm_area_struct *vma, uint64
 
 static int shmem_fault(struct vm_area_struct *vma, struct vm_fault *vmf) {
   if (!vma->vm_obj) return VM_FAULT_SIGBUS;
+  vmf->prot = vma->vm_page_prot;
   return vma->vm_obj->ops->fault(vma->vm_obj, vma, vmf);
 }
 
@@ -381,41 +517,74 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
   vmf.flags = flags;
   vmf.pgoff = (address - vma->vm_start) >> PAGE_SHIFT;
   if (vma->vm_pgoff) vmf.pgoff += vma->vm_pgoff;
-  vmf.page = NULL;
+  vmf.folio = NULL;
 
   int ret = VM_FAULT_SIGSEGV;
 
-  /* 
-   * Priority 1: VM Object (Production-ready MM)
+  /*
+   * Priority 1: VMA Operations (Special/Legacy)
+   * Check these first as they might override object behavior.
+   */
+  if (vma->vm_ops && vma->vm_ops->fault) {
+    ret = vma->vm_ops->fault(vma, &vmf);
+  }
+  /*
+   * Priority 2: VM Object (Production-ready MM)
    * The object owns the pages and handles its own backing store.
    */
-  if (vma->vm_obj && vma->vm_obj->ops && vma->vm_obj->ops->fault) {
+  else if (vma->vm_obj && vma->vm_obj->ops && vma->vm_obj->ops->fault) {
     ret = vma->vm_obj->ops->fault(vma->vm_obj, vma, &vmf);
-  } 
-  /* 
-   * Priority 2: VMA Operations (Special/Legacy)
+  }
+  /*
+   * Priority 3: Lazy Anonymous Object Creation
+   * If no object exists and it's a standard mapping, create an anon object.
    */
-  else if (vma->vm_ops && vma->vm_ops->fault) {
-    ret = vma->vm_ops->fault(vma, &vmf);
+  else if (!vma->vm_obj && !(vma->vm_flags & (VM_IO | VM_PFNMAP))) {
+    vma->vm_obj = vm_object_anon_create(vma_size(vma));
+    if (!vma->vm_obj) return VM_FAULT_OOM;
+
+    /* Link to object */
+    down_write(&vma->vm_obj->lock);
+    list_add(&vma->vm_shared, &vma->vm_obj->i_mmap);
+    up_write(&vma->vm_obj->lock);
+
+    ret = vma->vm_obj->ops->fault(vma->vm_obj, vma, &vmf);
   }
 
   if (ret == VM_FAULT_COMPLETED) return 0;
   if (ret != 0) return ret;
 
-  if (vmf.page) {
-    uint64_t pte_flags = PTE_PRESENT;
-    if (vma->vm_flags & VM_USER) pte_flags |= PTE_USER;
-    if (vma->vm_flags & VM_WRITE) pte_flags |= PTE_RW;
-    if (!(vma->vm_flags & VM_EXEC)) pte_flags |= PTE_NX;
-
-    struct folio *folio = page_folio(vmf.page);
+  if (vmf.folio) {
+    struct folio *folio = vmf.folio;
     uint64_t phys = folio_to_phys(folio);
 
     if (PageHead(&folio->page) && folio->page.order == 9) {
       vmm_map_huge_page(vma->vm_mm, vmf.address & 0xFFFFFFFFFFE00000ULL,
-                        phys, pte_flags, VMM_PAGE_SIZE_2M);
+                        phys, vmf.prot, VMM_PAGE_SIZE_2M);
     } else {
-      vmm_map_page(vma->vm_mm, vmf.address, phys, pte_flags);
+      vmm_map_page(vma->vm_mm, vmf.address, phys, vmf.prot);
+    }
+
+    /*
+     * Handle Shared Writable Mappings & page_mkwrite.
+     * If this is a write fault on a shared mapping, we must notify the owner.
+     */
+    if ((vma->vm_flags & VM_SHARED) && (flags & FAULT_FLAG_WRITE)) {
+      int mk_ret = 0;
+
+      if (vma->vm_ops && vma->vm_ops->page_mkwrite) {
+        mk_ret = vma->vm_ops->page_mkwrite(vma, &vmf);
+      } else if (vma->vm_obj && vma->vm_obj->ops && vma->vm_obj->ops->page_mkwrite) {
+        mk_ret = vma->vm_obj->ops->page_mkwrite(vma->vm_obj, vma, &vmf);
+      }
+
+      if (mk_ret != 0) return mk_ret;
+
+      /* Mark folio as dirty for writeback */
+      folio->page.flags |= PG_dirty;
+
+      /* Re-map with write permissions now that mkwrite succeeded */
+      vmm_map_page(vma->vm_mm, vmf.address, phys, vmf.prot | PTE_RW);
     }
   }
 

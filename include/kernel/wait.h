@@ -80,13 +80,13 @@ typedef struct __wait_queue wait_queue_t;
     __ret;                                                                     \
   })
 
-// #define wait_event_timeout(wq, condition_fn, data, timeout) \
-// ({ \
-//     long __ret = timeout; \
-//     if (!(condition_fn(data))) \
-//         __ret = __wait_event_timeout(&wq, condition_fn, data, timeout); \
-//     __ret; \
-// })
+#define wait_event_timeout(wq, condition_fn, data, timeout) \
+({ \
+    long __ret = timeout; \
+    if (!(condition_fn(data))) \
+        __ret = __wait_event_timeout(&wq, condition_fn, data, timeout); \
+    __ret; \
+})
 
 #define wait_event_interruptible_timeout(wq, condition, timeout)               \
   ({                                                                           \
@@ -145,11 +145,6 @@ void interruptible_sleep_on(wait_queue_head_t *wq);
     (wait)->func = default_wake_function;                                      \
   } while (0)
 
-/* Wait queue sleep states */
-#define TASK_NORMAL 0
-#define TASK_INTERRUPTIBLE_WAIT 1
-#define TASK_UNINTERRUPTIBLE_WAIT 2
-
 /* Counter-based synchronization primitive */
 struct wait_counter {
   wait_queue_head_t wait_q;
@@ -193,7 +188,3 @@ static inline void wait_counter_wait(struct wait_counter *wc) {
     remove_wait_queue(&wc->wait_q, &wait);
   }
 }
-
-/* Exported functions for scheduler integration */
-extern void deactivate_task(struct rq *rq, struct task_struct *p);
-extern void activate_task(struct rq *rq, struct task_struct *p);

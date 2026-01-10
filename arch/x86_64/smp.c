@@ -42,6 +42,7 @@ mp_request = {.id = LIMINE_MP_REQUEST_ID, .revision = 0};
 
 static uint64_t cpu_count = 0;
 static volatile int cpus_online = 0;
+struct cpumask cpu_online_mask = CPU_MASK_NONE;
 volatile int smp_lock = 0;
 static volatile int smp_start_barrier =
     0; // BSP releases APs to start interrupts
@@ -111,6 +112,7 @@ static void smp_ap_entry(struct limine_mp_info *info) {
 
   // Also increment the atomic counter for consistency with other code
   __atomic_fetch_add(&cpus_online, 1, __ATOMIC_RELEASE);
+  cpumask_set_cpu(cpu_id, &cpu_online_mask);
 
   // Mark this AP as online using wait counter
   wait_counter_inc(&ap_startup_counter);
@@ -315,6 +317,7 @@ void smp_init(void) {
 void smp_prepare_boot_cpu(void) {
   // BSP is always CPU 0
   this_cpu_write(cpu_number, 0);
+  cpumask_set_cpu(0, &cpu_online_mask);
 }
 
 uint64_t smp_get_cpu_count(void) { return cpu_count; }

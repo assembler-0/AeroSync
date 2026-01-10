@@ -88,17 +88,21 @@ int vmm_map_pages_list(struct mm_struct *mm, uint64_t virt, const uint64_t *phys
                        size_t count, uint64_t flags);
 
 /**
- * Unmap a virtual page.
+ * Unmap a virtual page and return the folio.
  *
  * @param mm        The address space to unmap from
  * @param virt      Virtual address to unmap
- * @return 0 on success
+ * @return Folio pointer on success, NULL if not mapped
  */
+struct folio;
+struct folio *vmm_unmap_folio(struct mm_struct *mm, uint64_t virt);
+struct folio *vmm_unmap_folio_no_flush(struct mm_struct *mm, uint64_t virt);
+
 int vmm_unmap_page(struct mm_struct *mm, uint64_t virt);
 uint64_t vmm_unmap_page_no_flush(struct mm_struct *mm, uint64_t virt);
 int vmm_unmap_pages(struct mm_struct *mm, uint64_t virt, size_t count);
-int vmm_unmap_pages_and_get_phys(struct mm_struct *mm, uint64_t virt,
-                                 uint64_t *phys_list, size_t count);
+int vmm_unmap_pages_and_get_folios(struct mm_struct *mm, uint64_t virt,
+                                  struct folio **folios, size_t count);
 
 /**
  * Copy user page tables for fork (COW).

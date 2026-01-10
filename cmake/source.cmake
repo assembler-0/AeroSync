@@ -61,7 +61,7 @@ include_directories(
 # ============================================================================
 # Final Source List
 # ============================================================================
-set(VOIDFRAMEX_SOURCES
+set(AEROSYNC_SOURCES
         ${INIT_SOURCES}
         ${KERNEL_SOURCES}
         ${LIB_SOURCES}

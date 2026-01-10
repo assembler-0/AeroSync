@@ -67,13 +67,14 @@
 #define MMIO_CLASS "[sys::mm::mmio] " // MMIO Virtual Address Allocator
 #define VMA_CLASS "[sys::mm::vma] " // Virtual Memory Area
 #define FOLIO_CLASS "[sys::mm::folio] " // Linux struct folio
+#define WRITEBACK_CLASS "[sys::mm::writeback] "
 #define THP_CLASS "[sys::mm::thp] "
 
 ///@section Heaps & Allocators
 #define SLAB_CLASS "[sys::mm::slab] " // Slab allocator specific
 #define SHM_CLASS "[sys::mm::shm] "   // Shared Memory (IPC)
 
-///@section Stack protection
+///@section Stack protectionv
 #define STACK_CLASS "[sys::mm::stack] " // Stack overflow protection
 
 /* =========================================================================
