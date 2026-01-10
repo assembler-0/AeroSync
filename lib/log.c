@@ -20,10 +20,10 @@
 
 #include <arch/x86_64/tsc.h>
 #include <compiler.h>
-#include <kernel/sched/process.h>
-#include <kernel/sched/sched.h>
-#include <kernel/spinlock.h>
-#include <kernel/wait.h>
+#include <aerosync/sched/process.h>
+#include <aerosync/sched/sched.h>
+#include <aerosync/spinlock.h>
+#include <aerosync/wait.h>
 #include <lib/log.h>
 #include <lib/printk.h>
 #include <lib/ringbuf.h>

@@ -14,10 +14,10 @@
  */
 
 
-#include <kernel/classes.h>
-#include <kernel/version.h>
-#include <kernel/fkx/fkx.h>
-#include <kernel/sched/process.h>
+#include <aerosync/classes.h>
+#include <aerosync/version.h>
+#include <aerosync/fkx/fkx.h>
+#include <aerosync/sched/process.h>
 #include <lib/linearfb/linearfb.h>
 #include <lib/printk.h>
 

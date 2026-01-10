@@ -12,7 +12,7 @@
 #include <mm/page.h>
 #include <mm/slab.h>
 #include <fs/vfs.h>
-#include <kernel/errno.h>
+#include <aerosync/errno.h>
 #include <lib/string.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <lib/uaccess.h>

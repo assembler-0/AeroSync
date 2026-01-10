@@ -23,11 +23,11 @@
 #include <mm/page.h>
 #include <mm/slab.h>
 #include <arch/x86_64/mm/vmm.h>
-#include <kernel/sched/process.h>
-#include <kernel/sched/sched.h>
+#include <aerosync/sched/process.h>
+#include <aerosync/sched/sched.h>
 #include <linux/container_of.h>
 #include <lib/printk.h>
-#include <kernel/classes.h>
+#include <aerosync/classes.h>
 #include <arch/x86_64/tsc.h>
 #include <mm/vm_object.h>
 

@@ -21,8 +21,8 @@
 #include <arch/x86_64/mm/paging.h>
 #include <drivers/apic/apic_internal.h>
 #include <drivers/apic/xapic.h>
-#include <kernel/classes.h>
-#include <kernel/fkx/fkx.h>
+#include <aerosync/classes.h>
+#include <aerosync/fkx/fkx.h>
 #include <mm/vmalloc.h>
 
 // --- Register Definitions ---

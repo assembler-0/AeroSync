@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/spinlock.h>
+#include <aerosync/spinlock.h>
 #include <linux/rcupdate.h>
 #include <mm/gfp.h>
 

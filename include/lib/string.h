@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 
 int strncmp(const char *a, const char *b, size_t n);
 int strcmp(const char *a, const char *b);

@@ -42,7 +42,7 @@ AeroSync is a monolithic, higher-half, 64-bit x86_64 kernel (a KERNEL!, NOT AN O
 *   **Graphical Console:** A framebuffer console provided by the `linearfb` library.
 *   **Interrupt Handling:** Supports both modern APIC (x2APIC) and legacy PIC interrupt controllers.
 *   **Timers:** Supports HPET and PIT timers.
-*   **[FKX](kernel/fkx/README.md)**: Fused Kernel eXtension for modularity.
+*   **[FKX](aerosync/fkx/README.md)**: Fused Kernel eXtension for modularity.
 
 ## Architecture
 

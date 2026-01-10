@@ -29,9 +29,9 @@
 #include <mm/slab.h>
 #include <arch/x86_64/mm/paging.h>
 #include <arch/x86_64/mm/tlb.h>
-#include <kernel/classes.h>
-#include <kernel/panic.h>
-#include <kernel/fkx/fkx.h>
+#include <aerosync/classes.h>
+#include <aerosync/panic.h>
+#include <aerosync/fkx/fkx.h>
 #include <linux/container_of.h>
 
 /**

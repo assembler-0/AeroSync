@@ -26,16 +26,16 @@
 #include <mm/mmu_gather.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/mm/vmm.h>
-#include <kernel/classes.h>
-#include <kernel/errno.h>
-#include <kernel/mutex.h>
+#include <aerosync/classes.h>
+#include <aerosync/errno.h>
+#include <aerosync/mutex.h>
 #include <linux/container_of.h>
 #include <linux/list.h>
 #include <lib/string.h>
 #include <lib/printk.h>
 
-#include <kernel/wait.h>
-#include <kernel/sched/process.h>
+#include <aerosync/wait.h>
+#include <aerosync/sched/process.h>
 
 /* Global LRU Lists - Per-CPU to reduce cache line bouncing */
 DEFINE_PER_CPU(struct list_head, inactive_list);

@@ -24,13 +24,13 @@
 #include <arch/x86_64/mm/layout.h>
 #include <arch/x86_64/mm/vmm.h>
 #include <arch/x86_64/tsc.h>
-#include <kernel/sysintf/ic.h>
-#include <kernel/classes.h>
-#include <kernel/mutex.h>
-#include <kernel/sched/process.h>
-#include <kernel/sched/sched.h>
-#include <kernel/spinlock.h>
-#include <kernel/wait.h>
+#include <aerosync/sysintf/ic.h>
+#include <aerosync/classes.h>
+#include <aerosync/mutex.h>
+#include <aerosync/sched/process.h>
+#include <aerosync/sched/sched.h>
+#include <aerosync/spinlock.h>
+#include <aerosync/wait.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <limine/limine.h>
@@ -701,7 +701,7 @@ uacpi_status uacpi_kernel_initialize(uacpi_init_level current_init_lvl) {
 void uacpi_kernel_deinitialize(void) {
   // Cleanup
 }
-#include <kernel/fkx/fkx.h>
+#include <aerosync/fkx/fkx.h>
 EXPORT_SYMBOL(uacpi_table_find_by_signature);
 EXPORT_SYMBOL(uacpi_status_to_string);
 EXPORT_SYMBOL(uacpi_table_unref);

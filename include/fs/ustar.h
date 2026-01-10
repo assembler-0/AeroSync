@@ -1,7 +1,7 @@
 #ifndef USTAR_H
 #define USTAR_H
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 
 // USTAR (tar) header structure (512 bytes)
 struct ustar_header {

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 
 // Probe for APIC availability (CPUID feature bit). Returns non-zero if present.
 int apic_probe(void);
@@ -40,5 +40,5 @@ void apic_timer_set_frequency(uint32_t frequency_hz);
 // Get the current CPU's LAPIC ID
 uint8_t lapic_get_id(void);
 
-#include <kernel/sysintf/ic.h>
+#include <aerosync/sysintf/ic.h>
 const interrupt_controller_interface_t* apic_get_driver(void);

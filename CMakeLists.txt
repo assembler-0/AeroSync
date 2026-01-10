@@ -47,8 +47,8 @@ set(AEROSYNC_CANDIDATE "1" CACHE STRING "AeroSync release candidate")
 set(AEROSYNC_ABI_LEVEL "0" CACHE STRING "AeroSync ABI level")
 set(AEROSYNC_CODENAME "Invariant" CACHE STRING "AeroSync codename")
 configure_file(
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/kernel/version.h.in
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/kernel/version.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/aerosync/version.h.in
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/aerosync/version.h
         @ONLY
 )
 
@@ -259,7 +259,7 @@ add_custom_command(
         ${CMAKE_CURRENT_BINARY_DIR}/bootdir/EFI/BOOT/BOOTX64.EFI
         # Copy kernel
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:aerosync.krnl>
-        ${CMAKE_CURRENT_BINARY_DIR}/bootdir/kernel/aerosync.krnl
+        ${CMAKE_CURRENT_BINARY_DIR}/bootdir/aerosync/aerosync.krnl
         # Copy Limine config
         COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/limine.conf
         ${CMAKE_CURRENT_BINARY_DIR}/bootdir/limine.conf

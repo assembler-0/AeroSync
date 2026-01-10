@@ -20,8 +20,8 @@
 
 #include <arch/x86_64/mm/paging.h>
 #include <drivers/apic/ioapic.h>
-#include <kernel/classes.h>
-#include <kernel/fkx/fkx.h>
+#include <aerosync/classes.h>
+#include <aerosync/fkx/fkx.h>
 #include <uacpi/acpi.h>
 #include <mm/vmalloc.h>
 

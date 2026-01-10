@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 
 uint64_t rdtsc(void);
 uint64_t rdtscp(void);

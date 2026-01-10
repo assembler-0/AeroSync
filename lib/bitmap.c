@@ -8,7 +8,7 @@
  */
 
 #include <lib/bitmap.h>
-#include <kernel/bitops.h>
+#include <aerosync/bitops.h>
 
 unsigned long bitmap_find_next_bit(const unsigned long *addr, unsigned long nbits, unsigned long start) {
     if (start >= nbits)

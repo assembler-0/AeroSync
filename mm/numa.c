@@ -11,7 +11,7 @@
 #include <mm/page.h>
 #include <lib/printk.h>
 #include <uacpi/acpi.h> // We only use the header definitions
-#include <kernel/classes.h>
+#include <aerosync/classes.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <lib/string.h>
 

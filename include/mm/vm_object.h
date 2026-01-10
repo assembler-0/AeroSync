@@ -1,7 +1,7 @@
 #pragma once
 
 #include <mm/mm_types.h>
-#include <kernel/rw_semaphore.h>
+#include <aerosync/rw_semaphore.h>
 
 typedef enum {
   VM_OBJECT_ANON,

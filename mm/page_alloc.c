@@ -22,14 +22,14 @@
 #include <mm/page.h>
 #include <lib/printk.h>
 #include <lib/vsprintf.h>
-#include <kernel/spinlock.h>
-#include <kernel/panic.h>
+#include <aerosync/spinlock.h>
+#include <aerosync/panic.h>
 #include <arch/x86_64/cpu.h>
-#include <kernel/classes.h>
+#include <aerosync/classes.h>
 #include <linux/list.h>
 #include <linux/container_of.h>
 #include <mm/gfp.h>
-#include <kernel/sched/sched.h>
+#include <aerosync/sched/sched.h>
 
 /* Global zones */
 struct zone managed_zones[MAX_NR_ZONES];

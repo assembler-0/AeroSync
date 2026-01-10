@@ -19,10 +19,10 @@
  */
 
 #include <compiler.h>
-#include <kernel/classes.h>
-#include <kernel/panic.h>
+#include <aerosync/classes.h>
+#include <aerosync/panic.h>
 #include <lib/printk.h>
-#include <kernel/fkx/fkx.h>
+#include <aerosync/fkx/fkx.h>
 
 struct SourceLocation {
   const char *file;

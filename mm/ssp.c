@@ -19,10 +19,10 @@
  */
 
 #include <compiler.h>
-#include <kernel/panic.h>
-#include <kernel/classes.h>
+#include <aerosync/panic.h>
+#include <aerosync/classes.h>
 #include <mm/stack.h>
-#include <kernel/fkx/fkx.h>
+#include <aerosync/fkx/fkx.h>
 
 uint64_t __stack_chk_guard = STACK_CANARY_VALUE;
 

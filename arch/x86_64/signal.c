@@ -19,11 +19,11 @@
  */
 
 
-#include <kernel/signal.h>
-#include <kernel/sched/sched.h>
+#include <aerosync/signal.h>
+#include <aerosync/sched/sched.h>
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/entry.h>
-#include <kernel/sched/process.h>
+#include <aerosync/sched/process.h>
 #include <lib/uaccess.h>
 #include <lib/string.h>
 

@@ -21,7 +21,7 @@
 #include <compiler.h>
 #include <crypto/crc32.h>
 #include <lib/printk.h>
-#include <kernel/classes.h>
+#include <aerosync/classes.h>
 
 static uint32_t crc32_table[256] __aligned(16);
 

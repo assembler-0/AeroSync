@@ -22,10 +22,10 @@
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/exception.h>
 #include <arch/x86_64/mm/vmm.h>
-#include <kernel/classes.h>
-#include <kernel/panic.h>
-#include <kernel/sched/sched.h>
-#include <kernel/signal.h>
+#include <aerosync/classes.h>
+#include <aerosync/panic.h>
+#include <aerosync/sched/sched.h>
+#include <aerosync/signal.h>
 #include <lib/printk.h>
 #include <mm/vma.h>
 
@@ -172,7 +172,7 @@ void do_page_fault(cpu_regs *regs) {
     }
 
     // Legacy/PTE COW Handling: If it's a write fault on a present page in a writable VMA
-    // This is a fallback for kernel/modules or VMAs not yet using vm_objects fully.
+    // This is a fallback for aerosync/modules or VMAs not yet using vm_objects fully.
     if (write_fault && (error_code & PF_PROT)) {
       if (vmm_handle_cow(mm, cr2) == 0) {
         up_read(&mm->mmap_lock);

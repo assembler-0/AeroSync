@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 #include <uacpi/uacpi.h>
 #include <uacpi/tables.h>
 #include <uacpi/acpi.h>

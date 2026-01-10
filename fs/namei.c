@@ -2,7 +2,7 @@
 #include <lib/string.h>
 #include <mm/slab.h>
 #include <lib/printk.h>
-#include <kernel/classes.h>
+#include <aerosync/classes.h>
 
 struct dentry *root_dentry = NULL;
 

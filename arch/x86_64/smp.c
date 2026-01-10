@@ -27,10 +27,10 @@
 #include <arch/x86_64/mm/vmm.h>
 #include <arch/x86_64/percpu.h>
 #include <arch/x86_64/smp.h>
-#include <kernel/classes.h>
-#include <kernel/sysintf/ic.h>
-#include <kernel/wait.h>
-#include <kernel/sysintf/panic.h>
+#include <aerosync/classes.h>
+#include <aerosync/sysintf/ic.h>
+#include <aerosync/wait.h>
+#include <aerosync/sysintf/panic.h>
 #include <lib/printk.h>
 #include <limine/limine.h>
 #include <mm/slab.h>

@@ -20,9 +20,9 @@
 
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/tsc.h>
-#include <kernel/classes.h>
+#include <aerosync/classes.h>
 #include <lib/printk.h>
-#include <kernel/fkx/fkx.h>
+#include <aerosync/fkx/fkx.h>
 
 static uint64_t tsc_freq = 0;
 static uint64_t tsc_boot_offset = 0;

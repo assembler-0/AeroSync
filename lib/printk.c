@@ -20,12 +20,12 @@
 
 #include <arch/x86_64/io.h>
 #include <lib/log.h>
-#include <kernel/classes.h>
-#include <kernel/types.h>
+#include <aerosync/classes.h>
+#include <aerosync/types.h>
 #include <lib/printk.h>
 #include <lib/vsprintf.h>
 #include <lib/string.h>
-#include <kernel/fkx/fkx.h>
+#include <aerosync/fkx/fkx.h>
 
 #define MAX_PRINTK_BACKENDS 8
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 
 #define STACK_CANARY_VALUE 0xDEADBEEFCAFEBABE
 

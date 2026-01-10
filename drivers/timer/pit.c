@@ -8,8 +8,8 @@
  */
 
 #include <drivers/timer/pit.h>
-#include <kernel/sysintf/time.h>
-#include <kernel/fkx/fkx.h>
+#include <aerosync/sysintf/time.h>
+#include <aerosync/fkx/fkx.h>
 #include <arch/x86_64/io.h>
 #include <arch/x86_64/tsc.h>
 

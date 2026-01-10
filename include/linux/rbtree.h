@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 #include <linux/rbtree_types.h>
 #include <compiler.h>
 

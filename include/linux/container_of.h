@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 
 #define typeof_member(T, m)	typeof(((T*)0)->m)
 /**

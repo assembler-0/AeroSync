@@ -7,10 +7,10 @@
  * @copyright (C) 2025 assembler-0
  */
 
-#include <kernel/fkx/fkx.h>
+#include <aerosync/fkx/fkx.h>
 #include <drivers/apic/pic.h>
 #include <drivers/apic/apic.h>
-#include <kernel/sysintf/ic.h>
+#include <aerosync/sysintf/ic.h>
 
 int ic_mod_init(void) {
   ic_register_controller(apic_get_driver());

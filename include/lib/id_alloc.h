@@ -9,8 +9,8 @@
 
 #pragma once
 
-#include <kernel/types.h>
-#include <kernel/spinlock.h>
+#include <aerosync/types.h>
+#include <aerosync/spinlock.h>
 
 /**
  * struct ida - ID allocator

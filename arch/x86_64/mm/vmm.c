@@ -11,9 +11,9 @@
 #include <arch/x86_64/mm/paging.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/mm/vmm.h>
-#include <kernel/classes.h>
-#include <kernel/panic.h>
-#include <kernel/spinlock.h>
+#include <aerosync/classes.h>
+#include <aerosync/panic.h>
+#include <aerosync/spinlock.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <mm/vma.h>
@@ -22,7 +22,7 @@
 #include <mm/mmu_gather.h>
 #include <arch/x86_64/smp.h>
 #include <arch/x86_64/features/features.h>
-#include <kernel/errno.h>
+#include <aerosync/errno.h>
 #include <linux/rcupdate.h>
 
 // Global kernel PML root (physical address)

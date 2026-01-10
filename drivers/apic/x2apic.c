@@ -7,13 +7,13 @@
  * @copyright (C) 2025 assembler-0
  */
 
-#include <kernel/classes.h> 
+#include <aerosync/classes.h> 
 #include <drivers/apic/x2apic.h> 
 #include <drivers/apic/apic_internal.h> 
-#include <kernel/fkx/fkx.h> 
+#include <aerosync/fkx/fkx.h> 
 #include <arch/x86_64/cpu.h> 
 #include <lib/printk.h> 
-#include <kernel/spinlock.h> 
+#include <aerosync/spinlock.h> 
 
 #define X2APIC_ID             0x00000802ULL  // Local APIC ID
 #define X2APIC_VERSION        0x00000803ULL  // Local APIC Version

@@ -21,11 +21,11 @@
 
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/gdt/gdt.h>
-#include <kernel/classes.h>
-#include <kernel/errno.h>
-#include <kernel/sched/process.h>
-#include <kernel/types.h>
-#include <kernel/sysintf/panic.h>
+#include <aerosync/classes.h>
+#include <aerosync/errno.h>
+#include <aerosync/sched/process.h>
+#include <aerosync/types.h>
+#include <aerosync/sysintf/panic.h>
 #include <lib/printk.h>
 #include <lib/uaccess.h>
 #include <arch/x86_64/entry.h>
@@ -33,9 +33,8 @@
 #include <fs/vfs.h>
 #include <mm/slab.h>
 #include <lib/bitmap.h>
-#include <kernel/signal.h>
-
-#include "mm/vma.h"
+#include <aerosync/signal.h>
+#include <mm/vma.h>
 
 #define MSR_STAR 0xC0000081
 #define MSR_LSTAR 0xC0000082

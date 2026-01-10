@@ -21,7 +21,7 @@
 #include <lib/string.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/mm/vmm.h>
-#include <kernel/errno.h>
+#include <aerosync/errno.h>
 #include <linux/container_of.h>
 #include <mm/slab.h>
 #include <mm/vma.h>

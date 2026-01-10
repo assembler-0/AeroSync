@@ -27,11 +27,11 @@
 #include <arch/x86_64/mm/layout.h>
 #include <arch/x86_64/smp.h>
 #include <linux/container_of.h>
-#include <kernel/fkx/fkx.h>
+#include <aerosync/fkx/fkx.h>
 #include <lib/string.h>
 #include <lib/printk.h>
-#include <kernel/panic.h>
-#include <kernel/classes.h>
+#include <aerosync/panic.h>
+#include <aerosync/classes.h>
 
 static LIST_HEAD(slab_caches);
 static spinlock_t slab_lock = 0;

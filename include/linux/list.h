@@ -2,7 +2,7 @@
 #pragma once
 
 #include <compiler.h>
-#include <kernel/types.h>
+#include <aerosync/types.h>
 #include <linux/types.h>
 #include <linux/poison.h>
 

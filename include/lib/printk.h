@@ -1,7 +1,7 @@
 #pragma once
 
-#include <kernel/spinlock.h>
-#include <kernel/types.h>
+#include <aerosync/spinlock.h>
+#include <aerosync/types.h>
 
 typedef struct printk_backend {
   const char *name;

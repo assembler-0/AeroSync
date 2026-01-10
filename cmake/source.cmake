@@ -19,11 +19,11 @@ list(APPEND ARCH_SOURCES
     ${ARCH_ASM_SOURCES}
 )
 file(GLOB_RECURSE INIT_SOURCES "init/*.c")
-file(GLOB KERNEL_SOURCES "kernel/*.c")
-file(GLOB_RECURSE KERNEL_SCHED_SOURCES "kernel/sched/*.c")
-file(GLOB_RECURSE KERNEL_FKX_SOURCES "kernel/fkx/*.c")
-file(GLOB_RECURSE KERNEL_SYSINTF_SOURCES "kernel/sysintf/*.c")
-file(GLOB_RECURSE KERNEL_ASM_SOURCES "kernel/*.asm")
+file(GLOB KERNEL_SOURCES "aerosync/*.c")
+file(GLOB_RECURSE KERNEL_SCHED_SOURCES "aerosync/sched/*.c")
+file(GLOB_RECURSE KERNEL_FKX_SOURCES "aerosync/fkx/*.c")
+file(GLOB_RECURSE KERNEL_SYSINTF_SOURCES "aerosync/sysintf/*.c")
+file(GLOB_RECURSE KERNEL_ASM_SOURCES "aerosync/*.asm")
 list(APPEND KERNEL_SOURCES
     ${KERNEL_SCHED_SOURCES}
     ${KERNEL_FKX_SOURCES}

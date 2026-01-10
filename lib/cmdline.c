@@ -7,9 +7,9 @@
  * @copyright (C) 2025 assembler-0
  */
 
-#include <kernel/cmdline.h>
+#include <aerosync/cmdline.h>
 #include <lib/string.h>
-#include <kernel/ctype.h>
+#include <aerosync/ctype.h>
 
 #define MAX_OPTS 128
 #define MAX_KEY_LEN 64

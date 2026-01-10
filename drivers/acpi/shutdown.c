@@ -23,8 +23,8 @@
 #include <uacpi/uacpi.h>
 #include <uacpi/sleep.h>
 #include <arch/x86_64/io.h>
-#include <kernel/classes.h>
-#include <kernel/panic.h>
+#include <aerosync/classes.h>
+#include <aerosync/panic.h>
 
 void acpi_shutdown(void) {
   printk(POWER_CLASS "Preparing for S5 Soft Off...\n");

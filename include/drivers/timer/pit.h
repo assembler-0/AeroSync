@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 
 #define PIT_FREQUENCY_BASE 1193182
 

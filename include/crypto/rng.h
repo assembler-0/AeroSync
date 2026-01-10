@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 
 void rng_seed(uint64_t a, uint64_t b);
 uint64_t xoroshiro128plus();

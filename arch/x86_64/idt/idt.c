@@ -18,7 +18,7 @@
  * GNU General Public License for more details.
  */
 
-#include <kernel/classes.h>
+#include <aerosync/classes.h>
 #include <lib/printk.h>
 #include <arch/x86_64/idt/idt.h>
 

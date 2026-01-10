@@ -21,11 +21,11 @@
 #include <fs/vfs.h>
 #include <fs/file.h>
 #include <include/linux/list.h>
-#include <kernel/types.h>
-#include <kernel/fkx/fkx.h>
-#include <kernel/mutex.h>
+#include <aerosync/types.h>
+#include <aerosync/fkx/fkx.h>
+#include <aerosync/mutex.h>
 #include <lib/printk.h>
-#include <kernel/classes.h>
+#include <aerosync/classes.h>
 #include <mm/slab.h>
 
 // Global lists for VFS objects

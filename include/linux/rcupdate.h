@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/sched/sched.h>
+#include <aerosync/sched/sched.h>
 #include <compiler.h>
 
 /**

@@ -41,10 +41,10 @@
  */
 
 #include <lib/string.h>
-#include <kernel/types.h>
+#include <aerosync/types.h>
 #include <lib/vsprintf.h>
 #include <stdarg.h>
-#include <kernel/fkx/fkx.h>
+#include <aerosync/fkx/fkx.h>
 
 
 // 'ntoa' conversion buffer size, this must be big enough to hold one converted

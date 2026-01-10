@@ -1,11 +1,11 @@
 #pragma once
 
 #include <compiler.h>
-#include <kernel/spinlock.h>
-#include <kernel/types.h>
+#include <aerosync/spinlock.h>
+#include <aerosync/types.h>
 #include <linux/list.h>
 #include <linux/rbtree.h>
-#include <kernel/atomic.h>
+#include <aerosync/atomic.h>
 
 #include <linux/rcupdate.h>
 
@@ -146,9 +146,9 @@ struct __aligned(sizeof(long)) vm_area_struct {
   void *vm_private_data;
 };
 
-#include <kernel/atomic.h>
-#include <kernel/rw_semaphore.h>
-#include <kernel/sched/cpumask.h>
+#include <aerosync/atomic.h>
+#include <aerosync/rw_semaphore.h>
+#include <aerosync/sched/cpumask.h>
 
 /*
  * mm_struct

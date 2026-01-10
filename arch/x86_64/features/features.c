@@ -18,7 +18,7 @@
  * GNU General Public License for more details.
  */
 
-#include <kernel/classes.h>
+#include <aerosync/classes.h>
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/features/features.h>
 #include <lib/printk.h>

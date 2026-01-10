@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 #include <mm/page.h>
 #include <arch/x86_64/mm/paging.h>
 

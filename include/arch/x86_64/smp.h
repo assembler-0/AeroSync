@@ -1,9 +1,9 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 #include <limine/limine.h>
-#include <kernel/atomic.h>
-#include <kernel/spinlock.h>
+#include <aerosync/atomic.h>
+#include <aerosync/spinlock.h>
 #include <linux/list.h>
 
 // Initialize SMP (BSP calls this)

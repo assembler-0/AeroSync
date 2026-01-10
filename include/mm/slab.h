@@ -1,12 +1,12 @@
 #pragma once
 
-#include <kernel/spinlock.h>
-#include <kernel/types.h>
+#include <aerosync/spinlock.h>
+#include <aerosync/types.h>
 
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/mm/pmm.h>
-#include <kernel/spinlock.h>
-#include <kernel/types.h>
+#include <aerosync/spinlock.h>
+#include <aerosync/types.h>
 #include <mm/page.h>
 
 #define SLAB_MAX_ORDER 11

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 
 #define X2APIC_CLASS "[SYS::X2APIC] "
 

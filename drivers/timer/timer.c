@@ -9,8 +9,8 @@
 
 #include <drivers/timer/hpet.h>
 #include <drivers/timer/pit.h>
-#include <kernel/fkx/fkx.h>
-#include <kernel/sysintf/time.h>
+#include <aerosync/fkx/fkx.h>
+#include <aerosync/sysintf/time.h>
 
 int timer_mod_init(void) {
   time_register_source(hpet_get_time_source());

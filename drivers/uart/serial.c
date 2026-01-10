@@ -18,7 +18,7 @@
  * GNU General Public License for more details.
  */
 
-#include <kernel/fkx/fkx.h>
+#include <aerosync/fkx/fkx.h>
 #include <drivers/uart/serial.h>
 #include <arch/x86_64/io.h>
 

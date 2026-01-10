@@ -22,8 +22,8 @@
 #include <drivers/apic/apic_internal.h>
 #include <drivers/apic/ioapic.h>
 #include <drivers/apic/pic.h>
-#include <kernel/classes.h>
-#include <kernel/fkx/fkx.h>
+#include <aerosync/classes.h>
+#include <aerosync/fkx/fkx.h>
 #include <uacpi/platform/types.h>
 
 // --- Register Definitions for Calibration ---

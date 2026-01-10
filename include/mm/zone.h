@@ -1,7 +1,7 @@
 #pragma once
 
-#include <kernel/spinlock.h>
-#include <kernel/atomic.h>
+#include <aerosync/spinlock.h>
+#include <aerosync/atomic.h>
 #include <linux/list.h>
 #include <mm/page.h>
 #include <arch/x86_64/cpu.h>

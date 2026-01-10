@@ -1,8 +1,8 @@
 #pragma once
 
-#include <kernel/types.h>
-#include <kernel/spinlock.h>
-#include <kernel/atomic.h>
+#include <aerosync/types.h>
+#include <aerosync/spinlock.h>
+#include <aerosync/atomic.h>
 #include <linux/list.h>
 
 // Forward declarations for VFS structures

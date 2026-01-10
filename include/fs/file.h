@@ -1,9 +1,9 @@
 #pragma once
 
-#include <kernel/types.h>
-#include <kernel/spinlock.h>
+#include <aerosync/types.h>
+#include <aerosync/spinlock.h>
 #include <fs/vfs.h>
-#include <kernel/atomic.h>
+#include <aerosync/atomic.h>
 
 struct file;
 struct dentry;

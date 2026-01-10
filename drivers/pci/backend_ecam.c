@@ -8,8 +8,8 @@
  */
 
 #include <drivers/pci/pci.h>
-#include <kernel/classes.h>
-#include <kernel/sysintf/pci.h>
+#include <aerosync/classes.h>
+#include <aerosync/sysintf/pci.h>
 #include <uacpi/acpi.h>
 #include <uacpi/tables.h>
 #include <mm/vmalloc.h>

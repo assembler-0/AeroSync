@@ -22,10 +22,10 @@
 #include <arch/x86_64/gdt/gdt.h>
 #include <arch/x86_64/percpu.h>
 #include <compiler.h>
-#include <kernel/classes.h>
-#include <kernel/panic.h>
-#include <kernel/spinlock.h>
-#include <kernel/types.h>
+#include <aerosync/classes.h>
+#include <aerosync/panic.h>
+#include <aerosync/spinlock.h>
+#include <aerosync/types.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <mm/slab.h>

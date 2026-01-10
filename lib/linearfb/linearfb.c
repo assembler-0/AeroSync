@@ -19,13 +19,13 @@
  */
 
 #include <lib/linearfb/linearfb.h>
-#include <kernel/fkx/fkx.h>
+#include <aerosync/fkx/fkx.h>
 #include <lib/linearfb/psf.h>
 #include <lib/string.h>
 #include <lib/math.h>
 #include <mm/vmalloc.h>
 #include <arch/x86_64/mm/pmm.h>
-#include <kernel/spinlock.h>
+#include <aerosync/spinlock.h>
 
 extern const uint8_t embedded_console_font[];
 extern const uint32_t embedded_console_font_size;

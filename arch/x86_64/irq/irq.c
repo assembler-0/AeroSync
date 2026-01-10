@@ -21,10 +21,10 @@
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/irq.h>
 #include <arch/x86_64/mm/tlb.h>
-#include <kernel/sysintf/ic.h>
-#include <kernel/panic.h>
-#include <kernel/sched/sched.h>
-#include <kernel/signal.h>
+#include <aerosync/sysintf/ic.h>
+#include <aerosync/panic.h>
+#include <aerosync/sched/sched.h>
+#include <aerosync/signal.h>
 #include <lib/printk.h>
 
 #define IRQ_BASE_VECTOR 32

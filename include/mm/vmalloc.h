@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 
 /*
  * Allocates a contiguous region of virtual memory in the kernel execution

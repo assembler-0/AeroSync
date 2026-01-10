@@ -19,7 +19,7 @@
  */
 
 #include <lib/string.h>
-#include <kernel/fkx/fkx.h>
+#include <aerosync/fkx/fkx.h>
 #include <mm/slab.h>
 
 bool is_word_boundary(char c) {

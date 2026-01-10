@@ -19,7 +19,7 @@
  */
 
 #include <drivers/acpi/power.h>
-#include <kernel/classes.h>
+#include <aerosync/classes.h>
 #include <lib/printk.h>
 #include <uacpi/event.h>
 #include <uacpi/uacpi.h>

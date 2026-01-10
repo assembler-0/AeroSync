@@ -14,7 +14,7 @@
 
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/fpu.h>
-#include <kernel/classes.h>
+#include <aerosync/classes.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <mm/slab.h>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 #include <compiler.h>
 
 #define GDT_ACCESS_CODE_PL0 0x9A // Present, Ring 0, Executable, Read/Write

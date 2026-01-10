@@ -14,7 +14,7 @@
 #include <linux/xarray.h>
 #include <mm/slab.h>
 #include <lib/string.h>
-#include <kernel/panic.h>
+#include <aerosync/panic.h>
 #include <linux/container_of.h>
 
 /*

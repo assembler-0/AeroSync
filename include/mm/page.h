@@ -1,8 +1,8 @@
 #pragma once
 
 #include <linux/list.h>
-#include <kernel/types.h>
-#include <kernel/atomic.h>
+#include <aerosync/types.h>
+#include <aerosync/atomic.h>
 
 /* Page flags */
 #define PG_reserved   (1 << 0)
@@ -17,7 +17,7 @@
 
 struct kmem_cache;
 
-#include <kernel/spinlock.h>
+#include <aerosync/spinlock.h>
 
 #include <linux/rbtree.h>
 

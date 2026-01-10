@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 
 /* Mathematical constants */
 #define M_E         2.71828182845904523536

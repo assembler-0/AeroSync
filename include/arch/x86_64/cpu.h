@@ -1,7 +1,7 @@
 #pragma once
 
 #include <compiler.h>
-#include <kernel/types.h>
+#include <aerosync/types.h>
 
 #define MAX_CPUS 64
 

@@ -1,5 +1,5 @@
 #pragma once
-#include <kernel/types.h>
+#include <aerosync/types.h>
 
 struct apic_ops {
     const char *name;
