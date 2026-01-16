@@ -34,8 +34,13 @@ void apic_send_ipi(uint8_t dest_apic_id, uint8_t vector, uint32_t delivery_mode)
 // Initializes and starts the Local APIC timer at the specified frequency.
 void apic_timer_init(uint32_t frequency_hz);
 
-// Changes the APIC timer's frequency on the fly.
-void apic_timer_set_frequency(uint32_t frequency_hz);
+// Advanced timer operations
+void apic_timer_stop(void);
+void apic_timer_set_oneshot(uint32_t microseconds);
+void apic_timer_set_periodic(uint32_t frequency_hz);
+void apic_timer_set_tsc_deadline(uint64_t tsc_deadline);
+int apic_has_tsc_deadline(void);
+uint32_t apic_get_calibrated_ticks(void);
 
 // Get the current CPU's LAPIC ID
 uint8_t lapic_get_id(void);

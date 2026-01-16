@@ -1,4 +1,4 @@
-/// SPDX-License-Identifier: GPL-2.0-only
+///SPDX-License-Identifier: GPL-2.0-only
 /**
  * AeroSync monolithic kernel
  *
@@ -41,8 +41,6 @@
 /* Forward declarations for RMAP (defined in memory.c) */
 struct folio;
 
-void folio_add_anon_rmap(struct folio *folio, struct vm_area_struct *vma, uint64_t address);
-
 /* ========================================================================
  * RB-Tree Augmentation (Gap Tracking)
  * ======================================================================== */
@@ -80,42 +78,52 @@ RB_DECLARE_CALLBACKS_MAX(static, vma_gap_callbacks,
  * ======================================================================== */
 
 static void vma_cache_update(struct mm_struct *mm, struct vm_area_struct *vma) {
-  if (!mm || !vma) return;
+  if (unlikely(!mm || !vma)) return;
 
   struct task_struct *curr = current;
-  if (!curr || curr->mm != mm) return;
+  if (unlikely(!curr || curr->mm != mm)) return;
 
-  // Atomic cache update to prevent races
-  irq_flags_t flags = local_irq_save();
+  /*
+   * We use preempt_disable instead of local_irq_save because the vmacache
+   * is per-thread and only accessed by the thread itself or in a page fault
+   * (which happens in the thread's context).
+   */
+  preempt_disable();
 
-  // Validate cache sequence number
+  /* Validate cache sequence number */
   if (curr->vmacache_seqnum != mm->vmacache_seqnum) {
     for (int i = 0; i < MM_VMA_CACHE_SIZE; i++)
       curr->vmacache[i] = NULL;
     curr->vmacache_seqnum = mm->vmacache_seqnum;
   }
 
+  /*
+   * Most recently used (MRU) logic:
+   * If it's already at index 0, we're done.
+   */
   if (curr->vmacache[0] == vma) {
-    local_irq_restore(flags);
+    preempt_enable();
     return;
   }
 
+  /* Find it in the cache and move to front */
   for (int i = 1; i < MM_VMA_CACHE_SIZE; i++) {
     if (curr->vmacache[i] == vma) {
       for (int j = i; j > 0; j--) {
         curr->vmacache[j] = curr->vmacache[j - 1];
       }
       curr->vmacache[0] = vma;
-      local_irq_restore(flags);
+      preempt_enable();
       return;
     }
   }
 
+  /* Not in cache, insert at front and shift others */
   for (int i = MM_VMA_CACHE_SIZE - 1; i > 0; i--) {
     curr->vmacache[i] = curr->vmacache[i - 1];
   }
   curr->vmacache[0] = vma;
-  local_irq_restore(flags);
+  preempt_enable();
 }
 
 
@@ -123,8 +131,12 @@ static void vma_cache_update(struct mm_struct *mm, struct vm_area_struct *vma) {
  * VMA Cache - Fast allocation using SLAB
  * ======================================================================== */
 
+struct vm_area_struct *vma_cache_alloc_node(int nid) {
+  return kmalloc_node(sizeof(struct vm_area_struct), nid);
+}
+
 struct vm_area_struct *vma_cache_alloc(void) {
-  return kmalloc(sizeof(struct vm_area_struct));
+  return vma_cache_alloc_node(-1);
 }
 
 void vma_cache_free(struct vm_area_struct *vma) { kfree(vma); }
@@ -168,6 +180,7 @@ void mm_init(struct mm_struct *mm) {
   INIT_LIST_HEAD(&mm->mmap_list);
   mm->map_count = 0;
   mm->mmap_base = 0;
+  mm->last_hole = 0;
   mm->pml_root = NULL;
   rwsem_init(&mm->mmap_lock);
   atomic_set(&mm->mm_count, 1);
@@ -187,8 +200,9 @@ void mm_init(struct mm_struct *mm) {
 
 struct mm_struct *mm_alloc(void) {
   struct mm_struct *mm = NULL;
+  int nid = this_node();
 
-  mm = kmalloc(sizeof(struct mm_struct));
+  mm = kzalloc_node(sizeof(struct mm_struct), nid);
 
   if (!mm) {
     spinlock_lock(&bootstrap_mm_lock);
@@ -203,7 +217,6 @@ struct mm_struct *mm_alloc(void) {
   }
 
   if (mm) {
-    memset(mm, 0, sizeof(struct mm_struct));
     mm_init(mm);
   }
 
@@ -232,7 +245,10 @@ struct mm_struct *mm_create(void) {
   if (!mm)
     return NULL;
 
-  uint64_t pml4_phys = pmm_alloc_page();
+  int nid = mm->preferred_node;
+  if (nid == -1) nid = this_node();
+
+  uint64_t pml4_phys = vmm_alloc_table_node(nid);
   if (!pml4_phys) {
     mm_free(mm);
     return NULL;
@@ -370,10 +386,12 @@ void mm_destroy(struct mm_struct *mm) {
 
 struct vm_area_struct *vma_alloc(void) {
   struct vm_area_struct *vma = NULL;
+  struct task_struct *curr = current;
+  int nid = curr ? curr->node_id : this_node();
 
-  vma = vma_cache_alloc();
+  vma = vma_cache_alloc_node(nid);
 
-  if (!vma) {
+  if (unlikely(!vma)) {
     // Atomic bootstrap allocation to prevent races
     for (int i = 0; i < BOOTSTRAP_VMA_COUNT; i++) {
       if (!__atomic_test_and_set(&bootstrap_vma_in_use[i], __ATOMIC_ACQUIRE)) {
@@ -383,7 +401,7 @@ struct vm_area_struct *vma_alloc(void) {
     }
   }
 
-  if (vma) {
+  if (likely(vma)) {
     memset(vma, 0, sizeof(struct vm_area_struct));
   }
 
@@ -487,7 +505,7 @@ struct vm_area_struct *vma_find(struct mm_struct *mm, uint64_t addr) {
   struct vm_area_struct *vma;
   struct task_struct *curr = current;
 
-  if (!mm)
+  if (unlikely(!mm))
     return NULL;
 
   /* Check cache first (O(1) optimization) */
@@ -501,14 +519,19 @@ struct vm_area_struct *vma_find(struct mm_struct *mm, uint64_t addr) {
     }
   }
 
-  node = mm->mm_rb.rb_node;
+  /*
+   * RCU-friendly RB-Tree traversal.
+   * Although it's a standard RB-Tree, we use atomic loads for tree links
+   * to be safe during speculative lookups.
+   */
+  node = __atomic_load_n(&mm->mm_rb.rb_node, __ATOMIC_ACQUIRE);
   while (node) {
     vma = rb_entry(node, struct vm_area_struct, vm_rb);
 
     if (addr < vma->vm_start) {
-      node = node->rb_left;
+      node = __atomic_load_n(&node->rb_left, __ATOMIC_ACQUIRE);
     } else if (addr >= vma->vm_end) {
-      node = node->rb_right;
+      node = __atomic_load_n(&node->rb_right, __ATOMIC_ACQUIRE);
     } else {
       vma_cache_update(mm, vma);
       return vma;
@@ -555,7 +578,7 @@ static inline void vma_layout_changed(struct mm_struct *mm, struct vm_area_struc
   mm->vmacache_seqnum++;
   atomic_inc(&mm->mmap_seq);
   if (vma) {
-      vma->vma_seq++;
+    vma->vma_seq++;
   }
 }
 
@@ -646,15 +669,15 @@ int vma_split(struct mm_struct *mm, struct vm_area_struct *vma, uint64_t addr) {
   new_vma->vm_pgoff = vma->vm_pgoff + ((addr - vma->vm_start) >> PAGE_SHIFT);
   new_vma->vm_private_data = vma->vm_private_data;
   new_vma->preferred_node = vma->preferred_node;
-  
+
   /* Increment refcounts for shared resources */
   new_vma->vm_obj = vma->vm_obj;
   if (new_vma->vm_obj) vm_object_get(new_vma->vm_obj);
 
   new_vma->anon_vma = vma->anon_vma;
   if (new_vma->anon_vma) {
-      /* This requires a proper anon_vma_clone helper in a real system */
-      atomic_inc(&new_vma->anon_vma->refcount);
+    /* This requires a proper anon_vma_clone helper in a real system */
+    atomic_inc(&new_vma->anon_vma->refcount);
   }
 
   RB_CLEAR_NODE(&new_vma->vm_rb);
@@ -871,7 +894,11 @@ uint64_t do_mmap(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot,
       return -EINVAL;
     }
     /* Unmap anything in the way */
-    do_munmap(mm, addr, len);
+    int ret = do_munmap(mm, addr, len);
+    if (ret < 0) {
+      up_write(&mm->mmap_lock);
+      return ret;
+    }
   } else {
     addr = vma_find_free_region(mm, len, addr ? addr : PAGE_SIZE, vmm_get_max_user_address());
     if (!addr) {
@@ -894,6 +921,7 @@ uint64_t do_mmap(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot,
   }
 
   vma->vm_pgoff = pgoff;
+  vma->preferred_node = mm->preferred_node;
 
   /* 5. Handle File-backed mapping */
   if (file) {
@@ -1133,37 +1161,47 @@ uint64_t vma_find_free_region_aligned(struct mm_struct *mm, size_t size,
   bool aslr_attempted = false;
   uint64_t orig_start = range_start;
 
-  if (!mm || size == 0)
+  if (unlikely(!mm || size == 0))
     return 0;
 
   if (range_end == 0) {
     range_end = user_limit;
   }
 
-  if (range_start >= range_end)
+  if (unlikely(range_start >= range_end))
     return 0;
 
   size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
 
-  /* Fail-fast 1: Size larger than requested range */
-  if (size > (range_end - range_start))
+  /* Fail-fast: Size larger than requested range */
+  if (unlikely(size > (range_end - range_start)))
     return 0;
 
-  /* Fail-fast 2: Augmented RB-tree root check.
-   * If the largest gap in the whole tree is smaller than our request, fail immediately.
-   * Note: This only works if we search the full range (which is common).
+  /* 
+   * NUMA optimization: If we are on a specific node, and the MM has a preferred node,
+   * we might want to prioritize allocations that align with that node's memory.
+   * However, for virtual address space, the most important thing is finding a hole.
+   * Physical page allocation later will handle the actual NUMA placement.
    */
-  if (mm->mm_rb.rb_node) {
-    struct vm_area_struct *root_vma = rb_entry(mm->mm_rb.rb_node, struct vm_area_struct, vm_rb);
-    if (root_vma->vm_rb_max_gap < size && range_start == 0 && range_end >= vmm_get_max_user_address()) {
-      return 0;
+
+  /*
+   * Cached Hole Search Optimization:
+   * Use last_hole as a hint for O(1) sequential allocation.
+   */
+  if (mm->last_hole >= range_start && mm->last_hole < range_end &&
+      (range_end - mm->last_hole) >= size) {
+    uint64_t candidate = (mm->last_hole + alignment - 1) & ~(alignment - 1);
+    if (candidate + size <= range_end) {
+      if (!vma_find_intersection(mm, candidate, candidate + size)) {
+        mm->last_hole = candidate + size;
+        return candidate;
+      }
     }
   }
 
   /*
-   * Cached Hole Search Optimization:
+   * Standard Hint Search:
    * Use mm->mmap_base as a hint for where to start looking.
-   * If the hint is within our requested range and we are not using ASLR yet, use it.
    */
   if (mm->mmap_base > range_start && mm->mmap_base < range_end && size < (range_end - mm->mmap_base)) {
     range_start = mm->mmap_base;
@@ -1171,13 +1209,13 @@ uint64_t vma_find_free_region_aligned(struct mm_struct *mm, size_t size,
 
 retry:
   /*
-   * ASLR: Randomize start address if we are searching a large enough range
+   * ASLR: Randomize start address if we are searching a large enough range.
+   * Use a more efficient RDRAND check.
    */
-  if (!aslr_attempted && (range_end - range_start) > (size + 0x200000)) {
-    if (rdrand_supported()) {
+  if ((range_end - range_start) > (size + 0x200000)) {
+    uint64_t offset;
+    if (rdrand64_safe(&offset)) {
       uint64_t max_offset = range_end - range_start - size;
-      uint64_t offset = rdrand64();
-
       offset %= max_offset;
       offset &= ~(alignment - 1);
 
@@ -1192,7 +1230,8 @@ retry:
     if (addr == 0) addr = PAGE_SIZE;
 
     if (addr + size <= range_end) {
-      mm->mmap_base = addr + size; // Cache for next time
+      mm->mmap_base = addr + size;
+      mm->last_hole = addr + size;
       return addr;
     }
 
@@ -1204,14 +1243,26 @@ retry:
     return 0;
   }
 
+  /*
+   * Augmented RB-Tree Search:
+   * We search for the first VMA that is after range_start and has enough space
+   * between it and its predecessor.
+   */
   struct vm_area_struct *best_vma = NULL;
   node = mm->mm_rb.rb_node;
 
   while (node) {
     struct vm_area_struct *vma = rb_entry(node, struct vm_area_struct, vm_rb);
 
-    if (vma->vm_start <= range_start) {
-      node = node->rb_right;
+    /* If this branch can't possibly contain a large enough gap, skip it */
+    if (vma->vm_rb_max_gap < size) {
+      /* If we are too far left, we might still find something in the right branch */
+      if (vma->vm_start <= range_start) {
+        node = node->rb_right;
+      } else {
+        /* Left branch also too small, right branch might have it */
+        node = node->rb_right;
+      }
       continue;
     }
 
@@ -1221,18 +1272,19 @@ retry:
 
     uint64_t candidate = (prev_end + alignment - 1) & ~(alignment - 1);
 
-    if (candidate == prev_end) {
-      candidate += PAGE_SIZE;
-      candidate = (candidate + alignment - 1) & ~(alignment - 1);
+    /* Ensure we don't return the same address as prev_end if we need a gap */
+    if (candidate == prev_end && prev) {
+      candidate = (candidate + PAGE_SIZE + alignment - 1) & ~(alignment - 1);
     }
     if (candidate == 0) candidate = PAGE_SIZE;
 
-    if (candidate + size + PAGE_SIZE <= vma->vm_start) {
+    if (candidate + size <= vma->vm_start && candidate >= range_start) {
+      /* Found a suitable gap before this VMA, but there might be an earlier one */
       best_vma = vma;
       node = node->rb_left;
     } else {
-      if (node->rb_left && rb_entry(node->rb_left, struct vm_area_struct, vm_rb)->vm_rb_max_gap >= size + 2 *
-          PAGE_SIZE) {
+      /* Gap here is too small, check branches */
+      if (node->rb_left && rb_entry(node->rb_left, struct vm_area_struct, vm_rb)->vm_rb_max_gap >= size) {
         node = node->rb_left;
       } else {
         node = node->rb_right;
@@ -1246,13 +1298,13 @@ retry:
     if (prev_end < range_start) prev_end = range_start;
 
     uint64_t addr = (prev_end + alignment - 1) & ~(alignment - 1);
-    if (addr == prev_end) {
-      addr += PAGE_SIZE;
-      addr = (addr + alignment - 1) & ~(alignment - 1);
+    if (addr == prev_end && prev) {
+      addr = (addr + PAGE_SIZE + alignment - 1) & ~(alignment - 1);
     }
     if (addr == 0) addr = PAGE_SIZE;
 
-    mm->mmap_base = addr + size; // Cache for next time
+    mm->mmap_base = addr + size;
+    mm->last_hole = addr + size;
     return addr;
   }
 
@@ -1265,8 +1317,7 @@ retry:
     struct vm_area_struct *last_vma = rb_entry(last_node, struct vm_area_struct, vm_rb);
     addr = (last_vma->vm_end + alignment - 1) & ~(alignment - 1);
     if (addr == last_vma->vm_end) {
-      addr += PAGE_SIZE;
-      addr = (addr + alignment - 1) & ~(alignment - 1);
+      addr = (addr + PAGE_SIZE + alignment - 1) & ~(alignment - 1);
     }
     if (addr < range_start) addr = (range_start + alignment - 1) & ~(alignment - 1);
   } else {
@@ -1275,21 +1326,16 @@ retry:
   }
 
   if (addr + size <= range_end) {
-    mm->mmap_base = addr + size; // Cache for next time
+    mm->mmap_base = addr + size;
+    mm->last_hole = addr + size;
     return addr;
   }
 
-  // Final fallback: Reset cache and retry from original start
-  if (mm->mmap_base != 0) {
+  /* Final fallbacks */
+  if (aslr_attempted || range_start != orig_start) {
+    range_start = orig_start;
+    aslr_attempted = false;
     mm->mmap_base = 0;
-    range_start = orig_start;
-    aslr_attempted = false;
-    goto retry;
-  }
-
-  if (aslr_attempted) {
-    range_start = orig_start;
-    aslr_attempted = false;
     goto retry;
   }
 
@@ -1340,7 +1386,7 @@ void vma_dump(struct mm_struct *mm) {
   if (!mm)
     return;
 
-  printk(VMA_CLASS "[--- VMA Dump for MM: %p (%d-level paging) ---]\n", mm, vmm_get_paging_levels());
+  printk(VMA_CLASS "[--- VMA Dump for MM: %p (%d-level paging) ---\\n", mm, vmm_get_paging_levels());
   printk(VMA_CLASS "Canonical High Base: %016llx\n", vmm_get_canonical_high_base());
   printk(VMA_CLASS "Total VMAs: %d, Total VM: %llu KB\n", mm->map_count,
          mm_total_size(mm) / 1024);

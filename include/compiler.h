@@ -116,4 +116,13 @@ do { \
 #define smp_rmb()   barrier() // x86 loads are ordered
 #define smp_wmb()   barrier() // x86 stores are ordered
 
+/* ========================
+ * ALIGNMENT HELPERS
+ * ======================== */
+
+#define ALIGN(x, a)             (((x) + (a) - 1) & ~((a) - 1))
+#define ALIGN_DOWN(x, a)        ((x) & ~((a) - 1))
+#define ALIGN_UP(x, a)          ALIGN(x, a)
+
 #define __percpu
+#define __rcu

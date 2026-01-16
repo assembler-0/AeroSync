@@ -69,7 +69,7 @@ static void check_page_sanity(struct page *page, int order) {
  */
 
 static inline unsigned long __find_buddy_pfn(unsigned long page_pfn, unsigned int order) {
-  return page_pfn ^ (1 << order);
+  return page_pfn ^ (1UL << order);
 }
 
 static inline bool page_is_buddy(struct page *page, struct page *buddy, unsigned int order) {
@@ -80,9 +80,20 @@ static inline bool page_is_buddy(struct page *page, struct page *buddy, unsigned
   return true;
 }
 
+/*
+ * Fallback table for migration types.
+ * Defines which migration types can be borrowed from when a specific type is empty.
+ */
+static int fallbacks[MIGRATE_TYPES][4] = {
+  [MIGRATE_UNMOVABLE] = {MIGRATE_RECLAIMABLE, MIGRATE_MOVABLE, MIGRATE_TYPES},
+  [MIGRATE_RECLAIMABLE] = {MIGRATE_UNMOVABLE, MIGRATE_MOVABLE, MIGRATE_TYPES},
+  [MIGRATE_MOVABLE] = {MIGRATE_RECLAIMABLE, MIGRATE_UNMOVABLE, MIGRATE_TYPES},
+};
+
 static inline void expand(struct zone *zone, struct page *page,
-                          int low, int high, struct free_area *area) {
-  unsigned long size = 1 << high;
+                          int low, int high, struct free_area *area,
+                          int migratetype) {
+  unsigned long size = 1UL << high;
 
   while (high > low) {
     area--;
@@ -94,25 +105,64 @@ static inline void expand(struct zone *zone, struct page *page,
 
     SetPageBuddy(buddy);
     buddy->order = high;
+    buddy->migratetype = migratetype;
 
-    list_add(&buddy->list, &area->free_list[0]);
+    list_add(&buddy->list, &area->free_list[migratetype]);
     area->nr_free++;
     zone->nr_free_pages += size;
     if (high > (int) zone->max_free_order) zone->max_free_order = high;
   }
 }
 
-static struct page *__rmqueue(struct zone *zone, unsigned int order) {
+static struct page *__rmqueue_fallback(struct zone *zone, unsigned int order,
+                                       int start_migratetype) {
+  struct free_area *area;
+  unsigned int current_order;
+  int i;
+  int migratetype;
+
+  /* Find the largest possible block of any fallback type */
+  for (current_order = MAX_ORDER - 1; current_order >= order; current_order--) {
+    for (i = 0; i < MIGRATE_TYPES; i++) {
+      migratetype = fallbacks[start_migratetype][i];
+      if (migratetype == MIGRATE_TYPES) break;
+
+      area = &zone->free_area[current_order];
+      if (list_empty(&area->free_list[migratetype]))
+        continue;
+
+      struct page *page = list_entry(area->free_list[migratetype].next, struct page, list);
+      list_del(&page->list);
+
+      ClearPageBuddy(page);
+      area->nr_free--;
+      zone->nr_free_pages -= (1UL << current_order);
+
+      /* When borrowing from another type, move all objects if it's a large block */
+      if (current_order >= (MAX_ORDER / 2)) {
+        // ... could implement move_freepages_block here ...
+      }
+
+      expand(zone, page, order, current_order, area, start_migratetype);
+      page->migratetype = start_migratetype;
+      return page;
+    }
+  }
+
+  return NULL;
+}
+
+static struct page *__rmqueue(struct zone *zone, unsigned int order, int migratetype) {
   unsigned int current_order;
   struct free_area *area;
   struct page *page;
 
   for (current_order = order; current_order < MAX_ORDER; ++current_order) {
     area = &zone->free_area[current_order];
-    if (list_empty(&area->free_list[0]))
+    if (list_empty(&area->free_list[migratetype]))
       continue;
 
-    page = list_entry(area->free_list[0].next, struct page, list);
+    page = list_entry(area->free_list[migratetype].next, struct page, list);
     list_del(&page->list);
 
     ClearPageBuddy(page);
@@ -126,18 +176,20 @@ static struct page *__rmqueue(struct zone *zone, unsigned int order) {
       zone->max_free_order = o;
     }
 
-    expand(zone, page, order, current_order, area);
+    expand(zone, page, order, current_order, area, migratetype);
+    page->migratetype = migratetype;
     return page;
   }
 
-  return NULL;
+  return __rmqueue_fallback(zone, order, migratetype);
 }
 
 static void __free_one_page(struct page *page, unsigned long pfn,
-                            struct zone *zone, unsigned int order);
+                            struct zone *zone, unsigned int order,
+                            int migratetype);
 
 int rmqueue_bulk(struct zone *zone, unsigned int order, unsigned int count,
-                 struct list_head *list) {
+                 struct list_head *list, int migratetype) {
   int i;
 
   /* Validate zone boundaries before bulk allocation */
@@ -146,7 +198,7 @@ int rmqueue_bulk(struct zone *zone, unsigned int order, unsigned int count,
   spinlock_lock(&zone->lock);
 
   for (i = 0; i < (int) count; ++i) {
-    struct page *page = __rmqueue(zone, order);
+    struct page *page = __rmqueue(zone, order, migratetype);
     if (unlikely(page == NULL))
       break;
 
@@ -162,18 +214,20 @@ void free_pcp_pages(struct zone *zone, int count, struct list_head *list) {
   while (count--) {
     struct page *page = list_first_entry(list, struct page, list);
     list_del(&page->list);
-    __free_one_page(page, page_to_pfn(page), zone, 0);
+    __free_one_page(page, (unsigned long) (page - mem_map), zone, 0, page->migratetype);
   }
   spinlock_unlock(&zone->lock);
 }
 
 static void __free_one_page(struct page *page, unsigned long pfn,
-                            struct zone *zone, unsigned int order) {
+                            struct zone *zone, unsigned int order,
+                            int migratetype) {
   unsigned long buddy_pfn;
   struct page *buddy;
+  unsigned long combined_pfn;
 
   // Validate page before starting merge process
-  if (PageBuddy(page)) {
+  if (unlikely(PageBuddy(page))) {
     char buf[64];
     snprintf(buf, sizeof(buf), PMM_CLASS "Double free detected: pfn %lu", pfn);
     panic(buf);
@@ -181,52 +235,48 @@ static void __free_one_page(struct page *page, unsigned long pfn,
 
   while (order < MAX_ORDER - 1) {
     buddy_pfn = __find_buddy_pfn(pfn, order);
+    buddy = page + (long) (buddy_pfn - pfn);
 
-    if (buddy_pfn >= zone->zone_start_pfn + zone->spanned_pages)
-      break;
-
-    // Check if buddy is within max pages (global check)
-    if (buddy_pfn >= pmm_max_pages)
-      break;
-
-    buddy = &mem_map[buddy_pfn];
-
-    // Comprehensive buddy validation
+    /*
+     * Fast buddy check:
+     * 1. Buddy must be within the same zone.
+     * 2. Buddy must be on a buddy list.
+     * 3. Buddy must have the same order.
+     */
     if (!page_is_buddy(page, buddy, order))
       break;
-
-    // Additional safety: verify buddy is in same zone
-    if (buddy->zone != page->zone)
-      break;
-
-    // Verify buddy is not corrupted
-    if (buddy->order != order) {
-      printk(KERN_ERR PMM_CLASS "Buddy order mismatch: expected %u, got %u\n",
-             order, buddy->order);
-      break;
-    }
 
     /* Our buddy is free, merge with it */
     list_del(&buddy->list);
     zone->free_area[order].nr_free--;
     zone->nr_free_pages -= (1UL << order);
     ClearPageBuddy(buddy);
-    buddy->order = 0; // Clear buddy order
+    buddy->order = 0;
 
-    pfn &= ~(1UL << order);
-    page = &mem_map[pfn];
+    combined_pfn = buddy_pfn & pfn;
+    page = page + (long) (combined_pfn - pfn);
+    pfn = combined_pfn;
     order++;
   }
 
   SetPageBuddy(page);
   page->order = order;
-  list_add(&page->list, &zone->free_area[order].free_list[0]);
+  page->migratetype = migratetype;
+  list_add(&page->list, &zone->free_area[order].free_list[migratetype]);
   zone->free_area[order].nr_free++;
   zone->nr_free_pages += (1UL << order);
   if (order > zone->max_free_order) zone->max_free_order = order;
 }
 
 extern size_t shrink_inactive_list(size_t nr_to_scan);
+
+static inline int gfp_to_migratetype(gfp_t gfp_mask) {
+  if (gfp_mask & ___GFP_MOVABLE)
+    return MIGRATE_MOVABLE;
+  if (gfp_mask & ___GFP_RECLAIM)
+    return MIGRATE_RECLAIMABLE;
+  return MIGRATE_UNMOVABLE;
+}
 
 /*
  * Core Allocator
@@ -239,6 +289,7 @@ struct folio *alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order) {
   unsigned long flags;
   bool can_reclaim = !(gfp_mask & ___GFP_ATOMIC);
   int reclaim_retries = 3;
+  int migratetype = gfp_to_migratetype(gfp_mask);
 
 retry:
   // Validate and fallback NUMA node (moved outside retry loop)
@@ -280,7 +331,7 @@ retry:
       struct zone *refill_zone = &pgdat->node_zones[ZONE_NORMAL];
 
       if (refill_zone->nr_free_pages >= refill_zone->watermark[WMARK_LOW]) {
-        int count = rmqueue_bulk(refill_zone, 0, pcp->batch, &pcp->list);
+        int count = rmqueue_bulk(refill_zone, 0, pcp->batch, &pcp->list, migratetype);
         pcp->count += count;
       }
     }
@@ -292,11 +343,13 @@ retry:
 
       struct folio *folio = (struct folio *) page;
       folio->order = 0;
+      folio->node = page->node;
+      folio->zone = page->zone;
       SetPageHead(&folio->page);
       atomic_set(&folio->_refcount, 1);
 
       restore_irq_flags(irq_flags);
-      goto found;
+      return folio;
     }
     restore_irq_flags(irq_flags);
   }
@@ -322,7 +375,7 @@ retry:
     }
 
     flags = spinlock_lock_irqsave(&z->lock);
-    page = __rmqueue(z, order);
+    page = __rmqueue(z, order, migratetype);
     spinlock_unlock_irqrestore(&z->lock, flags);
 
     if (page) {
@@ -341,7 +394,7 @@ retry:
       if (!z->present_pages || order > z->max_free_order) continue;
 
       flags = spinlock_lock_irqsave(&z->lock);
-      page = __rmqueue(z, order);
+      page = __rmqueue(z, order, migratetype);
       spinlock_unlock_irqrestore(&z->lock, flags);
       if (page) goto found;
     }
@@ -371,7 +424,7 @@ found:
   check_page_sanity(page, order);
   struct folio *folio = (struct folio *) page;
 
-  folio->order = order;
+  folio->order = (uint16_t) order;
   folio->node = pgdat->node_id;
   folio->zone = page->zone; // Ensure zone is preserved
   SetPageHead(&folio->page);
@@ -385,6 +438,7 @@ found:
       SetPageTail(tail);
       tail->head = page;
       tail->node = pgdat->node_id;
+      tail->migratetype = page->migratetype;
     }
   }
 
@@ -442,21 +496,22 @@ void __free_pages(struct page *page, unsigned int order) {
     pcp->count++;
 
     if (pcp->count >= pcp->high) {
-      struct pglist_data *pgdat = node_data[page->node];
-      if (!pgdat) pgdat = node_data[0];
-
-      struct zone *zone = &pgdat->node_zones[page->zone];
-      struct list_head drain_list;
-      INIT_LIST_HEAD(&drain_list);
-
-      // Move 'batch' pages to a temporary list to free them under one lock
+      // Drain 'batch' pages.
+      // Since pages in PCP might be from different zones/nodes,
+      // we must free them carefully.
       for (int i = 0; i < pcp->batch; i++) {
         struct page *p = list_last_entry(&pcp->list, struct page, list);
-        list_move(&p->list, &drain_list);
-      }
-      pcp->count -= pcp->batch;
+        list_del(&p->list);
+        pcp->count--;
 
-      free_pcp_pages(zone, pcp->batch, &drain_list);
+        struct pglist_data *p_pgdat = node_data[p->node];
+        if (!p_pgdat) p_pgdat = node_data[0];
+        struct zone *p_zone = &p_pgdat->node_zones[p->zone];
+
+        spinlock_lock(&p_zone->lock);
+        __free_one_page(p, (unsigned long) (p - mem_map), p_zone, 0, p->migratetype);
+        spinlock_unlock(&p_zone->lock);
+      }
     }
 
     restore_irq_flags(flags);
@@ -480,7 +535,7 @@ void __free_pages(struct page *page, unsigned int order) {
 
   unsigned long flags;
   flags = spinlock_lock_irqsave(&zone->lock);
-  __free_one_page(page, pfn, zone, order);
+  __free_one_page(page, pfn, zone, order, page->migratetype);
   spinlock_unlock_irqrestore(&zone->lock, flags);
 }
 
@@ -489,10 +544,14 @@ void free_area_init(void) {
     if (!node_data[n]) continue;
 
     struct pglist_data *pgdat = node_data[n];
+    init_waitqueue_head(&pgdat->kswapd_wait);
+    pgdat->kswapd_task = NULL;
+
     for (int i = 0; i < MAX_NR_ZONES; i++) {
       struct zone *z = &pgdat->node_zones[i];
       spinlock_init(&z->lock);
       z->name = zone_names[i];
+      z->zone_pgdat = pgdat;
       z->present_pages = 0;
       z->spanned_pages = 0;
       z->zone_start_pfn = 0;
@@ -500,7 +559,9 @@ void free_area_init(void) {
       z->max_free_order = 0;
 
       for (int order = 0; order < MAX_ORDER; order++) {
-        INIT_LIST_HEAD(&z->free_area[order].free_list[0]);
+        for (int mt = 0; mt < MIGRATE_TYPES; mt++) {
+          INIT_LIST_HEAD(&z->free_area[order].free_list[mt]);
+        }
         z->free_area[order].nr_free = 0;
       }
     }

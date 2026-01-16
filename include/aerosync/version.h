@@ -12,7 +12,7 @@
 #define AEROSYNC_ABI_LEVEL 0
 #define AEROSYNC_CODENAME "Invariant"
 
-#define AEROSYNC_VERSION "r0c1 - 2.2.3-" AEROSYNC_CODENAME "+branch.v1.0.1-88-ga8ba196-dirty.dev+abi." "0"
+#define AEROSYNC_VERSION "r0c1 - 2.2.3-" AEROSYNC_CODENAME "+branch.v1.0.1-89-g6d4dabc-dirty.dev+abi." "0"
 #define AEROSYNC_VERSION_LEAN  "r0c1-" AEROSYNC_CODENAME
 
 #define AEROSYNC_COMPILER_VERSION __VERSION__

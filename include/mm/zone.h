@@ -8,6 +8,7 @@
 #include <mm/gfp.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/smp.h>
+#include <aerosync/wait.h>
 
 /* Zone types */
 enum zone_type {
@@ -27,8 +28,21 @@ enum {
   PCP_TYPES
 };
 
+struct pglist_data;
+
+/*
+ * Migration types for fragmentation control
+ */
+enum migrate_type {
+  MIGRATE_UNMOVABLE,
+  MIGRATE_RECLAIMABLE,
+  MIGRATE_MOVABLE,
+  MIGRATE_PCPTYPES, /* Special for PCP */
+  MIGRATE_TYPES = 4
+};
+
 struct free_area {
-  struct list_head free_list[1]; /* can extend to MIGRATE_TYPES later */
+  struct list_head free_list[MIGRATE_TYPES];
   unsigned long nr_free;
 };
 
@@ -61,10 +75,13 @@ struct zone {
 
   /* Stats */
   atomic_long_t vm_stat[32]; // NR_FREE_PAGES, etc.
+
+  struct pglist_data *zone_pgdat;
 }
     __aligned(64); // Cache line aligned
 
 #define MAX_NUMNODES 8
+#define NUMA_NO_NODE (-1)
 
 struct pglist_data {
   struct zone node_zones[MAX_NR_ZONES];
@@ -72,6 +89,9 @@ struct pglist_data {
   unsigned long node_present_pages;
   unsigned long node_spanned_pages;
   int node_id;
+  
+  wait_queue_head_t kswapd_wait;
+  struct task_struct *kswapd_task;
 } __aligned(64);
 
 extern struct pglist_data *node_data[MAX_NUMNODES];
@@ -95,7 +115,8 @@ struct folio *alloc_pages(gfp_t gfp_mask, unsigned int order);
 struct folio *alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order);
 
 int rmqueue_bulk(struct zone *zone, unsigned int order, unsigned int count,
-                 struct list_head *list);
+                 struct list_head *list, int migratetype);
+
 void free_pcp_pages(struct zone *zone, int count, struct list_head *list);
 
 void __free_pages(struct page *page, unsigned int order);

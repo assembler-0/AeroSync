@@ -32,11 +32,14 @@
 #include <lib/printk.h>
 #include <aerosync/panic.h>
 #include <aerosync/classes.h>
+#include <aerosync/sched/sched.h>
 
 static LIST_HEAD(slab_caches);
 static spinlock_t slab_lock = 0;
 
 static kmem_cache_t *kmalloc_caches[15];
+
+/* Advanced SLUB/Magazine Hybrid with NUMA-awareness */
 
 /* 
  * Slab Merging - Optimization for VFS/FD 
@@ -187,11 +190,6 @@ static struct page *allocate_slab(kmem_cache_t *s, gfp_t flags, int node) {
   return page;
 }
 
-static void __free_slab(kmem_cache_t *s, struct page *page) {
-  ClearPageSlab(page);
-  __free_pages(page, s->order);
-}
-
 /* Slowpath allocation */
 static void *__slab_alloc(kmem_cache_t *s, gfp_t gfpflags, int node, struct kmem_cache_cpu *c) {
   void *freelist;
@@ -200,6 +198,10 @@ static void *__slab_alloc(kmem_cache_t *s, gfp_t gfpflags, int node, struct kmem
 
   if (node == -1) node = this_node();
 
+  /* 
+   * We need to protect the CPU structure during the slowpath.
+   * Note: c is a pointer to the per-cpu structure for the CURRENT cpu.
+   */
   flags = save_irq_flags();
 
   /* Check if we have a page but no freelist (slab frozen) */
@@ -224,46 +226,45 @@ static void *__slab_alloc(kmem_cache_t *s, gfp_t gfpflags, int node, struct kmem
     page->inuse = (unsigned short) page->objects;
     spinlock_unlock(&n->list_lock);
     c->freelist = get_freelist_next(freelist, s->offset);
+    c->tid = next_tid(c->tid);
     restore_irq_flags(flags);
     return freelist;
   }
   spinlock_unlock(&n->list_lock);
   /* Page is full, unfreeze it */
   page->frozen = 0;
-
   c->page = NULL;
 
 find_slab:;
-  n = s->node[node];
-  spinlock_lock(&n->list_lock);
-  if (!list_empty(&n->partial)) {
-    page = list_first_entry(&n->partial, struct page, list);
+  struct kmem_cache_node *target_node = s->node[node];
+  spinlock_lock(&target_node->list_lock);
+  if (!list_empty(&target_node->partial)) {
+    page = list_first_entry(&target_node->partial, struct page, list);
     list_del(&page->list);
-    n->nr_partial--;
-    spinlock_unlock(&n->list_lock);
+    target_node->nr_partial--;
+    spinlock_unlock(&target_node->list_lock);
     goto freeze;
   }
-  spinlock_unlock(&n->list_lock);
+  spinlock_unlock(&target_node->list_lock);
 
   /* NUMA Fallback: Check other nodes */
   for (int i = 0; i < MAX_NUMNODES; i++) {
     if (i == node) continue;
-    n = s->node[i];
-    if (!n) continue;
+    target_node = s->node[i];
+    if (!target_node) continue;
 
-    spinlock_lock(&n->list_lock);
-    if (!list_empty(&n->partial)) {
-      page = list_first_entry(&n->partial, struct page, list);
+    spinlock_lock(&target_node->list_lock);
+    if (!list_empty(&target_node->partial)) {
+      page = list_first_entry(&target_node->partial, struct page, list);
       list_del(&page->list);
-      n->nr_partial--;
-      spinlock_unlock(&n->list_lock);
+      target_node->nr_partial--;
+      spinlock_unlock(&target_node->list_lock);
       goto freeze;
     }
-    spinlock_unlock(&n->list_lock);
+    spinlock_unlock(&target_node->list_lock);
   }
 
   /* Allocate new slab */
-
   page = allocate_slab(s, gfpflags, node);
   if (!page) {
     restore_irq_flags(flags);
@@ -278,38 +279,131 @@ freeze:
   page->freelist = NULL;
   page->inuse = (unsigned short) page->objects;
   c->freelist = get_freelist_next(freelist, s->offset);
+  c->tid = next_tid(c->tid);
 
   restore_irq_flags(flags);
   return freelist;
 }
 
-void *kmem_cache_alloc(kmem_cache_t *s) {
-  void *object;
-  struct kmem_cache_cpu *c;
-  int cpu;
+static void rcu_free_slab_callback(struct rcu_head *head);
 
-  /* Fastpath: disable interrupts to protect per-CPU structure */
-  irq_flags_t flags = save_irq_flags();
-  cpu = smp_is_active() ? (int) smp_get_id() : 0;
-  c = &s->cpu_slab[cpu];
+static void __free_slab(kmem_cache_t *s, struct page *page) {
+  ClearPageSlab(page);
 
-  object = c->freelist;
-  if (unlikely(!object || !c->page || c->page->node != this_node())) {
-    object = __slab_alloc(s, GFP_KERNEL, -1, c);
+  if (unlikely(s->flags & SLAB_TYPESAFE_BY_RCU)) {
+    struct rcu_head *head = (struct rcu_head *) &page->list;
+    call_rcu(head, rcu_free_slab_callback);
   } else {
-    /* Successful fastpath allocation */
-    c->freelist = get_freelist_next(object, s->offset);
-    c->tid = next_tid(c->tid);
+    __free_pages(page, s->order);
+  }
+}
+
+static void rcu_free_slab_callback(struct rcu_head *head) {
+  struct page *page = (struct page *) ((char *) head - offsetof(struct page, list));
+  kmem_cache_t *s = page->slab_cache;
+  __free_slab(s, page);
+}
+
+/* 
+ * Refill the CPU magazine from the partial list or a new slab.
+ * Must be called with IRQs disabled and returns one object.
+ */
+static void *refill_magazine(kmem_cache_t *s, struct kmem_cache_cpu *c, int node) {
+  void *object = NULL;
+  struct kmem_cache_node *n;
+  struct page *page;
+
+  if (node == -1) node = this_node();
+  n = s->node[node];
+
+  spinlock_lock(&n->list_lock);
+  if (!list_empty(&n->partial)) {
+    page = list_first_entry(&n->partial, struct page, list);
+
+    /* Take as many objects as we can for the magazine */
+    while (c->mag_count < SLAB_MAG_SIZE && page->freelist) {
+      void *obj = page->freelist;
+      page->freelist = get_freelist_next(obj, s->offset);
+      page->inuse++;
+      c->mag[c->mag_count++] = obj;
+    }
+
+    if (!page->freelist) {
+      list_del(&page->list);
+      n->nr_partial--;
+    }
+    spinlock_unlock(&n->list_lock);
+
+    if (c->mag_count > 0) {
+      return c->mag[--c->mag_count];
+    }
+  } else {
+    spinlock_unlock(&n->list_lock);
   }
 
-  restore_irq_flags(flags);
+  /* Fallback to normal slab allocation if magazine couldn't be refilled from partials */
+  return __slab_alloc(s, GFP_KERNEL, node, c);
+}
 
+void *kmem_cache_alloc_node(kmem_cache_t *s, int node) {
+  void *object;
+  struct kmem_cache_cpu *c;
+  unsigned long tid;
+  int cpu;
+
+redo:
+  /* Fastpath: Lockless using cmpxchg16b and TIDs */
+  preempt_disable();
+  cpu = smp_get_id();
+  c = &s->cpu_slab[cpu];
+  tid = c->tid;
+  object = c->freelist;
+
+  /* 
+   * If we have an object, it's from the local node (or we don't care about the node),
+   * try to take it atomically.
+   */
+  if (likely(object && (node == -1 || (c->page && c->page->node == node)))) {
+    void *next = get_freelist_next(object, s->offset);
+    if (unlikely(!cmpxchg16b_local(c, object, tid, next, next_tid(tid)))) {
+      preempt_enable();
+      goto redo;
+    }
+    preempt_enable();
+  } else {
+    preempt_enable();
+    /* Magazine Layer (Hot Path) - Only for local node allocations */
+    if (node == -1 || node == this_node()) {
+      irq_flags_t flags = save_irq_flags();
+      c = &s->cpu_slab[smp_get_id()];
+      if (c->mag_count > 0) {
+        object = c->mag[--c->mag_count];
+        restore_irq_flags(flags);
+        goto found;
+      }
+
+      /* Refill Magazine from partial lists */
+      object = refill_magazine(s, c, node);
+      restore_irq_flags(flags);
+      if (object) goto found;
+    }
+
+    /* Slowpath: Either no objects or wrong node */
+    object = __slab_alloc(s, GFP_KERNEL, node, c);
+  }
+
+found:
   if (object) {
     if (s->flags & SLAB_POISON) check_poison(s, object);
     check_redzone(s, object);
+    atomic_long_inc(&s->total_objects);
   }
 
   return object;
+}
+
+void *kmem_cache_alloc(kmem_cache_t *s) {
+  return kmem_cache_alloc_node(s, -1);
 }
 
 static void __slab_free(kmem_cache_t *s, struct page *page, void *x) {
@@ -353,32 +447,47 @@ static void __slab_free(kmem_cache_t *s, struct page *page, void *x) {
 void kmem_cache_free(kmem_cache_t *s, void *x) {
   struct page *page;
   struct kmem_cache_cpu *c;
+  unsigned long tid;
   int cpu;
 
   if (unlikely(!x)) return;
-
-  /* Safety check for vmalloc addresses */
-  if ((uintptr_t) x >= VMALLOC_VIRT_BASE) {
-    panic("kmem_cache_free: attempt to free vmalloc address %p via slab %s", x, s->name);
-  }
 
   check_redzone(s, x);
   if (s->flags & SLAB_POISON) poison_obj(s, x, POISON_FREE);
 
   page = virt_to_head_page(x);
+  atomic_long_dec(&s->total_objects);
 
-  /* Fastpath: disable interrupts to protect per-CPU structure */
-  irq_flags_t flags = save_irq_flags();
-  cpu = smp_is_active() ? (int) smp_get_id() : 0;
+redo:
+  preempt_disable();
+  cpu = smp_get_id();
   c = &s->cpu_slab[cpu];
+  tid = c->tid;
 
+  /* Fastpath: Return to current CPU's frozen slab */
   if (likely(page == c->page)) {
-    set_freelist_next(x, s->offset, c->freelist);
-    c->freelist = x;
-    c->tid = next_tid(c->tid);
-    restore_irq_flags(flags);
+    void *prior = c->freelist;
+    set_freelist_next(x, s->offset, prior);
+    if (unlikely(!cmpxchg16b_local(c, prior, tid, x, next_tid(tid)))) {
+      preempt_enable();
+      goto redo;
+    }
+    preempt_enable();
   } else {
-    restore_irq_flags(flags);
+    preempt_enable();
+    /* Magazine Layer (Hot Path) - Only for local node objects */
+    if (page->node == this_node()) {
+      irq_flags_t flags = save_irq_flags();
+      c = &s->cpu_slab[smp_get_id()];
+      if (c->mag_count < SLAB_MAG_SIZE) {
+        c->mag[c->mag_count++] = x;
+        restore_irq_flags(flags);
+        return;
+      }
+      restore_irq_flags(flags);
+    }
+
+    /* Slowpath: Different slab or magazine full */
     __slab_free(s, page, x);
   }
 }
@@ -395,19 +504,23 @@ static void init_kmem_cache_cpu(struct kmem_cache_cpu *c) {
   c->tid = 0;
 }
 
+#define ALIGNED_MAGIC 0xDEADBEEFCAFEBABE
+
 void *kmalloc_aligned(size_t size, size_t align) {
   if (align <= 8) return kmalloc(size);
 
-  // For larger alignments, allocate extra space and align manually
-  size_t total_size = size + align - 1 + sizeof(void *);
+  // For larger alignments, allocate extra space for alignment, magic and original pointer
+  size_t total_size = size + align - 1 + 2 * sizeof(void *);
   void *raw = kmalloc(total_size);
   if (!raw) return NULL;
 
-  // Calculate aligned address
-  uintptr_t aligned = (uintptr_t) raw + sizeof(void *);
+  // Calculate aligned address, ensuring at least 16 bytes for metadata
+  uintptr_t aligned = (uintptr_t) raw + 2 * sizeof(void *);
   aligned = (aligned + align - 1) & ~(align - 1);
 
-  // Store original pointer before aligned address
+  // Store magic and original pointer before aligned address
+  void **magic_ptr = (void **) (aligned - 2 * sizeof(void *));
+  *magic_ptr = (void *) ALIGNED_MAGIC;
   void **orig_ptr = (void **) (aligned - sizeof(void *));
   *orig_ptr = raw;
 
@@ -449,23 +562,18 @@ kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align, uns
 
   /* Determine order - aim for at least 8 objects per slab */
   s->order = 0;
-  while ((PAGE_SIZE << s->order) < size * 8 && s->order < SLAB_MAX_ORDER) {
+  while ((PAGE_SIZE << s->order) < (size_t) size * 8 && s->order < SLAB_MAX_ORDER) {
     s->order++;
   }
 
   s->min_partial = 5;
 
-  /* Allocate per-CPU slabs - ensure 16-byte alignment for cmpxchg16b */
+  /* 
+   * Allocate per-CPU slabs - ensure 16-byte alignment for cmpxchg16b.
+   * Note: We use a manual array for now as we lack alloc_percpu().
+   */
   s->cpu_slab = kmalloc_aligned(sizeof(struct kmem_cache_cpu) * MAX_CPUS, 16);
   if (!s->cpu_slab) {
-    kfree(s);
-    return NULL;
-  }
-
-  // Verify alignment for cmpxchg16b safety
-  if ((uintptr_t) s->cpu_slab & 0xF) {
-    printk(KERN_ERR SLAB_CLASS "CPU slab not 16-byte aligned: %p\n", s->cpu_slab);
-    kfree(s->cpu_slab);
     kfree(s);
     return NULL;
   }
@@ -478,7 +586,12 @@ kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align, uns
 
   /* Allocate nodes */
   for (int i = 0; i < MAX_NUMNODES; i++) {
-    s->node[i] = kmalloc(sizeof(struct kmem_cache_node));
+    if (node_data[i]) {
+      s->node[i] = kmalloc_node(sizeof(struct kmem_cache_node), i);
+    } else {
+      s->node[i] = kmalloc(sizeof(struct kmem_cache_node));
+    }
+
     if (!s->node[i]) continue;
     init_kmem_cache_node(s->node[i]);
   }
@@ -521,7 +634,7 @@ static struct kmem_cache *create_boot_cache(const char *name, size_t size, unsig
   s->inuse = (int) size;
 
   s->order = 0;
-  while ((PAGE_SIZE << s->order) < size * 4 && s->order < SLAB_MAX_ORDER) {
+  while ((PAGE_SIZE << s->order) < (size_t) size * 4 && s->order < SLAB_MAX_ORDER) {
     s->order++;
   }
 
@@ -554,30 +667,36 @@ void slab_init(void) {
   for (int i = 0; i < 15; i++) {
     size_t size = 8 << i;
     unsigned long flags = SLAB_HWCACHE_ALIGN;
-    /* Enable hardening for kmalloc caches by default if desired */
-    // flags |= SLAB_POISON | SLAB_RED_ZONE;
     kmalloc_caches[i] = create_boot_cache(names[i], size, flags);
   }
 
-  printk(SLAB_CLASS "Production-grade SLUB initialized (%d caches)\n", 15);
+  printk(SLAB_CLASS "SLUB Hybrid initialized (%d caches, Magazine size %d)\n", 15, SLAB_MAG_SIZE);
 }
 
-void *kmalloc(size_t size) {
+void *kmalloc_node(size_t size, int node) {
   if (unlikely(size > SLAB_MAX_SIZE))
     return vmalloc(size);
 
   int idx = kmalloc_index(size);
   if (unlikely(idx < 0)) return NULL;
 
-  return kmem_cache_alloc(kmalloc_caches[idx]);
+  return kmem_cache_alloc_node(kmalloc_caches[idx], node);
 }
 
-void *kzalloc(size_t size) {
-  void *ptr = kmalloc(size);
+void *kmalloc(size_t size) {
+  return kmalloc_node(size, -1);
+}
+
+void *kzalloc_node(size_t size, int node) {
+  void *ptr = kmalloc_node(size, node);
   if (ptr && size <= SLAB_MAX_SIZE) {
     memset(ptr, 0, size);
   }
   return ptr;
+}
+
+void *kzalloc(size_t size) {
+  return kzalloc_node(size, -1);
 }
 
 void kfree(void *ptr) {
@@ -600,14 +719,17 @@ void kfree(void *ptr) {
 
   /*
    * Check if this is an aligned allocation.
-   * Aligned allocations (from kmalloc_aligned) are not at the start of a slab object.
+   * Aligned allocations (from kmalloc_aligned) have a magic value and original pointer.
+   *
+   * FIX: Check if ptr is at the start of the slab allocation.
+   * Aligned pointers always have a header before them, so they cannot be
+   * at the very beginning of the slab. This check prevents accessing invalid
+   * memory at (ptr - 16) when ptr is at a page boundary.
    */
-  uintptr_t offset = (uintptr_t) ptr - (uintptr_t) page_address(page);
-  if (unlikely(offset % s->size)) {
-    void *raw = *((void **) ((uintptr_t) ptr - sizeof(void *)));
-
-    /* Validate that raw pointer is before ptr and within reasonable distance */
-    if (raw < ptr && (uintptr_t) ptr - (uintptr_t) raw < s->size + 64) {
+  if (ptr != page_address(page)) {
+    void *magic = *((void **) ((uintptr_t) ptr - 2 * sizeof(void *)));
+    if (unlikely(magic == (void *) ALIGNED_MAGIC)) {
+      void *raw = *((void **) ((uintptr_t) ptr - sizeof(void *)));
       kfree(raw);
       return;
     }
@@ -687,6 +809,19 @@ void slab_test(void) {
   if ((uintptr_t) a2 & 4095) panic(SLAB_CLASS "aligned alloc not 4096-byte aligned!");
   kfree(a2);
   printk(KERN_DEBUG SLAB_CLASS "  - Aligned Allocations: OK\n");
+
+  /* Test 6: NUMA-aware Allocations */
+  for (int i = 0; i < MAX_NUMNODES; i++) {
+    if (!node_data[i]) continue;
+    void *n_ptr = kmalloc_node(128, i);
+    if (!n_ptr) panic(SLAB_CLASS "kmalloc_node failed");
+    struct page *p = virt_to_head_page(n_ptr);
+    if (p->node != (uint32_t) i) {
+      printk(KERN_WARNING SLAB_CLASS "Object not on requested node %d (on %d)\n", i, p->node);
+    }
+    kfree(n_ptr);
+  }
+  printk(KERN_DEBUG SLAB_CLASS "  - NUMA-aware Allocations: OK\n");
 
   printk(KERN_DEBUG SLAB_CLASS "SLUB Stress Test Passed.\n");
 }

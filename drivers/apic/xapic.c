@@ -174,27 +174,34 @@ static void xapic_send_ipi_op(uint32_t dest_apic_id, uint8_t vector,
   spinlock_unlock_irqrestore(&xapic_ipi_lock, flags);
 }
 
-static void xapic_timer_set_frequency_op(uint32_t ticks_per_target) {
-  if (ticks_per_target == 0)
-    return;
-
-  // First mask the timer to prevent spurious interrupts during configuration
+static void xapic_timer_stop_op(void) {
   xapic_write(XAPIC_LVT_TIMER, (1 << 16)); // Masked
+  xapic_write(XAPIC_TIMER_INIT_COUNT, 0);
+}
 
-  // Set the divisor before initializing the count
-  xapic_write(XAPIC_TIMER_DIV, 0x3); // Divide by 16
+static void xapic_timer_set_oneshot_op(uint32_t ticks) {
+  xapic_write(XAPIC_LVT_TIMER, (1 << 16)); // Masked
+  xapic_write(XAPIC_TIMER_DIV, 0x3);       // Divide by 16
+  xapic_write(XAPIC_TIMER_INIT_COUNT, ticks);
+  xapic_write(XAPIC_LVT_TIMER, 32);        // Vector 32, Oneshot (00), Unmasked
+}
 
-  // Set the initial count (this also resets the current count)
-  xapic_write(XAPIC_TIMER_INIT_COUNT, ticks_per_target);
+static void xapic_timer_set_periodic_op(uint32_t ticks) {
+  xapic_write(XAPIC_LVT_TIMER, (1 << 16)); // Masked
+  xapic_write(XAPIC_TIMER_DIV, 0x3);       // Divide by 16
+  xapic_write(XAPIC_TIMER_INIT_COUNT, ticks);
+  xapic_write(XAPIC_LVT_TIMER, 32 | (1 << 17)); // Vector 32, Periodic (01), Unmasked
+}
 
-  // Start Timer: Periodic, Interrupt Vector 32, Unmasked
-  uint32_t lvt_timer = 32 | (1 << 17) | (0 << 16); // Vector 32, Periodic mode, Unmasked
-  xapic_write(XAPIC_LVT_TIMER, lvt_timer);
+static void xapic_timer_set_tsc_deadline_op(uint64_t tsc_deadline) {
+  // Mode 2 (10b) is TSC-Deadline
+  xapic_write(XAPIC_LVT_TIMER, 32 | (2 << 17)); 
+  wrmsr(0x6E0, tsc_deadline); // IA32_TSC_DEADLINE MSR
 }
 
 static void xapic_shutdown_op(void) {
   // 2. Disable Local APIC Timer
-  xapic_write(XAPIC_LVT_TIMER, (1 << 16)); // Masked
+  xapic_timer_stop_op();
 
   // 3. Disable Local APIC via SVR (clear bit 8)
   uint32_t svr = xapic_read(XAPIC_SVR);
@@ -211,8 +218,10 @@ const struct apic_ops xapic_ops = {
   .send_eoi = xapic_send_eoi_op,
   .send_ipi = xapic_send_ipi_op,
   .get_id = xapic_get_id_raw,
-  .timer_init = NULL,
-  .timer_set_frequency = xapic_timer_set_frequency_op,
+  .timer_stop = xapic_timer_stop_op,
+  .timer_set_oneshot = xapic_timer_set_oneshot_op,
+  .timer_set_periodic = xapic_timer_set_periodic_op,
+  .timer_set_tsc_deadline = xapic_timer_set_tsc_deadline_op,
   .shutdown = xapic_shutdown_op,
   .read = xapic_read,
   .write = xapic_write

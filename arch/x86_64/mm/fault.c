@@ -46,13 +46,16 @@ void do_page_fault(cpu_regs *regs) {
   struct task_struct *curr = current;
   struct mm_struct *mm = NULL;
 
-  if (curr) {
+  // Prioritize init_mm for kernel-space addresses
+  if (cr2 >= vmm_get_max_user_address()) {
+    mm = &init_mm;
+  } else if (curr) {
     // For user-space faults, we must have a mm.
-    // For kernel faults, we might be using an active_mm (borrowed).
+    // For kernel faults (below user max), we might be using an active_mm (borrowed).
     mm = curr->mm ? curr->mm : curr->active_mm;
   }
 
-  // Fallback to kernel's init_mm if no task context (early boot smoke tests)
+  // Fallback to kernel's init_mm if still no MM context
   if (!mm && !user_mode) {
     mm = &init_mm;
   }
@@ -84,11 +87,15 @@ void do_page_fault(cpu_regs *regs) {
   uint32_t mm_seq = atomic_read(&mm->mmap_seq);
   rcu_read_lock();
   
+  /* 
+   * vma_find now uses atomic loads for its tree traversal, 
+   * making it safe to call within rcu_read_lock() without mmap_lock.
+   */
   struct vm_area_struct *vma = vma_find(mm, cr2);
   if (vma) {
-    // 1. Snapshot VMA data
+    // 1. Snapshot VMA data atomically where possible
     uint64_t vm_flags = vma->vm_flags;
-    uint32_t vma_seq = vma->vma_seq;
+    uint32_t vma_seq = __atomic_load_n(&vma->vma_seq, __ATOMIC_ACQUIRE);
     
     // 2. Quick permission check
     bool write_fault = (error_code & PF_WRITE);
@@ -107,28 +114,32 @@ void do_page_fault(cpu_regs *regs) {
         if (exec_fault) fault_flags |= FAULT_FLAG_INSTR;
 
         /* 
-         * PRODUCTION-GRADE LOCKING:
-         * We take the per-VMA lock. This allows parallel faults in different
-         * VMAs without touching the global mmap_lock.
+         * Speculative Fault:
+         * We take the per-VMA lock. This is much finer grained than mmap_lock.
          */
         vma_lock(vma);
         
         // Re-verify sequence under VMA lock to ensure layout is still stable
-        if (atomic_read(&mm->mmap_seq) != mm_seq || vma->vma_seq != vma_seq) {
+        if (unlikely(atomic_read(&mm->mmap_seq) != mm_seq || vma->vma_seq != vma_seq)) {
             vma_unlock(vma);
             rcu_read_unlock();
             goto slow_path;
         }
 
+        /*
+         * Call the fault handler.
+         * The handler must be prepared to run without mmap_lock.
+         */
         int res = handle_mm_fault(vma, cr2, fault_flags);
         vma_unlock(vma);
         
         // 4. Final validation: Did the VMA layout change during the fault?
-        if (atomic_read(&mm->mmap_seq) == mm_seq && vma->vma_seq == vma_seq) {
+        if (likely(atomic_read(&mm->mmap_seq) == mm_seq && vma->vma_seq == vma_seq)) {
             rcu_read_unlock();
             if (res == 0) return;
             if (res == VM_FAULT_OOM) goto kernel_panic;
-            goto slow_path; // Retry with lock on other errors
+            /* On other errors (like VM_FAULT_RETRY), we might need the slow path */
+            goto slow_path; 
         }
     }
   }

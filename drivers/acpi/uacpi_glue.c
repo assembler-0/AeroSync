@@ -24,6 +24,7 @@
 #include <arch/x86_64/mm/layout.h>
 #include <arch/x86_64/mm/vmm.h>
 #include <arch/x86_64/tsc.h>
+#include <arch/x86_64/requests.h>
 #include <aerosync/sysintf/ic.h>
 #include <aerosync/classes.h>
 #include <aerosync/mutex.h>
@@ -33,7 +34,6 @@
 #include <aerosync/wait.h>
 #include <lib/printk.h>
 #include <lib/string.h>
-#include <limine/limine.h>
 #include <mm/slab.h>
 #include <mm/vma.h>
 #include <mm/vmalloc.h>
@@ -41,10 +41,7 @@
 #include <uacpi/types.h>
 #include <uacpi/uacpi.h>
 
-#define spin_trylock(lock) (!__atomic_test_and_set(lock, __ATOMIC_ACQUIRE))
-
 // Extern the request from init/main.c
-extern volatile struct limine_rsdp_request rsdp_request;
 extern void uacpi_kernel_enumerate_test(void);
 
 static volatile int s_ic_ready = 0;
@@ -93,7 +90,7 @@ int uacpi_kernel_init_late(void) {
  * RSDP
  */
 uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr *out_rsdp_address) {
-  if (!rsdp_request.response || !rsdp_request.response->address) {
+  if (!get_rsdp_request()->response || !get_rsdp_request()->response->address) {
     return UACPI_STATUS_NOT_FOUND;
   }
 
@@ -101,7 +98,7 @@ uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr *out_rsdp_address) {
   // identity). We need the physical address. We can use vmm_virt_to_phys. Note:
   // rsdp_request.response->address is a void*.
 
-  uint64_t virt = (uint64_t)rsdp_request.response->address;
+  uint64_t virt = (uint64_t)get_rsdp_request()->response->address;
   *out_rsdp_address = vmm_virt_to_phys(&init_mm, virt);
 
   // Fallback if virt_to_phys fails (returns 0) but address is non-null?

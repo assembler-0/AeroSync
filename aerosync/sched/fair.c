@@ -416,7 +416,11 @@ static void switched_to_fair(struct rq *rq, struct task_struct *p) {
 }
 
 static void prio_changed_fair(struct rq *rq, struct task_struct *p,
-                              int oldprio) {}
+                              int oldprio) {
+  if (prio_less(p->prio, oldprio) && rq->curr == p) {
+    set_need_resched();
+  }
+}
 
 static int select_task_rq_fair(struct task_struct *p, int cpu, int wake_flags) {
   if (cpumask_test_cpu(cpu, &p->cpus_allowed))

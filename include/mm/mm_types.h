@@ -29,6 +29,7 @@ struct vm_object;
 #define VM_GROWSUP 0x00000200
 #define VM_PFNMAP 0x00000400
 #define VM_DENYWRITE 0x00000800
+#define VM_VMALLOC   0x00001000
 
 #define VM_LOCKED 0x00002000
 #define VM_IO 0x00004000
@@ -47,6 +48,8 @@ struct vm_object;
 /* New flags for compatibility with vma.h */
 #define VM_HUGEPAGE 0x04000000
 #define VM_NOHUGEPAGE 0x08000000
+#define VM_VMALLOC_PCP 0x100000000ULL
+#define VM_LAZY_FREE   0x200000000ULL
 
 /* Cache Policy Flags */
 #define VM_CACHE_WB 0x00000000
@@ -170,6 +173,7 @@ struct mm_struct {
   atomic_t mmap_seq;
 
   uint64_t mmap_base; /* Hint for where to start looking for free space */
+  uint64_t last_hole; /* Cache last successful hole for O(1) Sequential Alloc */
 
   /* Accounting */
   size_t total_vm;  /* Total number of pages mapped */

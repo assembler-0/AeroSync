@@ -28,6 +28,7 @@
 #include <arch/x86_64/mm/vmm.h>
 #include <arch/x86_64/percpu.h>
 #include <arch/x86_64/smp.h>
+#include <arch/x86_64/requests.h>
 #include <compiler.h>
 #include <crypto/crc32.h>
 #include <drivers/acpi/power.h>
@@ -41,6 +42,7 @@
 #include <aerosync/sched/sched.h>
 #include <aerosync/sysintf/ic.h>
 #include <aerosync/sysintf/time.h>
+#include <aerosync/timer.h>
 #include <aerosync/types.h>
 #include <aerosync/version.h>
 #include <lib/log.h>
@@ -52,93 +54,7 @@
 #include <uacpi/uacpi.h>
 #include <mm/vm_object.h>
 
-#include "bitmap.h"
-
-// Set Limine Request Start Marker
-__attribute__((used,
-  section(".limine_requests_start"))) static volatile uint64_t
-limine_requests_start_marker[] = LIMINE_REQUESTS_START_MARKER;
-
-__attribute__((used, section(".limine_requests"))) static volatile uint64_t
-limine_base_revision[3] = LIMINE_BASE_REVISION(4);
-
-__attribute__((
-  used,
-  section(".limine_requests"))) volatile struct limine_framebuffer_request
-framebuffer_request = {.id = LIMINE_FRAMEBUFFER_REQUEST_ID, .revision = 0};
-
-__attribute__((
-  used,
-  section(".limine_requests"))) static volatile struct limine_memmap_request
-memmap_request = {.id = LIMINE_MEMMAP_REQUEST_ID, .revision = 0};
-
-__attribute__((
-  used,
-  section(".limine_requests"))) static volatile struct limine_paging_mode_request
-paging_request = {
-  .id = LIMINE_PAGING_MODE_REQUEST_ID,
-  .revision = 0,
-  .mode = LIMINE_PAGING_MODE_X86_64_5LVL
-};
-
-__attribute__((
-  used,
-  section(".limine_requests"))) static volatile struct limine_hhdm_request
-hhdm_request = {.id = LIMINE_HHDM_REQUEST_ID, .revision = 0};
-
-__attribute__((used,
-  section(".limine_requests"))) volatile struct limine_rsdp_request
-rsdp_request = {.id = LIMINE_RSDP_REQUEST_ID, .revision = 0};
-
-__attribute__((
-  used,
-  section(".limine_requests"))) static volatile struct limine_smbios_request
-smbios_request = {.id = LIMINE_SMBIOS_REQUEST_ID, .revision = 0};
-
-__attribute__((
-  used,
-  section(".limine_requests"))) static volatile struct limine_module_request
-module_request = {.id = LIMINE_MODULE_REQUEST_ID, .revision = 0};
-
-__attribute__((used, section(".limine_requests"))) static volatile struct
-limine_bootloader_info_request bootloader_info_request = {
-  .id = LIMINE_BOOTLOADER_INFO_REQUEST_ID, .revision = 0
-};
-
-__attribute__((used, section(".limine_requests"))) static volatile struct
-limine_bootloader_performance_request bootloader_performance_request = {
-  .id = LIMINE_BOOTLOADER_PERFORMANCE_REQUEST_ID, .revision = 0
-};
-
-__attribute__((used, section(".limine_requests"))) static volatile struct
-limine_executable_cmdline_request cmdline_request = {
-  .id = LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID, .revision = 0
-};
-
-__attribute__((used, section(".limine_requests"))) static volatile struct
-limine_firmware_type_request fw_request = {
-  .id = LIMINE_FIRMWARE_TYPE_REQUEST_ID, .revision = 0
-};
-
-__attribute__((
-  used,
-  section(
-    ".limine_requests"))) static volatile struct limine_date_at_boot_request
-date_at_boot_request = {
-  .id = LIMINE_DATE_AT_BOOT_REQUEST_ID,
-  .revision = 0
-};
-
-__attribute__((used, section(".limine_requests_end"))) static volatile uint64_t
-limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
-
 static struct task_struct bsp_task __aligned(16);
-
-volatile struct limine_framebuffer_request *get_framebuffer_request(void) {
-  return &framebuffer_request;
-}
-
-EXPORT_SYMBOL(get_framebuffer_request);
 
 static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
   (void) unused;
@@ -146,6 +62,11 @@ static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
   printk(KERN_INFO KERN_CLASS "finishing system initialization\n");
 
   fkx_init_module_class(FKX_GENERIC_CLASS);
+
+  kswapd_init();
+  khugepaged_init();
+  vm_writeback_init();
+  kvmap_purged_init();
 
   // TODO: Implement run_init_process() which calls do_execve()
   // For now, since we have no init binary on disk, we just stay in kernel
@@ -159,15 +80,43 @@ static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
   }
 }
 
+static int __init __noinline __sysv_abi system_load_extensions(const volatile struct limine_module_request *request) {
+  if (request->response) {
+    printk(KERN_DEBUG FKX_CLASS "Found %lu modules, \n",
+           request->response->module_count);
+    for (size_t i = 0; i < request->response->module_count; i++) {
+      struct limine_file *m = request->response->modules[i];
+      printk(KERN_DEBUG FKX_CLASS "  [%zu] %s @ %p (%lu bytes)\n", i, m->path,
+             m->address, m->size);
+      if (fkx_load_image(m->address, m->size) == 0) {
+        printk(FKX_CLASS "Successfully loaded module: %s\n", m->path);
+      }
+    }
+    if (fkx_finalize_loading() != 0) {
+      printk(KERN_ERR FKX_CLASS "Failed to finalize module loading\n");
+      return -ENOSYS;
+    }
+  } else {
+    printk(KERN_NOTICE FKX_CLASS
+      "no FKX module found/loaded"
+      ", you probably do not want this"
+      ", this build of AeroSync does not have "
+      "any built-in hardware drivers"
+      ", expect exponential lack of hardware support.\n");
+    return -ENOSYS;
+  }
+  return 0;
+}
+
 /**
  * @brief AeroSync kernel main entry point
- * @note NO RETURN!
+ * @note NO RETURN!1
  */
 void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   panic_register_handler(get_builtin_panic_ops());
   panic_handler_install();
 
-  if (LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision) == false) {
+  if (LIMINE_BASE_REVISION_SUPPORTED(get_limine_base_revision()) == false) {
     panic_early();
   }
 
@@ -179,43 +128,43 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
          AEROSYNC_COMPILER_VERSION);
   printk(KERN_CLASS "copyright (C) 2025 assembler-0\n");
 
-  if (bootloader_info_request.response &&
-      bootloader_performance_request.response) {
+  if (get_bootloader_info_request()->response &&
+      get_bootloader_performance_request()->response) {
     printk(KERN_CLASS
-           "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
-           bootloader_info_request.response->name
-             ? bootloader_info_request.response->name
-             : "(null)",
-           bootloader_info_request.response->version
-             ? bootloader_info_request.response->version
-             : "(null-version)",
-           bootloader_performance_request.response->exec_usec,
-           bootloader_performance_request.response->init_usec
+       "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
+       get_bootloader_info_request()->response->name
+         ? get_bootloader_info_request()->response->name
+         : "(null)",
+       get_bootloader_info_request()->response->version
+         ? get_bootloader_info_request()->response->version
+         : "(null-version)",
+       get_bootloader_performance_request()->response->exec_usec,
+       get_bootloader_performance_request()->response->init_usec
     );
   }
 
-  if (fw_request.response) {
+  if (get_fw_request()->response) {
     printk(FW_CLASS "firmware type: %s\n",
-           fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI64
-           ? "UEFI (64-bit)"
-           : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI32
-           ? "UEFI (32-bit)"
-           : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_X86BIOS
-           ? "BIOS (x86)"
-           : fw_request.response->firmware_type == LIMINE_FIRMWARE_TYPE_SBI
-           ? "SBI"
-           : "(unknown)"
+       get_fw_request()->response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI64
+       ? "UEFI (64-bit)"
+       : get_fw_request()->response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI32
+       ? "UEFI (32-bit)"
+       : get_fw_request()->response->firmware_type == LIMINE_FIRMWARE_TYPE_X86BIOS
+       ? "BIOS (x86)"
+       : get_fw_request()->response->firmware_type == LIMINE_FIRMWARE_TYPE_SBI
+       ? "SBI"
+       : "(unknown)"
     );
   }
 
   printk(KERN_CLASS "system pagination level: %d\n", vmm_get_paging_levels());
 
-  if (cmdline_request.response) {
+  if (get_cmdline_request()->response) {
     /* Register known options and parse the executable command-line provided by
      * the bootloader (via Limine). Using static storage in the cmdline parser
      * ensures we don't allocate during early boot. */
     cmdline_register_option("verbose", CMDLINE_TYPE_FLAG);
-    cmdline_parse(cmdline_request.response->cmdline);
+    cmdline_parse(get_cmdline_request()->response->cmdline);
     if (cmdline_get_flag("verbose")) {
       /* Enable verbose/debug log output which some subsystems consult. */
       log_enable_debug();
@@ -223,20 +172,20 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     }
   }
 
-  if (date_at_boot_request.response) {
+  if (get_date_at_boot_request()->response) {
     printk(KERN_CLASS "unix timestamp: %lld\n",
-           date_at_boot_request.response->timestamp);
+           get_date_at_boot_request()->response->timestamp);
   }
 
   // Initialize Physical Memory Manager
-  if (!memmap_request.response || !hhdm_request.response) {
+  if (!get_memmap_request()->response || !get_hhdm_request()->response) {
     panic(KERN_CLASS "memmap/HHDM not available");
   }
 
   cpu_features_init();
 
-  pmm_init(memmap_request.response, hhdm_request.response->offset,
-           rsdp_request.response ? rsdp_request.response->address : NULL);
+  pmm_init(get_memmap_request()->response, get_hhdm_request()->response->offset,
+           get_rsdp_request()->response ? get_rsdp_request()->response->address : NULL);
   vmm_init();
   slab_init();
   rcu_init();
@@ -245,10 +194,15 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   setup_per_cpu_areas();
   smp_prepare_boot_cpu();
   pmm_init_cpu();
+  vmalloc_init();
 
   gdt_init();
   idt_install();
   syscall_init();
+
+  fpu_init();
+  sched_init();
+  sched_init_task(&bsp_task);
 
   if (cmdline_get_flag("verbose")) {
     pmm_test();
@@ -256,30 +210,10 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     slab_test();
     vma_test();
     vmalloc_test();
+    vmalloc_dump();
   }
 
-  if (module_request.response) {
-    printk(KERN_DEBUG FKX_CLASS "Found %lu modules, \n",
-           module_request.response->module_count);
-    for (size_t i = 0; i < module_request.response->module_count; i++) {
-      struct limine_file *m = module_request.response->modules[i];
-      printk(KERN_DEBUG FKX_CLASS "  [%zu] %s @ %p (%lu bytes)\n", i, m->path,
-             m->address, m->size);
-      if (fkx_load_image(m->address, m->size) == 0) {
-        printk(FKX_CLASS "Successfully loaded module: %s\n", m->path);
-      }
-    }
-    if (fkx_finalize_loading() != 0) {
-      printk(KERN_ERR FKX_CLASS "Failed to finalize module loading\n");
-    }
-  } else {
-    printk(KERN_NOTICE FKX_CLASS
-      "no FKX module found/loaded"
-      ", you probably do not want this"
-      ", this build of AeroSync does not have "
-      "any built-in hardware drivers"
-      ", expect exponential lack of hardware support.\n");
-  }
+  system_load_extensions(get_module_request());
 
   fkx_init_module_class(FKX_PRINTK_CLASS);
   printk_init_late();
@@ -307,11 +241,9 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     printk(KERN_CLASS "TSC calibrated successfully.\n");
   }
 
-  fkx_init_module_class(FKX_DRIVER_CLASS);
+  timer_init_subsystem();
 
-  fpu_init();
-  sched_init();
-  sched_init_task(&bsp_task);
+  fkx_init_module_class(FKX_DRIVER_CLASS);
 
   if (ic_type == INTC_APIC)
     smp_init();
@@ -319,10 +251,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   vfs_init();
 
   printk_init_async();
-
-  kswapd_init();
-  khugepaged_init();
-  vm_writeback_init();
 
   // Start kernel_init thread
   struct task_struct *init_task = kthread_create(kernel_init, NULL, "kernel_init");

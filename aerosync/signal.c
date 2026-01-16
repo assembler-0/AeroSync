@@ -41,7 +41,7 @@ void signal_init_task(struct task_struct *p) {
   }
 
   if (p->signal == NULL) {
-    p->signal = kmalloc(sizeof(struct signal_struct));
+    p->signal = kmalloc_node(sizeof(struct signal_struct), p->node_id);
     if (!p->signal) {
       panic("Failed to allocate signal_struct");
     }

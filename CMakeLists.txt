@@ -189,15 +189,17 @@ if(SANITIZER)
     )
 endif()
 
+set(AEROSYNC_LINKER_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/arch/x86_64/aerosync.ld" CACHE STRING "AeroSync linker script")
+
 # Configure the linker to use ld.lld with proper arguments
 set_target_properties(aerosync.krnl PROPERTIES
-    LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/aerosync.ld"
+    LINK_DEPENDS "${AEROSYNC_LINKER_SCRIPT}"
 )
 
 # Set linker flags for this specific target
 target_link_options(aerosync.krnl PRIVATE
     -fuse-ld=lld
-    -T ${CMAKE_CURRENT_SOURCE_DIR}/aerosync.ld
+    -T ${AEROSYNC_LINKER_SCRIPT}
     -nostdlib
     -static
     -Wl,-melf_x86_64
@@ -352,7 +354,7 @@ if(QEMU_SYSTEM_X86_64)
         COMMAND ${QEMU_SYSTEM_X86_64}
         -M pc,hpet=on
         -cpu max,+la57
-        -accel tcg
+        -accel kvm
         -no-reboot -no-shutdown
         -m 4G
         -smp sockets=2,cores=2

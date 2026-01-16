@@ -143,8 +143,6 @@ SECTIONS
         _bss_end = .;
     } :bss
 
-
-
     /* Kernel end marker */
     . = ALIGN(PAGE_SIZE);
     _kernel_vma_end = .;

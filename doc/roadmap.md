@@ -1,0 +1,154 @@
+# [AeroSync](https://github.com/assembler-0/AeroSync)
+
+> This is the AeroSync kernel development checklist for release 9 (3–4 years, r0c1-2.2.3 → r9c0-xx.x.x)
+
+### core
+- memory management (mm)
+	- [ ] NUMA-awareness for *ALL* subsystems
+	- [ ] proper COW (Copy-On-Write) using XNU-inspired Shadow Object chains
+	- [ ] Finish RMAP for all subsystems
+	- [ ] Advance ANON object fault
+	- [ ] SHM (SHared Memory) management +IPC)
+	- [ ] Lockless for fast paths
+	- [ ] RCU usage
+	- [ ] reduce `mmap_lock` usage
+	- [ ] Use XArray/Radix tree for `vm_object`
+	- [ ] Maple tree for VMA system (maybe later)
+	- [ ] Selective lazy allocation/free for kernel `vmalloc()
+	- [ ] Fix subtle, logic bugs
+	- [ ] True memory reclaimation
+	- [ ] Advance SPF (faster PF handling without taking `mmap_lock` semaphore)
+	- [ ] Integrate with VFS
+	- [ ] working `mmap`/`munmap`/`mprotect`/`mremap`
+	- [ ] add `brk` and `sbrk` for compatibility
+	- [ ] Cache *everywhere*, (UBC - Unified Buffer Cache)
+	- [ ] Magazines integration for SLUB
+	- [ ] Faster SLUB
+	- [ ] More sophisticated PMM system (buddy `page_alloc`)
+	- [ ] Streamline the use of `struct folio` rather than `struct page` for high-level mm
+	- [ ] KASLR
+	- [ ] ASLR
+	- [ ] Guard pages *everywhere* possible
+	- [ ] Proper DMA support for legacy devices
+	- [ ] IOMMU
+	- [ ] more rigid MMIO
+	- [ ] Stack management
+	- [ ] handle user MM faults gracully
+- scheduling
+	- [x] PI
+	- [ ] XNU-inspired deadline handoff (idk what's it called)
+	- [ ] Ring 3 context switches are flawless
+	- [ ] `CR3` is properly managed
+	- [ ] *strictly* enforce Linux scheduling model
+	- [ ] proper scheduiling classes and domains
+	- [ ] add support for SMT scheduling
+	- [ ] NUMA-awareness
+	- [ ] IPC system
+	- [ ] proper queueing system
+	- [ ] refactor `wait.h` 
+	- [ ] refactor `mutex
+	- [ ] refactor rw_semaphores
+	- [ ] *full* kernel preemption model
+	- [ ] Tickless kernel (`CONFIG_NO_HZ`)
+	- [ ] Windows DPC? (Deffered Procedure Call)
+	- [ ] E-/P-core scheduling
+	- [ ] Deadline (EDF/EEVDF) scheduling class
+	- [ ] better RT scheduling class
+- VFS
+	- [x] FD allocation
+	- [ ] proper FD table
+	- [ ] FD management
+	- [ ] register/unregister FSes
+	- [ ] raw FS stack
+	- [ ] *everything-is-a-file*
+	- [ ] permission (Unix or ACL?)
+	- [ ] Linux-like
+	- [ ] block device abstraction
+	- [ ] FAT32
+	- [ ] EXT4 (RO)
+	- [ ] XFS (RO)
+	- [ ] EROFS (`/system`)
+	- [ ] ASFS (AeroSyncFileSystem?) 
+	- [ ] devfs/procfs/tmpfs
+	- [ ] overlayfs
+	- [ ] USTAR
+	- [x] ISOFS (ISO9660 + RockRidge extension)
+	- [ ] NEWC CPIO
+	- [ ] File systems as a module
+- POSIX-compliant
+	- [ ] `open()`/`close()`
+	- [ ] pipes
+	- [ ] sockets
+	- [ ] mman
+	- [x] System V ABI
+	- [ ] Binary compatibility with Linux
+	- [ ] Linux syscall table
+- modularity
+	- [x] FKX (Fused Kernel eXtension)
+	- [ ] rFKX (runtime Fused Kernel eXtension) (FKX modules that can be loaded at any time, not early boot)
+	- [ ] ASRX (AeroSync Runtime eXtension)
+	- [ ] generic interface for *everything* (Linux-inspired)
+	- [ ] UDM (Unified Driver Model) layer
+	- [ ] more capable sysintf for lower level FKX
+	- [ ] skeleton kernel
+	- [ ] don't be like XNU
+- features (quality of life)
+	- [ ] backtrace (builtin)
+	- [ ] stack trace (builtin)
+	- [ ] linux-compatible spinlock 
+	- [ ] kbdg embeded
+	- [ ] arch-based system
+	- [ ] automatic rollback
+	- [ ] should not panic
+	- [ ] true asynchronous printk (that doesnt blow up)
+	- [ ] log level filtering
+	- [x] component based logs
+	- [ ] component based log parsing (and filtering)
+	- [ ] ksym should be somewhere else not FKX
+	- [ ] configurability (CMake or kconfiglib)
+	- [ ] configurable run targets with CMake caches
+	- [ ] Capability based kernel
+	- [ ] runs on cursed PCs
+	- [ ] support S1-5 states?
+- drivers
+	- [ ] NVMe driver (for my pc)
+	- [ ] AHCI driver
+	- [ ] PIO/DMA IDE (ATA) driver
+	- [ ] ATAPI driver
+	- [ ] virtio-block driver
+	- [ ] USB mass storage device
+	- [ ] xHCI controller stack (usable for OHCI & EHCI)
+	- [ ] PCIe with MSI and MSI-X
+	- [ ] ACPICA
+	- [ ] SMBIOS
+	- [ ] True time counting
+	- [ ] Software timer
+	- [ ] Unified input stack
+	- [ ] PS2 keyboard and mouse
+	- [ ] USB keyboard and mouse
+	- [ ] proper APIC stack (enhance for more features)
+	- [ ] Oneshot mode support
+	- [ ] EFI RT table support
+	- [ ] ARP/ICMP Stack
+	- [ ] UDP stack
+	- [ ] TCP/IP (v4 and v6) support
+	- [ ] port intel iwlwifi driver or write my own for the AC9560
+	- [ ] E1000
+	- [ ] NE2000
+	- [ ] RTL8139
+	- [x] PCI bus enumeration using ECAM
+	- [ ] VMware SVGA II driver
+	- [ ] virtio-pci-gpu driver
+	- [ ] a fraction of AMDGPU driver
+	- [ ] AGP & ISA bus cuz why not? though pretty much a waste of time
+	- [ ] Advances serial driver (just handle edge cases really)
+	- [ ] Some generic sound
+	- [ ] ALC897 driver
+	- [ ] SIO (Super IO chip) driver
+	- [ ] intel & amd PCH driver
+	- [ ] EC integration with ACPI
+	- [ ] C-states support
+	- [ ] Hybrid architecture handling
+	- [ ] CPU microcode loading
+	- [ ] PTY & TTY drivers
+	- [ ] CSPRNG using a TRNG

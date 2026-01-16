@@ -228,6 +228,40 @@ void hpet_disable(void) {
   hpet_info.enabled = false;
 }
 
+void hpet_set_oneshot(uint32_t timer_num, uint64_t ns) {
+  if (!hpet_available() || timer_num >= hpet_info.num_comparators) {
+    return;
+  }
+
+  // 1. Disable the specific timer
+  uint64_t config = hpet_read64(HPET_TIMER_CONFIG_CAP(timer_num));
+  config &= ~HPET_TN_INT_ENB_CNF;
+  hpet_write64(HPET_TIMER_CONFIG_CAP(timer_num), config);
+
+  // 2. Calculate the target counter value
+  uint64_t current_counter = hpet_get_counter();
+  uint64_t ticks = (ns * 1000000ULL) / hpet_info.period_fs;
+  uint64_t target = current_counter + ticks;
+
+  // 3. Set the comparator value
+  hpet_write64(HPET_TIMER_COMPARATOR(timer_num), target);
+
+  // 4. Enable the timer (oneshot, edge triggered)
+  config |= HPET_TN_INT_ENB_CNF;
+  config &= ~HPET_TN_TYPE_CNF; // Oneshot
+  hpet_write64(HPET_TIMER_CONFIG_CAP(timer_num), config);
+}
+
+void hpet_stop_timer(uint32_t timer_num) {
+  if (!hpet_available() || timer_num >= hpet_info.num_comparators) {
+    return;
+  }
+
+  uint64_t config = hpet_read64(HPET_TIMER_CONFIG_CAP(timer_num));
+  config &= ~HPET_TN_INT_ENB_CNF;
+  hpet_write64(HPET_TIMER_CONFIG_CAP(timer_num), config);
+}
+
 int hpet_calibrate_tsc(void) {
   if (!hpet_available()) {
     printk(KERN_WARNING HPET_CLASS "HPET not available for TSC calibration\n");

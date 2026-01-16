@@ -71,7 +71,7 @@ void rcu_init(void) {
     rdp->wait_tail = &rdp->wait_callbacks;
   }
 
-  printk(KERN_INFO SYNC_CLASS "Classic Multi-CPU RCU Initialized\n");
+  printk(KERN_INFO SYNC_CLASS "Multi-CPU RCU Initialized\n");
 }
 
 /**

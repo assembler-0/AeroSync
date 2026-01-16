@@ -60,7 +60,8 @@ struct page {
     };
   };
 
-  unsigned int order; /* Order of the block (Buddy/Folio) */
+  uint16_t order; /* Order of the block (Buddy/Folio) */
+  uint16_t migratetype; /* Migration type for Buddy */
   uint32_t zone; /* Memory zone (if any) */
   uint32_t node; /* NUMA node ID */
   atomic_t _refcount; /* Reference count */
@@ -184,7 +185,16 @@ static inline void *folio_address(struct folio *folio) {
   return page_address(&folio->page);
 }
 
+static inline unsigned long folio_pfn(struct folio *folio) {
+  return (unsigned long) (&folio->page - mem_map);
+}
+
 static inline uint64_t folio_to_phys(struct folio *folio) {
   uint64_t pfn = (uint64_t) (&folio->page - mem_map);
+  return pfn << 12;
+}
+
+static inline uint64_t page_to_phys(struct page *page) {
+  uint64_t pfn = (uint64_t) (page - mem_map);
   return pfn << 12;
 }

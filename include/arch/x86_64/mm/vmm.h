@@ -70,6 +70,11 @@ uint64_t vmm_get_max_user_address(void);
 void vmm_init(void);
 
 /**
+ * Allocate a zeroed page table frame on a specific NUMA node.
+ */
+uint64_t vmm_alloc_table_node(int nid);
+
+/**
  * Map a virtual page to a physical frame.
  *
  * @param mm        The address space to map in
@@ -80,10 +85,16 @@ void vmm_init(void);
  */
 int vmm_map_page(struct mm_struct *mm, uint64_t virt, uint64_t phys,
                  uint64_t flags);
+int vmm_map_page_no_flush(struct mm_struct *mm, uint64_t virt, uint64_t phys,
+                          uint64_t flags);
 int vmm_map_huge_page(struct mm_struct *mm, uint64_t virt, uint64_t phys,
                       uint64_t flags, uint64_t page_size);
+int vmm_map_huge_page_no_flush(struct mm_struct *mm, uint64_t virt, uint64_t phys,
+                              uint64_t flags, uint64_t page_size);
 int vmm_map_pages(struct mm_struct *mm, uint64_t virt, uint64_t phys,
                   size_t count, uint64_t flags);
+int vmm_map_pages_no_flush(struct mm_struct *mm, uint64_t virt, uint64_t phys,
+                           size_t count, uint64_t flags);
 int vmm_map_pages_list(struct mm_struct *mm, uint64_t virt, const uint64_t *phys_list,
                        size_t count, uint64_t flags);
 

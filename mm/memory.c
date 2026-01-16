@@ -19,6 +19,7 @@
  */
 
 #include <mm/mm_types.h>
+#include <mm/zone.h>
 #include <mm/vma.h>
 #include <mm/vm_object.h>
 #include <mm/page.h>
@@ -31,9 +32,8 @@
 #include <aerosync/mutex.h>
 #include <linux/container_of.h>
 #include <linux/list.h>
-#include <lib/string.h>
 #include <lib/printk.h>
-
+#include <lib/vsprintf.h>
 #include <aerosync/wait.h>
 #include <aerosync/sched/process.h>
 
@@ -41,8 +41,6 @@
 DEFINE_PER_CPU(struct list_head, inactive_list);
 DEFINE_PER_CPU(struct list_head, active_list);
 DEFINE_PER_CPU(spinlock_t, lru_lock);
-
-static DECLARE_WAIT_QUEUE_HEAD(kswapd_wait);
 
 /**
  * struct scan_control - Control parameters for a reclamation pass.
@@ -354,29 +352,25 @@ static void shrink_zone(struct zone *zone, struct scan_control *sc) {
 }
 
 void wakeup_kswapd(struct zone *zone) {
-  if (!zone) return;
-  wake_up(&kswapd_wait);
+  if (!zone || !zone->zone_pgdat) return;
+  wake_up(&zone->zone_pgdat->kswapd_wait);
 }
 
-static int kswapd_should_run(void) {
-  /* Run if any zone is below high watermark */
-  for (int n = 0; n < MAX_NUMNODES; n++) {
-    if (!node_data[n]) continue;
-    for (int i = 0; i < MAX_NR_ZONES; i++) {
-      struct zone *z = &node_data[n]->node_zones[i];
-      if (z->present_pages > 0 && z->nr_free_pages < z->watermark[WMARK_HIGH])
-        return 1;
-    }
+static int kswapd_should_run(struct pglist_data *pgdat) {
+  for (int i = 0; i < MAX_NR_ZONES; i++) {
+    struct zone *z = &pgdat->node_zones[i];
+    if (z->present_pages > 0 && z->nr_free_pages < z->watermark[WMARK_HIGH])
+      return 1;
   }
   return 0;
 }
 
 static int kswapd_thread(void *data) {
-  (void) data;
-  printk(KERN_INFO SWAP_CLASS "kswapd started\n");
+  struct pglist_data *pgdat = (struct pglist_data *)data;
+  printk(KERN_INFO SWAP_CLASS "kswapd started for node %d\n", pgdat->node_id);
 
   while (1) {
-    wait_event(&kswapd_wait, kswapd_should_run());
+    wait_event(&pgdat->kswapd_wait, kswapd_should_run(pgdat));
 
     struct scan_control sc = {
       .gfp_mask = GFP_KERNEL,
@@ -385,15 +379,12 @@ static int kswapd_thread(void *data) {
     };
 
     while (sc.priority >= 0) {
-      for (int n = 0; n < MAX_NUMNODES; n++) {
-        if (!node_data[n]) continue;
-        for (int i = MAX_NR_ZONES - 1; i >= 0; i--) {
-          struct zone *z = &node_data[n]->node_zones[i];
-          if (z->present_pages == 0) continue;
+      for (int i = MAX_NR_ZONES - 1; i >= 0; i--) {
+        struct zone *z = &pgdat->node_zones[i];
+        if (z->present_pages == 0) continue;
 
-          if (z->nr_free_pages < z->watermark[WMARK_HIGH]) {
-            shrink_zone(z, &sc);
-          }
+        if (z->nr_free_pages < z->watermark[WMARK_HIGH]) {
+          shrink_zone(z, &sc);
         }
       }
 
@@ -407,8 +398,17 @@ static int kswapd_thread(void *data) {
 }
 
 void kswapd_init(void) {
-  struct task_struct *k = kthread_create(kswapd_thread, NULL, "kswapd");
-  if (k) kthread_run(k);
+  for (int n = 0; n < MAX_NUMNODES; n++) {
+    if (node_data[n] && node_data[n]->node_spanned_pages > 0) {
+       char name[16];
+       snprintf(name, sizeof(name), "kswapd%d", n);
+       struct task_struct *k = kthread_create(kswapd_thread, node_data[n], name);
+       if (k) {
+         node_data[n]->kswapd_task = k;
+         kthread_run(k);
+       }
+    }
+  }
 }
 
 void lru_init(void) {

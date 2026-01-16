@@ -202,6 +202,13 @@ struct task_struct {
   int node_id;                 /* NUMA node ID of the task (usually based on CPU) */
 
   /*
+   * Priority Inheritance (PI) support
+   */
+  struct mutex *pi_blocked_on; /* Mutex this task is blocked on */
+  struct list_head pi_waiters; /* List of tasks waiting on mutexes held by this task */
+  struct list_head pi_list;    /* Node for parent's pi_waiters list */
+
+  /*
    * Task relationships
    */
   struct list_head tasks;    /* All tasks list */
@@ -361,6 +368,40 @@ struct cfs_rq {
 };
 
 /**
+ * struct sched_group - A group of CPUs within a scheduling domain.
+ * Load balancing is performed between groups.
+ */
+struct sched_group {
+  struct sched_group *next; /* Next group in the domain */
+  struct cpumask cpumask;   /* CPUs in this group */
+  unsigned int group_weight;
+  struct load_weight load;  /* Total load of the group */
+};
+
+/**
+ * struct sched_domain - A hierarchical domain for load balancing.
+ */
+struct sched_domain {
+  struct sched_domain *parent; /* Next level up (e.g. SMT -> Core -> NUMA) */
+  struct sched_domain *child;  /* Next level down */
+  struct sched_group *groups;  /* Groups in this domain */
+  struct cpumask span;         /* All CPUs in this domain */
+
+  /* Balancing parameters */
+  unsigned long min_interval;  /* Ticks */
+  unsigned long max_interval;
+  unsigned long next_balance;  /* Next scheduled balance */
+
+  unsigned int flags;
+  #define SD_LOAD_BALANCE    0x0001
+  #define SD_BALANCE_NEWIDLE 0x0002
+  #define SD_SHARE_PKG_RESOURCES 0x0004 /* SMT/Core level */
+  #define SD_NUMA            0x0008
+
+  char *name;
+};
+
+/**
   * struct rq - Per-CPU runqueue
  */
 struct rq {
@@ -368,6 +409,9 @@ struct rq {
   unsigned int nr_running; /* Total runnable tasks */
   struct load_weight load; /* Instantaneous load weight */
   unsigned long avg_load;  /* Exponential Moving Average of load */
+
+  /* Topology */
+  struct sched_domain *sd; /* Root scheduling domain for this CPU */
 
   /* Per-class runqueues */
   struct cfs_rq cfs;
@@ -417,6 +461,11 @@ void task_sleep(void);
 void task_wake_up(struct task_struct *task);
 void task_wake_up_all(void);
 
+/* Priority Inheritance (PI) functions */
+void pi_boost_prio(struct task_struct *owner, struct task_struct *waiter);
+void pi_restore_prio(struct task_struct *owner, struct task_struct *waiter);
+void update_task_prio(struct task_struct *p);
+
 /* Helper to get current task */
 extern struct task_struct *get_current(void);
 #define current get_current()
@@ -437,6 +486,34 @@ extern void deactivate_task(struct rq *rq, struct task_struct *p);
 /* Helper to get current runqueue */
 extern struct rq *this_rq(void);
 DECLARE_PER_CPU(struct rq, runqueues);
+
+/**
+ * task_prio - return the priority of the task
+ */
+static inline int task_prio(const struct task_struct *p) {
+    return p->prio;
+}
+
+/**
+ * task_has_rt_policy - check if task has an RT policy
+ */
+static inline bool task_has_rt_policy(const struct task_struct *p) {
+    return p->policy == SCHED_FIFO || p->policy == SCHED_RR;
+}
+
+/**
+ * prio_less - compare two priorities (lower value is higher priority)
+ */
+static inline bool prio_less(int prio1, int prio2) {
+    return prio1 < prio2;
+}
+
+/**
+ * task_prio_less - compare priorities of two tasks
+ */
+static inline bool task_prio_less(const struct task_struct *a, const struct task_struct *b) {
+    return prio_less(a->prio, b->prio);
+}
 
 /* RT scheduler functions */
 extern void enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags);

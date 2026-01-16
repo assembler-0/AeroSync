@@ -80,32 +80,44 @@ void tlb_ipi_handler(void *regs) {
 
 void vmm_tlb_shootdown(struct mm_struct *mm, uint64_t start, uint64_t end) {
     struct tlb_shootdown_info info;
-    info.start = start;
-    info.end = end;
-    info.full_flush = (end - start > 0x10000);
+    info.start = start & PAGE_MASK;
+    info.end = PAGE_ALIGN_UP(end);
+    
+    /* 
+     * Full flush threshold: 
+     * If we are flushing more than 32 pages, a full TLB flush (CR3 reload) 
+     * is usually faster than 32+ invlpg instructions + context overhead.
+     */
+    info.full_flush = (info.end - info.start >= 32 * PAGE_SIZE);
 
     /* Memory barrier to ensure page table updates are visible before TLB flush */
-    __asm__ volatile("mfence" ::: "memory");
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
 
-    // 1. Flush local TLB
+    // 1. Flush local TLB first to minimize the window where this CPU sees old data
     tlb_shootdown_callback(&info);
 
-    // 2. Send IPI only if SMP is active
+    // 2. Send IPI only if SMP is active and there are other CPUs to notify
     if (smp_is_active()) {
         if (!mm || mm == &init_mm) {
             // Global shootdown (kernel space) - target all online CPUs
             smp_call_function(tlb_shootdown_callback, &info, true);
         } else {
-            // Target only CPUs using this mm
-            smp_call_function_many(&mm->cpu_mask, tlb_shootdown_callback, &info, true);
+            /* 
+             * Optimization: Only send IPI to CPUs that are actually using this mm.
+             * Also, skip IPI if the current CPU is the only one in the mask.
+             */
+            int current_cpu = smp_get_id();
+            if (cpumask_weight(&mm->cpu_mask) > 1 || !cpumask_test_cpu(current_cpu, &mm->cpu_mask)) {
+                smp_call_function_many(&mm->cpu_mask, tlb_shootdown_callback, &info, true);
+            }
         }
     }
     
     /* Memory barrier to ensure TLB flushes complete before returning */
-    __asm__ volatile("mfence" ::: "memory");
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
 }
 
 void vmm_tlb_init(void) {
-    // Registered via irq_install_handler in irq.c or here
+    // Registered via irq_install_handler in irq.c or here,
     // But TLB_FLUSH_IPI_VECTOR needs to be handled in irq_common_stub if not standard IRQ
 }

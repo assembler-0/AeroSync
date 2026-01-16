@@ -18,6 +18,10 @@ typedef struct {
   fn(int, install, void);
   fn(int, init_ap, void);
   fn(void, timer_set, uint32_t frequency_hz);
+  fn(void, timer_stop, void);
+  fn(void, timer_oneshot, uint32_t microseconds);
+  fn(void, timer_tsc_deadline, uint64_t deadline);
+  fn(int, timer_has_tsc_deadline, void);
   fn(void, enable_irq, uint8_t irq_line);
   fn(void, disable_irq, uint8_t irq_line);
   fn(void, send_eoi, uint32_t interrupt_number);

@@ -14,10 +14,13 @@
 
 struct mutex {
   spinlock_t lock; /* Spinlock to protect mutex state */
-  int count; /* 0 = locked, 1 = unlocked (following binary semaphore logic for
-                simplicity) */
+  int count; /* 0 = locked, 1 = unlocked */
   struct task_struct *owner;
   wait_queue_head_t wait_q;
+  
+  /* Priority Inheritance fields */
+  struct list_head waiters; /* List of tasks waiting on this mutex, sorted by priority */
+  bool pi_enabled;
 };
 
 typedef struct mutex mutex_t;
@@ -26,9 +29,13 @@ typedef struct mutex mutex_t;
   {.lock = 0,                                                                  \
    .count = 1,                                                                 \
    .owner = NULL,                                                              \
-   .wait_q = __WAIT_QUEUE_HEAD_INITIALIZER(name.wait_q)}
+   .wait_q = __WAIT_QUEUE_HEAD_INITIALIZER(name.wait_q),                       \
+   .waiters = LIST_HEAD_INIT(name.waiters),                                    \
+   .pi_enabled = true}
 
 #define DEFINE_MUTEX(name) mutex_t name = MUTEX_INITIALIZER(name)
+
+#define DEFINE_MUTEX_PI(name) mutex_t name = MUTEX_INITIALIZER(name)
 
 /**
  * Initialize a mutex

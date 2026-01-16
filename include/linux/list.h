@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-#pragma once
+#ifndef _LINUX_LIST_H
+#define _LINUX_LIST_H
 
 #include <compiler.h>
 #include <aerosync/types.h>
@@ -1172,3 +1173,5 @@ static inline size_t hlist_count_nodes(struct hlist_head *head)
 
 	return count;
 }
+
+#endif

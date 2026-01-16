@@ -22,28 +22,26 @@
 #include <arch/x86_64/gdt/gdt.h>
 #include <arch/x86_64/percpu.h>
 #include <compiler.h>
-#include <aerosync/classes.h>
-#include <aerosync/panic.h>
 #include <aerosync/spinlock.h>
-#include <aerosync/types.h>
-#include <lib/printk.h>
-#include <lib/string.h>
 #include <mm/slab.h>
+
+#include <arch/x86_64/mm/paging.h>
 
 // GDT with 7 entries: null, kcode, kdata, ucode, udata, tss_low, tss_high
 // CRITICAL: GDT must be properly aligned for x86-64
-// CRITICAL: GDT must be properly aligned for x86-64
-DEFINE_PER_CPU(struct gdt_entry, gdt_entries[7]);
-DEFINE_PER_CPU(struct tss_entry, tss_entry);
+DEFINE_PER_CPU_ALIGNED(struct gdt_entry, gdt_entries[7], 16);
+DEFINE_PER_CPU_ALIGNED(struct tss_entry, tss_entry, 16);
+DEFINE_PER_CPU_ALIGNED(uint8_t, double_fault_stack[PAGE_SIZE], PAGE_SIZE);
 
 extern void gdt_flush(const struct gdt_ptr *gdt_ptr_addr);
+
 extern void tss_flush(void);
 
 static volatile int gdt_lock = 0;
 
 static void set_gdt_gate(int num, uint32_t base, uint32_t limit, uint8_t access,
                          uint8_t gran) {
-  struct gdt_entry *gdt = (struct gdt_entry *)this_cpu_ptr(gdt_entries);
+  struct gdt_entry *gdt = (struct gdt_entry *) this_cpu_ptr(gdt_entries);
   irq_flags_t flags = spinlock_lock_irqsave(&gdt_lock);
   gdt[num].base_low = (base & 0xFFFF);
   gdt[num].base_middle = (base >> 16) & 0xFF;
@@ -58,7 +56,7 @@ static void set_gdt_gate(int num, uint32_t base, uint32_t limit, uint8_t access,
 
 // A cleaner way to set up the 64-bit TSS descriptor
 static void set_tss_gate(int num, uint64_t base, uint64_t limit) {
-  struct gdt_entry *gdt = (struct gdt_entry *)this_cpu_ptr(gdt_entries);
+  struct gdt_entry *gdt = (struct gdt_entry *) this_cpu_ptr(gdt_entries);
   irq_flags_t flags = spinlock_lock_irqsave(&gdt_lock);
   gdt[num].limit_low = (limit & 0xFFFF);
   gdt[num].base_low = (base & 0xFFFF);
@@ -68,17 +66,17 @@ static void set_tss_gate(int num, uint64_t base, uint64_t limit) {
       (limit >> 16) & 0x0F; // No granularity bits (G=0, AVL=0)
   gdt[num].base_high = (base >> 24) & 0xFF;
 
-  uint32_t *base_high_ptr = (uint32_t *)&gdt[num + 1];
+  uint32_t *base_high_ptr = (uint32_t *) &gdt[num + 1];
   *base_high_ptr = (base >> 32);
 
-  *((uint32_t *)base_high_ptr + 1) = 0;
+  *((uint32_t *) base_high_ptr + 1) = 0;
   spinlock_unlock_irqrestore(&gdt_lock, flags);
 }
 
 void gdt_init(void) {
   struct gdt_ptr gdt_ptr;
   gdt_ptr.limit = (sizeof(struct gdt_entry) * 7) - 1;
-  gdt_ptr.base = (uint64_t)(struct gdt_entry *)this_cpu_ptr(gdt_entries);
+  gdt_ptr.base = (uint64_t) (struct gdt_entry *) this_cpu_ptr(gdt_entries);
 
   set_gdt_gate(0, 0, 0, 0, 0); // 0x00: Null segment
   set_gdt_gate(1, 0, 0xFFFFFFFF, GDT_ACCESS_CODE_PL0,
@@ -91,9 +89,13 @@ void gdt_init(void) {
                GDT_GRAN_CODE); // 0x20: User Code
 
   struct tss_entry *tss = this_cpu_ptr(tss_entry);
-  uint64_t tss_base = (uint64_t)tss;
+  uint64_t tss_base = (uint64_t) tss;
   uint64_t tss_limit = sizeof(struct tss_entry) - 1;
   set_tss_gate(5, tss_base, tss_limit);
+
+  // Initialize IST1 for Double Fault
+  uint8_t *df_stack = (uint8_t *) this_cpu_ptr(double_fault_stack);
+  tss->ist1 = (uint64_t) df_stack + PAGE_SIZE;
 
   tss->iomap_base = sizeof(struct tss_entry);
 

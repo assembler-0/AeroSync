@@ -108,17 +108,32 @@ static int x2apic_init_lapic(void) {
     return 1;
 }
 
-static void x2apic_timer_set_frequency_op(uint32_t ticks_per_target) {
-    if (ticks_per_target == 0) return;
+static void x2apic_timer_stop_op(void) {
+    x2apic_write(X2APIC_LVT_TIMER, (1 << 16));
+    x2apic_write(X2APIC_TIMER_INIT_CNT, 0);
+}
+
+static void x2apic_timer_set_oneshot_op(uint32_t ticks) {
     x2apic_write(X2APIC_LVT_TIMER, (1 << 16));
     x2apic_write(X2APIC_TIMER_DIV, 0x3);
-    x2apic_write(X2APIC_TIMER_INIT_CNT, ticks_per_target);
-    uint32_t lvt_timer = 32 | (1 << 17) | (0 << 16);
-    x2apic_write(X2APIC_LVT_TIMER, lvt_timer);
+    x2apic_write(X2APIC_TIMER_INIT_CNT, ticks);
+    x2apic_write(X2APIC_LVT_TIMER, 32);
+}
+
+static void x2apic_timer_set_periodic_op(uint32_t ticks) {
+    x2apic_write(X2APIC_LVT_TIMER, (1 << 16));
+    x2apic_write(X2APIC_TIMER_DIV, 0x3);
+    x2apic_write(X2APIC_TIMER_INIT_CNT, ticks);
+    x2apic_write(X2APIC_LVT_TIMER, 32 | (1 << 17));
+}
+
+static void x2apic_timer_set_tsc_deadline_op(uint64_t tsc_deadline) {
+    x2apic_write(X2APIC_LVT_TIMER, 32 | (2 << 17));
+    wrmsr(0x6E0, tsc_deadline);
 }
 
 static void x2apic_shutdown_op(void) {
-    x2apic_write(X2APIC_LVT_TIMER, (1 << 16));
+    x2apic_timer_stop_op();
     uint64_t svr = x2apic_read(X2APIC_SVR);
     x2apic_write(X2APIC_SVR, svr & ~(1ULL << 8));
     uint64_t lapic_base_msr = rdmsr(APIC_BASE_MSR);
@@ -131,8 +146,10 @@ const struct apic_ops x2apic_ops = {
     .send_eoi = x2apic_send_eoi_op,
     .send_ipi = x2apic_send_ipi_op,
     .get_id = x2apic_get_id_raw,
-    .timer_init = NULL,
-    .timer_set_frequency = x2apic_timer_set_frequency_op,
+    .timer_stop = x2apic_timer_stop_op,
+    .timer_set_oneshot = x2apic_timer_set_oneshot_op,
+    .timer_set_periodic = x2apic_timer_set_periodic_op,
+    .timer_set_tsc_deadline = x2apic_timer_set_tsc_deadline_op,
     .shutdown = x2apic_shutdown_op,
     .read = x2apic_read_op,
     .write = x2apic_write_op

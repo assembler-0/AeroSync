@@ -21,69 +21,96 @@
 #include <aerosync/mutex.h>
 #include <aerosync/sched/sched.h>
 #include <aerosync/wait.h>
-#include <lib/printk.h>
+#include <linux/container_of.h>
 
 void mutex_init(mutex_t *m) {
   spinlock_init(&m->lock);
   m->count = 1; /* Unlocked */
   m->owner = NULL;
   init_waitqueue_head(&m->wait_q);
+  INIT_LIST_HEAD(&m->waiters);
+  m->pi_enabled = true;
 }
 
 void mutex_lock(mutex_t *m) {
+  struct task_struct *curr = current;
   wait_queue_t wait;
+
+  if (unlikely(!curr)) {
+    /* Early boot: no scheduler yet. Spin until lock acquired. */
+    irq_flags_t flags = spinlock_lock_irqsave(&m->lock);
+    while (m->count == 0) {
+      spinlock_unlock_irqrestore(&m->lock, flags);
+      cpu_relax();
+      flags = spinlock_lock_irqsave(&m->lock);
+    }
+    m->count = 0;
+    m->owner = NULL;
+    spinlock_unlock_irqrestore(&m->lock, flags);
+    return;
+  }
+
   init_wait(&wait);
 
-  /*
-   * Optimistic fast path: try to acquire the lock using atomic dec.
-   * We use the spinlock to protect the count and owner fields.
-   */
   irq_flags_t flags = spinlock_lock_irqsave(&m->lock);
 
   while (m->count == 0) {
+    struct task_struct *owner = m->owner;
+
+    /* PI Logic: Boost owner's priority */
+    if (m->pi_enabled && owner) {
+      curr->pi_blocked_on = m;
+      pi_boost_prio(owner, curr);
+    }
+
     /* Slow path: block and wait */
     prepare_to_wait(&m->wait_q, &wait, TASK_UNINTERRUPTIBLE);
 
-    /* Check again after preparing to wait, but before scheduling */
     if (m->count != 0) {
       break;
     }
 
-    /* We must release the spinlock before scheduling */
     spinlock_unlock_irqrestore(&m->lock, flags);
-
     schedule();
-
-    /* After waking up, we re-acquire the spinlock to check condition */
     flags = spinlock_lock_irqsave(&m->lock);
   }
 
-  /* We now have the lock or we broke out because m->count was != 0 */
+  /* Cleanup PI state if we were blocked */
+  if (curr->pi_blocked_on == m) {
+    curr->pi_blocked_on = NULL;
+  }
+
   m->count = 0;
-  m->owner = current;
+  m->owner = curr;
 
-  /* Clean up wait queue entry */
   finish_wait(&m->wait_q, &wait);
-
   spinlock_unlock_irqrestore(&m->lock, flags);
 }
 
 void mutex_unlock(mutex_t *m) {
   irq_flags_t flags = spinlock_lock_irqsave(&m->lock);
+  struct task_struct *curr = current;
 
-  if (m->owner != current) {
-    // Warning: unlocking a mutex we don't own?
-    // This is usually a bug, but some kernels allow it for specific cases.
-    // For now, let's just warn.
-    // printk(KERN_WARNING "mutex_unlock: task %d unlocking mutex owned by
-    // %d\n",
-    //        current->pid, m->owner ? m->owner->pid : -1);
+  if (curr && m->owner != curr) {
+    /* Warning handled in professional kernels by BUG_ON or similar */
+  }
+
+  /* PI Logic: Restore priority if we were boosted */
+  if (curr && m->pi_enabled) {
+    /* Check all waiters for this mutex and remove from our PI list */
+    struct task_struct *waiter, *tmp;
+    list_for_each_entry_safe(waiter, tmp, &curr->pi_waiters, pi_list) {
+      if (waiter->pi_blocked_on == m) {
+        list_del_init(&waiter->pi_list);
+      }
+    }
+    update_task_prio(curr);
   }
 
   m->count = 1;
   m->owner = NULL;
 
-  /* Wake up one waiter (following mutex semantics) */
+  /* Wake up one waiter */
   wake_up_nr(&m->wait_q, 1);
 
   spinlock_unlock_irqrestore(&m->lock, flags);
@@ -91,10 +118,11 @@ void mutex_unlock(mutex_t *m) {
 
 int mutex_trylock(mutex_t *m) {
   irq_flags_t flags = spinlock_lock_irqsave(&m->lock);
+  struct task_struct *curr = current;
 
   if (m->count == 1) {
     m->count = 0;
-    m->owner = current;
+    m->owner = curr;
     spinlock_unlock_irqrestore(&m->lock, flags);
     return 1;
   }

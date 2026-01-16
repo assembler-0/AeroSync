@@ -15,6 +15,10 @@ extern unsigned long __per_cpu_offset[MAX_CPUS];
 #define DEFINE_PER_CPU(type, name)                                             \
   __attribute__((section(".percpu"), used)) type name
 
+/* Macro to define an aligned per-CPU variable */
+#define DEFINE_PER_CPU_ALIGNED(type, name, align)                              \
+  __attribute__((section(".percpu"), used, aligned(align))) type name
+
 /* Macro to declare a per-CPU variable */
 #define DECLARE_PER_CPU(type, name)                                            \
   extern __attribute__((section(".percpu"))) type name

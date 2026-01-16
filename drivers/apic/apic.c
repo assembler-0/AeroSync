@@ -286,33 +286,65 @@ static void apic_timer_calibrate(const struct apic_timer_regs *regs) {
     }
 }
 
-void apic_timer_set_frequency(uint32_t frequency_hz) {
+static int detect_tsc_deadline(void) {
+    uint32_t eax, ebx, ecx, edx;
+    cpuid(1, &eax, &ebx, &ecx, &edx);
+    return (ecx & (1 << 24)) != 0;
+}
+
+int apic_has_tsc_deadline(void) {
+    return detect_tsc_deadline();
+}
+
+uint32_t apic_get_calibrated_ticks(void) {
+    return apic_calibrated_ticks;
+}
+
+void apic_timer_stop(void) {
+    if (current_ops && current_ops->timer_stop)
+        current_ops->timer_stop();
+}
+
+void apic_timer_set_oneshot(uint32_t microseconds) {
+    if (!current_ops || !current_ops->timer_set_oneshot) return;
+    
+    if (apic_calibrated_ticks == 0) {
+        // Fallback to a safe estimate if not calibrated (100MHz LAPIC clock approx)
+        current_ops->timer_set_oneshot(microseconds * 100);
+        return;
+    }
+
+    // apic_calibrated_ticks is for 10ms (10000 us)
+    uint64_t ticks = ((uint64_t)apic_calibrated_ticks * microseconds) / 10000;
+    if (ticks > 0xFFFFFFFF) ticks = 0xFFFFFFFF;
+    if (ticks == 0) ticks = 1;
+
+    current_ops->timer_set_oneshot((uint32_t)ticks);
+}
+
+void apic_timer_set_periodic(uint32_t frequency_hz) {
     if (frequency_hz == 0) return;
 
     uint32_t ticks_per_target;
-
     if (apic_calibrated_ticks == 0) {
-        // If calibration failed, use a reasonable default based on common frequencies
-        // For 100Hz timer with typical APIC clock, use a default value
-        ticks_per_target = 1000000 / frequency_hz; // 1MHz default estimate
-        printk(KERN_NOTICE APIC_CLASS "Using default timer value for %u Hz: %u ticks\n",
-               frequency_hz, ticks_per_target);
+        ticks_per_target = 1000000 / frequency_hz;
     } else {
         ticks_per_target = (apic_calibrated_ticks * 100) / frequency_hz;
     }
 
-    // Ensure the ticks value is reasonable (not too small or too large)
-    if (ticks_per_target < 100) {
-        ticks_per_target = 100;
-        printk(KERN_NOTICE APIC_CLASS "Adjusted timer ticks to minimum safe value: %u\n", ticks_per_target);
-    } else if (ticks_per_target > 0x7FFFFFFF) { // Avoid potential overflow issues
-        ticks_per_target = 0x7FFFFFFF;
-        printk(KERN_NOTICE APIC_CLASS "Adjusted timer ticks to maximum safe value: %u\n", ticks_per_target);
+    if (current_ops && current_ops->timer_set_periodic) {
+        current_ops->timer_set_periodic(ticks_per_target);
     }
+}
 
-    if (current_ops && current_ops->timer_set_frequency) {
-        current_ops->timer_set_frequency(ticks_per_target);
+void apic_timer_set_tsc_deadline(uint64_t tsc_deadline) {
+    if (current_ops && current_ops->timer_set_tsc_deadline && detect_tsc_deadline()) {
+        current_ops->timer_set_tsc_deadline(tsc_deadline);
     }
+}
+
+void apic_timer_set_frequency(uint32_t frequency_hz) {
+    apic_timer_set_periodic(frequency_hz);
 }
 
 static void apic_shutdown(void) {
@@ -327,7 +359,11 @@ static const interrupt_controller_interface_t apic_interface = {
     .probe = apic_probe,
     .install = apic_init,
     .init_ap = apic_init_ap,
-    .timer_set = apic_timer_set_frequency,
+    .timer_set = apic_timer_set_periodic,
+    .timer_stop = apic_timer_stop,
+    .timer_oneshot = apic_timer_set_oneshot,
+    .timer_tsc_deadline = apic_timer_set_tsc_deadline,
+    .timer_has_tsc_deadline = apic_has_tsc_deadline,
     .enable_irq = apic_enable_irq,
     .disable_irq = apic_disable_irq,
     .send_eoi = apic_send_eoi,

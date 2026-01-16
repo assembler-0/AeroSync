@@ -34,7 +34,9 @@
 #include <lib/printk.h>
 #include <limine/limine.h>
 #include <mm/slab.h>
+#include <aerosync/timer.h>
 #include <linux/container_of.h>
+
 // SMP Request
 __attribute__((
   used, section(".limine_requests"))) static volatile struct limine_mp_request

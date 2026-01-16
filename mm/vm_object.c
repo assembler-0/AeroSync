@@ -185,6 +185,7 @@ static int anon_obj_fault(struct vm_object *obj, struct vm_area_struct *vma, str
   folio = NULL;
   int nid = vma->preferred_node;
   if (nid == -1 && vma->vm_mm) nid = vma->vm_mm->preferred_node;
+  if (nid == -1) nid = this_node();
 
   // Try Huge Page (2MB) if aligned and supported
   if ((vma->vm_flags & VM_HUGE) && (vmf->pgoff % 512 == 0) && (vmf->pgoff + 512 <= (obj->size >> PAGE_SHIFT))) {
@@ -370,6 +371,7 @@ static int shadow_obj_fault(struct vm_object *obj, struct vm_area_struct *vma, s
   if (vmf->flags & FAULT_FLAG_WRITE) {
     int nid = vma->preferred_node;
     if (nid == -1 && vma->vm_mm) nid = vma->vm_mm->preferred_node;
+    if (nid == -1) nid = this_node();
 
     new_folio = alloc_pages_node(nid, GFP_KERNEL, 0);
     if (!new_folio) {

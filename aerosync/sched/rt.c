@@ -75,10 +75,13 @@ static void rt_rq_init(struct rt_rq *rt_rq) {
 void enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags) {
   struct sched_rt_entity *rt_se = &p->rt;
   struct rt_rq *rt_rq = &rq->rt;
-  int prio = p->rt_priority;
+  int prio = p->prio;
 
   if (rt_se->on_rq)
     return;
+
+  /* For RT class, prio must be < 100 */
+  if (prio >= MAX_RT_PRIO_LEVELS) prio = MAX_RT_PRIO_LEVELS - 1;
 
   /* Add to priority queue */
   list_add_tail(&rt_se->run_list, &rt_rq->queue[prio]);
@@ -99,10 +102,12 @@ void enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags) {
 void dequeue_task_rt(struct rq *rq, struct task_struct *p, int flags) {
   struct sched_rt_entity *rt_se = &p->rt;
   struct rt_rq *rt_rq = &rq->rt;
-  int prio = p->rt_priority;
+  int prio = p->prio;
 
   if (!rt_se->on_rq)
     return;
+
+  if (prio >= MAX_RT_PRIO_LEVELS) prio = MAX_RT_PRIO_LEVELS - 1;
 
   list_del(&rt_se->run_list);
   rt_se->on_rq = 0;
@@ -122,13 +127,16 @@ static void yield_task_rt(struct rq *rq) {
   struct task_struct *curr = rq->curr;
   struct sched_rt_entity *rt_se = &curr->rt;
   struct rt_rq *rt_rq = &rq->rt;
+  int prio = curr->prio;
 
   if (!rt_se->on_rq)
     return;
 
+  if (prio >= MAX_RT_PRIO_LEVELS) prio = MAX_RT_PRIO_LEVELS - 1;
+
   /* Move to end of same priority queue */
   list_del(&rt_se->run_list);
-  list_add_tail(&rt_se->run_list, &rt_rq->queue[curr->rt_priority]);
+  list_add_tail(&rt_se->run_list, &rt_rq->queue[prio]);
 
   /* Reset time slice for SCHED_RR */
   if (curr->policy == SCHED_RR) {
@@ -150,7 +158,7 @@ static void check_preempt_curr_rt(struct rq *rq, struct task_struct *p,
   }
 
   /* Higher priority (lower number) RT task preempts */
-  if (p->rt_priority < curr->rt_priority) {
+  if (p->prio < curr->prio) {
     set_need_resched();
   }
 }
@@ -209,6 +217,9 @@ static void set_next_task_rt(struct rq *rq, struct task_struct *p, bool first) {
 void task_tick_rt(struct rq *rq, struct task_struct *p, int queued) {
   struct sched_rt_entity *rt_se = &p->rt;
   struct rt_rq *rt_rq = &rq->rt;
+  int prio = p->prio;
+
+  if (prio >= MAX_RT_PRIO_LEVELS) prio = MAX_RT_PRIO_LEVELS - 1;
 
   /* SCHED_FIFO tasks don't have time slices */
   if (p->policy == SCHED_FIFO)
@@ -226,8 +237,8 @@ void task_tick_rt(struct rq *rq, struct task_struct *p, int queued) {
 
       /* Only reschedule if there are other tasks at same priority */
       if (rt_rq->rt_nr_running > 1 &&
-          !list_empty(&rt_rq->queue[p->rt_priority]) &&
-          list_is_singular(&rt_rq->queue[p->rt_priority]) == 0) {
+          !list_empty(&rt_rq->queue[prio]) &&
+          list_is_singular(&rt_rq->queue[prio]) == 0) {
         set_need_resched();
       }
     }
@@ -287,7 +298,7 @@ static void prio_changed_rt(struct rq *rq, struct task_struct *p, int oldprio) {
   enqueue_task_rt(rq, p, 0);
 
   /* May need to preempt if priority increased */
-  if (p->rt_priority < oldprio && rq->curr != p) {
+  if (prio_less(p->prio, oldprio) && rq->curr != p) {
     check_preempt_curr_rt(rq, p, 0);
   }
 }

@@ -32,7 +32,7 @@
 #include <aerosync/sched/process.h>
 #include <aerosync/sched/sched.h>
 #include <aerosync/sysintf/ic.h>
-#include <aerosync/wait.h>
+#include <aerosync/mutex.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <linux/container_of.h>
@@ -84,7 +84,7 @@ void double_rq_unlock(struct rq *rq1, struct rq *rq2) {
 /*
  * Basic Helpers
  */
-int cpu_id(void) { return (int)smp_get_id(); }
+int cpu_id(void) { return (int) smp_get_id(); }
 
 struct rq *this_rq(void) { return this_cpu_ptr(runqueues); }
 
@@ -169,7 +169,7 @@ static void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 
   if (next && next->pml_root) {
     cpumask_set_cpu(cpu, &next->cpu_mask);
-    vmm_switch_pml_root((uint64_t)next->pml_root);
+    vmm_switch_pml_root((uint64_t) next->pml_root);
   } else {
     vmm_switch_pml_root(g_kernel_pml_root);
   }
@@ -188,7 +188,7 @@ static struct task_struct *pick_next_task(struct rq *rq) {
       /* Notify class that we picked this task */
       if (class->set_next_task) {
         class->set_next_task(
-            rq, p, true); /* true = first time picking in this cycle? */
+          rq, p, true); /* true = first time picking in this cycle? */
         /* Note: Linux uses set_next_task slightly differently */
       }
       return p;
@@ -204,6 +204,94 @@ static struct task_struct *pick_next_task(struct rq *rq) {
  */
 extern struct task_struct *switch_to(struct task_struct *prev,
                                      struct task_struct *next);
+
+/*
+ * Priority Inheritance Helpers
+ */
+
+/**
+ * task_top_pi_prio - return the highest priority among PI waiters
+ */
+int task_top_pi_prio(struct task_struct *p) {
+  if (list_empty(&p->pi_waiters))
+    return p->normal_prio;
+
+  struct task_struct *top_waiter =
+      list_first_entry(&p->pi_waiters, struct task_struct, pi_list);
+  return top_waiter->prio;
+}
+
+/**
+ * update_task_prio - update the effective priority of a task
+ */
+void update_task_prio(struct task_struct *p) {
+  int old_prio = p->prio;
+  int top_pi = task_top_pi_prio(p);
+  const struct sched_class *old_class = p->sched_class;
+
+  p->prio = prio_less(p->normal_prio, top_pi) ? p->normal_prio : top_pi;
+
+  /* Check if class needs to change (e.g. fair task boosted to RT) */
+  if (rt_prio(p->prio) && !rt_prio(old_prio)) {
+    p->sched_class = &rt_sched_class;
+  } else if (!rt_prio(p->prio) && rt_prio(old_prio)) {
+    /* Only switch back if the original policy was not RT */
+    if (!task_has_rt_policy(p)) {
+      p->sched_class = &fair_sched_class;
+    }
+  }
+
+  if (old_prio != p->prio || old_class != p->sched_class) {
+    struct rq *rq = per_cpu_ptr(runqueues, p->cpu);
+
+    if (old_class != p->sched_class) {
+      if (old_class->switched_from) old_class->switched_from(rq, p);
+      if (p->sched_class->switched_to) p->sched_class->switched_to(rq, p);
+    } else if (p->sched_class->prio_changed) {
+      p->sched_class->prio_changed(rq, p, old_prio);
+    }
+
+    /* Propagate if this task is also blocked on a mutex */
+    if (p->pi_blocked_on && p->pi_blocked_on->owner) {
+      pi_boost_prio(p->pi_blocked_on->owner, p);
+    }
+  }
+}
+
+/**
+ * pi_boost_prio - boost the priority of the owner of a mutex
+ */
+void pi_boost_prio(struct task_struct *owner, struct task_struct *waiter) {
+  /* Add waiter to owner's pi_waiters list if not already there, sorted */
+  struct task_struct *pos;
+  bool added = false;
+
+  /* Remove if already present (to update position) */
+  if (!list_empty(&waiter->pi_list)) {
+    list_del_init(&waiter->pi_list);
+  }
+
+  list_for_each_entry(pos, &owner->pi_waiters, pi_list) {
+    if (prio_less(waiter->prio, pos->prio)) {
+      list_add_tail(&waiter->pi_list, &pos->pi_list);
+      added = true;
+      break;
+    }
+  }
+  if (!added) {
+    list_add_tail(&waiter->pi_list, &owner->pi_waiters);
+  }
+
+  update_task_prio(owner);
+}
+
+/**
+ * pi_restore_prio - restore the priority of the owner of a mutex
+ */
+void pi_restore_prio(struct task_struct *owner, struct task_struct *waiter) {
+  list_del_init(&waiter->pi_list);
+  update_task_prio(owner);
+}
 
 /*
  * Task state management functions
@@ -271,26 +359,26 @@ void task_wake_up_all(void) {
  * For new tasks, it's called via the entry stub.
  */
 void schedule_tail(struct task_struct *prev) {
-    struct rq *rq = this_rq();
+  struct rq *rq = this_rq();
 
-    /* Release the runqueue lock held since schedule() */
-    spinlock_unlock(&rq->lock);
-    cpu_sti(); // Matches spinlock_lock_irqsave behavior
+  /* Release the runqueue lock held since schedule() */
+  spinlock_unlock(&rq->lock);
+  cpu_sti(); // Matches spinlock_lock_irqsave behavior
 
-    /* Restore FPU state for the current task */
-    if (current->thread.fpu) {
-      if (current->thread.fpu_used) {
-        fpu_restore(current->thread.fpu);
-      } else {
-        fpu_init_task(current->thread.fpu);
-        fpu_restore(current->thread.fpu);
-        current->thread.fpu_used = true;
-      }
+  /* Restore FPU state for the current task */
+  if (current->thread.fpu) {
+    if (current->thread.fpu_used) {
+      fpu_restore(current->thread.fpu);
+    } else {
+      fpu_init_task(current->thread.fpu);
+      fpu_restore(current->thread.fpu);
+      current->thread.fpu_used = true;
     }
+  }
 
-    if (prev && (prev->state == TASK_DEAD || prev->state == TASK_ZOMBIE)) {
-        free_task(prev);
-    }
+  if (prev && (prev->state == TASK_DEAD || prev->state == TASK_ZOMBIE)) {
+    free_task(prev);
+  }
 }
 
 void set_task_nice(struct task_struct *p, int nice) {
@@ -326,7 +414,7 @@ void set_task_nice(struct task_struct *p, int nice) {
 
   if (p->sched_class->prio_changed)
     p->sched_class->prio_changed(
-        rq, p, p->nice); /* passing new nice as old prio? no fix later */
+      rq, p, p->nice); /* passing new nice as old prio? no fix later */
 
   if (running)
     activate_task(rq, p);
@@ -399,7 +487,7 @@ void schedule(void) {
 
     /* Update TSS RSP0 for the next task (Ring 0 stack pointer) */
     if (next_task->stack) {
-        set_tss_rsp0((uint64_t)((uint8_t *)next_task->stack + (PAGE_SIZE * 4)));
+      set_tss_rsp0((uint64_t) ((uint8_t *) next_task->stack + (PAGE_SIZE * 4)));
     }
 
     prev_task = switch_to(prev_task, next_task);
@@ -426,94 +514,104 @@ static inline bool task_can_run_on(struct task_struct *p, int cpu) {
   return cpumask_test_cpu(cpu, &p->cpus_allowed);
 }
 
+/**
+ * find_busiest_group - Find the group with highest load in a domain
+ */
+static struct sched_group *find_busiest_group(struct sched_domain *sd, int this_cpu) {
+  struct sched_group *busiest = NULL, *sg = sd->groups;
+  unsigned long max_load = 0;
+
+  while (sg) {
+    if (cpumask_test_cpu(this_cpu, &sg->cpumask)) {
+      sg = sg->next;
+      continue;
+    }
+
+    unsigned long avg_load = 0;
+    int cpu;
+    for_each_cpu(cpu, &sg->cpumask) {
+      avg_load += per_cpu_ptr(runqueues, cpu)->avg_load;
+    }
+
+    if (avg_load > max_load) {
+      max_load = avg_load;
+      busiest = sg;
+    }
+    sg = sg->next;
+  }
+
+  return busiest;
+}
+
+/**
+ * load_balance - Hierarchical load balancing across domains
+ */
 static void load_balance(void) {
   int this_cpu = smp_get_id();
+  struct rq *rq = this_rq();
+  struct sched_domain *sd;
 
-  /* Optimization: Only CPU 0 balances? Or distributed?
-     For now, to fix "wasteful", let's have only CPU 0 do it,
-     or do it less frequently.
-  */
-  if (this_cpu != 0)
-    return;
-
-  unsigned long total_cpus = smp_get_cpu_count();
-  if (total_cpus <= 1)
-    return;
-
-  int overloaded_cpu = -1;
-  int underloaded_cpu = -1;
-  unsigned long max_load = 0;
-  unsigned long min_load = ~0UL;
-
-  /* Basic O(N) balancer */
-  for (unsigned int i = 0; i < total_cpus; i++) {
-    struct rq *rq = per_cpu_ptr(runqueues, i);
-    unsigned long load =
-        rq->avg_load; /* Note: only considers CFS load usually */
-    /* Ideally we check nr_running too */
-
-    if (load > max_load) {
-      max_load = load;
-      overloaded_cpu = (int)i;
-    }
-    if (load < min_load) {
-      min_load = load;
-      underloaded_cpu = (int)i;
-    }
-  }
-
-  if (overloaded_cpu == -1 || underloaded_cpu == -1 ||
-      (max_load - min_load <= NICE_0_LOAD)) {
-    return;
-  }
-
-  struct rq *src_rq = per_cpu_ptr(runqueues, overloaded_cpu);
-  struct rq *dst_rq = per_cpu_ptr(runqueues, underloaded_cpu);
-
-  irq_flags_t flags = save_irq_flags();
-  cpu_cli();
-  double_rq_lock(src_rq, dst_rq);
-
-  if (src_rq->avg_load - dst_rq->avg_load <= NICE_0_LOAD) {
-    double_rq_unlock(src_rq, dst_rq);
-    restore_irq_flags(flags);
-    return;
-  }
-
-  /* Find task to migrate */
-  /* We need to peek into CFS structure which is internal to fair.c usually,
-     but we have definitions in sched.h now. */
-  struct rb_node *n = rb_first(&src_rq->cfs.tasks_timeline);
-  struct task_struct *candidate = NULL;
-
-  for (; n; n = rb_next(n)) {
-    struct sched_entity *se = rb_entry(n, struct sched_entity, run_node);
-    struct task_struct *t = container_of(se, struct task_struct, se);
-
-    if (t == src_rq->curr)
-      continue;
-    if (!task_can_run_on(t, underloaded_cpu))
+  /* Traverse up the hierarchy (SMT -> MC -> NUMA) */
+  for (sd = rq->sd; sd; sd = sd->parent) {
+    if (!(sd->flags & SD_LOAD_BALANCE))
       continue;
 
-    /* Found one */
-    candidate = t;
-    break;
-  }
+    /* Check if it's time to balance this domain */
+    if (rq->clock < sd->next_balance)
+      continue;
 
-  if (candidate) {
-    __move_task_to_rq_locked(candidate, underloaded_cpu);
+    struct sched_group *group = find_busiest_group(sd, this_cpu);
+    if (!group) {
+      sd->next_balance = rq->clock + sd->min_interval;
+      continue;
+    }
 
-    /* Stats */
-    dst_rq->stats.nr_migrations++;
-    dst_rq->stats.nr_load_balance++;
+    /* Find busiest CPU in that group */
+    int busiest_cpu = -1;
+    unsigned long max_load = 0;
+    int cpu;
+    for_each_cpu(cpu, &group->cpumask) {
+      if (per_cpu_ptr(runqueues, cpu)->avg_load > max_load) {
+        max_load = per_cpu_ptr(runqueues, cpu)->avg_load;
+        busiest_cpu = cpu;
+      }
+    }
 
-    double_rq_unlock(src_rq, dst_rq);
-    restore_irq_flags(flags);
+    if (busiest_cpu != -1 && max_load > rq->avg_load + NICE_0_LOAD) {
+      struct rq *src_rq = per_cpu_ptr(runqueues, busiest_cpu);
 
-    reschedule_cpu(underloaded_cpu);
-  } else {
-    double_rq_unlock(src_rq, dst_rq);
-    restore_irq_flags(flags);
+      irq_flags_t flags = save_irq_flags();
+      cpu_cli();
+      double_rq_lock(src_rq, rq);
+
+      /* Migration logic */
+      struct rb_node *n = rb_first(&src_rq->cfs.tasks_timeline);
+      struct task_struct *candidate = NULL;
+
+      for (; n; n = rb_next(n)) {
+        struct sched_entity *se = rb_entry(n, struct sched_entity, run_node);
+        struct task_struct *t = container_of(se, struct task_struct, se);
+
+        if (t == src_rq->curr) continue;
+        if (!task_can_run_on(t, this_cpu)) continue;
+
+        candidate = t;
+        break;
+      }
+
+      if (candidate) {
+        __move_task_to_rq_locked(candidate, this_cpu);
+        rq->stats.nr_migrations++;
+        rq->stats.nr_load_balance++;
+        printk(KERN_DEBUG SCHED_CLASS "Migrated %s from CPU %d to %d (Domain: %s)\n",
+               candidate->comm, busiest_cpu, this_cpu, sd->name);
+      }
+
+      double_rq_unlock(src_rq, rq);
+      restore_irq_flags(flags);
+    }
+
+    sd->next_balance = rq->clock + sd->min_interval;
   }
 }
 
@@ -523,7 +621,7 @@ void __hot scheduler_tick(void) {
   struct rq *rq = this_rq();
   struct task_struct *curr = rq->curr;
 
-  spinlock_lock((volatile int *)&rq->lock);
+  spinlock_lock((volatile int *) &rq->lock);
 
   rq->clock++;
   rq->clock_task = get_time_ns(); // Update task clock
@@ -538,7 +636,7 @@ void __hot scheduler_tick(void) {
 
   rcu_check_callbacks();
 
-  spinlock_unlock((volatile int *)&rq->lock);
+  spinlock_unlock((volatile int *) &rq->lock);
 }
 
 void check_preempt(void) {
@@ -557,6 +655,11 @@ void check_preempt(void) {
 void sched_init(void) {
   pid_allocator_init();
 
+  /* Sanity check */
+  if (MAX_RT_PRIO != 100) {
+    panic("sched_init: MAX_RT_PRIO must be 100 for current PI implementation");
+  }
+
   for (int i = 0; i < MAX_CPUS; i++) {
     struct rq *rq = per_cpu_ptr(runqueues, i);
     spinlock_init(&rq->lock);
@@ -573,6 +676,10 @@ void sched_init(void) {
 
   printk(SCHED_CLASS "CFS/RT scheduler initialized for %d logical CPUs.\n",
          MAX_CPUS);
+
+  /* Build topology domains */
+  extern void build_sched_domains(void);
+  build_sched_domains();
 }
 
 void sched_init_task(struct task_struct *initial_task) {
@@ -591,10 +698,18 @@ void sched_init_task(struct task_struct *initial_task) {
 
   initial_task->sched_class = &fair_sched_class; /* Start as fair */
   initial_task->nice = 0;
-  initial_task->static_prio = NICE_TO_PRIO_OFFSET;
-  initial_task->se.load.weight = prio_to_weight[initial_task->static_prio];
+  initial_task->static_prio = NICE_TO_PRIO_OFFSET + MAX_RT_PRIO;
+  initial_task->normal_prio = initial_task->static_prio;
+  initial_task->prio = initial_task->normal_prio;
+  initial_task->rt_priority = 0;
+  initial_task->se.load.weight = prio_to_weight[initial_task->nice + 20];
   initial_task->se.on_rq = 0;
   initial_task->se.exec_start_ns = get_time_ns();
+
+  /* PI initialization */
+  initial_task->pi_blocked_on = NULL;
+  INIT_LIST_HEAD(&initial_task->pi_waiters);
+  INIT_LIST_HEAD(&initial_task->pi_list);
 
   cpumask_setall(&initial_task->cpus_allowed);
 
@@ -639,8 +754,16 @@ void sched_init_ap(void) {
   idle->flags = PF_KTHREAD | PF_IDLE;
   idle->state = TASK_RUNNING;
   idle->sched_class = &idle_sched_class;
+  idle->static_prio = MAX_PRIO - 1;
+  idle->normal_prio = idle->static_prio;
+  idle->prio = idle->normal_prio;
   idle->preempt_count = 0;
   cpumask_set_cpu(cpu, &idle->cpus_allowed);
+
+  /* PI initialization */
+  idle->pi_blocked_on = NULL;
+  INIT_LIST_HEAD(&idle->pi_waiters);
+  INIT_LIST_HEAD(&idle->pi_list);
 
   INIT_LIST_HEAD(&idle->tasks);
   INIT_LIST_HEAD(&idle->children);

@@ -105,7 +105,7 @@ struct task_struct *copy_process(uint64_t clone_flags,
   }
 
   // Allocate 16KB kernel stack
-  p->stack = vmalloc(PAGE_SIZE * 4);
+  p->stack = vmalloc_node(PAGE_SIZE * 4, p->node_id);
   if (!p->stack) {
       release_pid(p->pid);
       free_task_struct(p);
@@ -123,6 +123,11 @@ struct task_struct *copy_process(uint64_t clone_flags,
   INIT_LIST_HEAD(&p->children);
   INIT_LIST_HEAD(&p->sibling);
   INIT_LIST_HEAD(&p->run_list);
+
+  /* PI initialization */
+  p->pi_blocked_on = NULL;
+  INIT_LIST_HEAD(&p->pi_waiters);
+  INIT_LIST_HEAD(&p->pi_list);
 
   // Setup memory management
   if (clone_flags & CLONE_VM) {
@@ -168,6 +173,9 @@ struct task_struct *copy_process(uint64_t clone_flags,
   // Setup scheduler class and priority
   p->sched_class = parent->sched_class;
   p->static_prio = parent->static_prio;
+  p->normal_prio = parent->normal_prio;
+  p->prio = parent->prio;
+  p->rt_priority = parent->rt_priority;
   p->nice = parent->nice;
   p->node_id = parent->node_id;
   p->se.load = parent->se.load;
@@ -323,7 +331,9 @@ void free_task(struct task_struct *task) {
 }
 
 struct task_struct *alloc_task_struct(void) {
-  return kmalloc(sizeof(struct task_struct));
+  struct task_struct *curr = get_current();
+  int nid = curr ? curr->node_id : this_node();
+  return kzalloc_node(sizeof(struct task_struct), nid);
 }
 
 void free_task_struct(struct task_struct *task) {
