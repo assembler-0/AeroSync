@@ -4,10 +4,11 @@
 #include <aerosync/spinlock.h>
 #include <aerosync/types.h>
 #include <linux/list.h>
-#include <linux/rbtree.h>
 #include <aerosync/atomic.h>
 
 #include <linux/rcupdate.h>
+#include <aerosync/rw_semaphore.h>
+#include <linux/maple_tree.h>
 
 struct vm_area_struct;
 struct vm_fault;
@@ -44,6 +45,8 @@ struct vm_object;
 #define VM_STACK 0x00800000
 #define VM_HUGE 0x01000000
 #define VM_ALLOC_LAZY 0x02000000
+
+#define VMA_MAGIC 0x564d415f41524541ULL /* "VMA_AREA" */
 
 /* New flags for compatibility with vma.h */
 #define VM_HUGEPAGE 0x04000000
@@ -110,21 +113,14 @@ struct vm_fault {
 /*
  * vm_area_struct
  * Represents a contiguous range of virtual memory with consistent permissions.
- * Managed effectively by a Red-Black Tree.
+ * Managed effectively by a Maple Tree.
  */
 struct __aligned(sizeof(long)) vm_area_struct {
-  struct rb_node vm_rb; /* Tree node for mm->mm_rb */
-
+  uint64_t vma_magic;      /* Integrity check */
   struct mm_struct *vm_mm; /* The address space we belong to */
 
   uint64_t vm_start; /* Our start address within vm_mm */
   uint64_t vm_end;   /* The first byte after our end address within vm_mm */
-
-  /* For Augmented RB-Tree gap tracking */
-  uint64_t vm_rb_max_gap;
-
-  /* Linked list of VMAs sorted by address */
-  struct list_head vm_list;
 
   uint64_t vm_flags; /* Flags as listed above */
   uint64_t vm_page_prot; /* Prot flags for the page table */
@@ -144,13 +140,12 @@ struct __aligned(sizeof(long)) vm_area_struct {
   struct list_head vm_shared; /* Node in obj->i_mmap */
 
   struct rcu_head rcu;
-  spinlock_t vm_lock;
+  struct rw_semaphore vm_lock;
 
   void *vm_private_data;
 };
 
 #include <aerosync/atomic.h>
-#include <aerosync/rw_semaphore.h>
 #include <aerosync/sched/cpumask.h>
 
 /*
@@ -158,9 +153,8 @@ struct __aligned(sizeof(long)) vm_area_struct {
  * Represents the entire address space of a task.
  */
 struct mm_struct {
-  struct rb_root mm_rb;        /* Root of the VMA Red-Black Tree */
+  struct maple_tree mm_mt;    /* Maple Tree for VMA management */
   uint64_t vmacache_seqnum;   /* Per-thread VMA cache invalidation sequence */
-  struct list_head mmap_list; /* List of VMAs */
 
   uint64_t *pml_root; /* Physical address of the top-level page table */
 

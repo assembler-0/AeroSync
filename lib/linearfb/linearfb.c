@@ -4,7 +4,7 @@
  *
  * @file lib/linearfb/linearfb.c
  * @brief simple linear framebuffer graphics and console library
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -61,7 +61,7 @@ static int linearfb_init(volatile struct limine_framebuffer_request *fb_req) {
   size_t size = fb->height * fb->pitch;
   uint64_t phys = pmm_virt_to_phys(fb->address);
   if (phys) {
-      void *wc_addr = viomap_wc(phys, size);
+      void *wc_addr = ioremap_wc(phys, size);
       if (wc_addr) {
           fb->address = wc_addr;
       }

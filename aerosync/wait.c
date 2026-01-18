@@ -4,7 +4,7 @@
  *
  * @file aerosync/wait.c
  * @brief Wait queue implementation
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -45,24 +45,13 @@ DECLARE_PER_CPU(struct rq, runqueues);
 int default_wake_function(wait_queue_head_t *wq_head, struct __wait_queue *wait,
                           int mode, unsigned long key) {
   struct task_struct *task = wait->task;
-  int ret = 0;
 
   if (task) {
-    // Check if task is still in the appropriate sleep state
-    if (task->state == TASK_INTERRUPTIBLE ||
-        task->state == TASK_UNINTERRUPTIBLE) {
-      // Wake up the task by changing its state to running
-      task->state = TASK_RUNNING;
-
-      // Add the task to the runqueue if it's not already there
-      struct rq *rq = per_cpu_ptr(runqueues, task->cpu);
-      activate_task(rq, task);
-
-      ret = 1;
-    }
+    task_wake_up(task);
+    return 1;
   }
 
-  return ret;
+  return 0;
 }
 
 /**

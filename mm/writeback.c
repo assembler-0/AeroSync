@@ -4,7 +4,7 @@
  *
  * @file mm/writeback.c
  * @brief Dirty page writeback and throttling logic
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
 #include <mm/vm_object.h>
@@ -92,9 +92,17 @@ static void writeback_object(struct vm_object *obj) {
 
   down_write(&obj->lock);
 
-  struct rb_node *node;
-  for (node = rb_first(&obj->page_tree); node; node = rb_next(node)) {
-    struct folio *folio = rb_entry(node, struct folio, rb_node);
+  unsigned long index;
+  struct folio *folio;
+
+  /* 
+   * Naive iteration across the object's range. 
+   * In a production system, we would use an XArray iterator that skips holes
+   * or a dirty-bit radix tree to find only pages that need cleaning.
+   */
+  for (index = 0; index < (obj->size >> PAGE_SHIFT); index++) {
+    folio = xa_load(&obj->page_tree, index);
+    if (!folio || xa_is_err(folio)) continue;
 
     if (folio->page.flags & PG_dirty) {
       /*

@@ -4,7 +4,7 @@
  *
  * @file arch/x86_64/mm/pmm.c
  * @brief PMM for x86_64
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -36,8 +36,6 @@
 // Global HHDM offset
 uint64_t g_hhdm_offset = 0;
 EXPORT_SYMBOL(g_hhdm_offset);
-
-DEFINE_PER_CPU(struct per_cpu_pages, pcp_pages);
 
 struct page *mem_map = NULL;
 uint64_t pmm_max_pages = 0;
@@ -282,6 +280,8 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
 
   pmm_report_capabilities();
 
+  build_all_zonelists();
+
   return 0;
 }
 
@@ -420,12 +420,27 @@ void pmm_free_pages(uint64_t phys_addr, size_t count) {
   put_page(page);
 }
 
+uint64_t pmm_get_max_pfn(void) {
+  return pmm_max_pages;
+}
+EXPORT_SYMBOL(pmm_get_max_pfn);
+
 void pmm_init_cpu(void) {
-  struct per_cpu_pages *pcp = this_cpu_ptr(pcp_pages);
-  INIT_LIST_HEAD(&pcp->list);
-  pcp->count = 0;
-  pcp->high = 32;
-  pcp->batch = 8;
+  int cpu = (int) smp_get_id();
+  for (int n = 0; n < MAX_NUMNODES; n++) {
+    if (!node_data[n]) continue;
+    struct pglist_data *pgdat = node_data[n];
+    for (int i = 0; i < MAX_NR_ZONES; i++) {
+      struct zone *z = &pgdat->node_zones[i];
+      struct per_cpu_pages *pcp = &z->pageset[cpu];
+      for (int o = 0; o < PCP_ORDERS; o++) {
+        INIT_LIST_HEAD(&pcp->lists[o]);
+      }
+      pcp->count = 0;
+      pcp->high = 64;
+      pcp->batch = 16;
+    }
+  }
 }
 
 pmm_stats_t *pmm_get_stats(void) { return &pmm_stats; }

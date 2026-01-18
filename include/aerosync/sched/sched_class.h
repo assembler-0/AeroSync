@@ -4,7 +4,7 @@
  *
  * @file include/aerosync/sched/sched_class.h
  * @brief Scheduler class abstraction interface
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -198,7 +198,7 @@ struct sched_class {
 };
 
 /* Scheduler class declarations - ordered by priority */
-// extern const struct sched_class dl_sched_class;   /* Deadline (highest) */
+extern const struct sched_class dl_sched_class;   /* Deadline (highest) */
 extern const struct sched_class rt_sched_class;   /* Real-Time */
 extern const struct sched_class fair_sched_class; /* CFS (normal) */
 extern const struct sched_class idle_sched_class; /* Idle (lowest) */
@@ -210,9 +210,8 @@ extern const struct sched_class idle_sched_class; /* Idle (lowest) */
  * depending on configuration).
  */
 static inline const struct sched_class *sched_class_highest(void) {
-  /* For now, RT is highest. When deadline is implemented, change to
-   * &dl_sched_class */
-  return &rt_sched_class;
+  /* Return Deadline class as highest priority */
+  return &dl_sched_class;
 }
 
 /**
@@ -221,18 +220,6 @@ static inline const struct sched_class *sched_class_highest(void) {
  */
 #define for_each_class(class)                                                  \
   for (class = sched_class_highest(); class; class = class->next)
-
-/**
- * task_has_rt_policy - Check if task has real-time policy
- * @p: Task to check
- */
-static inline bool task_has_rt_policy(const struct task_struct *p);
-
-/**
- * task_has_dl_policy - Check if task has deadline policy
- * @p: Task to check
- */
-static inline bool task_has_dl_policy(const struct task_struct *p);
 
 /**
  * rt_prio - Check if priority is in RT range

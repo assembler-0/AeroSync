@@ -10,10 +10,10 @@ int apic_probe(void);
 int apic_init(void);
 
 // Replaces PIC_enable_irq. Unmasks an interrupt line in the I/O APIC.
-void apic_enable_irq(uint8_t irq_line);
+void apic_enable_irq(uint32_t irq_line);
 
 // Replaces PIC_disable_irq. Masks an interrupt line in the I/O APIC.
-void apic_disable_irq(uint8_t irq_line);
+void apic_disable_irq(uint32_t irq_line);
 
 // Replaces PICMaskAll. Masks all interrupts at the I/O APIC level.
 void apic_mask_all(void);

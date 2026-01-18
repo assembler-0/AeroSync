@@ -4,7 +4,7 @@
  *
  * @file aerosync/sched/fair.c
  * @brief Completely Fair Scheduler (CFS) implementation
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  */
@@ -16,6 +16,7 @@
 #include <lib/printk.h>
 #include <linux/container_of.h>
 #include <linux/rbtree.h>
+#include <linux/rcupdate.h>
 #include <mm/vma.h>
 
 #define NS_PER_MS 1000000ULL
@@ -146,6 +147,9 @@ static void update_curr_fair(struct rq *rq) {
   se->vruntime += __calc_delta(delta_exec_ns, se->load.weight);
 
   update_min_vruntime(cfs_rq);
+
+  /* Update PELT load tracking */
+  update_load_avg(rq, se, 0);
 }
 
 /*
@@ -180,6 +184,9 @@ static void enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags) {
    */
   if (flags & ENQUEUE_WAKEUP) {
     place_entity(cfs_rq, se, 0); // Not initial if waking up
+  } else if (flags & ENQUEUE_MOVE) {
+    /* Denormalize vruntime after migration */
+    se->vruntime += cfs_rq->min_vruntime;
   }
 
   update_curr_fair(rq);
@@ -190,6 +197,9 @@ static void enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags) {
   cfs_rq->load.weight += se->load.weight;
 
   rq->nr_running++;
+
+  /* Update PELT load tracking */
+  update_load_avg(rq, se, ENQUEUE_WAKEUP);
 }
 
 /*
@@ -198,49 +208,30 @@ static void enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags) {
 static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags) {
   struct cfs_rq *cfs_rq = &rq->cfs;
   struct sched_entity *se = &p->se;
+  int task_is_curr = (rq->curr == p);
 
   if (!se->on_rq)
     return;
 
   update_curr_fair(rq);
 
-  __dequeue_entity(cfs_rq, se);
+  /* Normalize vruntime if migrating */
+  if (flags & DEQUEUE_MOVE) {
+      se->vruntime -= cfs_rq->min_vruntime;
+  }
+
+  /* Only remove from tree if it is NOT current (current is already removed) */
+  if (!task_is_curr) {
+      __dequeue_entity(cfs_rq, se);
+  }
+
   se->on_rq = 0;
   cfs_rq->nr_running--;
   cfs_rq->load.weight -= se->load.weight;
 
   rq->nr_running--;
-}
 
-/*
- * Yield task - sched_class interface
- */
-static void yield_task_fair(struct rq *rq) {
-  struct task_struct *curr = rq->curr;
-  struct cfs_rq *cfs_rq = &rq->cfs;
-  struct sched_entity *se = &curr->se;
-
-  /*
-   * Simple yield implementation: move vruntime forward
-   */
-  se->vruntime += sched_slice(cfs_rq, se);
-}
-
-/*
- * Check preemption - sched_class interface
- */
-static void check_preempt_curr_fair(struct rq *rq, struct task_struct *p,
-                                    int flags) {
-  struct task_struct *curr = rq->curr;
-  struct sched_entity *se = &curr->se;
-  struct sched_entity *pse = &p->se;
-
-  if (curr->sched_class != &fair_sched_class)
-    return;
-
-  if (se->vruntime > pse->vruntime + SCHED_WAKEUP_GRANULARITY_NS) {
-    set_need_resched();
-  }
+  update_load_avg(rq, se, 0);
 }
 
 /*
@@ -262,12 +253,6 @@ static struct task_struct *pick_next_task_fair(struct rq *rq) {
   /* Remove from tree to mark as running */
   __dequeue_entity(cfs_rq, se);
 
-  /* Note: task remains "on_rq" conceptually as it is runnable,
-     but removed from RB tree to prevent re-selection.
-     We don't clear se->on_rq here because we want it to count
-     towards nr_running.
-  */
-
   return p;
 }
 
@@ -282,89 +267,7 @@ static void put_prev_task_fair(struct rq *rq, struct task_struct *prev) {
     update_curr_fair(rq);
     /* Put back into tree if still runnable */
     __enqueue_entity(cfs_rq, se);
-  } else {
-    /* If state != RUNNING, it's sleeping, so it stays out of tree.
-       We MUST decrement stats here if we essentially "dequeued" it
-       by picking it earlier but never enqueued it back.
-
-       Actually, standard usage:
-       1. pick_next removes from tree.
-       2. Task runs.
-       3. Task sleeps (deactivate_task handles dequeue logic).
-          deactivate_task calls dequeue_task_fair.
-          dequeue_task_fair expects node to be in tree!
-
-       Issue: If pick_next removes it, deactivate_task fails to remove it.
-
-       Solution: Modern CFS `current` is NOT in tree.
-       deactivate_task checks on_rq.
-       If running task calls deactivate_task (sleep), we call dequeue_task_fair.
-       dequeue_task_fair must handle case where it's not in tree but on_rq=1?
-
-       Let's adjust dequeue_task_fair to handle this or ensure we are
-       consistent.
-
-       If `current` is NOT in tree:
-       - dequeue_task_fair called on current:
-         It sees on_rq=1.
-         It calls __dequeue_entity.
-         __dequeue_entity crashes if not in tree? RB tree erase needs valid
-       node.
-
-       Let's make put_prev_task/pick_next consistent.
-
-       Simplified approach for this iteration:
-       - Keep `current` in tree?
-       - Pro: Simpler dequeue logic.
-       - Con: O(log N) overhead to re-insert self if we just continue running.
-
-       Let's stick to "current NOT in tree".
-
-       If deactivate_task is called on current:
-       It calls dequeue_task_fair.
-       dequeue_task_fair must know current is not in tree.
-
-       We can check if p == rq->curr.
-
-    */
   }
-}
-
-/*
- * Helper to fix "current not in tree" issue
- */
-static void put_prev_task_fair_wrapper(struct rq *rq,
-                                       struct task_struct *prev) {
-  /* If task is running, we put it back in tree. */
-  struct cfs_rq *cfs_rq = &rq->cfs;
-  struct sched_entity *se = &prev->se;
-
-  if (prev->state == TASK_RUNNING) {
-    update_curr_fair(rq);
-    __enqueue_entity(cfs_rq, se);
-  }
-}
-
-static void dequeue_task_fair_wrapper(struct rq *rq, struct task_struct *p,
-                                      int flags) {
-  struct cfs_rq *cfs_rq = &rq->cfs;
-  struct sched_entity *se = &p->se;
-
-  if (!se->on_rq)
-    return;
-
-  update_curr_fair(rq);
-
-  /* If p is current, it is NOT in tree, so don't rb_erase */
-  if (p != rq->curr) {
-    __dequeue_entity(cfs_rq, se);
-  }
-
-  se->on_rq = 0;
-  cfs_rq->nr_running--;
-  cfs_rq->load.weight -= se->load.weight;
-
-  rq->nr_running--;
 }
 
 /*
@@ -422,9 +325,126 @@ static void prio_changed_fair(struct rq *rq, struct task_struct *p,
   }
 }
 
+/*
+ * Yield task - sched_class interface
+ */
+static void yield_task_fair(struct rq *rq) {
+  struct task_struct *curr = rq->curr;
+  struct cfs_rq *cfs_rq = &rq->cfs;
+  struct sched_entity *se = &curr->se;
+
+  /*
+   * Simple yield implementation: move vruntime forward
+   * We need to put it back in the tree (via put_prev) and re-pick,
+   * but usually schedule() handles the put/pick.
+   * Just updating vruntime ensures it moves to the right.
+   */
+  se->vruntime += sched_slice(cfs_rq, se);
+}
+
+/*
+ * Check preemption - sched_class interface
+ */
+static void check_preempt_curr_fair(struct rq *rq, struct task_struct *p,
+                                    int flags) {
+  struct task_struct *curr = rq->curr;
+  struct sched_entity *se = &curr->se;
+  struct sched_entity *pse = &p->se;
+
+  if (curr->sched_class != &fair_sched_class)
+    return;
+
+  if (se->vruntime > pse->vruntime + SCHED_WAKEUP_GRANULARITY_NS) {
+    set_need_resched();
+  }
+}
+
+/*
+ * select_idle_sibling - Find an idle CPU in the same LLC or NUMA domain
+ * @p: Task to place
+ * @prev_cpu: Previous CPU the task ran on
+ * @target: Target CPU (usually the waker)
+ */
+static int select_idle_sibling(struct task_struct *p, int prev_cpu, int target) {
+  struct sched_domain *sd;
+  struct rq *target_rq = per_cpu_ptr(runqueues, target);
+  int best_cpu = target;
+  unsigned long min_load = ULONG_MAX;
+
+  /* 1. If target (waker) is idle, prioritize it (cache locality with waker) */
+  if (target_rq->nr_running == 0)
+    return target;
+
+  /* 2. If prev_cpu is idle, prioritize it (cache locality for task) */
+  if (prev_cpu != target) {
+    struct rq *prev_rq = per_cpu_ptr(runqueues, prev_cpu);
+    if (prev_rq->nr_running == 0)
+      return prev_cpu;
+  }
+
+  /* 3. Scan the MC (Multi-Core / LLC) domain for an idle core */
+  /* Start from target's domain */
+  sd = target_rq->sd;
+
+  /* Find MC domain (or whatever is the highest shared cache domain) */
+  /* In our topology: SMT -> MC. We want MC. */
+  while (sd && !(sd->flags & SD_SHARE_PKG_RESOURCES))
+      sd = sd->parent;
+
+  if (!sd)
+      return target;
+
+  /* Search for idle CPU in this domain */
+  int cpu;
+  for_each_cpu(cpu, &sd->span) {
+      if (!cpumask_test_cpu(cpu, &p->cpus_allowed))
+          continue;
+
+      if (cpu == target || cpu == prev_cpu)
+          continue;
+
+      struct rq *rq = per_cpu_ptr(runqueues, cpu);
+
+      /* Found an idle CPU? */
+      if (rq->nr_running == 0) {
+          return cpu;
+      }
+
+      /* Track least loaded CPU as fallback */
+      /* Use load_avg from PELT for better decision */
+      if (rq->cfs.avg.load_avg < min_load) {
+          min_load = rq->cfs.avg.load_avg;
+          best_cpu = cpu;
+      }
+  }
+
+  /*
+   * Fallback: If no idle CPU, return best_cpu (least loaded).
+   */
+  return best_cpu;
+}
+
 static int select_task_rq_fair(struct task_struct *p, int cpu, int wake_flags) {
-  if (cpumask_test_cpu(cpu, &p->cpus_allowed))
-    return cpu;
+  /*
+   * If the task is pinned, we have no choice.
+   */
+  if (p->nr_cpus_allowed == 1)
+    return cpumask_first(&p->cpus_allowed);
+
+  /*
+   * For wakeups, try to find an idle sibling to reduce latency.
+   * 'cpu' passed here is usually the waker's CPU.
+   */
+  if (wake_flags & ENQUEUE_WAKEUP) {
+    int new_cpu = select_idle_sibling(p, p->cpu, cpu);
+    if (cpumask_test_cpu(new_cpu, &p->cpus_allowed))
+      return new_cpu;
+  }
+
+  /* Fallback: Stick to previous CPU if allowed */
+  if (cpumask_test_cpu(p->cpu, &p->cpus_allowed))
+    return p->cpu;
+
   return cpumask_first(&p->cpus_allowed);
 }
 
@@ -435,13 +455,12 @@ const struct sched_class fair_sched_class = {
     .next = &idle_sched_class,
 
     .enqueue_task = enqueue_task_fair,
-    .dequeue_task =
-        dequeue_task_fair_wrapper, /* Use wrapper that handles 'current' */
+    .dequeue_task = dequeue_task_fair,
     .yield_task = yield_task_fair,
     .check_preempt_curr = check_preempt_curr_fair,
 
     .pick_next_task = pick_next_task_fair,
-    .put_prev_task = put_prev_task_fair_wrapper, /* Use wrapper */
+    .put_prev_task = put_prev_task_fair,
     .set_next_task = set_next_task_fair,
 
     .task_tick = task_tick_fair,

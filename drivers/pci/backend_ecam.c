@@ -4,7 +4,7 @@
  *
  * @file drivers/pci/backend_ecam.c
  * @brief PCI Express ECAM backend
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
 #include <drivers/pci/pci.h>
@@ -107,7 +107,7 @@ void pci_backend_ecam_init(void) {
     regions[i].end_bus = alloc->end_bus;
 
     size_t size = (size_t) (alloc->end_bus - alloc->start_bus + 1) << 20;
-    regions[i].virt_base = viomap(alloc->address, size);
+    regions[i].virt_base = ioremap(alloc->address, size);
 
     printk(KERN_DEBUG PCI_CLASS "ECAM Segment %d Bus %02x-%02x mapped at %p\n",
            alloc->segment, alloc->start_bus, alloc->end_bus, regions[i].virt_base);

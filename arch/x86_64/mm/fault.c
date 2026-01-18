@@ -4,7 +4,7 @@
  *
  * @file arch/x86_64/mm/fault.c
  * @brief Page fault handling
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -60,6 +60,15 @@ void do_page_fault(cpu_regs *regs) {
     mm = &init_mm;
   }
 
+  // Detect kernel stack overflow
+  if (!user_mode && curr && curr->stack) {
+      if (cr2 >= (uint64_t)curr->stack - PAGE_SIZE && cr2 < (uint64_t)curr->stack) {
+          printk(KERN_EMERG FAULT_CLASS "KERNEL STACK OVERFLOW detected for task %s (pid %d) at %llx\n",
+                 curr->comm, curr->pid, cr2);
+          goto kernel_panic;
+      }
+  }
+
   // Security: If user mode access to higher half or canonical hole occurs, it's a SEGV.
   if (user_mode && cr2 >= vmm_get_max_user_address()) {
     printk(KERN_ERR FAULT_CLASS "User-mode access to kernel address %llx\n", cr2);
@@ -92,7 +101,14 @@ void do_page_fault(cpu_regs *regs) {
    * making it safe to call within rcu_read_lock() without mmap_lock.
    */
   struct vm_area_struct *vma = vma_find(mm, cr2);
-  if (vma) {
+  if (vma && cr2 >= vma->vm_start) {
+    // 0. Verify VMA integrity
+    if (unlikely(vma->vma_magic != VMA_MAGIC)) {
+        rcu_read_unlock();
+        printk(KERN_EMERG "VMA Corruption detected in speculative path at %p: 0x%x\n", vma, vma->vma_magic);
+        goto kernel_panic;
+    }
+
     // 1. Snapshot VMA data atomically where possible
     uint64_t vm_flags = vma->vm_flags;
     uint32_t vma_seq = __atomic_load_n(&vma->vma_seq, __ATOMIC_ACQUIRE);
@@ -108,30 +124,33 @@ void do_page_fault(cpu_regs *regs) {
 
     // 3. Verify sequence hasn't changed before doing heavy work
     if (atomic_read(&mm->mmap_seq) == mm_seq && vma->vma_seq == vma_seq) {
-        unsigned int fault_flags = 0;
-        if (write_fault) fault_flags |= FAULT_FLAG_WRITE;
-        if (user_mode) fault_flags |= FAULT_FLAG_USER;
-        if (exec_fault) fault_flags |= FAULT_FLAG_INSTR;
-
         /* 
          * Speculative Fault:
          * We take the per-VMA lock. This is much finer grained than mmap_lock.
          */
-        vma_lock(vma);
-        
-        // Re-verify sequence under VMA lock to ensure layout is still stable
-        if (unlikely(atomic_read(&mm->mmap_seq) != mm_seq || vma->vma_seq != vma_seq)) {
-            vma_unlock(vma);
+        if (!vma_trylock_shared(vma)) {
             rcu_read_unlock();
             goto slow_path;
         }
+        
+        // Re-verify sequence under VMA lock to ensure layout is still stable
+        if (unlikely(atomic_read(&mm->mmap_seq) != mm_seq || vma->vma_seq != vma_seq)) {
+            vma_unlock_shared(vma);
+            rcu_read_unlock();
+            goto slow_path;
+        }
+
+        unsigned int fault_flags = FAULT_FLAG_SPECULATIVE;
+        if (write_fault) fault_flags |= FAULT_FLAG_WRITE;
+        if (user_mode) fault_flags |= FAULT_FLAG_USER;
+        if (exec_fault) fault_flags |= FAULT_FLAG_INSTR;
 
         /*
          * Call the fault handler.
          * The handler must be prepared to run without mmap_lock.
          */
         int res = handle_mm_fault(vma, cr2, fault_flags);
-        vma_unlock(vma);
+        vma_unlock_shared(vma);
         
         // 4. Final validation: Did the VMA layout change during the fault?
         if (likely(atomic_read(&mm->mmap_seq) == mm_seq && vma->vma_seq == vma_seq)) {
@@ -152,6 +171,11 @@ void do_page_fault(cpu_regs *regs) {
   vma = vma_find(mm, cr2);
 
   if (vma && cr2 >= vma->vm_start && cr2 < vma->vm_end) {
+    if (unlikely(vma->vma_magic != VMA_MAGIC)) {
+        up_read(&mm->mmap_lock);
+        printk(KERN_EMERG "VMA Corruption detected in slow path at %p: 0x%x\n", vma, vma->vma_magic);
+        goto kernel_panic;
+    }
     // ... permission checks ...
     bool write_fault = (error_code & PF_WRITE);
     bool exec_fault = (error_code & PF_INSTR);
@@ -173,9 +197,9 @@ void do_page_fault(cpu_regs *regs) {
     if (user_mode) fault_flags |= FAULT_FLAG_USER;
     if (exec_fault) fault_flags |= FAULT_FLAG_INSTR;
 
-    vma_lock(vma);
+    vma_lock_shared(vma);
     int res = handle_mm_fault(vma, cr2, fault_flags);
-    vma_unlock(vma);
+    vma_unlock_shared(vma);
 
     if (res == 0) {
         up_read(&mm->mmap_lock);

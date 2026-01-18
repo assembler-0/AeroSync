@@ -5,10 +5,9 @@
 #include <linux/rbtree.h>
 #include <linux/rcupdate.h>
 #include <aerosync/spinlock.h>
-#include <aerosync/atomic.h>
 
 /*
- * AeroSync Ultra-High Performance Hybrid Vmalloc Subsystem
+ * AeroSync High Performance Hybrid vmalloc Subsystem
  *
  * This system combines:
  * - Linux: vmap_area, vmap_block, augmented RB-tree, lazy purging.
@@ -78,45 +77,34 @@ struct vmap_block {
  */
 
 void *vmalloc(size_t size);
-
 void *vzalloc(size_t size);
-
 void *vmalloc_node(size_t size, int nid);
-
 void *vmalloc_node_prot(size_t size, int nid, uint64_t pgprot);
-
+void *vmalloc_node_stack(size_t size, int nid);
+static inline void *vmalloc_stack(size_t size) { return vmalloc_node_stack(size, -1); }
 void *vmalloc_exec(size_t size);
-
 void *vmalloc_32(size_t size);
-
 void vfree(void *addr);
-
 void vfree_atomic(void *addr);
 
 /* IO / Device Mapping */
-void *viomap(uint64_t phys_addr, size_t size);
+void *ioremap(uint64_t phys_addr, size_t size);
+void *ioremap_wc(uint64_t phys_addr, size_t size);
+void *ioremap_wt(uint64_t phys_addr, size_t size);
+void *ioremap_wb(uint64_t phys_addr, size_t size);
+void *ioremap_prot(uint64_t phys_addr, size_t size, uint64_t pgprot);
+void iounmap(void *addr);
 
-void *viomap_wc(uint64_t phys_addr, size_t size);
-
-void *viomap_wt(uint64_t phys_addr, size_t size);
-
-void *viomap_wb(uint64_t phys_addr, size_t size);
-
-void *viomap_prot(uint64_t phys_addr, size_t size, uint64_t pgprot);
-
-void viounmap(void *addr);
+#define ioremap_uc(pa, s) ioremap(pa, s)
 
 /* Advanced vmap API */
 void *vmap(struct page **pages, unsigned int count, unsigned long flags, uint64_t pgprot);
-
 void vunmap(void *addr);
 
 /* Subsystem Initialization */
 void vmalloc_init(void);
-
 void kvmap_purged_init(void);
 
 /* Diagnostics */
 void vmalloc_test(void);
-
 void vmalloc_dump(void);

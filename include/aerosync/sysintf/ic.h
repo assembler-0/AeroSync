@@ -22,8 +22,8 @@ typedef struct {
   fn(void, timer_oneshot, uint32_t microseconds);
   fn(void, timer_tsc_deadline, uint64_t deadline);
   fn(int, timer_has_tsc_deadline, void);
-  fn(void, enable_irq, uint8_t irq_line);
-  fn(void, disable_irq, uint8_t irq_line);
+  fn(void, enable_irq, uint32_t irq_line);
+  fn(void, disable_irq, uint32_t irq_line);
   fn(void, send_eoi, uint32_t interrupt_number);
   fn(void, mask_all, void);
   fn(void, shutdown, void);
@@ -39,8 +39,8 @@ void ic_register_controller(const interrupt_controller_interface_t* controller);
 interrupt_controller_t ic_install(void); // returns initialized controller type
 void ic_ap_init(void);
 void ic_shutdown_controller(void);
-void ic_enable_irq(uint8_t irq_line);
-void ic_disable_irq(uint8_t irq_line);
+void ic_enable_irq(uint32_t irq_line);
+void ic_disable_irq(uint32_t irq_line);
 void ic_send_eoi(uint32_t interrupt_number);
 void ic_set_timer(uint32_t frequency_hz);
 uint32_t ic_get_frequency(void);

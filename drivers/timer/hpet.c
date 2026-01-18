@@ -4,7 +4,7 @@
  *
  * @file drivers/timer/hpet.c
  * @brief HPET timer driver and time source integration
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
 #include <arch/x86_64/mm/paging.h>
@@ -150,7 +150,7 @@ int hpet_init(void) {
   printk(KERN_DEBUG HPET_CLASS "  Num Comparators: %d\n", hpet_info.num_comparators);
   printk(KERN_DEBUG HPET_CLASS "  Page Protection: %d\n", hpet_info.page_protection);
 
-  hpet_mapped_base = viomap(hpet_info.base_address, PAGE_SIZE);
+  hpet_mapped_base = ioremap(hpet_info.base_address, PAGE_SIZE);
   if (!hpet_mapped_base) {
     printk(KERN_ERR HPET_CLASS "Failed to map HPET registers\n");
     uacpi_table_unref(&hpet_table);

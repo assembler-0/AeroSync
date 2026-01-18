@@ -17,6 +17,7 @@
 #include <uacpi/internal/event.h>
 #include <uacpi/internal/mutex.h>
 #include <uacpi/internal/osi.h>
+#include <aerosync/panic.h>
 
 #ifndef UACPI_BAREBONES_MODE
 
@@ -74,9 +75,7 @@ static struct op_context *op_context_array_one_before_last(
     struct op_context_array *arr
 )
 {
-    uacpi_size size;
-
-    size = op_context_array_size(arr);
+    uacpi_size size = op_context_array_size(arr);
 
     if (size < 2)
         return UACPI_NULL;
@@ -6160,7 +6159,7 @@ out:
             ret_obj = ctx->ret;
             uacpi_object_ref(ret_obj);
         }
-
+        unmet_cond_crit(!out_obj);
         *out_obj = ret_obj;
     }
 

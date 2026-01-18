@@ -4,7 +4,7 @@
  *
  * @file include/lib/id_alloc.h
  * @brief Generic ID Allocator (IDA)
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
 #pragma once

@@ -46,11 +46,13 @@ struct free_area {
   unsigned long nr_free;
 };
 
+#define PCP_ORDERS 4
+
 struct per_cpu_pages {
-  int count; /* number of pages in the list */
+  int count; /* total number of pages in all lists */
   int high; /* high watermark, emptying needed */
   int batch; /* chunk size for buddy add/remove */
-  struct list_head list; /* the list of pages */
+  struct list_head lists[PCP_ORDERS]; /* lists of pages for each order */
 };
 
 struct zone {
@@ -83,8 +85,16 @@ struct zone {
 #define MAX_NUMNODES 8
 #define NUMA_NO_NODE (-1)
 
+#define MAX_ZONES_PER_ZONELIST (MAX_NUMNODES * MAX_NR_ZONES + 1)
+
+struct zonelist {
+  struct zone *_zones[MAX_ZONES_PER_ZONELIST];
+};
+
 struct pglist_data {
   struct zone node_zones[MAX_NR_ZONES];
+  struct zonelist node_zonelists[MAX_NR_ZONES];
+
   unsigned long node_start_pfn;
   unsigned long node_present_pages;
   unsigned long node_spanned_pages;
@@ -110,6 +120,8 @@ extern struct zone managed_zones[MAX_NR_ZONES];
  * Prototypes
  */
 void free_area_init(void);
+void pmm_verify(void);
+void build_all_zonelists(void);
 
 struct folio *alloc_pages(gfp_t gfp_mask, unsigned int order);
 struct folio *alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order);
@@ -117,7 +129,7 @@ struct folio *alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order);
 int rmqueue_bulk(struct zone *zone, unsigned int order, unsigned int count,
                  struct list_head *list, int migratetype);
 
-void free_pcp_pages(struct zone *zone, int count, struct list_head *list);
+void free_pcp_pages(struct zone *zone, int count, struct list_head *list, int order);
 
 void __free_pages(struct page *page, unsigned int order);
 

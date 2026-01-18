@@ -126,3 +126,4 @@ do { \
 
 #define __percpu
 #define __rcu
+#define __force

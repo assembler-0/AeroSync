@@ -4,7 +4,7 @@
  *
  * @file arch/x86_64/signal.c
  * @brief Signal frame for x86_64
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *

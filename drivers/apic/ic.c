@@ -4,7 +4,7 @@
  *
  * @file drivers/apic/ic.c
  * @brief IC module driver entrance
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
 #include <aerosync/fkx/fkx.h>

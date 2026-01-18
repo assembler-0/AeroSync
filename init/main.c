@@ -4,7 +4,7 @@
  *
  * @file init/main.c
  * @brief Kernel entry point and initialization
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -41,6 +41,7 @@
 #include <aerosync/sched/process.h>
 #include <aerosync/sched/sched.h>
 #include <aerosync/sysintf/ic.h>
+#include <aerosync/sysintf/madt.h>
 #include <aerosync/sysintf/time.h>
 #include <aerosync/timer.h>
 #include <aerosync/types.h>
@@ -48,11 +49,13 @@
 #include <lib/log.h>
 #include <lib/printk.h>
 #include <limine/limine.h>
+#include <linux/maple_tree.h>
+#include <linux/radix-tree.h>
 #include <mm/slab.h>
 #include <mm/vma.h>
 #include <mm/vmalloc.h>
-#include <uacpi/uacpi.h>
 #include <mm/vm_object.h>
+#include <uacpi/uacpi.h>
 
 static struct task_struct bsp_task __aligned(16);
 
@@ -67,6 +70,10 @@ static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
   khugepaged_init();
   vm_writeback_init();
   kvmap_purged_init();
+
+#ifdef MM_HARDENING
+  mm_scrubber_init();
+#endif
 
   // TODO: Implement run_init_process() which calls do_execve()
   // For now, since we have no init binary on disk, we just stay in kernel
@@ -85,7 +92,7 @@ static int __init __noinline __sysv_abi system_load_extensions(const volatile st
     printk(KERN_DEBUG FKX_CLASS "Found %lu modules, \n",
            request->response->module_count);
     for (size_t i = 0; i < request->response->module_count; i++) {
-      struct limine_file *m = request->response->modules[i];
+      const struct limine_file *m = request->response->modules[i];
       printk(KERN_DEBUG FKX_CLASS "  [%zu] %s @ %p (%lu bytes)\n", i, m->path,
              m->address, m->size);
       if (fkx_load_image(m->address, m->size) == 0) {
@@ -110,7 +117,7 @@ static int __init __noinline __sysv_abi system_load_extensions(const volatile st
 
 /**
  * @brief AeroSync kernel main entry point
- * @note NO RETURN!1
+ * @note NO RETURN!
  */
 void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   panic_register_handler(get_builtin_panic_ops());
@@ -126,7 +133,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   printk(KERN_CLASS "AeroSync (R) %s - %s\n", AEROSYNC_VERSION,
          AEROSYNC_COMPILER_VERSION);
-  printk(KERN_CLASS "copyright (C) 2025 assembler-0\n");
+  printk(KERN_CLASS "copyright (C) 2025-2026 assembler-0\n");
 
   if (get_bootloader_info_request()->response &&
       get_bootloader_performance_request()->response) {
@@ -183,13 +190,15 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   }
 
   cpu_features_init();
-
   pmm_init(get_memmap_request()->response, get_hhdm_request()->response->offset,
            get_rsdp_request()->response ? get_rsdp_request()->response->address : NULL);
+  lru_init();
   vmm_init();
   slab_init();
+  maple_tree_init();
+  vma_cache_init();
+  radix_tree_init();
   rcu_init();
-  lru_init();
 
   setup_per_cpu_areas();
   smp_prepare_boot_cpu();
@@ -222,10 +231,9 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   ic_register_lapic_get_id_early();
 
   uacpi_kernel_init_early();
+  madt_init();
   interrupt_controller_t ic_type = ic_install();
   uacpi_notify_ic_ready();
-  uacpi_kernel_init_late();
-  acpi_power_init();
 
   // --- Time Subsystem Initialization ---
   fkx_init_module_class(FKX_TIMER_CLASS);
@@ -242,6 +250,10 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   }
 
   timer_init_subsystem();
+
+  // -- initialize the rest of uACPI ---
+  uacpi_kernel_init_late();
+  acpi_power_init();
 
   fkx_init_module_class(FKX_DRIVER_CLASS);
 

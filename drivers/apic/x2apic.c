@@ -4,16 +4,16 @@
  *
  * @file drivers/apic/x2apic.c
  * @brief x2APIC driver
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
-#include <aerosync/classes.h> 
-#include <drivers/apic/x2apic.h> 
-#include <drivers/apic/apic_internal.h> 
-#include <aerosync/fkx/fkx.h> 
-#include <arch/x86_64/cpu.h> 
-#include <lib/printk.h> 
-#include <aerosync/spinlock.h> 
+#include <aerosync/classes.h>
+#include <drivers/apic/x2apic.h>
+#include <drivers/apic/apic_internal.h>
+#include <aerosync/fkx/fkx.h>
+#include <arch/x86_64/cpu.h>
+#include <lib/printk.h>
+#include <aerosync/spinlock.h>
 
 #define X2APIC_ID             0x00000802ULL  // Local APIC ID
 #define X2APIC_VERSION        0x00000803ULL  // Local APIC Version
@@ -44,113 +44,114 @@
 static spinlock_t x2apic_ipi_lock = 0;
 
 static void x2apic_write(uint32_t msr, uint64_t value) {
-    wrmsr(msr, value);
+  wrmsr(msr, value);
 }
 
 static uint64_t x2apic_read(uint32_t msr) {
-    return rdmsr(msr);
+  return rdmsr(msr);
 }
 
 static void x2apic_write_op(uint32_t msr, uint32_t value) {
-    wrmsr(msr, value);
+  wrmsr(msr, value);
 }
+
 static uint32_t x2apic_read_op(uint32_t msr) {
-    return (uint32_t)rdmsr(msr);
+  return (uint32_t) rdmsr(msr);
 }
 
 uint32_t x2apic_get_id_raw(void) {
-    return (uint32_t)x2apic_read(X2APIC_ID);
+  return (uint32_t) x2apic_read(X2APIC_ID);
 }
 
-static void x2apic_send_eoi_op(const uint32_t irn) { 
-    (void)irn;
-    wrmsr(X2APIC_EOI, 0);
+static void x2apic_send_eoi_op(const uint32_t irn) {
+  (void) irn;
+  wrmsr(X2APIC_EOI, 0);
 }
 
 static void x2apic_send_ipi_op(uint32_t dest_apic_id, uint8_t vector, uint32_t delivery_mode) {
-    irq_flags_t flags = spinlock_lock_irqsave(&x2apic_ipi_lock);
+  irq_flags_t flags = spinlock_lock_irqsave(&x2apic_ipi_lock);
 
-    uint64_t icr_value = (uint64_t)vector | 
-                         (uint64_t)delivery_mode | 
-                         (1ULL << 14) | 
-                         (1ULL << 15) | 
-                         (0ULL << 16) |
-                         ((uint64_t)dest_apic_id << 32);
-    
-    x2apic_write(X2APIC_ICR, icr_value);
-    spinlock_unlock_irqrestore(&x2apic_ipi_lock, flags);
+  uint64_t icr_value = (uint64_t) vector |
+                       (uint64_t) delivery_mode |
+                       (1ULL << 14) |
+                       (1ULL << 15) |
+                       (0ULL << 16) |
+                       ((uint64_t) dest_apic_id << 32);
+
+  x2apic_write(X2APIC_ICR, icr_value);
+  spinlock_unlock_irqrestore(&x2apic_ipi_lock, flags);
 }
 
 static int x2apic_init_lapic(void) {
-    uint64_t lapic_base_msr = rdmsr(APIC_BASE_MSR);
-    
-    uint32_t eax, ebx, ecx, edx;
-    cpuid(1, &eax, &ebx, &ecx, &edx);
-    if (!(ecx & (1 << 21))) {
-        printk(KERN_ERR APIC_CLASS  "x2APIC feature not supported by CPU\n");
-        return 0;
-    }
+  uint64_t lapic_base_msr = rdmsr(APIC_BASE_MSR);
 
-    wrmsr(APIC_BASE_MSR, lapic_base_msr | APIC_BASE_MSR_ENABLE | APIC_BASE_MSR_X2APIC_ENABLE);
+  uint32_t eax, ebx, ecx, edx;
+  cpuid(1, &eax, &ebx, &ecx, &edx);
+  if (!(ecx & (1 << 21))) {
+    printk(KERN_ERR APIC_CLASS "x2APIC feature not supported by CPU\n");
+    return 0;
+  }
 
-    for (volatile int i = 0; i < 1000; i++) {
-        __asm__ volatile("nop" ::: "memory");
-    }
+  wrmsr(APIC_BASE_MSR, lapic_base_msr | APIC_BASE_MSR_ENABLE | APIC_BASE_MSR_X2APIC_ENABLE);
 
-    uint64_t version = x2apic_read(X2APIC_VERSION);
-    if ((version & 0xFF) == 0 || (version & 0xFF) == 0xFF) {
-        printk(KERN_ERR APIC_CLASS "x2APIC not responding after enable (version: 0x%llx)\n", version & 0xFF);
-        return 0;
-    }
+  for (volatile int i = 0; i < 1000; i++) {
+    __asm__ volatile("nop" ::: "memory");
+  }
 
-    x2apic_write(X2APIC_SVR, 0x1FF);
-    x2apic_write(X2APIC_TPR, 0);
-    return 1;
+  uint64_t version = x2apic_read(X2APIC_VERSION);
+  if ((version & 0xFF) == 0 || (version & 0xFF) == 0xFF) {
+    printk(KERN_ERR APIC_CLASS "x2APIC not responding after enable (version: 0x%llx)\n", version & 0xFF);
+    return 0;
+  }
+
+  x2apic_write(X2APIC_SVR, 0x1FF);
+  x2apic_write(X2APIC_TPR, 0);
+  return 1;
 }
 
 static void x2apic_timer_stop_op(void) {
-    x2apic_write(X2APIC_LVT_TIMER, (1 << 16));
-    x2apic_write(X2APIC_TIMER_INIT_CNT, 0);
+  x2apic_write(X2APIC_LVT_TIMER, (1 << 16));
+  x2apic_write(X2APIC_TIMER_INIT_CNT, 0);
 }
 
 static void x2apic_timer_set_oneshot_op(uint32_t ticks) {
-    x2apic_write(X2APIC_LVT_TIMER, (1 << 16));
-    x2apic_write(X2APIC_TIMER_DIV, 0x3);
-    x2apic_write(X2APIC_TIMER_INIT_CNT, ticks);
-    x2apic_write(X2APIC_LVT_TIMER, 32);
+  x2apic_write(X2APIC_LVT_TIMER, (1 << 16));
+  x2apic_write(X2APIC_TIMER_DIV, 0x3);
+  x2apic_write(X2APIC_TIMER_INIT_CNT, ticks);
+  x2apic_write(X2APIC_LVT_TIMER, 32);
 }
 
 static void x2apic_timer_set_periodic_op(uint32_t ticks) {
-    x2apic_write(X2APIC_LVT_TIMER, (1 << 16));
-    x2apic_write(X2APIC_TIMER_DIV, 0x3);
-    x2apic_write(X2APIC_TIMER_INIT_CNT, ticks);
-    x2apic_write(X2APIC_LVT_TIMER, 32 | (1 << 17));
+  x2apic_write(X2APIC_LVT_TIMER, (1 << 16));
+  x2apic_write(X2APIC_TIMER_DIV, 0x3);
+  x2apic_write(X2APIC_TIMER_INIT_CNT, ticks);
+  x2apic_write(X2APIC_LVT_TIMER, 32 | (1 << 17));
 }
 
 static void x2apic_timer_set_tsc_deadline_op(uint64_t tsc_deadline) {
-    x2apic_write(X2APIC_LVT_TIMER, 32 | (2 << 17));
-    wrmsr(0x6E0, tsc_deadline);
+  x2apic_write(X2APIC_LVT_TIMER, 32 | (2 << 17));
+  wrmsr(0x6E0, tsc_deadline);
 }
 
 static void x2apic_shutdown_op(void) {
-    x2apic_timer_stop_op();
-    uint64_t svr = x2apic_read(X2APIC_SVR);
-    x2apic_write(X2APIC_SVR, svr & ~(1ULL << 8));
-    uint64_t lapic_base_msr = rdmsr(APIC_BASE_MSR);
-    wrmsr(APIC_BASE_MSR, lapic_base_msr & ~(APIC_BASE_MSR_ENABLE | APIC_BASE_MSR_X2APIC_ENABLE));
+  x2apic_timer_stop_op();
+  uint64_t svr = x2apic_read(X2APIC_SVR);
+  x2apic_write(X2APIC_SVR, svr & ~(1ULL << 8));
+  uint64_t lapic_base_msr = rdmsr(APIC_BASE_MSR);
+  wrmsr(APIC_BASE_MSR, lapic_base_msr & ~(APIC_BASE_MSR_ENABLE | APIC_BASE_MSR_X2APIC_ENABLE));
 }
 
 const struct apic_ops x2apic_ops = {
-    .name = "x2APIC",
-    .init_lapic = x2apic_init_lapic,
-    .send_eoi = x2apic_send_eoi_op,
-    .send_ipi = x2apic_send_ipi_op,
-    .get_id = x2apic_get_id_raw,
-    .timer_stop = x2apic_timer_stop_op,
-    .timer_set_oneshot = x2apic_timer_set_oneshot_op,
-    .timer_set_periodic = x2apic_timer_set_periodic_op,
-    .timer_set_tsc_deadline = x2apic_timer_set_tsc_deadline_op,
-    .shutdown = x2apic_shutdown_op,
-    .read = x2apic_read_op,
-    .write = x2apic_write_op
+  .name = "x2APIC",
+  .init_lapic = x2apic_init_lapic,
+  .send_eoi = x2apic_send_eoi_op,
+  .send_ipi = x2apic_send_ipi_op,
+  .get_id = x2apic_get_id_raw,
+  .timer_stop = x2apic_timer_stop_op,
+  .timer_set_oneshot = x2apic_timer_set_oneshot_op,
+  .timer_set_periodic = x2apic_timer_set_periodic_op,
+  .timer_set_tsc_deadline = x2apic_timer_set_tsc_deadline_op,
+  .shutdown = x2apic_shutdown_op,
+  .read = x2apic_read_op,
+  .write = x2apic_write_op
 };

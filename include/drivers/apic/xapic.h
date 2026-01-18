@@ -5,10 +5,6 @@
 #include <uacpi/tables.h>
 #include <uacpi/acpi.h>
 
-// --- External Variables (defined in apic.c) ---
-extern uacpi_u64 xapic_madt_lapic_override_phys;   // 0 if not provided
-extern int xapic_madt_parsed;
-
 // --- Constants ---
 #define XAPIC_DELIVERY_MODE_FIXED        (0b000 << 8)
 #define XAPIC_DELIVERY_MODE_LOWEST_PRIO  (0b001 << 8)

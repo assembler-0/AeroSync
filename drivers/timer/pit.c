@@ -4,7 +4,7 @@
  *
  * @file drivers/timer/pit.c
  * @brief PIT driver
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
 #include <drivers/timer/pit.h>

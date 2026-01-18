@@ -98,6 +98,23 @@ struct load_weight {
 };
 
 /**
+ * struct sched_avg - Load tracking statistics (PELT)
+ *
+ * Provides a decaying average of load, runnable time, and utilization.
+ * Based on Linux PELT (Per-Entity Load Tracking) algorithm.
+ */
+struct sched_avg {
+  uint64_t last_update_time;
+  uint64_t load_sum;
+  uint64_t runnable_sum;
+  uint64_t util_sum;
+  uint32_t period_contrib;
+  unsigned long load_avg;
+  unsigned long runnable_avg;
+  unsigned long util_avg;
+};
+
+/**
  * struct sched_entity - CFS scheduling entity
  *
  * Embedded in task_struct for tasks scheduled by CFS.
@@ -113,6 +130,7 @@ struct sched_entity {
   uint64_t prev_sum_exec_runtime;
 
   struct load_weight load; /* For CPU bandwidth distribution */
+  struct sched_avg avg;    /* PELT statistics */
 };
 
 /**
@@ -365,6 +383,17 @@ struct cfs_rq {
   unsigned int nr_running;
   uint64_t min_vruntime;
   uint64_t exec_clock;
+  struct sched_avg avg; /* Aggregate PELT statistics */
+};
+
+/**
+ * struct dl_rq - Deadline runqueue
+ */
+struct dl_rq {
+  struct rb_root root;
+  struct rb_node *rb_leftmost;
+  unsigned int dl_nr_running;
+  uint64_t dl_bw; /* Bandwidth utilized by DL tasks */
 };
 
 /**
@@ -416,6 +445,7 @@ struct rq {
   /* Per-class runqueues */
   struct cfs_rq cfs;
   struct rt_rq rt;
+  struct dl_rq dl;
 
   /* Legacy fields for compatibility */
   struct rb_root tasks_timeline; /* Direct access for fair.c */
@@ -439,6 +469,9 @@ struct rq {
 /* Lock two runqueues in a stable order to prevent deadlocks */
 void double_rq_lock(struct rq *rq1, struct rq *rq2);
 void double_rq_unlock(struct rq *rq1, struct rq *rq2);
+
+/* PELT Load Tracking */
+void update_load_avg(struct rq *rq, struct sched_entity *se, int flags);
 
 /* Global scheduler functions */
 void schedule(void);
@@ -480,8 +513,8 @@ extern int cpu_id(void);
 DECLARE_PER_CPU(int, need_resched);
 
 /* Internal scheduler functions used by other scheduler modules */
-extern void activate_task(struct rq *rq, struct task_struct *p);
-extern void deactivate_task(struct rq *rq, struct task_struct *p);
+extern void activate_task(struct rq *rq, struct task_struct *p, int flags);
+extern void deactivate_task(struct rq *rq, struct task_struct *p, int flags);
 
 /* Helper to get current runqueue */
 extern struct rq *this_rq(void);
@@ -499,6 +532,13 @@ static inline int task_prio(const struct task_struct *p) {
  */
 static inline bool task_has_rt_policy(const struct task_struct *p) {
     return p->policy == SCHED_FIFO || p->policy == SCHED_RR;
+}
+
+/**
+ * task_has_dl_policy - check if task has a deadline policy
+ */
+static inline bool task_has_dl_policy(const struct task_struct *p) {
+    return p->policy == SCHED_DEADLINE;
 }
 
 /**

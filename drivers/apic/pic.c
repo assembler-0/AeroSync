@@ -4,7 +4,7 @@
  *
  * @file drivers/apic/pic.c
  * @brief Legacy PIC interrupt controller driver
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
 #include <aerosync/classes.h> 
@@ -35,14 +35,14 @@ void pic_mask_all(void) {
   pic_write_mask();
 }
 
-void pic_enable_irq(uint8_t irq_line) {
+void pic_enable_irq(uint32_t irq_line) {
   if (irq_line > 15)
     return;
   s_irq_mask &= ~(1 << irq_line);
   pic_write_mask();
 }
 
-void pic_disable_irq(uint8_t irq_line) {
+void pic_disable_irq(uint32_t irq_line) {
   if (irq_line > 15)
     return;
   s_irq_mask |= (1 << irq_line);

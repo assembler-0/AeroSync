@@ -23,6 +23,8 @@ struct vm_object_operations {
   void (*free)(struct vm_object *obj);
 };
 
+#include <linux/xarray.h>
+
 /**
  * struct vm_object - The "Page Cache" anchor.
  * Connects an object (file, anon, device) to its physical pages.
@@ -30,7 +32,7 @@ struct vm_object_operations {
 struct vm_object {
   vm_object_type_t type;
   void *priv;               /* Owner/Backing data (e.g., struct inode) */
-  struct rb_root page_tree; /* All pages currently in this object (indexed by pgoff) */
+  struct xarray page_tree;  /* All pages currently in this object (indexed by pgoff) */
   struct rw_semaphore lock;
   struct list_head i_mmap;  /* List of all VMAs mapping this object */
   struct list_head dirty_list; /* Node in global dirty_objects list */

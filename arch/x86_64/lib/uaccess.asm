@@ -4,7 +4,7 @@
 ;
 ; @file arch/x86_64/lib/uaccess.asm
 ; @brief User memory access routines with exception handling
-; @copyright (C) 2025 assembler-0
+; @copyright (C) 2025-2026 assembler-0
 
 section .text
 

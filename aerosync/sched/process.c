@@ -4,7 +4,7 @@
  *
  * @file aerosync/sched/process.c
  * @brief Process and thread management (Linux-like backend)
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -104,8 +104,8 @@ struct task_struct *copy_process(uint64_t clone_flags,
       return NULL;
   }
 
-  // Allocate 16KB kernel stack
-  p->stack = vmalloc_node(PAGE_SIZE * 4, p->node_id);
+  // Allocate 16KB kernel stack with guard page
+  p->stack = vmalloc_node_stack(PAGE_SIZE * 4, p->node_id);
   if (!p->stack) {
       release_pid(p->pid);
       free_task_struct(p);
@@ -352,7 +352,7 @@ void wake_up_new_task(struct task_struct *p) {
   irq_flags_t flags = spinlock_lock_irqsave(&rq->lock);
 
   p->state = TASK_RUNNING;
-  activate_task(rq, p);
+  activate_task(rq, p, ENQUEUE_WAKEUP);
 
   if (p->sched_class->check_preempt_curr) {
     p->sched_class->check_preempt_curr(rq, p, WF_FORK);

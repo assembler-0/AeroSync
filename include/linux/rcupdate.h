@@ -51,3 +51,5 @@ void rcu_barrier(void);
 void rcu_init(void);
 void rcu_check_callbacks(void);
 
+#define RCU_INIT_POINTER(p, v)	do { (p) = (v); } while (0)
+

@@ -24,6 +24,7 @@
 #define FAULT_FLAG_WRITE 0x01
 #define FAULT_FLAG_USER  0x02
 #define FAULT_FLAG_INSTR 0x04
+#define FAULT_FLAG_SPECULATIVE 0x08
 
 /* Standard fault return codes */
 #define VM_FAULT_OOM    0x0001
@@ -93,11 +94,27 @@ struct vm_area_struct *vma_prev(struct vm_area_struct *vma);
 
 /* VMA Locking */
 static inline void vma_lock(struct vm_area_struct *vma) {
-    spinlock_lock(&vma->vm_lock);
+    down_write(&vma->vm_lock);
 }
 
 static inline void vma_unlock(struct vm_area_struct *vma) {
-    spinlock_unlock(&vma->vm_lock);
+    up_write(&vma->vm_lock);
+}
+
+static inline void vma_lock_shared(struct vm_area_struct *vma) {
+    down_read(&vma->vm_lock);
+}
+
+static inline void vma_unlock_shared(struct vm_area_struct *vma) {
+    up_read(&vma->vm_lock);
+}
+
+static inline int vma_trylock(struct vm_area_struct *vma) {
+    return down_write_trylock(&vma->vm_lock);
+}
+
+static inline int vma_trylock_shared(struct vm_area_struct *vma) {
+    return down_read_trylock(&vma->vm_lock);
 }
 
 /* Statistics and Debugging */
@@ -145,24 +162,27 @@ void vma_cache_init(void);
 struct vm_area_struct *vma_cache_alloc(void);
 void vma_cache_free(struct vm_area_struct *vma);
 
+/* MM Scrubber */
+void mm_scrubber_init(void);
+
 /* Helper macros */
 #define vma_pages(vma) (((vma)->vm_end - (vma)->vm_start) >> PAGE_SHIFT)
 #define vma_size(vma) ((vma)->vm_end - (vma)->vm_start)
 
 #define for_each_vma(mm, vma)                                                  \
-  for (struct list_head *__pos = (mm)->mmap_list.next;                         \
-       __pos != &(mm)->mmap_list &&                                            \
-           ({                                                                  \
-             vma = list_entry(__pos, struct vm_area_struct, vm_list);          \
-             1;                                                                \
-           });                                                                 \
-       __pos = __pos->next)
+  for (unsigned long __idx = 0;                                                \
+       (vma = mt_find(&(mm)->mm_mt, &__idx, ULONG_MAX)) != NULL; )
 
 #define for_each_vma_safe(mm, vma, tmp)                                        \
-  for (struct list_head *__pos = (mm)->mmap_list.next, *__n = __pos->next;     \
-       __pos != &(mm)->mmap_list &&                                            \
-           ({                                                                  \
-             vma = list_entry(__pos, struct vm_area_struct, vm_list);          \
-             1;                                                                \
-           });                                                                 \
-       __pos = __n, __n = __pos->next)
+  for (unsigned long __idx = 0;                                                \
+       (vma = mt_find(&(mm)->mm_mt, &__idx, ULONG_MAX)) != NULL &&              \
+       ({ tmp = vma; 1; }); )
+
+#define for_each_vma_range(mm, vma, start, end)                                \
+  for (unsigned long __idx = (start);                                          \
+       (vma = mt_find(&(mm)->mm_mt, &__idx, (end) - 1)) != NULL; )
+
+#define for_each_vma_range_safe(mm, vma, tmp, start, end)                      \
+  for (unsigned long __idx = (start);                                          \
+       (vma = mt_find(&(mm)->mm_mt, &__idx, (end) - 1)) != NULL &&              \
+       ({ tmp = vma; 1; }); )

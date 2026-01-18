@@ -4,7 +4,7 @@
  *
  * @file drivers/pci/backend_pio.c
  * @brief PCI Port I/O backend
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
 #include <aerosync/types.h>

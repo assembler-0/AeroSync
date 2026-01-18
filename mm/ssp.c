@@ -4,7 +4,7 @@
  *
  * @file mm/ssp.c
  * @brief Freestanding libssp helpers
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -21,7 +21,7 @@
 #include <compiler.h>
 #include <aerosync/panic.h>
 #include <aerosync/classes.h>
-#include <mm/stack.h>
+#include <mm/ssp.h>
 #include <aerosync/fkx/fkx.h>
 
 uint64_t __stack_chk_guard = STACK_CANARY_VALUE;

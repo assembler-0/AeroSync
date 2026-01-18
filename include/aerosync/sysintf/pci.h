@@ -4,7 +4,7 @@
  *
  * @file include/aerosync/sysintf/pci.h
  * @brief System Interface for PCI Subsystem
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
 #pragma once

@@ -34,6 +34,15 @@ void restore_irq_flags(irq_flags_t flags);
 irq_flags_t local_irq_save(void);
 void local_irq_restore(irq_flags_t flags);
 
+#define ARCH_IRQ_DISABLED (1ULL << 9)
+
+static inline bool irqs_disabled(void) {
+  irq_flags_t flags;
+  __asm__ volatile("pushfq\n\tpopq %0" : "=r"(flags));
+  return !(flags & ARCH_IRQ_DISABLED);
+}
+
+
 ///@warning DO NOT TOUCH THIS STRUCTURE!!
 typedef struct cpu_regs {
   // Pushed by ISR (Segs) - Last pushed, so at lowest address (Offset 0)

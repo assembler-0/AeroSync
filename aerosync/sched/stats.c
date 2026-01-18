@@ -3,45 +3,31 @@
  * AeroSync monolithic kernel
  *
  * @file aerosync/sched/stats.c
- * @brief Scheduler statistics
- * @copyright (C) 2025 assembler-0
- *
- * This file is part of the AeroSync kernel.
+ * @brief Scheduler statistics and debug information
+ * @copyright (C) 2025-2026 assembler-0
  */
 
-#include <arch/x86_64/percpu.h>
-#include <arch/x86_64/smp.h>
 #include <aerosync/sched/sched.h>
 #include <lib/printk.h>
+#include <aerosync/classes.h>
 
 void sched_show_stats(void) {
-  int cpu;
-  unsigned long total_switches = 0;
-  unsigned long total_migrations = 0;
-
-  printk(KERN_INFO "Scheduler Statistics:\n");
-
-  for_each_online_cpu(cpu) {
-    struct rq *rq = per_cpu_ptr(runqueues, cpu);
-    struct rq_stats *stats = &rq->stats;
-
-    printk(KERN_INFO "CPU %d: running=%u load=%lu switches=%llu mig=%llu "
-                     "bal=%llu exec=%llu ns\n",
-           cpu, rq->nr_running, rq->avg_load, stats->nr_switches,
-           stats->nr_migrations, stats->nr_load_balance, stats->exec_clock);
-
-    total_switches += stats->nr_switches;
-    total_migrations += stats->nr_migrations;
-  }
-
-  printk(KERN_INFO "Total: switches=%lu migrations=%lu\n", total_switches,
-         total_migrations);
+    printk(KERN_INFO SCHED_CLASS "scheduler Statistics:\n");
+    for (int i = 0; i < smp_get_cpu_count(); i++) {
+        struct rq *rq = per_cpu_ptr(runqueues, i);
+        /* 
+         * Lockless read of stats. 
+         * Values might be slightly stale or torn (rarely), but safe for display.
+         * We avoid locking all runqueues to prevent massive contention/deadlocks during debug dumps.
+         */
+        printk(KERN_INFO SCHED_CLASS "  CPU %d: nr_running=%u, load_avg=%lu, util_avg=%lu, switches=%llu\n",
+               i, rq->nr_running, rq->cfs.avg.load_avg, rq->cfs.avg.util_avg,
+               rq->stats.nr_switches);
+    }
 }
 
 void sched_debug_task(struct task_struct *p) {
-  printk(KERN_INFO "Task %d (%s) state=%ld cpu=%d prio=%d/%d policy=%d\n",
-         p->pid, p->comm, p->state, p->cpu, p->prio, p->normal_prio, p->policy);
-
-  printk(KERN_INFO "  se.vruntime=%llu se.load=%lu rt.prio=%u\n",
-         p->se.vruntime, p->se.load.weight, p->rt_priority);
+    if (!p) return;
+    printk(KERN_DEBUG SCHED_CLASS "task %s (%d): prio=%d, vruntime=%llu, load_avg=%lu\n",
+           p->comm, p->pid, p->prio, p->se.vruntime, p->se.avg.load_avg);
 }

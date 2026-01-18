@@ -4,7 +4,7 @@
  *
  * @file include/aerosync/sysintf/dma.h
  * @brief DMA System Interface
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
 #pragma once

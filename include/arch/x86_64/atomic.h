@@ -171,3 +171,18 @@ static __always_inline long atomic64_cmpxchg(atomic64_t *v, long old, long new) 
                  : "memory");
     return ret;
 }
+
+/*
+ * Double-width cmpxchg on absolute address.
+ * Targets two adjacent 64-bit values (16 bytes total).
+ * Must be 16-byte aligned.
+ */
+static __always_inline bool cmpxchg16b_local(void *ptr, void *o1, unsigned long o2,
+                                    void *n1, unsigned long n2) {
+  bool ret;
+  asm volatile("lock; cmpxchg16b %1; setz %0"
+               : "=a"(ret), "+m"(*(char *)ptr), "+d"(o2), "+a"(o1)
+               : "b"(n1), "c"(n2)
+               : "memory");
+  return ret;
+}

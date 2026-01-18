@@ -13,3 +13,5 @@
 #define BIT(nr) (1UL << (nr))
 #define BIT_MASK(nr) (1UL << ((nr) % 64))
 #define BIT_WORD(nr) ((nr) / 64)
+#define BITS_TO_LONGS(x) \
+  (((x) + 8 * sizeof (unsigned long) - 1) / (8 * sizeof (unsigned long)))

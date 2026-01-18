@@ -4,7 +4,7 @@
  *
  * @file aerosync/sched/rt.c
  * @brief Real-Time Scheduler (SCHED_FIFO, SCHED_RR) implementation
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *

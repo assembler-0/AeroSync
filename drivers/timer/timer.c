@@ -4,7 +4,7 @@
  *
  * @file drivers/timer/timer.c
  * @brief timer module entrance
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
 #include <drivers/timer/hpet.h>

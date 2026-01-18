@@ -67,6 +67,16 @@ static inline int spinlock_trylock(volatile int *lock) {
   return !__atomic_test_and_set(lock, __ATOMIC_ACQUIRE);
 }
 
+static inline int spinlock_is_locked(volatile int *lock) {
+  return *lock;
+}
+
+static inline void spin_lock_irqsave(volatile int *lock, irq_flags_t *flags) {
+  *flags = save_irq_flags();
+  cpu_cli();
+  spinlock_lock(lock);
+}
+
 // MCS-style queue lock (more fair, less cache bouncing)
 typedef struct mcs_node {
   volatile struct mcs_node *next;

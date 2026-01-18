@@ -4,56 +4,72 @@
 
 ### core
 - memory management (mm)
-	- [ ] NUMA-awareness for *ALL* subsystems
-	- [ ] proper COW (Copy-On-Write) using XNU-inspired Shadow Object chains
-	- [ ] Finish RMAP for all subsystems
+	- **Current Implementation Status**:
+		- **PMM**: Buddy Allocator (Order 0-11) with Zone support (DMA, DMA32, Normal) and NUMA-aware Zonelists.
+		- **PCP**: Per-CPU Page Cache for lockless order-0 page allocation/recycling.
+		- **SLUB**: Production-ready SLUB allocator with Per-CPU Magazine Layer and NUMA-aware fallback.
+		- **VMA**: Virtual Memory Area management using a **Linux-style Maple Tree** (O(log N) search).
+		- **VMA Cache**: Per-task MRU cache (size 4) for O(1) lookups in the hot path.
+		- **Vmalloc**: Hybrid system with True Lazy Allocation for large blocks and `vmap_block` for small ones.
+		- **Hardening**: Optional and optimized Poisoning/Redzones (via `MM_HARDENING`) using 64-bit comparisons.
+		- **Security**: ASLR for VMA placement, Guard Pages for stacks/vmalloc, and KASLR support.
+		- **Consistency**: Background MM Scrubber thread for proactive integrity validation.
+	- [x] **Phase 0: The "Aero-Fast" Foundation (Maple & SPF)**
+		- [x] **Maple Tree Integration**: Full migration from RB-tree/Linked-list to **True Maple Tree** MAS API.
+		- [x] **Performance Optimization**: O(1) sequential allocation hinting, range-optimized iteration (O(affected VMAs)), and O(N) bulk destruction.
+		- [x] **Full Speculative Page Faults (SPF)**: Lockless fault handling via RCU and VMA sequence counters.
+		- [x] **Shadow Object Optimization**: Efficient XArray-based COW chain collapsing.
+	- [x] **Phase 1: The "Magnum" Page Allocator (Performance & Scalability)**
+		- [x] **Zonelists**: Implement pre-calculated fallback lists (Local -> Remote Sorted by Distance) to replace O(N) search in `alloc_pages`.
+		- [x] **Batched PCP Draining**: Optimize `free_pcp_pages` to bulk-return pages to the buddy system, amortizing lock contention.
+		- [x] **Node-Local Allocation**: Enforce strict node locality policies by default, falling back only when necessary.
+		- [x] **Lockless Fastpaths**: Verify and harden `cmpxchg` usage in PCP and SLUB hotpaths.
+	- [x] **Phase 2: Cache-Efficient Structures (Maple Tree & XArray)**
+		- [x] **Maple Tree**: Replace VMA RB-tree with Maple Tree (Linux-style) for cache-aligned, multi-element nodes and O(1) interval lookups.
+		- [ ] **XArray (Radix Tree 2.0)**: Replace `vm_object` page RB-trees with XArray for better cache locality and faster large-file/SHM mapping.
+		- [x] **Aggressive Fault-Around**: Expand fault-around window (currently +/- 1 page) to dynamic windows (16-64KB) for better spatial locality.
+	- [ ] **Phase 3: Robustness & Advanced Features**
+		- [ ] **OOM Killer 2.0**: Implement a "Reaper" thread to asynchronously reclaim memory from killed tasks, preventing deadlocks.
+		- [x] **Hardened Usercopy**: Rigorous bounds checking for `copy_from_user`/`copy_to_user` based on VMA limits.
+		- [x] **Kernel Guard Pages**: Unmapped guard pages between vmalloc stacks.
+		- [x] **Transparent Huge Pages (THP)**: Background promotion of contiguous 4KB pages to 2MB pages using a dedicated `khugepaged` daemon.
+	- [x] proper COW (Copy-On-Write) using XNU-inspired Shadow Object chains
+	- [x] Finish RMAP for all subsystems
 	- [ ] Advance ANON object fault
 	- [ ] SHM (SHared Memory) management +IPC)
-	- [ ] Lockless for fast paths
-	- [ ] RCU usage
-	- [ ] reduce `mmap_lock` usage
 	- [ ] Use XArray/Radix tree for `vm_object`
-	- [ ] Maple tree for VMA system (maybe later)
-	- [ ] Selective lazy allocation/free for kernel `vmalloc()
+	- [x] Selective lazy allocation/free for kernel `vmalloc()
 	- [ ] Fix subtle, logic bugs
 	- [ ] True memory reclaimation
-	- [ ] Advance SPF (faster PF handling without taking `mmap_lock` semaphore)
 	- [ ] Integrate with VFS
-	- [ ] working `mmap`/`munmap`/`mprotect`/`mremap`
+	- [x] working `mmap`/`munmap`/`mprotect`/`mremap`
 	- [ ] add `brk` and `sbrk` for compatibility
 	- [ ] Cache *everywhere*, (UBC - Unified Buffer Cache)
-	- [ ] Magazines integration for SLUB
-	- [ ] Faster SLUB
-	- [ ] More sophisticated PMM system (buddy `page_alloc`)
+	- [x] Magazines integration for SLUB
+	- [x] Faster SLUB
+	- [x] More sophisticated PMM system (buddy `page_alloc`)
 	- [ ] Streamline the use of `struct folio` rather than `struct page` for high-level mm
-	- [ ] KASLR
-	- [ ] ASLR
-	- [ ] Guard pages *everywhere* possible
+	- [x] KASLR
+	- [x] ASLR
+	- [x] Guard pages *everywhere* possible
 	- [ ] Proper DMA support for legacy devices
 	- [ ] IOMMU
 	- [ ] more rigid MMIO
 	- [ ] Stack management
 	- [ ] handle user MM faults gracully
 - scheduling
-	- [x] PI
+	- [x] PI (Priority Inheritance)
+	- [x] Per-Entity Load Tracking (PELT) - 32ms half-life decaying averages
+	- [x] Newly Idle Balancing - Pull tasks from busy CPUs when entering idle
+	- [x] Proper scheduling classes and domains hierarchy
+	- [x] Basic SMT/MC topology support for load balancing
+	- [x] Fixed wait queue locking and safety
+	- [x] ACPI SRAT parsing for NUMA topology (SMT -> MC -> NUMA)
+	- [x] LLC-aware wake-up balancing (select_idle_sibling)
+	- [x] vruntime normalization/denormalization on migration
+	- [x] Aggressive multi-task load balancing (move load, not just tasks)
+	- [x] Cross-CPU wake-up preemption (IPI)
 	- [ ] XNU-inspired deadline handoff (idk what's it called)
-	- [ ] Ring 3 context switches are flawless
-	- [ ] `CR3` is properly managed
-	- [ ] *strictly* enforce Linux scheduling model
-	- [ ] proper scheduiling classes and domains
-	- [ ] add support for SMT scheduling
-	- [ ] NUMA-awareness
-	- [ ] IPC system
-	- [ ] proper queueing system
-	- [ ] refactor `wait.h` 
-	- [ ] refactor `mutex
-	- [ ] refactor rw_semaphores
-	- [ ] *full* kernel preemption model
-	- [ ] Tickless kernel (`CONFIG_NO_HZ`)
-	- [ ] Windows DPC? (Deffered Procedure Call)
-	- [ ] E-/P-core scheduling
-	- [ ] Deadline (EDF/EEVDF) scheduling class
-	- [ ] better RT scheduling class
 - VFS
 	- [x] FD allocation
 	- [ ] proper FD table

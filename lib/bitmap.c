@@ -4,7 +4,7 @@
  *
  * @file lib/bitmap.c
  * @brief High-performance Bitmap management
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
 #include <lib/bitmap.h>

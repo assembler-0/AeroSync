@@ -4,7 +4,7 @@
  *
  * @file aerosync/sysintf/block.c
  * @brief Block Device Registry and Dispatcher
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
 #include <aerosync/classes.h>

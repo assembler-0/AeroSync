@@ -5,7 +5,7 @@
 #
 # @file CMakeLists.txt
 # @brief Kernel build configuration
-# @copyright (C) 2025 assembler-0
+# @copyright (C) 2025-2026 assembler-0
 #
 # This file is part of the AeroSync kernel.
 #
@@ -21,7 +21,7 @@
 cmake_minimum_required(VERSION 3.30)
 set_property(GLOBAL PROPERTY RULE_MESSAGES OFF)
 project(AeroSync
-        VERSION 2.2.3 # <EPOCH>.<FEATURE>.<PATCH>
+        VERSION 3.2.5 # <EPOCH>.<FEATURE>.<PATCH> - see include/aerosync/version.h
         LANGUAGES C CXX ASM_NASM
         HOMEPAGE_URL "https://github.com/assembler-0/AeroSync"
         DESCRIPTION "A modern monolithic operating system kernel designed for performance and modularity."
@@ -43,7 +43,7 @@ execute_process(
 )
 
 set(AEROSYNC_RELEASE "0" CACHE STRING "AeroSync release")
-set(AEROSYNC_CANDIDATE "1" CACHE STRING "AeroSync release candidate")
+set(AEROSYNC_CANDIDATE "2" CACHE STRING "AeroSync release candidate")
 set(AEROSYNC_ABI_LEVEL "0" CACHE STRING "AeroSync ABI level")
 set(AEROSYNC_CODENAME "Invariant" CACHE STRING "AeroSync codename")
 configure_file(
@@ -67,7 +67,7 @@ include(lib/uACPI/uacpi.cmake)
 include(source)
 include(fkx)
 include(lib/linearfb/linearfb.cmake)
-#include(drivers/misc/splash.cmake)
+include(limine)
 include(drivers/uart/uart.cmake)
 include(drivers/apic/ic.cmake)
 include(drivers/pci/pci.cmake)
@@ -165,6 +165,10 @@ if(STACK_PROTECTION)
     )
 endif()
 
+if(MM_HARDENING)
+    target_compile_definitions(aerosync.krnl PRIVATE MM_HARDENING)
+endif()
+
 if(INTEL_CET)
     target_compile_options(aerosync.krnl PRIVATE 
         $<$<COMPILE_LANGUAGE:C>:
@@ -217,24 +221,6 @@ endif()
 # ============================================================================
 # ISO Generation with Limine Bootloader
 # ============================================================================
-set(DEFAULT_LIMINE_DIR "/usr/share/limine")
-if(EXISTS "${DEFAULT_LIMINE_DIR}")
-    set(LIMINE_RESOURCE_DIR "${DEFAULT_LIMINE_DIR}" CACHE STRING "Limine binary directory")
-    message(STATUS "Using system Limine: ${LIMINE_RESOURCE_DIR}")
-else()
-    message(STATUS "Limine not found at ${DEFAULT_LIMINE_DIR}. Fetching from GitHub... (https://github.com/limine-bootloader/limine/tree/v10.x-binary)")
-
-    FetchContent_Declare(
-            limine
-            GIT_REPOSITORY https://github.com/limine-bootloader/limine.git
-            GIT_TAG        v10.x-binary
-    )
-    FetchContent_MakeAvailable(limine)
-
-    set(LIMINE_RESOURCE_DIR "${limine_SOURCE_DIR}" CACHE STRING "Limine binary directory" FORCE)
-    message(STATUS "Limine fetched to: ${LIMINE_RESOURCE_DIR}")
-endif()
-
 # Generate limine.conf from template
 get_property(FKX_MODULE_LIST GLOBAL PROPERTY FKX_MODULES)
 set(LIMINE_MODULES "")

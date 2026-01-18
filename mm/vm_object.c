@@ -4,7 +4,7 @@
  *
  * @file mm/vm_object.c
  * @brief Virtual Memory Object management
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -22,16 +22,10 @@
 #include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/mm/vmm.h>
 #include <aerosync/errno.h>
-#include <linux/container_of.h>
 #include <mm/slab.h>
 #include <mm/vma.h>
 #include <mm/vm_object.h>
 #include <mm/page.h>
-
-#define page_to_phys(page) PFN_TO_PHYS(page_to_pfn(page))
-
-/* Forward declarations for RMAP (defined in memory.c) */
-void folio_add_anon_rmap(struct folio *folio, struct vm_area_struct *vma, uint64_t address);
 
 /* Page Tree Management - Now using embedded obj_node in struct page for O(1) node allocation */
 
@@ -41,7 +35,7 @@ struct vm_object *vm_object_alloc(vm_object_type_t type) {
 
   memset(obj, 0, sizeof(struct vm_object));
   obj->type = type;
-  obj->page_tree = RB_ROOT;
+  xa_init(&obj->page_tree);
   rwsem_init(&obj->lock);
   INIT_LIST_HEAD(&obj->i_mmap);
   INIT_LIST_HEAD(&obj->dirty_list);
@@ -54,15 +48,19 @@ struct vm_object *vm_object_alloc(vm_object_type_t type) {
 void vm_object_free(struct vm_object *obj) {
   if (!obj) return;
 
-  /* Free all pages in the tree - SAFE iteration by repeatedly pulling first node */
-  struct rb_node *node;
-  while ((node = rb_first(&obj->page_tree))) {
-    struct folio *folio = rb_entry(node, struct folio, rb_node);
+  unsigned long index;
+  struct folio *folio;
 
-    rb_erase(&folio->rb_node, &obj->page_tree);
-    folio->mapping = NULL;
-    folio_put(folio);
+  /* Use efficient XArray iterator for cleanup */
+  xa_for_each(&obj->page_tree, index, folio) {
+    xa_erase(&obj->page_tree, index);
+    if (folio && !xa_is_err(folio)) {
+      folio->mapping = NULL;
+      folio_put(folio);
+    }
   }
+
+  xa_destroy(&obj->page_tree);
 
   if (obj->ops && obj->ops->free) {
     obj->ops->free(obj);
@@ -87,58 +85,37 @@ void vm_object_put(struct vm_object *obj) {
 }
 
 int vm_object_add_folio(struct vm_object *obj, uint64_t pgoff, struct folio *folio) {
-  struct rb_node **new = &obj->page_tree.rb_node, *parent = NULL;
-
-  while (*new) {
-    struct folio *this = rb_entry(*new, struct folio, rb_node);
-    parent = *new;
-    if (pgoff < this->index)
-      new = &((*new)->rb_left);
-    else if (pgoff > this->index)
-      new = &((*new)->rb_right);
-    else
-      return -EEXIST;
-  }
+  /* 
+   * xa_store returns 0 on success, or an error code.
+   * It handles tree growth and synchronization.
+   */
+  if (xa_store(&obj->page_tree, pgoff, folio, GFP_KERNEL))
+    return -ENOMEM;
 
   folio->index = pgoff;
 
   /* Standard RMAP linkage for non-anonymous folios */
   folio_add_file_rmap(folio, obj, pgoff);
 
-  rb_link_node(&folio->rb_node, parent, new);
-  rb_insert_color(&folio->rb_node, &obj->page_tree);
-
   return 0;
 }
 
 struct folio *vm_object_find_folio(struct vm_object *obj, uint64_t pgoff) {
-  struct rb_node *node = obj->page_tree.rb_node;
-
-  while (node) {
-    struct folio *this = rb_entry(node, struct folio, rb_node);
-    if (pgoff < this->index)
-      node = node->rb_left;
-    else if (pgoff > this->index)
-      node = node->rb_right;
-    else
-      return this;
-  }
-
-  return NULL;
+  void *entry = xa_load(&obj->page_tree, pgoff);
+  if (xa_is_err(entry) || !entry) return NULL;
+  return (struct folio *) entry;
 }
 
 void vm_object_remove_folio(struct vm_object *obj, uint64_t pgoff) {
-  struct folio *folio = vm_object_find_folio(obj, pgoff);
-  if (folio) {
-      /* 1. Unmap from all virtual address spaces using reverse mapping */
-      try_to_unmap_folio(folio, NULL);
-    /* 2. Remove from the object's page tree */
-    rb_erase(&folio->rb_node, &obj->page_tree);
+  struct folio *folio = xa_erase(&obj->page_tree, pgoff);
+  if (folio && !xa_is_err(folio)) {
+    /* 1. Unmap from all virtual address spaces using reverse mapping */
+    try_to_unmap_folio(folio, NULL);
 
-    /* 3. Dissociate from this object */
+    /* 2. Dissociate from this object */
     folio->mapping = NULL;
 
-    /* 4. Release the reference held by the object's page tree */
+    /* 3. Release the reference held by the object's page tree */
     folio_put(folio);
   }
 }
@@ -158,6 +135,31 @@ void vm_object_remove_page(struct vm_object *obj, uint64_t pgoff) {
 
 /* Anonymous Object Implementation */
 static int anon_obj_fault(struct vm_object *obj, struct vm_area_struct *vma, struct vm_fault *vmf) {
+  /*
+   * SPECULATIVE PATH:
+   * If the folio exists, we can handle it completely locklessly (with RCU).
+   * If it doesn't, we can still proceed if we can take the object lock without blocking.
+   */
+  if (vmf->flags & FAULT_FLAG_SPECULATIVE) {
+    if (!down_read_trylock(&obj->lock)) return VM_FAULT_RETRY;
+    struct folio *folio = vm_object_find_folio(obj, vmf->pgoff);
+    if (folio) {
+      folio_get(folio);
+      vmf->folio = folio;
+      vmf->prot = vma->vm_page_prot;
+      up_read(&obj->lock);
+      return 0;
+    }
+    up_read(&obj->lock);
+
+    /* 
+     * If not found, we could try to allocate, but for now let's only 
+     * allow speculative hits on existing pages. 
+     * TODO: Allow speculative allocation if vma_lock is held.
+     */
+    return VM_FAULT_RETRY;
+  }
+
   /* Ensure RMAP is ready */
   if (unlikely(anon_vma_prepare(vma))) return VM_FAULT_OOM;
 
@@ -187,8 +189,17 @@ static int anon_obj_fault(struct vm_object *obj, struct vm_area_struct *vma, str
   if (nid == -1 && vma->vm_mm) nid = vma->vm_mm->preferred_node;
   if (nid == -1) nid = this_node();
 
-  // Try Huge Page (2MB) if aligned and supported
-  if ((vma->vm_flags & VM_HUGE) && (vmf->pgoff % 512 == 0) && (vmf->pgoff + 512 <= (obj->size >> PAGE_SHIFT))) {
+  /* 
+   * Opportunistic THP:
+   * 1. Must be aligned to 2MB (512 pages).
+   * 2. Must not have VM_NOHUGEPAGE set.
+   * 3. Must fit in object bounds.
+   */
+  bool thp_eligible = (vmf->pgoff % 512 == 0) &&
+                      (vmf->pgoff + 512 <= (obj->size >> PAGE_SHIFT)) &&
+                      !(vma->vm_flags & VM_NOHUGEPAGE);
+
+  if (thp_eligible) {
     folio = alloc_pages_node(nid, GFP_KERNEL, 9);
     if (folio) {
       memset(pmm_phys_to_virt(folio_to_phys(folio)), 0, VMM_PAGE_SIZE_2M);
@@ -288,9 +299,13 @@ void vm_object_collapse(struct vm_object *obj) {
       return;
     }
 
-    struct rb_node *node;
-    while ((node = rb_first(&backing->page_tree))) {
-      struct folio *folio = rb_entry(node, struct folio, rb_node);
+    /* 
+     * Collapse pages from backing to shadow using efficient XArray iterator.
+     */
+    unsigned long backing_idx;
+    struct folio *folio;
+    xa_for_each(&backing->page_tree, backing_idx, folio) {
+      if (!folio || xa_is_err(folio)) continue;
 
       if (folio->index < (obj->shadow_offset >> PAGE_SHIFT)) {
         goto skip_page;
@@ -302,38 +317,82 @@ void vm_object_collapse(struct vm_object *obj) {
       }
 
       if (!vm_object_find_folio(obj, obj_pgoff)) {
-        rb_erase(&folio->rb_node, &backing->page_tree);
+        xa_erase(&backing->page_tree, backing_idx);
         vm_object_add_folio(obj, obj_pgoff, folio);
         continue;
       }
 
     skip_page:
-      rb_erase(&folio->rb_node, &backing->page_tree);
+      xa_erase(&backing->page_tree, backing_idx);
       folio->mapping = NULL;
       folio_put(folio);
     }
-
-    struct vm_object *new_backing = backing->backing_object;
-    if (new_backing) vm_object_get(new_backing);
-
-    struct vm_object *old_backing = backing->backing_object;
-    backing->backing_object = NULL;
-
-    obj->backing_object = new_backing;
-    obj->shadow_offset += backing->shadow_offset;
-
-    up_write(&backing->lock);
-    up_write(&obj->lock);
-
-    vm_object_put(backing);
-    vm_object_put(old_backing);
+    xa_erase(&backing->page_tree, backing_idx);
+    folio->mapping = NULL;
+    folio_put(folio);
   }
+
+  struct vm_object *new_backing = backing->backing_object;
+  if (new_backing) vm_object_get(new_backing);
+
+  struct vm_object *old_backing = backing->backing_object;
+  backing->backing_object = NULL;
+
+  obj->backing_object = new_backing;
+  obj->shadow_offset += backing->shadow_offset;
+
+  up_write(&backing->lock);
+  up_write(&obj->lock);
+
+  vm_object_put(backing);
+  vm_object_put(old_backing);
 }
+
 
 static int shadow_obj_fault(struct vm_object *obj, struct vm_area_struct *vma, struct vm_fault *vmf) {
   struct folio *new_folio = NULL;
   struct folio *folio;
   int ret;
+
+  /*
+   * SPECULATIVE PATH:
+   * Only support read faults on existing pages in the shadow chain.
+   * Write faults or missing pages require the slow path due to COW/Collapsing complexity.
+   */
+  if (vmf->flags & FAULT_FLAG_SPECULATIVE) {
+    if (vmf->flags & FAULT_FLAG_WRITE) return VM_FAULT_RETRY;
+
+    down_read(&obj->lock);
+    folio = vm_object_find_folio(obj, vmf->pgoff);
+    if (folio) {
+      folio_get(folio);
+      vmf->folio = folio;
+      vmf->prot = vma->vm_page_prot;
+      up_read(&obj->lock);
+      return 0;
+    }
+
+    struct vm_object *backing = obj->backing_object;
+    if (!backing) {
+      up_read(&obj->lock);
+      return VM_FAULT_RETRY;
+    }
+
+    /* Recurse into backing object speculatively */
+    uint64_t backing_pgoff = vmf->pgoff + (obj->shadow_offset >> PAGE_SHIFT);
+    struct vm_fault backing_vmf = *vmf;
+    backing_vmf.pgoff = backing_pgoff;
+
+    /* We already checked FAULT_FLAG_WRITE above, so this is a read */
+    ret = backing->ops->fault(backing, vma, &backing_vmf);
+    up_read(&obj->lock);
+
+    if (ret == 0) {
+      vmf->folio = backing_vmf.folio;
+      vmf->prot = vma->vm_page_prot & ~PTE_RW;
+    }
+    return ret;
+  }
 
   vm_object_collapse(obj);
 

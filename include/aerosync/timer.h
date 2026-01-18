@@ -20,7 +20,3 @@ int timer_pending(const struct timer_list *timer);
 
 // Called from IRQ handler
 void timer_handler(void);
-
-// High-level API for sleeping
-void msleep(uint32_t ms);
-void usleep(uint32_t us);

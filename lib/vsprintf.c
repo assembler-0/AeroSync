@@ -34,7 +34,7 @@
  *
  * @file lib/vsprintf.c
  * @brief vsnprintf() implementation by (c) Marco Paland
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  * The implementation is ported to AeroSync by assembler-0.

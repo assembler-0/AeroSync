@@ -1,7 +1,7 @@
 #pragma once
 
 #include <aerosync/spinlock.h>
-#include <aerosync/wait.h>
+#include <aerosync/wait_types.h>
 #include <aerosync/atomic.h>
 
 /**

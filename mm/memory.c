@@ -4,7 +4,7 @@
  *
  * @file mm/memory.c
  * @brief High-level memory management
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -540,6 +540,8 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
    * If no object exists and it's a standard mapping, create an anon object.
    */
   else if (!vma->vm_obj && !(vma->vm_flags & (VM_IO | VM_PFNMAP))) {
+    if (flags & FAULT_FLAG_SPECULATIVE) return VM_FAULT_RETRY;
+
     vma->vm_obj = vm_object_anon_create(vma_size(vma));
     if (!vma->vm_obj) return VM_FAULT_OOM;
 
@@ -563,6 +565,35 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
                         phys, vmf.prot, VMM_PAGE_SIZE_2M);
     } else {
       vmm_map_page(vma->vm_mm, vmf.address, phys, vmf.prot);
+      
+      /* 
+       * FAULT-AROUND: Try to map neighboring pages if they are already in memory.
+       * We expand the window to 16 pages (64KB) for better spatial locality.
+       */
+      if (!(flags & FAULT_FLAG_WRITE) && vma->vm_obj) {
+        struct vm_object *obj = vma->vm_obj;
+        uint64_t window = 16;
+        uint64_t start_pgoff = vmf.pgoff > (window / 2) ? vmf.pgoff - (window / 2) : 0;
+        if (start_pgoff < vma->vm_pgoff) start_pgoff = vma->vm_pgoff;
+
+        uint64_t end_pgoff = vmf.pgoff + (window / 2);
+        
+        down_read(&obj->lock);
+        for (uint64_t off = start_pgoff; off <= end_pgoff; off++) {
+          if (off == vmf.pgoff) continue;
+          if (off >= (obj->size >> PAGE_SHIFT)) break;
+          
+          struct folio *f = vm_object_find_folio(obj, off);
+          if (f) {
+             uint64_t addr = vma->vm_start + ((off - (vma->vm_pgoff)) << PAGE_SHIFT);
+             if (addr >= vma->vm_start && addr < vma->vm_end) {
+                /* Map it if not already present (vmm_map_page handles present check) */
+                vmm_map_page(vma->vm_mm, addr, folio_to_phys(f), vmf.prot);
+             }
+          }
+        }
+        up_read(&obj->lock);
+      }
     }
 
     /*

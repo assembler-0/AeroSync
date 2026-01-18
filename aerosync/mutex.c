@@ -4,7 +4,7 @@
  *
  * @file aerosync/mutex.c
  * @brief Mutex (Mutual Exclusion) implementation
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -97,14 +97,22 @@ void mutex_unlock(mutex_t *m) {
 
   /* PI Logic: Restore priority if we were boosted */
   if (curr && m->pi_enabled) {
-    /* Check all waiters for this mutex and remove from our PI list */
+    bool changed = false;
+    /* 
+     * Optimization: Only iterate over tasks that were actually blocked on 
+     * THIS mutex. Since we are releasing it, they are no longer boosting us.
+     */
     struct task_struct *waiter, *tmp;
     list_for_each_entry_safe(waiter, tmp, &curr->pi_waiters, pi_list) {
       if (waiter->pi_blocked_on == m) {
         list_del_init(&waiter->pi_list);
+        changed = true;
       }
     }
-    update_task_prio(curr);
+    
+    if (changed) {
+      update_task_prio(curr);
+    }
   }
 
   m->count = 1;

@@ -4,7 +4,7 @@
  *
  * @file aerosync/sysintf/pci.c
  * @brief PCI System Interface Implementation
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
 #include <aerosync/sysintf/pci.h>

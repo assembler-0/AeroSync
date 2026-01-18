@@ -4,7 +4,7 @@
  *
  * @file arch/x86_64/cpu.c
  * @brief Architecture-specific CPU functions
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *

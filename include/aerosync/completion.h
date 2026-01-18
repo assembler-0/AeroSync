@@ -4,7 +4,7 @@
  *
  * @file include/aerosync/completion.h
  * @brief Completion synchronization primitive
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  */

@@ -4,7 +4,7 @@
  *
  * @file aerosync/sysintf/core/driver_model.c
  * @brief Unified Driver Model Implementation
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
 #include <aerosync/sysintf/device.h> 

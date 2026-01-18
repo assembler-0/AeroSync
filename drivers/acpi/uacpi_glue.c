@@ -4,7 +4,7 @@
  *
  * @file drivers/acpi/uacpi_glue.c
  * @brief uACPI kernel glue layer
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -18,20 +18,20 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x86_64/cpu.h>
-#include <arch/x86_64/io.h>
-#include <arch/x86_64/irq.h>
-#include <arch/x86_64/mm/layout.h>
-#include <arch/x86_64/mm/vmm.h>
-#include <arch/x86_64/tsc.h>
-#include <arch/x86_64/requests.h>
-#include <aerosync/sysintf/ic.h>
 #include <aerosync/classes.h>
 #include <aerosync/mutex.h>
 #include <aerosync/sched/process.h>
 #include <aerosync/sched/sched.h>
 #include <aerosync/spinlock.h>
+#include <aerosync/sysintf/ic.h>
 #include <aerosync/wait.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/io.h>
+#include <arch/x86_64/irq.h>
+#include <arch/x86_64/mm/layout.h>
+#include <arch/x86_64/mm/vmm.h>
+#include <arch/x86_64/requests.h>
+#include <arch/x86_64/tsc.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <mm/slab.h>
@@ -40,9 +40,6 @@
 #include <uacpi/kernel_api.h>
 #include <uacpi/types.h>
 #include <uacpi/uacpi.h>
-
-// Extern the request from init/main.c
-extern void uacpi_kernel_enumerate_test(void);
 
 static volatile int s_ic_ready = 0;
 // Pending ACPI IRQ handlers before IC is ready
@@ -112,13 +109,17 @@ uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr *out_rsdp_address) {
  * Memory Management
  */
 void *uacpi_kernel_map(uacpi_phys_addr addr, uacpi_size len) {
-  // viomap maps physical to virtual
-  return viomap(addr, len);
+  /*
+   * We use standard ioremap (Uncacheable) here.
+   * While ACPI tables are in RAM and could be WB, uACPI also uses this
+   * for MMIO registers. UC is the safe default for registers.
+   */
+  return ioremap(addr, len);
 }
 
 void uacpi_kernel_unmap(void *addr, uacpi_size len) {
   (void)len;
-  viounmap(addr);
+  iounmap(addr);
 }
 
 void *uacpi_kernel_alloc(uacpi_size size) {
@@ -136,10 +137,9 @@ void uacpi_kernel_free(void *mem) {
   if (!mem)
     return;
   const uint64_t addr = (uint64_t)mem;
-  if (addr >= VMALLOC_VIRT_BASE && addr < VMALLOC_VIRT_END)
-    vfree(mem);
-  else
-    kfree(mem);
+  (addr >= VMALLOC_VIRT_BASE && addr < VMALLOC_VIRT_END)
+  ? vfree(mem)
+  : kfree(mem);
 }
 
 /*
@@ -232,10 +232,18 @@ uacpi_status uacpi_kernel_pci_write32(uacpi_handle device, uacpi_size offset,
  */
 uacpi_status uacpi_kernel_io_map(uacpi_io_addr base, uacpi_size len,
                                  uacpi_handle *out_handle) {
-  *out_handle = viomap(base, len);
+  /*
+   * On x86, SystemIO space is the I/O port space, accessed via in/out.
+   * We don't need to map it; the "handle" is just the port address.
+   */
+  (void)len;
+  *out_handle = (uacpi_handle)(uintptr_t)base;
   return UACPI_STATUS_OK;
 }
-void uacpi_kernel_io_unmap(uacpi_handle handle) { viounmap(handle); }
+
+void uacpi_kernel_io_unmap(uacpi_handle handle) {
+  (void)handle;
+}
 
 uacpi_status uacpi_kernel_io_read8(uacpi_handle handle, uacpi_size offset,
                                    uacpi_u8 *out_value) {
@@ -280,9 +288,7 @@ void uacpi_kernel_stall(uacpi_u8 usec) { tsc_delay(usec * 1000); }
 
 void uacpi_kernel_sleep(uacpi_u64 msec) { tsc_delay_ms(msec); }
 
-/*
- * Sync / Mutex / Event
- */
+
 /*
  * Sync / Mutex / Event
  */
@@ -364,11 +370,13 @@ uacpi_bool uacpi_kernel_wait_for_event(uacpi_handle h, uacpi_u16 timeout) {
     if (obj->counter > 0) {
       obj->counter--;
       spinlock_unlock_irqrestore(&obj->lock, flags);
+      finish_wait(&obj->wait_q, &wait);
       return UACPI_TRUE;
     }
 
     if (timeout == 0) {
       spinlock_unlock_irqrestore(&obj->lock, flags);
+      finish_wait(&obj->wait_q, &wait);
       return UACPI_FALSE;
     }
 
@@ -464,37 +472,21 @@ typedef struct irq_mapping {
 } irq_mapping_t;
 
 static irq_mapping_t *irq_map_head = NULL;
-static spinlock_t irq_map_lock; // Use generic init?
+static spinlock_t irq_map_lock = 0;
 
 // Generic trampoline
 static void acpi_irq_trampoline(cpu_regs *regs) {
   uint32_t vector = regs->interrupt_number;
 
-  // Find handler
-  // Note: This is inside ISR, be careful with locks.
-  // Assuming irq_map is static after init or we use a lock-free lookup or
-  // simple search. Since uACPI doesn't remove handlers often, we can iterate.
-  // Spinlock usage in ISR is okay if we use irqsave (which we are already in
-  // IRQ).
-
-  // Actually, we shouldn't take a standard spinlock if we can avoid it.
-  // But let's assume it's fine.
-
+  irq_flags_t flags = spinlock_lock_irqsave(&irq_map_lock);
   irq_mapping_t *curr = irq_map_head;
   while (curr) {
     if (curr->vector == vector) {
       curr->handler(curr->ctx);
-      // Don't return, as multiple handlers might share IRQ?
-      // uACPI usually handles shared interrupts internally?
-      // "Install an interrupt handler at 'irq', 'ctx' is passed".
-      // If uACPI installs multiple, we get multiple calls to install.
-      // We should support chain?
-      // "uACPI... The handler returned via 'out_irq_handle' is used to refer to
-      // this handler". So we manage the chain. We should call ALL handlers for
-      // this vector.
     }
     curr = curr->next;
   }
+  spinlock_unlock_irqrestore(&irq_map_lock, flags);
 
   ic_send_eoi(vector - 32); // Send EOI.
 }
@@ -513,8 +505,11 @@ void uacpi_notify_ic_ready(void) {
       map->handler = p->handler;
       map->ctx = p->ctx;
       map->vector = vector;
+
+      irq_flags_t flags = spinlock_lock_irqsave(&irq_map_lock);
       map->next = irq_map_head;
       irq_map_head = map;
+      spinlock_unlock_irqrestore(&irq_map_lock, flags);
 
       // Install trampoline and unmask
       irq_install_handler(vector, acpi_irq_trampoline);
@@ -561,8 +556,10 @@ uacpi_status uacpi_kernel_install_interrupt_handler(
   map->vector = vector;
 
   // Add to list
+  irq_flags_t flags = spinlock_lock_irqsave(&irq_map_lock);
   map->next = irq_map_head;
   irq_map_head = map;
+  spinlock_unlock_irqrestore(&irq_map_lock, flags);
 
   if (out_irq_handle)
     *out_irq_handle = map;
@@ -579,8 +576,10 @@ uacpi_status uacpi_kernel_install_interrupt_handler(
 uacpi_status
 uacpi_kernel_uninstall_interrupt_handler(uacpi_interrupt_handler handler,
                                          uacpi_handle irq_handle) {
+  (void)handler;
   irq_mapping_t *target = irq_handle;
 
+  irq_flags_t flags = spinlock_lock_irqsave(&irq_map_lock);
   // Remove from list
   if (irq_map_head == target) {
     irq_map_head = target->next;
@@ -591,6 +590,7 @@ uacpi_kernel_uninstall_interrupt_handler(uacpi_interrupt_handler handler,
     if (curr)
       curr->next = target->next;
   }
+  spinlock_unlock_irqrestore(&irq_map_lock, flags);
 
   // If no more handlers for this vector, uninstall trampoline?
   // We can just leave it or check count.
@@ -611,9 +611,13 @@ typedef struct work_item {
 static work_item_t *work_head = NULL;
 static work_item_t *work_tail = NULL;
 static spinlock_t work_lock;
-static int acpi_worker_pid = 0;
+static wait_queue_head_t work_wait_q;
 
 static int acpi_worker_thread(void *data) {
+  (void)data;
+  wait_queue_t wait;
+  init_wait(&wait);
+
   while (1) {
     work_item_t *work = NULL;
 
@@ -630,8 +634,19 @@ static int acpi_worker_thread(void *data) {
       work->handler(work->ctx);
       kfree(work);
     } else {
-      // Sleep / Yield
-      task_sleep(); // Use proper sleep in worker thread
+      prepare_to_wait(&work_wait_q, &wait, TASK_UNINTERRUPTIBLE);
+
+      /* Re-check if work arrived while we were preparing to wait */
+      spinlock_lock(&work_lock);
+      if (work_head) {
+        spinlock_unlock(&work_lock);
+        finish_wait(&work_wait_q, &wait);
+        continue;
+      }
+      spinlock_unlock(&work_lock);
+
+      schedule();
+      finish_wait(&work_wait_q, &wait);
     }
   }
   return 0;
@@ -640,6 +655,7 @@ static int acpi_worker_thread(void *data) {
 uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type,
                                         uacpi_work_handler handler,
                                         uacpi_handle ctx) {
+  (void)type;
   work_item_t *work = kmalloc(sizeof(work_item_t));
   if (!work)
     return UACPI_STATUS_OUT_OF_MEMORY;
@@ -657,12 +673,7 @@ uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type,
   }
   spinlock_unlock(&work_lock);
 
-  // Wake up worker
-  if (acpi_worker_pid) {
-    // We need a way to wake up the worker specifically.
-    // For now, task_wake_up_all() or just rely on a global event?
-    // Actually, we could use an event_t for work queue signaling.
-  }
+  wake_up(&work_wait_q);
 
   return UACPI_STATUS_OK;
 }
@@ -688,9 +699,9 @@ uacpi_status uacpi_kernel_wait_for_work_completion(void) {
 uacpi_status uacpi_kernel_initialize(uacpi_init_level current_init_lvl) {
   if (current_init_lvl == UACPI_INIT_LEVEL_EARLY) {
     spinlock_init(&work_lock);
+    init_waitqueue_head(&work_wait_q);
     // Start worker thread
-    kthread_run(
-        kthread_create(acpi_worker_thread, NULL, "acpi_worker"));
+    kthread_run(kthread_create(acpi_worker_thread, NULL, "acpi_worker"));
   }
   return UACPI_STATUS_OK;
 }

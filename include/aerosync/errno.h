@@ -139,4 +139,11 @@
 #define ERFKILL     132 /* Operation not possible due to RF-kill */
 #define EHWPOISON   133 /* Memory page has hardware error */
 
+#define MAX_ERRNO	4095
+
+static inline void * ERR_PTR(long error)
+{
+  return (void *) error;
+}
+
 #endif /* _KERNEL_ERRNO_H */

@@ -4,7 +4,7 @@
  *
  * @file arch/x86_64/tsc.c
  * @brief TSC (Time Stamp Counter) management and calibration
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -70,11 +70,21 @@ void tsc_recalibrate_with_freq(uint64_t new_freq) {
 
 uint64_t get_time_ns() {
   if (tsc_freq == 0)
-    return 0; // Guard against divide-by-zero
+    return 0;
   uint64_t now = rdtsc();
   if (now < tsc_boot_offset)
     return 0;
-  return ((now - tsc_boot_offset) * 1000000000ULL) / tsc_freq;
+
+  uint64_t cycles = now - tsc_boot_offset;
+  
+  /* 
+   * Use a more robust calculation to avoid overflow:
+   * (cycles / freq) * 1e9 + ((cycles % freq) * 1e9) / freq
+   */
+  uint64_t seconds = cycles / tsc_freq;
+  uint64_t remainder = cycles % tsc_freq;
+  
+  return (seconds * 1000000000ULL) + ((remainder * 1000000000ULL) / tsc_freq);
 }
 
 uint64_t rdtsc(void) {
@@ -92,7 +102,15 @@ uint64_t rdtscp(void) {
 void tsc_delay(uint64_t ns) {
   uint64_t start = rdtsc();
   uint64_t end;
-  uint64_t ticks = (tsc_freq * ns) / 1000000000ULL;
+  
+  /* 
+   * Avoid overflow in (tsc_freq * ns) / 1e9 by using the same logic 
+   * in reverse or using __int128 if available. 
+   * Since we are in the kernel, we can use __int128 for simplicity if the compiler supports it.
+   */
+  unsigned __int128 ticks_128 = (unsigned __int128)tsc_freq * ns;
+  uint64_t ticks = (uint64_t)(ticks_128 / 1000000000ULL);
+
   do {
     end = rdtsc();
   } while ((end - start) < ticks);

@@ -4,7 +4,7 @@
  *
  * @file aerosync/sched/core.c
  * @brief Core scheduler implementation
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -40,6 +40,8 @@
 #include <mm/vma.h>
 #include <vsprintf.h>
 #include <arch/x86_64/gdt/gdt.h>
+
+static int idle_balance(struct rq *this_rq);
 
 /*
  * Scheduler Core Implementation
@@ -98,15 +100,15 @@ void set_task_cpu(struct task_struct *task, int cpu) { task->cpu = cpu; }
  * Core Scheduler Operations
  */
 
-void activate_task(struct rq *rq, struct task_struct *p) {
+void activate_task(struct rq *rq, struct task_struct *p, int flags) {
   if (p->sched_class && p->sched_class->enqueue_task) {
-    p->sched_class->enqueue_task(rq, p, ENQUEUE_WAKEUP);
+    p->sched_class->enqueue_task(rq, p, flags);
   }
 }
 
-void deactivate_task(struct rq *rq, struct task_struct *p) {
+void deactivate_task(struct rq *rq, struct task_struct *p, int flags) {
   if (p->sched_class && p->sched_class->dequeue_task) {
-    p->sched_class->dequeue_task(rq, p, 0);
+    p->sched_class->dequeue_task(rq, p, flags);
   }
 }
 
@@ -117,9 +119,9 @@ static void __move_task_to_rq_locked(struct task_struct *task, int dest_cpu) {
   struct rq *src_rq = per_cpu_ptr(runqueues, task->cpu);
   struct rq *dest_rq = per_cpu_ptr(runqueues, dest_cpu);
 
-  deactivate_task(src_rq, task);
+  deactivate_task(src_rq, task, DEQUEUE_MOVE);
   set_task_cpu(task, dest_cpu);
-  activate_task(dest_rq, task);
+  activate_task(dest_rq, task, ENQUEUE_MOVE);
 
   /* Update affinity cache or stats if needed */
   if (task->sched_class->migrate_task_rq) {
@@ -208,6 +210,7 @@ extern struct task_struct *switch_to(struct task_struct *prev,
 /*
  * Priority Inheritance Helpers
  */
+extern void init_dl_rq(struct dl_rq *dl_rq);
 
 /**
  * task_top_pi_prio - return the highest priority among PI waiters
@@ -229,17 +232,41 @@ void update_task_prio(struct task_struct *p) {
   int top_pi = task_top_pi_prio(p);
   const struct sched_class *old_class = p->sched_class;
 
-  p->prio = prio_less(p->normal_prio, top_pi) ? p->normal_prio : top_pi;
+  int new_prio = prio_less(p->normal_prio, top_pi) ? p->normal_prio : top_pi;
 
-  /* Check if class needs to change (e.g. fair task boosted to RT) */
-  if (rt_prio(p->prio) && !rt_prio(old_prio)) {
-    p->sched_class = &rt_sched_class;
-  } else if (!rt_prio(p->prio) && rt_prio(old_prio)) {
-    /* Only switch back if the original policy was not RT */
-    if (!task_has_rt_policy(p)) {
-      p->sched_class = &fair_sched_class;
-    }
+  /* If priority hasn't changed, we might still need to check class if policy changed,
+   * but usually we can bail out early here for performance. */
+  if (old_prio == new_prio && old_class->pick_next_task) {
+      // If we are not changing priority and class, we can usually skip the rest
+      // but let's check for policy-driven class changes.
+      bool policy_matches = true;
+      if (dl_prio(new_prio) && old_class != &dl_sched_class) policy_matches = false;
+      else if (rt_prio(new_prio) && old_class != &rt_sched_class) policy_matches = false;
+      
+      if (policy_matches) return;
   }
+
+  p->prio = new_prio;
+
+  /* Check if class needs to change based on new priority */
+  if (dl_prio(p->prio)) {
+    p->sched_class = &dl_sched_class;
+  } else if (rt_prio(p->prio)) {
+    p->sched_class = &rt_sched_class;
+  } else {
+    /* If strictly fair/idle policy, revert to fair class */
+    /* Note: if policy is SCHED_BATCH/IDLE, fair_sched_class handles it */
+    p->sched_class = &fair_sched_class;
+  }
+  
+  /* 
+   * Restore original class if priority boost is gone and policy matches.
+   * Logic above is simplified; if we track policy separately we should use it.
+   */
+   if (!dl_prio(p->prio) && !rt_prio(p->prio)) {
+       if (task_has_dl_policy(p)) p->sched_class = &dl_sched_class;
+       else if (task_has_rt_policy(p)) p->sched_class = &rt_sched_class;
+   }
 
   if (old_prio != p->prio || old_class != p->sched_class) {
     struct rq *rq = per_cpu_ptr(runqueues, p->cpu);
@@ -323,7 +350,7 @@ void task_sleep(void) {
       curr->sched_class->update_curr(rq);
   }
 
-  deactivate_task(rq, curr);
+  deactivate_task(rq, curr, DEQUEUE_SLEEP);
 
   spinlock_unlock_irqrestore(&rq->lock, flags);
 
@@ -331,18 +358,63 @@ void task_sleep(void) {
 }
 
 void task_wake_up(struct task_struct *task) {
-  struct rq *rq = per_cpu_ptr(runqueues, task->cpu);
+  int cpu = cpu_id();
+  int target_cpu = task->cpu;
+  struct rq *rq;
+  irq_flags_t flags;
 
-  irq_flags_t flags = spinlock_lock_irqsave(&rq->lock);
+  /* 
+   * Select the best CPU for this task.
+   * This allows the scheduler class to implement wake-up balancing (e.g., pulling to idle CPU).
+   */
+  if (task->sched_class && task->sched_class->select_task_rq) {
+    target_cpu = task->sched_class->select_task_rq(task, cpu, ENQUEUE_WAKEUP);
+  }
 
-  if (task->state != TASK_RUNNING) {
-    task->state = TASK_RUNNING;
-    activate_task(rq, task);
+  /* 
+   * Lock the PREVIOUS runqueue to serialize against concurrent wakeups 
+   * or the task still being put to sleep.
+   */
+  struct rq *prev_rq = per_cpu_ptr(runqueues, task->cpu);
+  flags = spinlock_lock_irqsave(&prev_rq->lock);
 
-    /* Preemption check */
-    if (rq->curr && rq->curr->sched_class->check_preempt_curr) {
-      rq->curr->sched_class->check_preempt_curr(rq, task, ENQUEUE_WAKEUP);
-    }
+  if (task->state == TASK_RUNNING) {
+    /* Already running, nothing to do */
+    spinlock_unlock_irqrestore(&prev_rq->lock, flags);
+    return;
+  }
+
+  /* Handle migration if the selected CPU is different */
+  if (target_cpu != task->cpu) {
+    set_task_cpu(task, target_cpu);
+  }
+
+  /* 
+   * If target CPU is different from previous, we need to switch locks.
+   * Note: We are holding prev_rq->lock.
+   */
+  rq = per_cpu_ptr(runqueues, target_cpu);
+  if (rq != prev_rq) {
+    spinlock_unlock(&prev_rq->lock);
+    spinlock_lock(&rq->lock);
+  }
+
+  /* Now we hold rq->lock (target runqueue) */
+
+  task->state = TASK_RUNNING;
+  activate_task(rq, task, ENQUEUE_WAKEUP);
+
+  /* Preemption check */
+  if (rq->curr && rq->curr->sched_class->check_preempt_curr) {
+    rq->curr->sched_class->check_preempt_curr(rq, task, ENQUEUE_WAKEUP);
+  }
+
+  /* 
+   * If we woke up a task on a remote CPU, we might need to kick it 
+   * so it reschedules immediately (if priority is higher).
+   */
+  if (target_cpu != cpu) {
+     reschedule_cpu(target_cpu);
   }
 
   spinlock_unlock_irqrestore(&rq->lock, flags);
@@ -406,7 +478,7 @@ void set_task_nice(struct task_struct *p, int nice) {
   int running = (p->state == TASK_RUNNING); /* Simplification */
 
   if (running)
-    deactivate_task(rq, p);
+    deactivate_task(rq, p, DEQUEUE_SAVE);
 
   p->nice = nice;
   p->static_prio = nice + NICE_TO_PRIO_OFFSET;
@@ -417,7 +489,7 @@ void set_task_nice(struct task_struct *p, int nice) {
       rq, p, p->nice); /* passing new nice as old prio? no fix later */
 
   if (running)
-    activate_task(rq, p);
+    activate_task(rq, p, ENQUEUE_RESTORE);
 
   spinlock_unlock_irqrestore(&rq->lock, flags);
 }
@@ -454,6 +526,17 @@ void schedule(void) {
   /* Pick next task */
   next_task = pick_next_task(rq);
 
+  if (next_task == rq->idle && rq->nr_running == 0) {
+    /* Release rq lock before idle_balance as it might take other rq locks */
+    spinlock_unlock(&rq->lock);
+    if (idle_balance(rq)) {
+      spinlock_lock(&rq->lock);
+      next_task = pick_next_task(rq);
+    } else {
+      spinlock_lock(&rq->lock);
+    }
+  }
+
   if (!next_task) {
     /* Should never happen as idle class always returns a task */
     if (rq->idle) {
@@ -471,6 +554,7 @@ void schedule(void) {
     set_current(next_task);
 
     /* Switch MM */
+    unmet_cond_crit(!prev_task);
     if (next_task->mm) {
       switch_mm(prev_task->active_mm, next_task->mm, next_task);
       next_task->active_mm = next_task->mm;
@@ -530,7 +614,7 @@ static struct sched_group *find_busiest_group(struct sched_domain *sd, int this_
     unsigned long avg_load = 0;
     int cpu;
     for_each_cpu(cpu, &sg->cpumask) {
-      avg_load += per_cpu_ptr(runqueues, cpu)->avg_load;
+      avg_load += per_cpu_ptr(runqueues, cpu)->cfs.avg.load_avg;
     }
 
     if (avg_load > max_load) {
@@ -571,40 +655,80 @@ static void load_balance(void) {
     unsigned long max_load = 0;
     int cpu;
     for_each_cpu(cpu, &group->cpumask) {
-      if (per_cpu_ptr(runqueues, cpu)->avg_load > max_load) {
-        max_load = per_cpu_ptr(runqueues, cpu)->avg_load;
+      struct rq *remote_rq = per_cpu_ptr(runqueues, cpu);
+      /* Use PELT load avg */
+      unsigned long load = remote_rq->cfs.avg.load_avg;
+      
+      /* Also consider nr_running to avoid pulling from 1 task to 0 task if load is high? 
+         If nr_running <= 1, usually don't pull unless we are 0?
+      */
+      
+      if (load > max_load && remote_rq->nr_running > 1) {
+        max_load = load;
         busiest_cpu = cpu;
       }
     }
 
-    if (busiest_cpu != -1 && max_load > rq->avg_load + NICE_0_LOAD) {
+    /* 
+     * Threshold: Only pull if imbalance is significant.
+     * Imbalance > 25% of our load or if we are idle and they are busy.
+     */
+    if (busiest_cpu != -1 && max_load > rq->cfs.avg.load_avg + (rq->cfs.avg.load_avg / 4) + NICE_0_LOAD) {
       struct rq *src_rq = per_cpu_ptr(runqueues, busiest_cpu);
 
       irq_flags_t flags = save_irq_flags();
       cpu_cli();
       double_rq_lock(src_rq, rq);
 
-      /* Migration logic */
-      struct rb_node *n = rb_first(&src_rq->cfs.tasks_timeline);
-      struct task_struct *candidate = NULL;
+      /* Calculate how much load to move to equalize */
+      unsigned long total_load = max_load + rq->cfs.avg.load_avg;
+      unsigned long target_load = total_load / 2;
+      unsigned long imbalance = max_load - target_load;
+      
+      unsigned long moved_load = 0;
+      int moved_count = 0;
 
-      for (; n; n = rb_next(n)) {
+      /* Migration logic - try to move tasks until imbalance is met */
+      struct rb_node *n = rb_first(&src_rq->cfs.tasks_timeline);
+      
+      /* Limit iterations to avoid holding lock too long */
+      int loop_limit = 32;
+
+      while (n && moved_load < imbalance && loop_limit-- > 0) {
         struct sched_entity *se = rb_entry(n, struct sched_entity, run_node);
         struct task_struct *t = container_of(se, struct task_struct, se);
+        
+        /* Save next node before potential removal */
+        n = rb_next(n);
 
+        /* Skip if task is running (current) - simpler not to move it */
         if (t == src_rq->curr) continue;
+        
+        /* IMPORTANT: Check affinity */
         if (!task_can_run_on(t, this_cpu)) continue;
+        
+        /* Don't move cache-hot tasks? We lack 'last_run' timestamp in task struct for now.
+           Assuming task at left of tree (low vruntime) starved? No, low vruntime means it needs to run.
+           Maybe moving leftmost is good for fairness.
+        */
 
-        candidate = t;
-        break;
-      }
-
-      if (candidate) {
-        __move_task_to_rq_locked(candidate, this_cpu);
+        unsigned long task_load = se->load.weight;
+        
+        /* Move the task */
+        __move_task_to_rq_locked(t, this_cpu);
+        
+        moved_load += task_load;
+        moved_count++;
+        
         rq->stats.nr_migrations++;
+      }
+      
+      if (moved_count > 0) {
         rq->stats.nr_load_balance++;
-        printk(KERN_DEBUG SCHED_CLASS "Migrated %s from CPU %d to %d (Domain: %s)\n",
-               candidate->comm, busiest_cpu, this_cpu, sd->name);
+        /* 
+         * Reduced verbosity: Only print if we moved a significant chunk or for debugging.
+         */
+        /* printk(KERN_DEBUG SCHED_CLASS "LB: Moved %d tasks from CPU%d to CPU%d\n", moved_count, busiest_cpu, this_cpu); */
       }
 
       double_rq_unlock(src_rq, rq);
@@ -613,6 +737,74 @@ static void load_balance(void) {
 
     sd->next_balance = rq->clock + sd->min_interval;
   }
+}
+
+/**
+ * idle_balance - Attempt to pull tasks from other CPUs when becoming idle
+ */
+static int idle_balance(struct rq *this_rq) {
+  struct sched_domain *sd;
+  int pulled = 0;
+
+  /* We can only balance if we're actually idle (nr_running == 0) */
+  if (this_rq->nr_running > 0)
+    return 0;
+
+  for (sd = this_rq->sd; sd; sd = sd->parent) {
+    if (!(sd->flags & SD_BALANCE_NEWIDLE))
+      continue;
+
+    struct sched_group *group = find_busiest_group(sd, this_rq->cpu);
+    if (!group) continue;
+
+    /* Find busiest CPU in that group */
+    int busiest_cpu = -1;
+    unsigned long max_load = 0;
+    int cpu;
+    for_each_cpu(cpu, &group->cpumask) {
+      if (per_cpu_ptr(runqueues, cpu)->cfs.avg.load_avg > max_load) {
+        max_load = per_cpu_ptr(runqueues, cpu)->cfs.avg.load_avg;
+        busiest_cpu = cpu;
+      }
+    }
+
+    if (busiest_cpu != -1 && max_load > NICE_0_LOAD) {
+      struct rq *src_rq = per_cpu_ptr(runqueues, busiest_cpu);
+
+      /* We don't hold src_rq->lock here yet, so we must be careful.
+         Actually, load_balance logic uses double_rq_lock.
+      */
+      double_rq_lock(src_rq, this_rq);
+
+      /* Find candidate tasks - move up to half load or until we have some work */
+      unsigned long imbalance = (max_load - this_rq->cfs.avg.load_avg) / 2;
+      unsigned long moved_load = 0;
+      struct rb_node *n = rb_first(&src_rq->cfs.tasks_timeline);
+
+      while (n && (moved_load < imbalance || pulled == 0)) {
+        struct sched_entity *se = rb_entry(n, struct sched_entity, run_node);
+        struct task_struct *t = container_of(se, struct task_struct, se);
+        
+        n = rb_next(n);
+
+        if (t == src_rq->curr) continue;
+        if (!task_can_run_on(t, this_rq->cpu)) continue;
+
+        __move_task_to_rq_locked(t, this_rq->cpu);
+        moved_load += se->load.weight;
+        this_rq->stats.nr_migrations++;
+        pulled++;
+        
+        /* For idle balance, even one task is enough to stop being idle, but grabbing a few is better for cache */
+        if (pulled >= 2 && moved_load >= imbalance) break;
+      }
+
+      double_rq_unlock(src_rq, this_rq);
+      if (pulled) break;
+    }
+  }
+
+  return pulled;
 }
 
 #define LOAD_BALANCE_INTERVAL_TICKS 100
@@ -672,9 +864,11 @@ void sched_init(void) {
     for (int j = 0; j < MAX_RT_PRIO_LEVELS; j++)
       INIT_LIST_HEAD(&rq->rt.queue[j]);
     rq->rt.rt_runtime = 950000000;
+    /* Init Deadline */
+    init_dl_rq(&rq->dl);
   }
 
-  printk(SCHED_CLASS "CFS/RT scheduler initialized for %d logical CPUs.\n",
+  printk(SCHED_CLASS "CFS/RT/DL scheduler initialized for %d logical CPUs.\n",
          MAX_CPUS);
 
   /* Build topology domains */

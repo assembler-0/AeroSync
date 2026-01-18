@@ -4,7 +4,7 @@
  *
  * @file aerosync/sysintf/ic.c
  * @brief Unified interrupt controller management
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -121,13 +121,13 @@ void ic_shutdown_controller(void) {
   current_controller = NULL;
 }
 
-void ic_enable_irq(uint8_t irq_line) {
+void ic_enable_irq(uint32_t irq_line) {
   if (!current_controller) panic(IC_CLASS "IC not initialized");
   if (!current_controller->enable_irq) panic(IC_CLASS "enable_irq not supported");
   current_controller->enable_irq(irq_line);
 }
 
-void ic_disable_irq(uint8_t irq_line) {
+void ic_disable_irq(uint32_t irq_line) {
   if (!current_controller) panic(IC_CLASS "IC not initialized");
   if (!current_controller->disable_irq) panic(IC_CLASS "disable_irq not supported");
   current_controller->disable_irq(irq_line);

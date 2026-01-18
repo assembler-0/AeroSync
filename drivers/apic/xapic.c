@@ -4,7 +4,7 @@
  *
  * @file drivers/apic/xapic.c
  * @brief xAPIC driver
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -24,6 +24,7 @@
 #include <aerosync/classes.h>
 #include <aerosync/fkx/fkx.h>
 #include <mm/vmalloc.h>
+#include <aerosync/sysintf/madt.h>
 
 // --- Register Definitions ---
 
@@ -87,16 +88,15 @@ static int xapic_init_lapic(void) {
 
   // Get LAPIC physical base address from MSR
   uint64_t lapic_phys_base = lapic_base_msr & 0xFFFFFFFFFFFFF000ULL;
-  
 
-      // Prefer MADT LAPIC Address Override if present
-      // Accessed via global from apic.c (extern in xapic.h)
-      if (xapic_madt_parsed && xapic_madt_lapic_override_phys) {
-    lapic_phys_base = (uint64_t)xapic_madt_lapic_override_phys;
+  // Prefer MADT LAPIC Address Override if present
+  uint64_t madt_lapic = madt_get_lapic_address();
+  if (madt_lapic != 0) {
+    lapic_phys_base = madt_lapic;
   }
 
   // Map the LAPIC into virtual memory
-  xapic_lapic_base = (volatile uint32_t *)viomap(lapic_phys_base, PAGE_SIZE);
+  xapic_lapic_base = (volatile uint32_t *)ioremap(lapic_phys_base, PAGE_SIZE);
 
   if (!xapic_lapic_base) {
     printk(KERN_ERR APIC_CLASS "Failed to map LAPIC MMIO.\n");

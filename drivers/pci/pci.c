@@ -4,7 +4,7 @@
  *
  * @file drivers/pci/pci.c
  * @brief Modern PCI Subsystem Implementation (Registered Subsystem)
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
 #include <aerosync/classes.h>

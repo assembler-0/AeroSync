@@ -105,6 +105,9 @@ static inline void *pmm_phys_to_virt(uint64_t phys_addr);
  */
 static inline uint64_t pmm_virt_to_phys(void *virt_addr);
 
+
+uint64_t pmm_get_max_pfn(void);
+
 // HHDM offset - set during pmm_init
 
 extern uint64_t g_hhdm_offset;
