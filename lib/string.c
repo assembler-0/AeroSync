@@ -20,7 +20,7 @@
 
 #include <lib/string.h>
 #include <aerosync/fkx/fkx.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 
 bool is_word_boundary(char c) {
   return c == ' ' || c == '\t' || c == '\n' || c == '\0';

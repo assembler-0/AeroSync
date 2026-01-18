@@ -36,7 +36,7 @@
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <linux/container_of.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <mm/vma.h>
 #include <vsprintf.h>
 #include <arch/x86_64/gdt/gdt.h>

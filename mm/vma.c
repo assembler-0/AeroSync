@@ -31,7 +31,7 @@
 #include <linux/list.h>
 #include <linux/maple_tree.h>
 #include <mm/mmu_gather.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <mm/vma.h>
 #include <mm/vm_object.h>
 #include <arch/x86_64/mm/tlb.h>

@@ -55,7 +55,7 @@
 #include <linux/maple_tree.h>
 #include <linux/xarray.h>
 #include <aerosync/fkx/fkx.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <linux/container_of.h>
 #include <lib/math.h>
 #include <linux/kernel.h>

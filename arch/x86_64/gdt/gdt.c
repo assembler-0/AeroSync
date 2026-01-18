@@ -23,7 +23,7 @@
 #include <arch/x86_64/percpu.h>
 #include <compiler.h>
 #include <aerosync/spinlock.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 
 #include <arch/x86_64/mm/paging.h>
 

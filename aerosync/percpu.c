@@ -9,7 +9,7 @@
 #include <aerosync/panic.h>
 #include <lib/printk.h>
 #include <lib/string.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 
 #ifndef ALIGN
 #define ALIGN(x, a) (((x) + (a) - 1) & ~((a) - 1))

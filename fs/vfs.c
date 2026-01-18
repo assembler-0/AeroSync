@@ -26,7 +26,7 @@
 #include <aerosync/mutex.h>
 #include <lib/printk.h>
 #include <aerosync/classes.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 
 // Global lists for VFS objects
 LIST_HEAD(super_blocks);  // List of all mounted superblocks

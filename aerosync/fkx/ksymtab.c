@@ -1,7 +1,7 @@
 #include <aerosync/classes.h>
 #include <aerosync/fkx/fkx.h>
 #include <lib/string.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <lib/printk.h>
 
 extern const struct fkx_symbol _fkx_ksymtab_start[];

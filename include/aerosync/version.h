@@ -13,10 +13,10 @@
 #define AEROSYNC_CODENAME "Invariant"
 
 #ifdef MM_HARDENING
-# define AEROSYNC_VERSION "r0c1.hardened - 3.2.5-" AEROSYNC_CODENAME "+branch.v1.0.1-90-g3ff93b1-dirty.dev+abi." "0"
+# define AEROSYNC_VERSION "r0c1.hardened - 3.2.5-" AEROSYNC_CODENAME "+branch.v1.0.1-91-g15fc6f6-dirty.dev+abi." "0"
 # define AEROSYNC_VERSION_LEAN  "r0c1.hardened-" AEROSYNC_CODENAME
 #else /* MM_HARDENING */
-# define AEROSYNC_VERSION "r0c1 - 3.2.5-" AEROSYNC_CODENAME "+branch.v1.0.1-90-g3ff93b1-dirty.dev+abi." "0"
+# define AEROSYNC_VERSION "r0c1 - 3.2.5-" AEROSYNC_CODENAME "+branch.v1.0.1-91-g15fc6f6-dirty.dev+abi." "0"
 # define AEROSYNC_VERSION_LEAN  "r0c1-" AEROSYNC_CODENAME
 #endif /* MM_HARDENING */
 

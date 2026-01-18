@@ -12,7 +12,7 @@
 #include <aerosync/fkx/fkx.h>
 #include <lib/printk.h>
 #include <lib/string.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <linux/container_of.h>
 #include <drivers/pci/backend_ecam.h>
 #include <drivers/pci/backend_pio.h>

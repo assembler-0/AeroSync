@@ -10,7 +10,7 @@
 #include <mm/vm_object.h>
 #include <mm/vma.h>
 #include <mm/page.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <fs/vfs.h>
 #include <aerosync/errno.h>
 #include <lib/string.h>

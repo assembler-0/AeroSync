@@ -17,7 +17,7 @@
 #include <aerosync/classes.h>
 #include <lib/printk.h>
 #include <lib/string.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 
 
 /* CPU capability flags */

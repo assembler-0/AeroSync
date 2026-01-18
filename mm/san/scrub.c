@@ -10,7 +10,7 @@
 #include <aerosync/sched/sched.h>
 #include <aerosync/panic.h>
 #include <lib/printk.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <mm/zone.h>
 #include <mm/vma.h>
 #include <aerosync/sched/process.h>

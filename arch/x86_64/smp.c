@@ -33,7 +33,7 @@
 #include <aerosync/sysintf/panic.h>
 #include <lib/printk.h>
 #include <limine/limine.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <aerosync/timer.h>
 #include <linux/container_of.h>
 

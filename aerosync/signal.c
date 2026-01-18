@@ -24,7 +24,7 @@
 #include <aerosync/sched/process.h>
 #include <aerosync/errno.h>
 #include <aerosync/panic.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <lib/string.h>
 #include <lib/printk.h>
 #include <arch/x86_64/entry.h>

@@ -30,7 +30,7 @@
 #include <linux/container_of.h>
 #include <mm/gfp.h>
 #include <mm/page.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <mm/vmalloc.h>
 #include <mm/zone.h>
 #include <crypto/rng.h>
@@ -43,7 +43,7 @@ static uint64_t slab_secret = 0;
 static kmem_cache_t *kmalloc_caches[15];
 
 /* Advanced SLUB/Magazine Hybrid with NUMA-awareness */
-/* TODO: rename slab.c -> slub.c and its header */
+
 /*
  * Slab Merging - Optimization for VFS/FD
  * If a cache with the same size/align/flags exists, reuse it.
@@ -149,7 +149,7 @@ static void set_redzone(kmem_cache_t *s, void *obj) {
   if (!(s->flags & SLAB_RED_ZONE))
     return;
   uint64_t *redzone = (uint64_t *)((char *)obj + s->inuse);
-  *redzone = 0xdeadbeefdeadbeef;
+  *redzone = STACK_CANARY_VALUE;
 #else
   (void)s; (void)obj;
 #endif
@@ -160,7 +160,7 @@ static void check_redzone(kmem_cache_t *s, void *obj) {
   if (!(s->flags & SLAB_RED_ZONE))
     return;
   uint64_t *redzone = (uint64_t *)((char *)obj + s->inuse);
-  if (unlikely(*redzone != 0xdeadbeefdeadbeef)) {
+  if (unlikely(*redzone != STACK_CANARY_VALUE)) {
     panic("SLUB: Redzone corruption detected in %s at %p\n", s->name, obj);
   }
 #else

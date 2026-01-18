@@ -9,11 +9,10 @@
 
 #include <mm/vm_object.h>
 #include <mm/page.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <aerosync/wait.h>
 #include <aerosync/sched/process.h>
 #include <lib/printk.h>
-#include <aerosync/errno.h>
 #include <aerosync/atomic.h>
 #include <aerosync/spinlock.h>
 #include <linux/list.h>

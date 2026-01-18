@@ -1,6 +1,6 @@
 #include <fs/vfs.h>
 #include <fs/file.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <aerosync/sched/sched.h>
 #include <aerosync/spinlock.h>
 #include <lib/string.h>

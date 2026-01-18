@@ -34,7 +34,7 @@
 #include <arch/x86_64/tsc.h>
 #include <lib/printk.h>
 #include <lib/string.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <mm/vma.h>
 #include <mm/vmalloc.h>
 #include <uacpi/kernel_api.h>

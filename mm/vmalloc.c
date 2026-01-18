@@ -28,7 +28,7 @@
 #include <linux/rcupdate.h>
 #include <mm/mm_types.h>
 #include <mm/page.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <mm/vm_object.h>
 #include <mm/vma.h>
 #include <mm/vmalloc.h>

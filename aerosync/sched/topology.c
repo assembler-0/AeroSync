@@ -12,7 +12,7 @@
 #include <aerosync/sched/sched.h>
 #include <aerosync/sched/cpumask.h>
 #include <arch/x86_64/smp.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <lib/printk.h>
 #include <aerosync/classes.h>
 

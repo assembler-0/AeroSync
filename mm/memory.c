@@ -23,7 +23,7 @@
 #include <mm/vma.h>
 #include <mm/vm_object.h>
 #include <mm/page.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <mm/mmu_gather.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/mm/vmm.h>

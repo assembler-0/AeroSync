@@ -16,7 +16,7 @@
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <mm/gfp.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 
 struct slab_sheaf *kmem_cache_prefill_sheaf(struct kmem_cache *cache, gfp_t gfp,
                                             size_t count) {

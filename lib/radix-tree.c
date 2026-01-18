@@ -11,7 +11,7 @@
 
 #include <aerosync/fkx/fkx.h>
 #include <linux/xarray.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <linux/radix-tree.h>
 #include <linux/idr.h>
 #include <linux/container_of.h>

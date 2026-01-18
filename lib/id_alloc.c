@@ -9,7 +9,7 @@
 
 #include <lib/id_alloc.h>
 #include <lib/bitmap.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <mm/vmalloc.h>
 #include <lib/string.h>
 

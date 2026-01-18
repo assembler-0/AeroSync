@@ -21,7 +21,7 @@
 #include <mm/vma.h>
 #include <mm/mm_types.h>
 #include <mm/page.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <arch/x86_64/mm/vmm.h>
 #include <aerosync/sched/process.h>
 #include <aerosync/sched/sched.h>

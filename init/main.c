@@ -51,7 +51,7 @@
 #include <limine/limine.h>
 #include <linux/maple_tree.h>
 #include <linux/radix-tree.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <mm/vma.h>
 #include <mm/vmalloc.h>
 #include <mm/vm_object.h>

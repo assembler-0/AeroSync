@@ -1,6 +1,6 @@
 #include <fs/vfs.h>
 #include <lib/string.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <lib/printk.h>
 #include <aerosync/classes.h>
 

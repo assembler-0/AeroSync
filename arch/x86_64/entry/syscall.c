@@ -31,7 +31,7 @@
 #include <arch/x86_64/entry.h>
 #include <fs/file.h>
 #include <fs/vfs.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <lib/bitmap.h>
 #include <aerosync/signal.h>
 #include <mm/vma.h>

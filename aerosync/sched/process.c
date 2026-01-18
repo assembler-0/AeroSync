@@ -33,7 +33,7 @@
 #include <aerosync/sched/sched.h>
 #include <lib/id_alloc.h>
 #include <lib/string.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <mm/vma.h>
 #include <mm/vmalloc.h>
 #include <lib/vsprintf.h>

@@ -14,7 +14,7 @@
 #include <uacpi/tables.h>
 #include <mm/vmalloc.h>
 #include <lib/printk.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 
 typedef struct {
   uint64_t phys_base;

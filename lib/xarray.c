@@ -9,7 +9,7 @@
 #include <aerosync/fkx/fkx.h>
 #include <lib/math.h>
 #include <linux/xarray.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 
 #include "radix-tree.h"
 

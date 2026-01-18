@@ -10,7 +10,7 @@
 #include <aerosync/sched/sched.h>
 #include <aerosync/sched/process.h>
 #include <linux/container_of.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <lib/printk.h>
 #include <aerosync/wait.h>
 #include <aerosync/classes.h>
