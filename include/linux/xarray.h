@@ -21,7 +21,7 @@ struct list_lru;
 /*
  * The bottom two bits of the entry determine how the XArray interprets
  * the contents:
- *
+ *#
  * 00: Pointer entry
  * 10: Internal entry
  * x1: Value entry or tagged pointer

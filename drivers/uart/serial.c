@@ -75,7 +75,7 @@ int serial_is_initialized(void) {
 
 static printk_backend_t serial_backend = {
   .name = "serial",
-  .priority = 150,
+  .priority = 50,
   .putc = serial_write_char,
   .probe = serial_probe,
   .init = serial_init_standard,

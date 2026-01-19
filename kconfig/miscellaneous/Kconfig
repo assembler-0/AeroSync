@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+menu "miscellaneous"
+
+config INCLUDE_MM_TESTS
+    bool "Include memory tests"
+    default y
+    help
+      Include memory-related stress tests (only enable on verbose boot)
+
+endmenu

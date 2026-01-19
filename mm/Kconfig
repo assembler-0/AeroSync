@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+menu "memory"
+
+config MM_HARDENING
+    bool "Enable MM poisoning and redzones"
+    default n
+    help
+      Enables additional memory manager hardening features such as page
+      poisoning and redzone checks. Highly affects performance, use only for
+      testing purposes
+
+endmenu

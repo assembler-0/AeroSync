@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+menu "arch"
+
+config SYMMETRIC_MP
+    bool "Enable SMP support"
+    default y
+    help
+      Enables SMP support for the AeroSync kernel subsystems
+
+endmenu
