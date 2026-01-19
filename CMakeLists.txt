@@ -63,6 +63,12 @@ include(cache)
 include(ccache)
 include(dependencies)
 include(configuration)
+include(kconfig)
+
+if(DEFINED AEROSYNC_KCONFIG_DEFINES)
+    add_compile_definitions(${AEROSYNC_KCONFIG_DEFINES})
+endif()
+
 include(lib/uACPI/uacpi.cmake)
 include(source)
 include(fkx)
@@ -163,10 +169,6 @@ if(STACK_PROTECTION)
             -D_FORTIFY_SOURCE=2
         >
     )
-endif()
-
-if(MM_HARDENING)
-    target_compile_definitions(aerosync.krnl PRIVATE MM_HARDENING)
 endif()
 
 if(INTEL_CET)

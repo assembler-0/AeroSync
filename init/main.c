@@ -213,6 +213,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   sched_init();
   sched_init_task(&bsp_task);
 
+#ifdef INCLUDE_MM_TESTS
   if (cmdline_get_flag("verbose")) {
     pmm_test();
     vmm_test();
@@ -221,6 +222,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     vmalloc_test();
     vmalloc_dump();
   }
+#endif
 
   system_load_extensions(get_module_request());
 

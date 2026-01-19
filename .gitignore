@@ -3,3 +3,4 @@
 include/kernel/version.h
 .venv
 .idea
+.config*

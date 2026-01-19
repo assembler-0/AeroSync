@@ -261,6 +261,7 @@ void smp_call_function(smp_call_func_t func, void *info, bool wait) {
 
 
 void smp_init(void) {
+#ifdef SYMMETRIC_MP
   if (cpu_count == 0) {
     smp_parse_topology();
   }
@@ -314,6 +315,10 @@ void smp_init(void) {
   __atomic_store_n(&smp_start_barrier, 1, __ATOMIC_RELEASE);
 
   printk(SMP_CLASS "%d APs online.\n", cpus_online);
+#else
+  printk(KERN_WARNING SMP_CLASS "SYMMETRIC_MP is not enabled, single core mode only\n");
+  cpu_count = 1;
+#endif
 }
 
 void smp_prepare_boot_cpu(void) {

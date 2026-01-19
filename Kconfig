@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+mainmenu "AeroSync Kernel Configuration"
+
+menu "system"
+
+config SYMMETRIC_MP
+    bool "Enable SMP support"
+    default y
+    help
+      Enables SMP support for the AeroSync kernel subsystems
+
+endmenu
+# --- END of menu "system" ---
+
+menu "memory"
+
+config MM_HARDENING
+    bool "Enable MM poisoning and redzones"
+    default n
+    help
+      Enables additional memory manager hardening features such as page
+      poisoning and redzone checks. Highly affects performance, use only for
+      testing purposes
+
+endmenu
+# --- END of menu "memory" ---
+
+menu "compatability"
+
+config SPINLOCK_LINUX_COMPAT
+    bool "Enable common Linux macros/methods for spinlock"
+    default y
+    help
+      Enables Linux-style spinlock definitions
+
+endmenu
+# --- END of menu "compatability" ---
+
+menu "miscellaneous"
+
+config INCLUDE_MM_TESTS
+    bool "Include memory tests"
+    default y
+    help
+      Include memory-related stress tests (only enable on verbose boot)
+
+endmenu
+# --- END of menu "compatability" ---
+

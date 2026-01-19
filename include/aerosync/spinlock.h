@@ -71,105 +71,9 @@ static inline int spinlock_is_locked(volatile int *lock) {
   return *lock;
 }
 
-static inline void spin_lock_irqsave(volatile int *lock, irq_flags_t *flags) {
-  *flags = save_irq_flags();
-  cpu_cli();
-  spinlock_lock(lock);
-}
-
-// MCS-style queue lock (more fair, less cache bouncing)
-typedef struct mcs_node {
-  volatile struct mcs_node *next;
-  volatile int locked;
-} mcs_node_t;
-
-static inline void mcs_lock(volatile mcs_node_t **lock, mcs_node_t *node) {
-  node->next = NULL;
-  node->locked = 1;
-
-  mcs_node_t *prev =
-      (mcs_node_t *) __atomic_exchange_n(lock, node, __ATOMIC_ACQUIRE);
-  if (prev) {
-    prev->next = node;
-    while (node->locked) __builtin_ia32_pause();
-  }
-}
-
-static inline void mcs_unlock(volatile mcs_node_t **lock, mcs_node_t *node) {
-  if (!node->next) {
-    mcs_node_t *expected = node;
-    if (__atomic_compare_exchange_n(lock, (volatile mcs_node_t **)
-                                    &expected, NULL, false, __ATOMIC_RELEASE, __ATOMIC_RELAXED)) {
-      return;
-    }
-    while (!node->next) __builtin_ia32_pause();
-  }
-  node->next->locked = 0;
-}
-
-// Reader-Writer spinlock (if you need shared/exclusive access)
-typedef struct {
-  volatile int readers;
-  volatile int writer;
-  volatile uint32_t owner;
-  volatile int recursion;
-} rwlock_t;
-
-#define RWLOCK_INIT { .readers = 0, .writer = 0, .owner = 0, .recursion = 0 }
-
-static inline void read_lock(rwlock_t *lock, uint32_t owner_id) {
-  if (lock->writer && lock->owner == owner_id) {
-    // The current process holds the write lock, so it can "read"
-    return;
-  }
-  while (1) {
-    while (lock->writer) __builtin_ia32_pause();
-    __atomic_fetch_add(&lock->readers, 1, __ATOMIC_ACQUIRE);
-    if (!lock->writer) break;
-    __atomic_fetch_sub(&lock->readers, 1, __ATOMIC_RELAXED);
-  }
-}
-
-static inline void read_unlock(rwlock_t *lock, uint32_t owner_id) {
-  if (lock->writer && lock->owner == owner_id) {
-    __atomic_thread_fence(__ATOMIC_RELEASE);
-    return;
-  }
-  __atomic_fetch_sub(&lock->readers, 1, __ATOMIC_RELEASE);
-}
-
-static inline void write_lock(rwlock_t *lock, uint32_t owner_id) {
-  if (lock->writer && lock->owner == owner_id) {
-    lock->recursion++;
-    return;
-  }
-
-  while (__atomic_test_and_set(&lock->writer, __ATOMIC_ACQUIRE)) {
-    while (lock->writer) __builtin_ia32_pause();
-  }
-  while (lock->readers) __builtin_ia32_pause();
-
-  lock->owner = owner_id;
-  lock->recursion = 1;
-}
-
-static inline void write_unlock(rwlock_t *lock) {
-  if (lock->recursion <= 0) {
-    lock->recursion = 0;
-    lock->owner = 0;
-    __atomic_clear(&lock->writer, __ATOMIC_RELEASE);
-    return;
-  }
-  if (--lock->recursion == 0) {
-    lock->owner = 0;
-    __atomic_clear(&lock->writer, __ATOMIC_RELEASE);
-  }
-}
-
 static inline void spinlock_unlock(volatile int *lock) {
   __atomic_clear(lock, __ATOMIC_RELEASE);
 }
-
 
 static inline irq_flags_t spinlock_lock_irqsave(volatile int *lock) {
   irq_flags_t flags = save_irq_flags();
@@ -182,3 +86,30 @@ static inline void spinlock_unlock_irqrestore(volatile int *lock, irq_flags_t fl
   __atomic_clear(lock, __ATOMIC_RELEASE);
   restore_irq_flags(flags);
 }
+
+#ifdef SPINLOCK_LINUX_COMPAT
+
+# define __SPINLOCK_UNLOCKED SPINLOCK_UNLOCKED
+# define __SPINLOCK_LOCKED SPINLOCK_LOCKED
+# define __SPIN_LOCK_UNLOCKED(x) do { (x) = SPINLOCK_UNLOCKED; } while (0)
+# define __SPINLOCK_INIT(x) do { (x) = SPINLOCK_INIT; } while (0)
+
+static inline void spin_lock_irqsave(volatile int *lock, irq_flags_t *flags) {
+  *flags = save_irq_flags();
+  cpu_cli();
+  spinlock_lock(lock);
+}
+
+static inline void spin_unlock_irqrestore(volatile int *lock, irq_flags_t flags) {
+  spinlock_unlock_irqrestore(lock, flags);
+}
+
+static inline void spin_lock(volatile int *lock) {
+  spinlock_lock(lock);
+}
+
+static inline void spin_unlock(volatile int *lock) {
+  spinlock_unlock(lock);
+}
+
+#endif /* SPINLOCK_LINUX_COMPAT */

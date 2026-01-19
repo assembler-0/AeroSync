@@ -48,6 +48,8 @@ To build AeroSync, you will need the following tools:
 *   **lld:** The LLVM linker
 > ⚠️ LLD is required for LTO builds
 *   **Limine:** The Limine bootloader resources must be available on the host system.
+*   **Python:** The python interpreter, primarly for tools and kernel configuration generation.
+*   **Kconfiglib:** A Python library for parsing Kconfig files.
 > CMake will automatically download them if they are not found.
 
 - **optional:** either used by me and/is not needed for building AeroSync
@@ -71,6 +73,7 @@ To build AeroSync, you will need the following tools:
 2.  **Configure and build with CMake:**
     ```bash
     cmake -B build
+    cmake --build build --target menuconfig # configure the build, or: python -m *config <SRC_DIR> - choose your favorite editor
     cmake --build build --parallel $(nproc)
     ```
 
