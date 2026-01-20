@@ -119,8 +119,10 @@ void log_set_console_sink(log_sink_putc_t sink) {
   klog_console_sink = sink;
   /* If console sink has already indicated it is async-capable, try to
      start the background klogd so console emission can be deferred. */
+#ifdef ASYNC_PRINTK
   if (klog_console_sink_async_hint)
     log_try_init_async();
+#endif
 }
 
 void log_set_console_level(int level) { klog_console_level = level; }
@@ -136,10 +138,13 @@ void log_set_console_async_hint(int is_async) {
   klog_console_sink_async_hint = is_async ? 1 : 0;
   /* If the sink is async-capable and a sink is already registered,
      attempt to bring up the background consumer. */
+#ifdef ASYNC_PRINTK
   if (klog_console_sink_async_hint && klog_console_sink)
     log_try_init_async();
+#endif
 }
 
+#ifdef ASYNC_PRINTK
 // Try to initialize async klogd if scheduler is up. Returns non-zero on
 // success.
 int log_try_init_async(void) {
@@ -154,6 +159,7 @@ int log_try_init_async(void) {
   klog_async_enabled = 1;
   return 1;
 }
+#endif
 
 static const char *const klog_prefixes[] = {
     [KLOG_EMERG] = "[0] ", [KLOG_ALERT] = "[1] ",   [KLOG_CRIT] = "[2] ",

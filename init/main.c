@@ -264,7 +264,9 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   crc32_init();
   vfs_init();
 
+#ifdef ASYNC_PRINTK
   printk_init_async();
+#endif
 
   // Start kernel_init thread
   struct task_struct *init_task = kthread_create(kernel_init, NULL, "kernel_init");

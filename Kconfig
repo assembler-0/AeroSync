@@ -6,6 +6,7 @@ mainmenu "AeroSync Kernel Configuration"
 source "arch/Kconfig"
 source "lib/Kconfig"
 source "mm/Kconfig"
+source "aerosync/Kconfig"
 source "kconfig/compatability/Kconfig"
 source "kconfig/miscellaneous/Kconfig"
 

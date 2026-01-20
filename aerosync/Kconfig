@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+menu "system"
+
+config ASYNC_PRINTK
+    bool "Enable asynchronous printk"
+    default y
+    help
+      Enables high-performance asynchronous logging
+      framework for printk
+
+endmenu

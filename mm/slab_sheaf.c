@@ -52,12 +52,8 @@ struct slab_sheaf *kmem_cache_prefill_sheaf(struct kmem_cache *cache, gfp_t gfp,
   }
   
   sheaf->count = allocated;
-  
-  if (allocated < count) {
-      printk(KERN_WARNING SLAB_CLASS
-             "Sheaf prefill: only allocated %d/%zu objects\n",
-             allocated, count);
-  }
+
+  unmet_cond_warn(allocated < count);
 
   return sheaf;
 }
@@ -66,11 +62,8 @@ void *kmem_cache_alloc_from_sheaf(struct kmem_cache *cache, gfp_t gfp,
                                   struct slab_sheaf *sheaf) {
   (void)gfp; /* Unused, for API compatibility */
 
-  if (!sheaf || !cache || sheaf->cache != cache)
+  if (!sheaf || !cache || sheaf->cache != cache || sheaf->count == 0)
     return NULL;
-
-  if (sheaf->count == 0)
-    return NULL; /* Sheaf is empty */
 
   /* Fast O(1) pop from array */
   return sheaf->objects[--sheaf->count];
@@ -106,9 +99,7 @@ void kmem_cache_return_sheaf(struct kmem_cache *cache, gfp_t gfp,
   if (!sheaf)
     return;
 
-  if (!cache || sheaf->cache != cache) {
-    panic("Sheaf cache mismatch: expected %p, got %p", sheaf->cache, cache);
-  }
+  unmet_cond_crit(!cache || sheaf->cache != cache);
 
   /* Bulk free all objects */
   kmem_cache_free_bulk(cache, sheaf->count, sheaf->objects);
