@@ -128,7 +128,7 @@ static inline void lock_page_slab(struct page *page) {
   while (__atomic_test_and_set((volatile void *)&page->flags + (PG_locked / 8), 
                                 __ATOMIC_ACQUIRE)) {
     /* Spin with pause instruction to reduce contention */
-    __builtin_ia32_pause();
+    cpu_relax();
   }
 }
 

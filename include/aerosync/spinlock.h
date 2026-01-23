@@ -22,7 +22,7 @@ static inline void spinlock_init(spinlock_t *lock) {
 static inline void backoff_delay(uint64_t cycles) {
   uint64_t start = rdtsc();
   while (rdtsc() - start < cycles) {
-    __builtin_ia32_pause();
+    cpu_relax();
   }
 }
 
@@ -53,7 +53,7 @@ static inline void spinlock_lock(volatile int *lock) {
       // Initial fast spinning with pause
       for (int i = 0; i < 64; i++) {
         if (!*lock) break;
-        __builtin_ia32_pause();
+        cpu_relax();
       }
     } else {
       // Switch to exponential backoff after many attempts

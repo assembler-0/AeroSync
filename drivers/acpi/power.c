@@ -26,14 +26,12 @@
 
 static uacpi_interrupt_ret handle_power_button(uacpi_handle ctx) {
   (void) ctx;
-  printk(KERN_NOTICE ACPI_BUTTON_CLASS "Power Button Pressed! Initiating Shutdown...\n");
   acpi_shutdown();
   return UACPI_INTERRUPT_HANDLED;
 }
 
 static uacpi_interrupt_ret handle_sleep_button(uacpi_handle ctx) {
   (void) ctx;
-  printk(KERN_NOTICE ACPI_BUTTON_CLASS "Sleep Button Pressed! (Ignored)\n");
   return UACPI_INTERRUPT_HANDLED;
 }
 
@@ -43,9 +41,9 @@ void acpi_power_init(void) {
   printk(ACPI_BUTTON_CLASS "Installing Fixed Event Handlers...\n");
 
   // Clear any pending status
-  uacpi_clear_fixed_event(UACPI_FIXED_EVENT_POWER_BUTTON);
-  uacpi_clear_fixed_event(UACPI_FIXED_EVENT_SLEEP_BUTTON);
 
+#ifdef ACPI_POWER_BUTTON
+  uacpi_clear_fixed_event(UACPI_FIXED_EVENT_POWER_BUTTON);
   // Install Power Button Handler
   ret = uacpi_install_fixed_event_handler(UACPI_FIXED_EVENT_POWER_BUTTON, handle_power_button, NULL);
   if (uacpi_unlikely_error(ret)) {
@@ -59,7 +57,10 @@ void acpi_power_init(void) {
       printk(ACPI_BUTTON_CLASS "Power Button enabled.\n");
     }
   }
+#endif
 
+#ifdef ACPI_SLEEP_BUTTON
+  uacpi_clear_fixed_event(UACPI_FIXED_EVENT_SLEEP_BUTTON);
   // Install Sleep Button Handler (Optional, just logging for now)
   ret = uacpi_install_fixed_event_handler(UACPI_FIXED_EVENT_SLEEP_BUTTON, handle_sleep_button, NULL);
   if (uacpi_unlikely_error(ret)) {
@@ -71,4 +72,5 @@ void acpi_power_init(void) {
       printk(ACPI_BUTTON_CLASS "Sleep Button enabled.\n");
     }
   }
+#endif
 }

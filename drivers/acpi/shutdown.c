@@ -25,51 +25,58 @@
 #include <arch/x86_64/io.h>
 #include <aerosync/classes.h>
 #include <aerosync/panic.h>
+#include <aerosync/sysintf/ic.h>
 
 void acpi_shutdown(void) {
   printk(POWER_CLASS "Preparing for S5 Soft Off...\n");
 
-  // 1. Disable Interrupts
+  irq_flags_t flags = save_irq_flags();
   cpu_cli();
+  ic_shutdown_controller();
 
-  // 2. Shut down APIC/Interrupt subsystems to prevent stray IRQs
-  // Assuming apic_get_driver()->shutdown() handles this
-  // But we might need to access it directly or trust uACPI to be safe?
-  // Usually, we just mask everything.
-  // TODO: bring down all core subsystems
-
-  // 3. Prepare uACPI for sleep state S5
   uacpi_status ret = uacpi_prepare_for_sleep_state(UACPI_SLEEP_STATE_S5);
   if (uacpi_unlikely_error(ret)) {
     printk(KERN_ERR POWER_CLASS "Failed to prepare for S5: %s\n", uacpi_status_to_string(ret));
-    goto fail;
+    goto rollback;
   }
 
-  // 4. Enter sleep state S5 (this should not return)
+  printk_disable();
+
   ret = uacpi_enter_sleep_state(UACPI_SLEEP_STATE_S5);
-
   if (uacpi_unlikely_error(ret)) {
+    printk_enable();
     printk(KERN_ERR POWER_CLASS "Failed to enter S5: %s\n", uacpi_status_to_string(ret));
+    goto rollback;
   }
 
-fail:
-  panic(ACPI_CLASS "ACPI Shutdown failed");
+  printk_enable();
+
+rollback:
+  /* if we reached here, ACPI sleep failed */
+  ic_install();
+  restore_irq_flags(flags);
 }
 
 void acpi_reboot(void) {
   printk(POWER_CLASS "Attempting ACPI Reboot...\n");
 
+  irq_flags_t flags = save_irq_flags();
+  cpu_cli();
+  ic_shutdown_controller();
+
+  printk_disable();
+
   uacpi_status ret = uacpi_reboot();
   if (uacpi_unlikely_error(ret)) {
+    printk_enable();
     printk(KERN_ERR POWER_CLASS "ACPI Reboot failed: %s\n", uacpi_status_to_string(ret));
+    goto rollback;
   }
 
-  // Fallback to keyboard controller reset
-  printk(KERN_NOTICE POWER_CLASS "Fallback: 8042 Reset...\n");
-  uint8_t good = 0x02;
-  while (good & 0x02)
-    good = inb(0x64);
-  outb(0x64, 0xFE);
+  printk_enable();
 
-  system_hlt();
+rollback:
+  /* if we reached here, ACPI sleep failed */
+  ic_install();
+  restore_irq_flags(flags);
 }

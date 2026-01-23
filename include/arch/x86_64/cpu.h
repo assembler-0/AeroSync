@@ -3,24 +3,16 @@
 #include <compiler.h>
 #include <aerosync/types.h>
 
-#define MAX_CPUS 64
-
-#define _full_mem_prot_start()                                                 \
-  {                                                                            \
-    __sync_synchronize();                                                      \
-    __asm__ volatile("mfence; sfence; lfence" ::: "memory");                   \
-  }
-#define _full_mem_prot_end()                                                   \
-  {                                                                            \
-    __asm__ volatile("mfence; sfence; lfence" ::: "memory");                   \
-    __sync_synchronize();                                                      \
-  }
+#ifndef MAX_CPUS
+#define MAX_CPUS 512
+#endif
 
 #define cpu_relax() __asm__ __volatile__("pause" ::: "memory")
 #define cpu_isync() __asm__ __volatile__("sfence" ::: "memory")
 #define cpu_hlt() __asm__ __volatile__("hlt" ::: "memory")
 #define cpu_cli() __asm__ __volatile__("cli" ::: "memory")
 #define cpu_sti() __asm__ __volatile__("sti" ::: "memory")
+#define cpu_invlpg(addr) __asm__ __volatile__("invlpg (%0)" ::"r"(addr) : "memory")
 #define system_hlt()                                                           \
   do {                                                                         \
     cpu_cli();                                                                 \
@@ -41,6 +33,8 @@ static inline bool irqs_disabled(void) {
   __asm__ volatile("pushfq\n\tpopq %0" : "=r"(flags));
   return !(flags & ARCH_IRQ_DISABLED);
 }
+
+static inline bool irqs_enabled(void) { return !irqs_disabled(); }
 
 
 ///@warning DO NOT TOUCH THIS STRUCTURE!!

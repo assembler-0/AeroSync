@@ -38,7 +38,7 @@ static inline void __invpcid(uint64_t type, uint16_t pcid, uint64_t addr) {
 
 void vmm_tlb_flush_local(uint64_t addr) {
   // invlpg is sufficient for the current PCID and for Global pages
-  __asm__ volatile("invlpg (%0)" : : "r"(addr) : "memory");
+  cpu_invlpg(addr);
 }
 
 void vmm_tlb_flush_all_local(void) {

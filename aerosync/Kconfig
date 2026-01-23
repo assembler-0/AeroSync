@@ -9,4 +9,8 @@ config ASYNC_PRINTK
       Enables high-performance asynchronous logging
       framework for printk
 
+config MAX_CPUS
+    int "Maximum # supported of logical processor(s)"
+    default 512
+
 endmenu
