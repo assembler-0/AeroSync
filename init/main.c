@@ -55,19 +55,11 @@
 #include <mm/vma.h>
 #include <mm/vmalloc.h>
 #include <mm/vm_object.h>
+#include <mm/zmm.h>
+#include <mm/shm.h>
 #include <uacpi/uacpi.h>
 
-#include <mm/zmm.h>
-
-#include <mm/shm.h>
-
 static struct task_struct bsp_task __aligned(16);
-
-static int test(void *u) {
-  while (1) {
-    printk("hello");
-  }
-}
 
 static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
   (void) unused;
