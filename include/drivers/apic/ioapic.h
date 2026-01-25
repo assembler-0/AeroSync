@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 
 // I/O APIC registers
 #define IOAPIC_REG_ID       0x00

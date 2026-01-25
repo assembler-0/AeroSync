@@ -1,0 +1,160 @@
+# [AeroSync](https://github.com/assembler-0/AeroSync)
+
+> This is the AeroSync kernel development checklist for release 9 (9–12 years, r0c1-2.2.3 → r9c0-xx.x.x)
+
+### core
+- memory management (mm)
+	- [x] **Phase 0: The "Aero-Fast" Foundation (Maple & SPF)**
+		- [x] **Maple Tree Integration**: Full migration from RB-tree/Linked-list to **True Maple Tree** MAS API.
+		- [x] **Performance Optimization**: O(1) sequential allocation hinting, range-optimized iteration (O(affected VMAs)), and O(N) bulk destruction.
+		- [x] **Full Speculative Page Faults (SPF)**: Lockless fault handling via RCU and VMA sequence counters.
+		- [x] **Shadow Object Optimization**: Efficient XArray-based COW chain collapsing.
+	- [x] **Phase 1: The "Magnum" Page Allocator (Performance & Scalability)**
+		- [x] **Zonelists**: Implement pre-calculated fallback lists (Local -> Remote Sorted by Distance) to replace O(N) search in `alloc_pages`.
+		- [x] **Batched PCP Draining**: Optimize `free_pcp_pages` to bulk-return pages to the buddy system, amortizing lock contention.
+		- [x] **Node-Local Allocation**: Enforce strict node locality policies by default, falling back only when necessary.
+		- [x] **Lockless Fastpaths**: Verify and harden `cmpxchg` usage in PCP and SLUB hotpaths.
+	- [x] **Phase 2: Cache-Efficient Structures (Maple Tree & XArray)**
+		- [x] **Maple Tree**: Replace VMA RB-tree with Maple Tree (Linux-style) for cache-aligned, multi-element nodes and O(1) interval lookups.
+		- [ ] **XArray (Radix Tree 2.0)**: Replace `vm_object` page RB-trees with XArray for better cache locality and faster large-file/SHM mapping.
+		- [x] **Aggressive Fault-Around**: Expand fault-around window (currently +/- 1 page) to dynamic windows (16-64KB) for better spatial locality.
+	- [ ] **Phase 3: Robustness & Advanced Features**
+		- [ ] **OOM Killer 2.0**: Implement a "Reaper" thread to asynchronously reclaim memory from killed tasks, preventing deadlocks.
+		- [x] **Hardened Usercopy**: Rigorous bounds checking for `copy_from_user`/`copy_to_user` based on VMA limits.
+		- [x] **Kernel Guard Pages**: Unmapped guard pages between vmalloc stacks.
+		- [x] **Transparent Huge Pages (THP)**: Background promotion of contiguous 4KB pages to 2MB pages using a dedicated `khugepaged` daemon.
+	- [x] proper COW (Copy-On-Write) using XNU-inspired Shadow Object chains
+	- [x] Finish RMAP for all subsystems
+	- [ ] Advance ANON object fault
+	- [ ] SHM (SHared Memory) management +IPC)
+	- [x] Use XArray/Radix tree for `vm_object`
+	- [x] Selective lazy allocation/free for kernel `vmalloc()
+	- [ ] Fix subtle, logic bugs
+	- [ ] True memory reclaimation
+	- [ ] Integrate with VFS
+	- [x] working `mmap`/`munmap`/`mprotect`/`mremap`
+	- [ ] add `brk` and `sbrk` for compatibility
+	- [ ] Cache *everywhere*, (UBC - Unified Buffer Cache)
+	- [x] Magazines integration for SLUB
+	- [x] Faster SLUB
+	- [x] More sophisticated PMM system (buddy `page_alloc`)
+	- [ ] Streamline the use of `struct folio` rather than `struct page` for high-level mm
+	- [x] KASLR
+	- [x] ASLR
+	- [x] Guard pages where possible
+	- [ ] Proper DMA support for legacy devices
+	- [ ] IOMMU
+	- [ ] more rigid MMIO
+	- [x] Stack management
+	- [ ] handle user MM faults gracully
+- scheduling
+	- [x] PI (Priority Inheritance)
+	- [x] Per-Entity Load Tracking (PELT) - 32ms half-life decaying averages
+	- [x] Newly Idle Balancing - Pull tasks from busy CPUs when entering idle
+	- [x] Proper scheduling classes and domains hierarchy
+	- [x] Basic SMT/MC topology support for load balancing
+	- [x] Fixed wait queue locking and safety
+	- [x] ACPI SRAT parsing for NUMA topology (SMT -> MC -> NUMA)
+	- [x] LLC-aware wake-up balancing (select_idle_sibling)
+	- [x] vruntime normalization/denormalization on migration
+	- [x] Aggressive multi-task load balancing (move load, not just tasks)
+	- [x] Cross-CPU wake-up preemption (IPI)
+	- [ ] XNU-inspired deadline inheritence (idk what's it called)
+- VFS
+	- [x] FD allocation
+	- [ ] proper FD table
+	- [ ] FD management
+	- [ ] register/unregister FSes
+	- [ ] raw FS stack
+	- [ ] *everything-is-a-file*
+	- [ ] permission (Unix or ACL?)
+	- [ ] Linux-like
+	- [ ] block device abstraction
+	- [ ] FAT32
+	- [ ] EXT4 (RO)
+	- [ ] XFS (RO)
+	- [ ] EROFS (`/system`)
+	- [ ] ASFS (AeroSyncFileSystem?) 
+	- [ ] devfs/procfs/tmpfs
+	- [ ] overlayfs
+	- [ ] USTAR
+	- [ ] ISOFS (ISO9660 + RockRidge extension)
+	- [ ] NEWC CPIO
+	- [ ] File systems as a module
+- POSIX-compliant
+	- [ ] `open()`/`close()`
+	- [ ] pipes
+	- [ ] sockets
+	- [ ] mman
+	- [x] System V ABI (implicit!!)
+	- [ ] Binary compatibility with Linux
+	- [ ] Linux syscall table
+- modularity
+	- [x] FKX (Fused Kernel eXtension)
+	- [ ] rFKX (runtime Fused Kernel eXtension) (FKX modules that can be loaded at any time, not early boot)
+	- [ ] ASRX (AeroSync Runtime eXtension)
+	- [ ] generic interface for *everything* (Linux-inspired)
+	- [ ] UDM (Unified Driver Model) layer
+	- [ ] more capable sysintf for lower level FKX
+	- [ ] skeleton kernel
+	- [ ] don't be like XNU
+- features (quality of life)
+	- [ ] backtrace (builtin)
+	- [ ] stack trace (builtin)
+	- [ ] linux-compatible spinlock 
+	- [ ] kbdg embeded
+	- [ ] arch-based system
+	- [ ] automatic rollback
+	- [ ] should not panic
+	- [ ] true asynchronous printk (that doesnt blow up)
+	- [ ] log level filtering
+	- [x] component based logs
+	- [ ] component based log parsing (and filtering)
+	- [ ] ksym should be somewhere else not FKX
+	- [ ] configurability (CMake or kconfiglib)
+	- [ ] configurable run targets with CMake caches
+	- [ ] Capability based kernel
+	- [ ] runs on cursed PCs
+	- [ ] support S1-5 states?
+- drivers
+	- [ ] NVMe driver (for my pc)
+	- [ ] AHCI driver
+	- [ ] PIO/DMA IDE (ATA) driver
+	- [ ] ATAPI driver
+	- [ ] virtio-block driver
+	- [ ] USB mass storage device
+	- [ ] xHCI controller stack (usable for OHCI & EHCI)
+	- [ ] PCIe with MSI and MSI-X
+	- [ ] ACPICA
+	- [ ] SMBIOS
+	- [ ] True time counting
+	- [ ] Software timer
+	- [ ] Unified input stack
+	- [ ] PS2 keyboard and mouse
+	- [ ] USB keyboard and mouse
+	- [ ] proper APIC stack (enhance for more features)
+	- [ ] Oneshot mode support
+	- [ ] EFI RT table support
+	- [ ] ARP/ICMP Stack
+	- [ ] UDP stack
+	- [ ] TCP/IP (v4 and v6) support
+	- [ ] port intel iwlwifi driver or write my own for the AC9560
+	- [ ] E1000
+	- [ ] NE2000
+	- [ ] RTL8139
+	- [x] PCI bus enumeration using ECAM
+	- [ ] VMware SVGA II driver
+	- [ ] virtio-pci-gpu driver
+	- [ ] a fraction of AMDGPU driver
+	- [ ] AGP & ISA bus cuz why not? though pretty much a waste of time
+	- [ ] Advances serial driver (just handle edge cases really)
+	- [ ] Some generic sound
+	- [ ] ALC897 driver
+	- [ ] SIO (Super IO chip) driver
+	- [ ] intel & amd PCH driver
+	- [ ] EC integration with ACPI
+	- [ ] C-states support
+	- [ ] Hybrid architecture handling
+	- [ ] CPU microcode loading
+	- [ ] PTY & TTY drivers
+	- [ ] CSPRNG using a TRNG

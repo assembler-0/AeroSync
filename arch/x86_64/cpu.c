@@ -4,7 +4,7 @@
  *
  * @file arch/x86_64/cpu.c
  * @brief Architecture-specific CPU functions
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -20,7 +20,7 @@
 
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/percpu.h>
-#include <kernel/fkx/fkx.h>
+#include <aerosync/fkx/fkx.h>
 
 DEFINE_PER_CPU(unsigned long, this_cpu_off);
 DEFINE_PER_CPU(uint64_t, cpu_user_rsp);

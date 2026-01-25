@@ -4,12 +4,12 @@
  *
  * @file lib/id_alloc.c
  * @brief Generic ID Allocator (IDA) implementation
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
 #include <lib/id_alloc.h>
 #include <lib/bitmap.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <mm/vmalloc.h>
 #include <lib/string.h>
 

@@ -1,7 +1,7 @@
 #pragma once
 
-#include <kernel/spinlock.h>
-#include <kernel/types.h>
+#include <aerosync/spinlock.h>
+#include <aerosync/types.h>
 
 typedef struct printk_backend {
   const char *name;
@@ -67,8 +67,11 @@ void printk_enable(void);
  * @exception printk_auto_select_backend will never return the current active backend
  */
 const printk_backend_t *printk_auto_select_backend(const char *not);
-// Enable asynchronous printk logging (spawns background consumer thread).
+
+#ifdef ASYNC_PRINTK
+/* Enables asynchronous printk logging (spawns background consumer thread). */
 void printk_init_async(void);
+#endif
 
 typedef struct ratelimit_state {
   spinlock_t lock;

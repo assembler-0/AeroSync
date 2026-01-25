@@ -4,7 +4,7 @@
  *
  * @file arch/x86_64/entry/syscall.c
  * @brief System Call Dispatcher and Initialization
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -21,19 +21,20 @@
 
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/gdt/gdt.h>
-#include <kernel/classes.h>
-#include <kernel/errno.h>
-#include <kernel/sched/process.h>
-#include <kernel/types.h>
-#include <kernel/sysintf/panic.h>
+#include <aerosync/classes.h>
+#include <aerosync/errno.h>
+#include <aerosync/sched/process.h>
+#include <aerosync/types.h>
+#include <aerosync/sysintf/panic.h>
 #include <lib/printk.h>
 #include <lib/uaccess.h>
 #include <arch/x86_64/entry.h>
 #include <fs/file.h>
 #include <fs/vfs.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <lib/bitmap.h>
-#include <kernel/signal.h>
+#include <aerosync/signal.h>
+#include <mm/vma.h>
 
 #define MSR_STAR 0xC0000081
 #define MSR_LSTAR 0xC0000082
@@ -287,15 +288,96 @@ static void sys_getpid_handler(struct syscall_regs *regs) {
   REGS_RETURN_VAL(regs, current->pid);
 }
 
+static void sys_mmap(struct syscall_regs *regs) {
+  uint64_t addr = regs->rdi;
+  size_t len = regs->rsi;
+  uint64_t prot = regs->rdx;
+  uint64_t flags = regs->r10;
+  int fd = (int) regs->r8;
+  uint64_t off = regs->r9;
+
+  struct mm_struct *mm = current->mm;
+  if (!mm) {
+    REGS_RETURN_VAL(regs, -EINVAL);
+    return;
+  }
+
+  struct file *file = NULL;
+  if (!(flags & MAP_ANON)) {
+      file = fget(fd);
+      if (!file) {
+          REGS_RETURN_VAL(regs, -EBADF);
+          return;
+      }
+      /* TODO: Get vm_object from file/inode */
+      fput(file);
+      REGS_RETURN_VAL(regs, -ENODEV); // Not yet fully supported for files
+      return;
+  }
+
+  uint64_t ret = do_mmap(mm, addr, len, prot, flags, file, NULL, off >> PAGE_SHIFT);
+  REGS_RETURN_VAL(regs, ret);
+}
+
+static void sys_munmap(struct syscall_regs *regs) {
+  uint64_t addr = regs->rdi;
+  size_t len = regs->rsi;
+
+  struct mm_struct *mm = current->mm;
+  if (!mm) {
+    REGS_RETURN_VAL(regs, -EINVAL);
+    return;
+  }
+
+  int ret = do_munmap(mm, addr, len);
+  REGS_RETURN_VAL(regs, ret);
+}
+
+static void sys_mprotect(struct syscall_regs *regs) {
+  uint64_t addr = regs->rdi;
+  size_t len = regs->rsi;
+  uint64_t prot = regs->rdx;
+
+  struct mm_struct *mm = current->mm;
+  if (!mm) {
+    REGS_RETURN_VAL(regs, -EINVAL);
+    return;
+  }
+
+  int ret = do_mprotect(mm, addr, len, prot);
+  REGS_RETURN_VAL(regs, ret);
+}
+
+static void sys_mremap(struct syscall_regs *regs) {
+  uint64_t old_addr = regs->rdi;
+  size_t old_len = regs->rsi;
+  size_t new_len = regs->rdx;
+  int flags = (int) regs->r10;
+  uint64_t new_addr_hint = regs->r8;
+
+  struct mm_struct *mm = current->mm;
+  if (!mm) {
+    REGS_RETURN_VAL(regs, -EINVAL);
+    return;
+  }
+
+  /* TODO: Implement do_mremap logic in vma.c */
+  REGS_RETURN_VAL(regs, -ENOSYS);
+}
+
 static sys_call_ptr_t syscall_table[] = {
   [0] = sys_read,
   [1] = sys_write,
   [2] = sys_open,
   [3] = sys_close,
   [8] = sys_lseek,
+  [9] = sys_mmap,
+  [10] = sys_mprotect,
+  [11] = sys_munmap,
   [13] = sys_rt_sigaction,
   [14] = sys_rt_sigprocmask,
   [15] = sys_rt_sigreturn,
+  [25] = sys_mremap,
   [39] = sys_getpid_handler,
   [56] = sys_clone_handler,
   [57] = sys_fork_handler,

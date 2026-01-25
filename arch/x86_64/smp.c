@@ -4,7 +4,7 @@
  *
  * @file arch/x86_64/smp.c
  * @brief SMP initialization and AP entry point
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -27,14 +27,16 @@
 #include <arch/x86_64/mm/vmm.h>
 #include <arch/x86_64/percpu.h>
 #include <arch/x86_64/smp.h>
-#include <kernel/classes.h>
-#include <kernel/sysintf/ic.h>
-#include <kernel/wait.h>
-#include <kernel/sysintf/panic.h>
+#include <aerosync/classes.h>
+#include <aerosync/sysintf/ic.h>
+#include <aerosync/wait.h>
+#include <aerosync/sysintf/panic.h>
 #include <lib/printk.h>
 #include <limine/limine.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
+#include <aerosync/timer.h>
 #include <linux/container_of.h>
+
 // SMP Request
 __attribute__((
   used, section(".limine_requests"))) static volatile struct limine_mp_request
@@ -42,6 +44,7 @@ mp_request = {.id = LIMINE_MP_REQUEST_ID, .revision = 0};
 
 static uint64_t cpu_count = 0;
 static volatile int cpus_online = 0;
+struct cpumask cpu_online_mask = CPU_MASK_NONE;
 volatile int smp_lock = 0;
 static volatile int smp_start_barrier =
     0; // BSP releases APs to start interrupts
@@ -93,10 +96,12 @@ static void smp_ap_entry(struct limine_mp_info *info) {
   // and use per-CPU caches in kmalloc()
   ic_ap_init();
 
-  // ... rest of function ...
-
   // Enable per-CPU features (SSE, AVX, etc.)
   cpu_features_init_ap();
+
+  // Detect topology for this CPU
+  extern void detect_cpu_topology(void);
+  detect_cpu_topology();
 
   ic_set_timer(IC_DEFAULT_TICK);
 
@@ -111,6 +116,7 @@ static void smp_ap_entry(struct limine_mp_info *info) {
 
   // Also increment the atomic counter for consistency with other code
   __atomic_fetch_add(&cpus_online, 1, __ATOMIC_RELEASE);
+  cpumask_set_cpu(cpu_id, &cpu_online_mask);
 
   // Mark this AP as online using wait counter
   wait_counter_inc(&ap_startup_counter);
@@ -228,7 +234,7 @@ void smp_call_function_many(const struct cpumask *mask, smp_call_func_t func, vo
         INIT_LIST_HEAD(&csd->list);
 
         struct smp_call_queue *q = per_cpu_ptr(cpu_call_queue, i);
-        irq_flags_t f = spinlock_lock_irqsave(&q->lock); // wait, fix this
+        irq_flags_t f = spinlock_lock_irqsave(&q->lock);
         list_add_tail(&csd->list, &q->list);
         spinlock_unlock_irqrestore(&q->lock, f);
 
@@ -257,6 +263,7 @@ void smp_call_function(smp_call_func_t func, void *info, bool wait) {
 
 
 void smp_init(void) {
+#ifdef SYMMETRIC_MP
   if (cpu_count == 0) {
     smp_parse_topology();
   }
@@ -310,11 +317,19 @@ void smp_init(void) {
   __atomic_store_n(&smp_start_barrier, 1, __ATOMIC_RELEASE);
 
   printk(SMP_CLASS "%d APs online.\n", cpus_online);
+#else
+  printk(KERN_WARNING SMP_CLASS "SYMMETRIC_MP is not enabled, single core mode only\n");
+  cpu_count = 1;
+#endif
 }
 
 void smp_prepare_boot_cpu(void) {
   // BSP is always CPU 0
   this_cpu_write(cpu_number, 0);
+  cpumask_set_cpu(0, &cpu_online_mask);
+
+  extern void detect_cpu_topology(void);
+  detect_cpu_topology();
 }
 
 uint64_t smp_get_cpu_count(void) { return cpu_count; }

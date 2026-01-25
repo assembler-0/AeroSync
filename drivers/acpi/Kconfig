@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+menu "acpi"
+
+config ACPI_POWER_KERNEL_DEINITIALIZE
+    bool "Enable shutdown sequence"
+    default n
+    help
+      Enables graceful shutdown and rollbacks
+
+endmenu

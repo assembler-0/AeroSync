@@ -1,13 +1,9 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 #include <uacpi/uacpi.h>
 #include <uacpi/tables.h>
 #include <uacpi/acpi.h>
-
-// --- External Variables (defined in apic.c) ---
-extern uacpi_u64 xapic_madt_lapic_override_phys;   // 0 if not provided
-extern int xapic_madt_parsed;
 
 // --- Constants ---
 #define XAPIC_DELIVERY_MODE_FIXED        (0b000 << 8)

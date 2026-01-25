@@ -19,11 +19,11 @@ list(APPEND ARCH_SOURCES
     ${ARCH_ASM_SOURCES}
 )
 file(GLOB_RECURSE INIT_SOURCES "init/*.c")
-file(GLOB KERNEL_SOURCES "kernel/*.c")
-file(GLOB_RECURSE KERNEL_SCHED_SOURCES "kernel/sched/*.c")
-file(GLOB_RECURSE KERNEL_FKX_SOURCES "kernel/fkx/*.c")
-file(GLOB_RECURSE KERNEL_SYSINTF_SOURCES "kernel/sysintf/*.c")
-file(GLOB_RECURSE KERNEL_ASM_SOURCES "kernel/*.asm")
+file(GLOB KERNEL_SOURCES "aerosync/*.c")
+file(GLOB_RECURSE KERNEL_SCHED_SOURCES "aerosync/sched/*.c")
+file(GLOB_RECURSE KERNEL_FKX_SOURCES "aerosync/fkx/*.c")
+file(GLOB_RECURSE KERNEL_SYSINTF_SOURCES "aerosync/sysintf/*.c")
+file(GLOB_RECURSE KERNEL_ASM_SOURCES "aerosync/*.asm")
 list(APPEND KERNEL_SOURCES
     ${KERNEL_SCHED_SOURCES}
     ${KERNEL_FKX_SOURCES}
@@ -45,23 +45,24 @@ file(GLOB_RECURSE MM_SAN_SOURCES "mm/san/*.c")
 list(APPEND MM_SOURCES
     ${MM_SAN_SOURCES}
 )
-file(GLOB CRYPTO_SOURCES "crypto/*.c")
+file(GLOB CRYPTO_SOURCES "crypto/*.c" "crypto/sha/*.c")
 file(GLOB FS_SOURCES "fs/*.c")
 
 # ============================================================================
 # Build Include Directories
 # ============================================================================
-include_directories(
+include_directories(SYSTEM
         .
         include
         include/lib
+        ${CMAKE_BINARY_DIR}
         ${UACPI_INCLUDES}
 )
 
 # ============================================================================
 # Final Source List
 # ============================================================================
-set(VOIDFRAMEX_SOURCES
+set(AEROSYNC_SOURCES
         ${INIT_SOURCES}
         ${KERNEL_SOURCES}
         ${LIB_SOURCES}

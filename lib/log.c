@@ -4,7 +4,7 @@
  *
  * @file lib/log.c
  * @brief Kernel logging subsystem
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -20,10 +20,10 @@
 
 #include <arch/x86_64/tsc.h>
 #include <compiler.h>
-#include <kernel/sched/process.h>
-#include <kernel/sched/sched.h>
-#include <kernel/spinlock.h>
-#include <kernel/wait.h>
+#include <aerosync/sched/process.h>
+#include <aerosync/sched/sched.h>
+#include <aerosync/spinlock.h>
+#include <aerosync/wait.h>
 #include <lib/log.h>
 #include <lib/printk.h>
 #include <lib/ringbuf.h>
@@ -119,8 +119,10 @@ void log_set_console_sink(log_sink_putc_t sink) {
   klog_console_sink = sink;
   /* If console sink has already indicated it is async-capable, try to
      start the background klogd so console emission can be deferred. */
+#ifdef ASYNC_PRINTK
   if (klog_console_sink_async_hint)
     log_try_init_async();
+#endif
 }
 
 void log_set_console_level(int level) { klog_console_level = level; }
@@ -136,10 +138,13 @@ void log_set_console_async_hint(int is_async) {
   klog_console_sink_async_hint = is_async ? 1 : 0;
   /* If the sink is async-capable and a sink is already registered,
      attempt to bring up the background consumer. */
+#ifdef ASYNC_PRINTK
   if (klog_console_sink_async_hint && klog_console_sink)
     log_try_init_async();
+#endif
 }
 
+#ifdef ASYNC_PRINTK
 // Try to initialize async klogd if scheduler is up. Returns non-zero on
 // success.
 int log_try_init_async(void) {
@@ -154,6 +159,7 @@ int log_try_init_async(void) {
   klog_async_enabled = 1;
   return 1;
 }
+#endif
 
 static const char *const klog_prefixes[] = {
     [KLOG_EMERG] = "[0] ", [KLOG_ALERT] = "[1] ",   [KLOG_CRIT] = "[2] ",
@@ -289,7 +295,6 @@ static int klogd_thread(void *data) {
   (void)data;
   char out_buf[512];
   while (1) {
-    int drained_any = 0;
     uint64_t slice_start = get_time_ns();
     int records = 0;
     size_t bytes = 0;
@@ -341,7 +346,6 @@ static int klogd_thread(void *data) {
           klog_console_sink(out_buf[j]);
         spinlock_unlock_irqrestore(&klog_console_lock, cf);
       }
-      drained_any = 1;
       records++;
       bytes += n;
 

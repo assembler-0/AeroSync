@@ -1,7 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
-#include <mm/page.h>
+#include <aerosync/types.h>
 #include <arch/x86_64/mm/paging.h>
 
 #define MAX_ORDER 19
@@ -104,6 +103,9 @@ static inline void *pmm_phys_to_virt(uint64_t phys_addr);
  * @return Physical address
  */
 static inline uint64_t pmm_virt_to_phys(void *virt_addr);
+
+
+uint64_t pmm_get_max_pfn(void);
 
 // HHDM offset - set during pmm_init
 

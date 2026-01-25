@@ -2,12 +2,12 @@ timeout: 5
 
 /AeroSync (verbose)
     protocol: limine
-    path: boot():/kernel/aerosync.krnl
+    path: boot():/aerosync/aerosync.krnl
     cmdline: verbose
 @LIMINE_MODULES@
 
 /AeroSync
     protocol: limine
-    path: boot():/kernel/aerosync.krnl
+    path: boot():/aerosync/aerosync.krnl
     cmdline:
 @LIMINE_MODULES@

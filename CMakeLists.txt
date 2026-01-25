@@ -5,7 +5,7 @@
 #
 # @file CMakeLists.txt
 # @brief Kernel build configuration
-# @copyright (C) 2025 assembler-0
+# @copyright (C) 2025-2026 assembler-0
 #
 # This file is part of the AeroSync kernel.
 #
@@ -21,7 +21,7 @@
 cmake_minimum_required(VERSION 3.30)
 set_property(GLOBAL PROPERTY RULE_MESSAGES OFF)
 project(AeroSync
-        VERSION 2.2.3 # <EPOCH>.<FEATURE>.<PATCH>
+        VERSION 3.2.5 # <EPOCH>.<FEATURE>.<PATCH> - see include/aerosync/version.h
         LANGUAGES C CXX ASM_NASM
         HOMEPAGE_URL "https://github.com/assembler-0/AeroSync"
         DESCRIPTION "A modern monolithic operating system kernel designed for performance and modularity."
@@ -42,13 +42,13 @@ execute_process(
         OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-set(VOIDFRAMEX_RELEASE "0" CACHE STRING "AeroSync release")
-set(VOIDFRAMEX_CANDIDATE "1" CACHE STRING "AeroSync release candidate")
-set(VOIDFRAMEX_ABI_LEVEL "0" CACHE STRING "AeroSync ABI level")
-set(VOIDFRAMEX_CODENAME "Invariant" CACHE STRING "AeroSync codename")
+set(AEROSYNC_RELEASE "0" CACHE STRING "AeroSync release")
+set(AEROSYNC_CANDIDATE "2" CACHE STRING "AeroSync release candidate")
+set(AEROSYNC_ABI_LEVEL "0" CACHE STRING "AeroSync ABI level")
+set(AEROSYNC_CODENAME "Invariant" CACHE STRING "AeroSync codename")
 configure_file(
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/kernel/version.h.in
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/kernel/version.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/aerosync/version.h.in
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/aerosync/version.h
         @ONLY
 )
 
@@ -63,15 +63,25 @@ include(cache)
 include(ccache)
 include(dependencies)
 include(configuration)
+include(kconfig)
+
+if(DEFINED AEROSYNC_KCONFIG_DEFINES)
+    add_compile_definitions(${AEROSYNC_KCONFIG_DEFINES})
+endif()
+
+# compile sub-projects
+add_subdirectory(tools/fkx_signer)
+
 include(lib/uACPI/uacpi.cmake)
 include(source)
 include(fkx)
 include(lib/linearfb/linearfb.cmake)
-#include(drivers/misc/splash.cmake)
+include(limine)
 include(drivers/uart/uart.cmake)
 include(drivers/apic/ic.cmake)
 include(drivers/pci/pci.cmake)
 include(drivers/timer/timer.cmake)
+include(drivers/block/ide/ide.cmake)
 include(FetchContent)
 
 # ============================================================================
@@ -121,8 +131,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Kernel Linking
 # ============================================================================
 add_executable(aerosync.krnl
-    ${VOIDFRAMEX_SOURCES}
+    ${AEROSYNC_SOURCES}
+    ${FKX_PUB_HEADER}
 )
+
+add_dependencies(aerosync.krnl fkx_key_header)
 
 target_sources(aerosync.krnl 
 	PRIVATE
@@ -189,15 +202,17 @@ if(SANITIZER)
     )
 endif()
 
+set(AEROSYNC_LINKER_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/arch/x86_64/aerosync.ld" CACHE STRING "AeroSync linker script")
+
 # Configure the linker to use ld.lld with proper arguments
 set_target_properties(aerosync.krnl PROPERTIES
-    LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/aerosync.ld"
+    LINK_DEPENDS "${AEROSYNC_LINKER_SCRIPT}"
 )
 
 # Set linker flags for this specific target
 target_link_options(aerosync.krnl PRIVATE
     -fuse-ld=lld
-    -T ${CMAKE_CURRENT_SOURCE_DIR}/aerosync.ld
+    -T ${AEROSYNC_LINKER_SCRIPT}
     -nostdlib
     -static
     -Wl,-melf_x86_64
@@ -215,24 +230,6 @@ endif()
 # ============================================================================
 # ISO Generation with Limine Bootloader
 # ============================================================================
-set(DEFAULT_LIMINE_DIR "/usr/share/limine")
-if(EXISTS "${DEFAULT_LIMINE_DIR}")
-    set(LIMINE_RESOURCE_DIR "${DEFAULT_LIMINE_DIR}" CACHE STRING "Limine binary directory")
-    message(STATUS "Using system Limine: ${LIMINE_RESOURCE_DIR}")
-else()
-    message(STATUS "Limine not found at ${DEFAULT_LIMINE_DIR}. Fetching from GitHub... (https://github.com/limine-bootloader/limine/tree/v10.x-binary)")
-
-    FetchContent_Declare(
-            limine
-            GIT_REPOSITORY https://github.com/limine-bootloader/limine.git
-            GIT_TAG        v10.x-binary
-    )
-    FetchContent_MakeAvailable(limine)
-
-    set(LIMINE_RESOURCE_DIR "${limine_SOURCE_DIR}" CACHE STRING "Limine binary directory" FORCE)
-    message(STATUS "Limine fetched to: ${LIMINE_RESOURCE_DIR}")
-endif()
-
 # Generate limine.conf from template
 get_property(FKX_MODULE_LIST GLOBAL PROPERTY FKX_MODULES)
 set(LIMINE_MODULES "")
@@ -251,7 +248,7 @@ configure_file(
 add_custom_command(
         OUTPUT bootd
         COMMAND ${CMAKE_COMMAND} -E touch bootd
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir/kernel
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir/aerosync
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir/module
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir/EFI/BOOT
         # Copy Limine UEFI bootloader
@@ -259,7 +256,7 @@ add_custom_command(
         ${CMAKE_CURRENT_BINARY_DIR}/bootdir/EFI/BOOT/BOOTX64.EFI
         # Copy kernel
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:aerosync.krnl>
-        ${CMAKE_CURRENT_BINARY_DIR}/bootdir/kernel/aerosync.krnl
+        ${CMAKE_CURRENT_BINARY_DIR}/bootdir/aerosync/aerosync.krnl
         # Copy Limine config
         COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/limine.conf
         ${CMAKE_CURRENT_BINARY_DIR}/bootdir/limine.conf
@@ -352,7 +349,7 @@ if(QEMU_SYSTEM_X86_64)
         COMMAND ${QEMU_SYSTEM_X86_64}
         -M pc,hpet=on
         -cpu max,+la57
-        -accel tcg
+        -accel kvm
         -no-reboot -no-shutdown
         -m 4G
         -smp sockets=2,cores=2

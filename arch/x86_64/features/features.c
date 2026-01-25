@@ -4,7 +4,7 @@
  *
  * @file arch/x86_64/features/features.c
  * @brief CPU feature detection and enabling for x86_64 architecture
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -18,7 +18,7 @@
  * GNU General Public License for more details.
  */
 
-#include <kernel/classes.h>
+#include <aerosync/classes.h>
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/features/features.h>
 #include <lib/printk.h>

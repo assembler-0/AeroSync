@@ -4,12 +4,12 @@
  *
  * @file drivers/apic/pic.c
  * @brief Legacy PIC interrupt controller driver
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
-#include <kernel/classes.h> 
-#include <kernel/fkx/fkx.h>
-#include <kernel/sysintf/ic.h>
+#include <aerosync/classes.h> 
+#include <aerosync/fkx/fkx.h>
+#include <aerosync/sysintf/ic.h>
 #include <arch/x86_64/io.h>
 #include <drivers/timer/pit.h>
 #include <lib/printk.h>
@@ -35,14 +35,14 @@ void pic_mask_all(void) {
   pic_write_mask();
 }
 
-void pic_enable_irq(uint8_t irq_line) {
+void pic_enable_irq(uint32_t irq_line) {
   if (irq_line > 15)
     return;
   s_irq_mask &= ~(1 << irq_line);
   pic_write_mask();
 }
 
-void pic_disable_irq(uint8_t irq_line) {
+void pic_disable_irq(uint32_t irq_line) {
   if (irq_line > 15)
     return;
   s_irq_mask |= (1 << irq_line);

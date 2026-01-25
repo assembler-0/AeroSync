@@ -4,7 +4,7 @@
  *
  * @file lib/printk.c
  * @brief printk backend management and logging functions
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -20,12 +20,12 @@
 
 #include <arch/x86_64/io.h>
 #include <lib/log.h>
-#include <kernel/classes.h>
-#include <kernel/types.h>
+#include <aerosync/classes.h>
+#include <aerosync/types.h>
 #include <lib/printk.h>
 #include <lib/vsprintf.h>
 #include <lib/string.h>
-#include <kernel/fkx/fkx.h>
+#include <aerosync/fkx/fkx.h>
 
 #define MAX_PRINTK_BACKENDS 8
 
@@ -95,10 +95,12 @@ void printk_auto_configure(void *payload, const int reinit) {
   }
 }
 
+#ifdef ASYNC_PRINTK
 void printk_init_async(void) {
-  printk(KERN_CLASS "Starting asynchronous printk...\n");
+  printk(KERN_CLASS "starting asynchronous printk.\n");
   log_init_async();
 }
+#endif
 
 int printk_set_sink(const char *backend_name, bool cleanup) {
   if (!backend_name) {

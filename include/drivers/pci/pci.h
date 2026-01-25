@@ -7,4 +7,4 @@
  */
 
 #pragma once
-#include <kernel/sysintf/pci.h>
+#include <aerosync/sysintf/pci.h>

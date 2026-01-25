@@ -1,9 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 #pragma once
 
-#include <arch/x86_64/cpu.h>
-#include <arch/x86_64/smp.h>
-
 /* Linker symbols for the per-CPU section */
 extern char _percpu_start[];
 extern char _percpu_end[];
@@ -14,6 +11,10 @@ extern unsigned long __per_cpu_offset[MAX_CPUS];
 /* Macro to define a per-CPU variable */
 #define DEFINE_PER_CPU(type, name)                                             \
   __attribute__((section(".percpu"), used)) type name
+
+/* Macro to define an aligned per-CPU variable */
+#define DEFINE_PER_CPU_ALIGNED(type, name, align)                              \
+  __attribute__((section(".percpu"), used, aligned(align))) type name
 
 /* Macro to declare a per-CPU variable */
 #define DECLARE_PER_CPU(type, name)                                            \
@@ -161,4 +162,4 @@ extern unsigned long __per_cpu_offset[MAX_CPUS];
 // Function prototypes for setup
 void setup_per_cpu_areas(void);
 
-bool percpu_ready(void);
+int percpu_ready(void);

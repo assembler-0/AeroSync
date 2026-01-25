@@ -4,12 +4,12 @@
  *
  * @file drivers/pci/backend_pio.c
  * @brief PCI Port I/O backend
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 #include <arch/x86_64/io.h>
-#include <kernel/sysintf/pci.h>
+#include <aerosync/sysintf/pci.h>
 #include <lib/printk.h>
 
 static uint32_t pci_port_io_read(pci_handle_t *p, uint32_t offset, uint8_t width) {

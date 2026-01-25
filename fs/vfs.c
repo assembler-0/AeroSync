@@ -4,7 +4,7 @@
  *
  * @file fs/vfs.c
  * @brief Virtual File System core implementation
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -21,12 +21,13 @@
 #include <fs/vfs.h>
 #include <fs/file.h>
 #include <include/linux/list.h>
-#include <kernel/types.h>
-#include <kernel/fkx/fkx.h>
-#include <kernel/mutex.h>
+#include <aerosync/types.h>
+#include <aerosync/fkx/fkx.h>
+#include <aerosync/mutex.h>
 #include <lib/printk.h>
-#include <kernel/classes.h>
-#include <mm/slab.h>
+#include <aerosync/classes.h>
+#include <mm/slub.h>
+#include <aerosync/errno.h>
 
 // Global lists for VFS objects
 LIST_HEAD(super_blocks);  // List of all mounted superblocks
@@ -130,7 +131,7 @@ void vfs_init(void) {
     register_filesystem(&rootfs_type);
     rootfs_mount(&rootfs_type, NULL, "/", 0, NULL);
 
-    printk(VFS_CLASS "Initialization complete.\n");
+    printk(VFS_CLASS "VFS initialization complete.\n");
 }
 EXPORT_SYMBOL(vfs_init);
 
@@ -163,11 +164,27 @@ struct file *vfs_open(const char *path, int flags, int mode) {
 }
 EXPORT_SYMBOL(vfs_open);
 
+extern ssize_t filemap_read(struct file *file, char *buf, size_t count, vfs_loff_t *ppos);
+
 ssize_t vfs_read(struct file *file, char *buf, size_t count, vfs_loff_t *pos) {
-    if (!file || !file->f_op || !file->f_op->read) return -1;
-    return file->f_op->read(file, buf, count, pos);
+    if (!file) return -1;
+    
+    if (file->f_op && file->f_op->read)
+        return file->f_op->read(file, buf, count, pos);
+
+    /* Fallback to Page Cache (Buffered I/O) */
+    if (file->f_inode && file->f_inode->i_mapping)
+        return filemap_read(file, buf, count, pos);
+
+    return -1;
 }
 EXPORT_SYMBOL(vfs_read);
+
+int vfs_mmap(struct file *file, struct vm_area_struct *vma) {
+    if (!file || !file->f_op || !file->f_op->mmap) return -ENODEV;
+    return file->f_op->mmap(file, vma);
+}
+EXPORT_SYMBOL(vfs_mmap);
 
 ssize_t vfs_write(struct file *file, const char *buf, size_t count, vfs_loff_t *pos) {
     if (!file || !file->f_op || !file->f_op->write) return -1;

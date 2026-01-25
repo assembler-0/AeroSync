@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 
 // Probe for APIC availability (CPUID feature bit). Returns non-zero if present.
 int apic_probe(void);
@@ -10,10 +10,10 @@ int apic_probe(void);
 int apic_init(void);
 
 // Replaces PIC_enable_irq. Unmasks an interrupt line in the I/O APIC.
-void apic_enable_irq(uint8_t irq_line);
+void apic_enable_irq(uint32_t irq_line);
 
 // Replaces PIC_disable_irq. Masks an interrupt line in the I/O APIC.
-void apic_disable_irq(uint8_t irq_line);
+void apic_disable_irq(uint32_t irq_line);
 
 // Replaces PICMaskAll. Masks all interrupts at the I/O APIC level.
 void apic_mask_all(void);
@@ -34,11 +34,16 @@ void apic_send_ipi(uint8_t dest_apic_id, uint8_t vector, uint32_t delivery_mode)
 // Initializes and starts the Local APIC timer at the specified frequency.
 void apic_timer_init(uint32_t frequency_hz);
 
-// Changes the APIC timer's frequency on the fly.
-void apic_timer_set_frequency(uint32_t frequency_hz);
+// Advanced timer operations
+void apic_timer_stop(void);
+void apic_timer_set_oneshot(uint32_t microseconds);
+void apic_timer_set_periodic(uint32_t frequency_hz);
+void apic_timer_set_tsc_deadline(uint64_t tsc_deadline);
+int apic_has_tsc_deadline(void);
+uint32_t apic_get_calibrated_ticks(void);
 
 // Get the current CPU's LAPIC ID
 uint8_t lapic_get_id(void);
 
-#include <kernel/sysintf/ic.h>
+#include <aerosync/sysintf/ic.h>
 const interrupt_controller_interface_t* apic_get_driver(void);

@@ -2,36 +2,29 @@
 
 #include <mm/mm_types.h>
 
-/* VMA Flags */
-#define VM_READ 0x00000001
-#define VM_WRITE 0x00000002
-#define VM_EXEC 0x00000004
-#define VM_SHARED 0x00000008
-#define VM_MAYREAD 0x00000010
-#define VM_MAYWRITE 0x00000020
-#define VM_MAYEXEC 0x00000040
-#define VM_MAYSHARE 0x00000080
-#define VM_GROWSDOWN 0x00000100
-#define VM_GROWSUP 0x00000200
-#define VM_IO 0x00004000         /* Memory mapped I/O */
-#define VM_DONTCOPY 0x00020000   /* Don't copy on fork */
-#define VM_DONTEXPAND 0x00040000 /* Cannot expand with mremap */
-#define VM_LOCKED 0x00100000     /* Pages are locked */
-#define VM_USER   0x00200000     /* User-space accessible */
-#define VM_STACK  0x00400000     /* VMA is a stack */
-#define VM_PFNMAP 0x00800000     /* Physical frame number mapping */
-#define VM_HUGE   0x10000000     /* VMA is backed by huge pages */
-#define VM_HUGEPAGE 0x20000000   /* User-requested Huge Page (advise) */
-#define VM_NOHUGEPAGE 0x40000000 /* User-requested No Huge Page */
-#define VM_ALLOC_LAZY 0x80000000 /* True Lazy Allocation */
+/* Prot flags */
+#define PROT_NONE  0x0
+#define PROT_READ  0x1
+#define PROT_WRITE 0x2
+#define PROT_EXEC  0x4
 
-/* Cache Policy Flags */
-#define VM_CACHE_WB 0x00000000
-#define VM_CACHE_WT 0x01000000
-#define VM_CACHE_UC 0x02000000
-#define VM_CACHE_WC 0x03000000
-#define VM_CACHE_WP 0x04000000
-#define VM_CACHE_MASK 0x0F000000
+/* Map flags */
+#define MAP_SHARED  0x01
+#define MAP_PRIVATE 0x02
+#define MAP_FIXED   0x10
+#define MAP_ANON    0x20
+#define MAP_STACK   0x40
+#define MAP_LOCKED  0x80
+
+/* Madvise hints */
+#define MADV_NORMAL     0
+#define MADV_RANDOM     1
+#define MADV_SEQUENTIAL 2
+#define MADV_WILLNEED   3
+#define MADV_DONTNEED   4
+#define MADV_FREE       8
+#define MADV_HUGEPAGE   14
+#define MADV_NOHUGEPAGE 15
 
 /* VMA merge flags */
 #define VMA_MERGE_PREV 0x1
@@ -41,6 +34,7 @@
 #define FAULT_FLAG_WRITE 0x01
 #define FAULT_FLAG_USER  0x02
 #define FAULT_FLAG_INSTR 0x04
+#define FAULT_FLAG_SPECULATIVE 0x08
 
 /* Standard fault return codes */
 #define VM_FAULT_OOM    0x0001
@@ -65,29 +59,30 @@ struct vm_area_struct *vma_alloc(void);
 void vma_free(struct vm_area_struct *vma);
 struct vm_area_struct *vma_create(uint64_t start, uint64_t end, uint64_t flags);
 
-/* VMA Lookup */
-struct vm_area_struct *vma_find(struct mm_struct *mm, uint64_t addr);
-struct vm_area_struct *vma_find_exact(struct mm_struct *mm, uint64_t start,
-                                      uint64_t end);
-struct vm_area_struct *vma_find_intersection(struct mm_struct *mm,
-                                             uint64_t start, uint64_t end);
+struct file;
+struct shm_object;
 
-/* VMA Modification */
+/* High-level VMA management (POSIX-like) */
+uint64_t do_mmap(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot, uint64_t flags, struct file *file, struct shm_object *shm, uint64_t pgoff);
+int do_munmap(struct mm_struct *mm, uint64_t addr, size_t len);
+int do_mprotect(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot);
+int do_madvise(struct mm_struct *mm, uint64_t addr, size_t len, int advice);
+
+/* Internal VMA Helpers */
+struct vm_area_struct *vma_find(struct mm_struct *mm, uint64_t addr);
+struct vm_area_struct *vma_find_exact(struct mm_struct *mm, uint64_t start, uint64_t end);
+struct vm_area_struct *vma_find_intersection(struct mm_struct *mm, uint64_t start, uint64_t end);
+
 int vma_insert(struct mm_struct *mm, struct vm_area_struct *vma);
 void vma_remove(struct mm_struct *mm, struct vm_area_struct *vma);
 int vma_split(struct mm_struct *mm, struct vm_area_struct *vma, uint64_t addr);
-int vma_merge(struct mm_struct *mm, struct vm_area_struct *vma);
-int vma_expand(struct mm_struct *mm, struct vm_area_struct *vma,
-               uint64_t new_start, uint64_t new_end);
-int vma_shrink(struct mm_struct *mm, struct vm_area_struct *vma,
-               uint64_t new_start, uint64_t new_end);
+struct vm_area_struct *vma_merge(struct mm_struct *mm, struct vm_area_struct *prev,
+                                 uint64_t addr, uint64_t end, uint64_t vm_flags,
+                                 struct vm_object *obj, uint64_t pgoff);
 
-/* VMA Allocation */
-uint64_t vma_find_free_region(struct mm_struct *mm, size_t size,
-                              uint64_t range_start, uint64_t range_end);
-uint64_t vma_find_free_region_aligned(struct mm_struct *mm, size_t size,
-                                      uint64_t alignment, uint64_t range_start,
-                                      uint64_t range_end);
+/* VMA Allocation Search */
+uint64_t vma_find_free_region(struct mm_struct *mm, size_t size, uint64_t range_start, uint64_t range_end);
+uint64_t vma_find_free_region_aligned(struct mm_struct *mm, size_t size, uint64_t alignment, uint64_t range_start, uint64_t range_end);
 
 /* High-level VMA operations */
 int vma_map_range(struct mm_struct *mm, uint64_t start, uint64_t end,
@@ -97,9 +92,42 @@ int vma_protect(struct mm_struct *mm, uint64_t start, uint64_t end,
                 uint64_t new_flags);
 int mm_populate_user_range(struct mm_struct *mm, uint64_t start, size_t size, uint64_t flags, const uint8_t *data, size_t data_len);
 
+/* Page fault dispatch */
+int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int flags);
+
+/* Accounting */
+void mm_update_accounting(struct mm_struct *mm);
+size_t mm_total_size(struct mm_struct *mm);
+size_t mm_map_count(struct mm_struct *mm);
+
 /* VMA Iteration */
 struct vm_area_struct *vma_next(struct vm_area_struct *vma);
 struct vm_area_struct *vma_prev(struct vm_area_struct *vma);
+
+/* VMA Locking */
+static inline void vma_lock(struct vm_area_struct *vma) {
+    down_write(&vma->vm_lock);
+}
+
+static inline void vma_unlock(struct vm_area_struct *vma) {
+    up_write(&vma->vm_lock);
+}
+
+static inline void vma_lock_shared(struct vm_area_struct *vma) {
+    down_read(&vma->vm_lock);
+}
+
+static inline void vma_unlock_shared(struct vm_area_struct *vma) {
+    up_read(&vma->vm_lock);
+}
+
+static inline int vma_trylock(struct vm_area_struct *vma) {
+    return down_write_trylock(&vma->vm_lock);
+}
+
+static inline int vma_trylock_shared(struct vm_area_struct *vma) {
+    return down_read_trylock(&vma->vm_lock);
+}
 
 /* Statistics and Debugging */
 void vma_dump(struct mm_struct *mm);
@@ -121,9 +149,15 @@ void kswapd_init(void);
 void khugepaged_init(void);
 
 struct folio;
-int try_to_unmap_folio(struct folio *folio);
+struct vm_object;
+
+void folio_add_anon_rmap(struct folio *folio, struct vm_area_struct *vma, uint64_t address);
+void folio_add_file_rmap(struct folio *folio, struct vm_object *obj, uint64_t pgoff);
+
+struct mmu_gather;
+int try_to_unmap_folio(struct folio *folio, struct mmu_gather *tlb);
 int folio_referenced(struct folio *folio);
-int folio_reclaim(struct folio *folio);
+int folio_reclaim(struct folio *folio, struct mmu_gather *tlb);
 
 /* Validation */
 int vma_verify_tree(struct mm_struct *mm);
@@ -140,29 +174,27 @@ void vma_cache_init(void);
 struct vm_area_struct *vma_cache_alloc(void);
 void vma_cache_free(struct vm_area_struct *vma);
 
+/* MM Scrubber */
+void mm_scrubber_init(void);
+
 /* Helper macros */
 #define vma_pages(vma) (((vma)->vm_end - (vma)->vm_start) >> PAGE_SHIFT)
 #define vma_size(vma) ((vma)->vm_end - (vma)->vm_start)
 
 #define for_each_vma(mm, vma)                                                  \
-  for (struct list_head *__pos = (mm)->mmap_list.next;                         \
-       __pos != &(mm)->mmap_list &&                                            \
-           ({                                                                  \
-             vma = list_entry(__pos, struct vm_area_struct, vm_list);          \
-             1;                                                                \
-           });                                                                 \
-       __pos = __pos->next)
+  for (unsigned long __idx = 0;                                                \
+       (vma = mt_find(&(mm)->mm_mt, &__idx, ULONG_MAX)) != NULL; )
 
 #define for_each_vma_safe(mm, vma, tmp)                                        \
-  for (struct list_head *__pos = (mm)->mmap_list.next, *__n = __pos->next;     \
-       __pos != &(mm)->mmap_list &&                                            \
-           ({                                                                  \
-             vma = list_entry(__pos, struct vm_area_struct, vm_list);          \
-             1;                                                                \
-           });                                                                 \
-       __pos = __n, __n = __pos->next)
+  for (unsigned long __idx = 0;                                                \
+       (vma = mt_find(&(mm)->mm_mt, &__idx, ULONG_MAX)) != NULL &&              \
+       ({ tmp = vma; 1; }); )
 
+#define for_each_vma_range(mm, vma, start, end)                                \
+  for (unsigned long __idx = (start);                                          \
+       (vma = mt_find(&(mm)->mm_mt, &__idx, (end) - 1)) != NULL; )
 
-/* VMA ops */
-extern const struct vm_operations_struct anon_vm_ops;
-extern const struct vm_operations_struct shmem_vm_ops;
+#define for_each_vma_range_safe(mm, vma, tmp, start, end)                      \
+  for (unsigned long __idx = (start);                                          \
+       (vma = mt_find(&(mm)->mm_mt, &__idx, (end) - 1)) != NULL &&              \
+       ({ tmp = vma; 1; }); )

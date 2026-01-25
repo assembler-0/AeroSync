@@ -4,13 +4,13 @@
  *
  * @file include/lib/id_alloc.h
  * @brief Generic ID Allocator (IDA)
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
 #pragma once
 
-#include <kernel/types.h>
-#include <kernel/spinlock.h>
+#include <aerosync/types.h>
+#include <aerosync/spinlock.h>
 
 /**
  * struct ida - ID allocator

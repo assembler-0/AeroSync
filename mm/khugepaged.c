@@ -4,7 +4,7 @@
  *
  * @file mm/khugepaged.c
  * @brief Transparent Huge Page (THP) daemon
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -21,13 +21,13 @@
 #include <mm/vma.h>
 #include <mm/mm_types.h>
 #include <mm/page.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <arch/x86_64/mm/vmm.h>
-#include <kernel/sched/process.h>
-#include <kernel/sched/sched.h>
+#include <aerosync/sched/process.h>
+#include <aerosync/sched/sched.h>
 #include <linux/container_of.h>
 #include <lib/printk.h>
-#include <kernel/classes.h>
+#include <aerosync/classes.h>
 #include <arch/x86_64/tsc.h>
 #include <mm/vm_object.h>
 
@@ -37,29 +37,55 @@ static void khugepaged_scan_mm(struct mm_struct *mm) {
   struct vm_area_struct *vma;
   int scanned = 0;
 
-  down_read(&mm->mmap_lock);
+  /* 
+   * Use RCU walk for scanning to minimize mmap_lock contention.
+   * We only take mmap_lock if we find a candidate for collapsing.
+   */
+  rcu_read_lock();
+  uint32_t mm_seq = atomic_read(&mm->mmap_seq);
+
   for_each_vma(mm, vma) {
     if (scanned++ >= SCAN_BATCH_VMAS) break;
 
     /* Only anonymous VMAs that allow huge pages */
     if (!vma->vm_obj || vma->vm_obj->type != VM_OBJECT_ANON) continue;
+    
+    /* 
+     * Skip if layout changed since we started.
+     * We'll try again in the next pass.
+     */
+    if (atomic_read(&mm->mmap_seq) != mm_seq) break;
+
     if (vma->vm_flags & (VM_NOHUGEPAGE | VM_IO | VM_PFNMAP)) continue;
+
+    uint32_t vma_seq = __atomic_load_n(&vma->vma_seq, __ATOMIC_ACQUIRE);
 
     /* Align range to 2MB */
     uint64_t start = (vma->vm_start + 0x1FFFFFULL) & 0xFFFFFFFFFFE00000ULL;
     uint64_t end = vma->vm_end & 0xFFFFFFFFFFE00000ULL;
 
     for (uint64_t addr = start; addr + 0x200000 <= end; addr += 0x200000) {
-      /*
+      /* Re-verify VMA state before attempting heavy collapse */
+      if (atomic_read(&mm->mmap_seq) != mm_seq || vma->vma_seq != vma_seq) break;
+
+      /* 
        * Attempt to merge. vmm_merge_to_huge will verify if
        * all 512 pages are present and contiguous.
+       * We still need mmap_lock for the actual merge because it modifies page tables.
        */
-      if (vmm_merge_to_huge(mm, addr, VMM_PAGE_SIZE_2M) == 0) {
-        // printk(KERN_DEBUG THP_CLASS "collapsed 2MB huge page at %llx\n", addr);
+      rcu_read_unlock();
+      if (down_read_trylock(&mm->mmap_lock)) {
+          if (atomic_read(&mm->mmap_seq) == mm_seq && vma->vma_seq == vma_seq) {
+              if (vmm_merge_to_huge(mm, addr, VMM_PAGE_SIZE_2M) == 0) {
+                  // printk(KERN_DEBUG THP_CLASS "collapsed 2MB huge page at %llx\n", addr);
+              }
+          }
+          up_read(&mm->mmap_lock);
       }
+      rcu_read_lock();
     }
   }
-  up_read(&mm->mmap_lock);
+  rcu_read_unlock();
 }
 
 static int khugepaged_thread(void *unused) {

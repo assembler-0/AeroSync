@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 
 typedef struct {
     uint8_t *data;

@@ -59,7 +59,7 @@
 #define ATM_POISON_FREE		0x12
 #define ATM_POISON		0xdeadbeef
 
-/********** kernel/mutexes **********/
+/********** aerosync/mutexes **********/
 #define MUTEX_DEBUG_INIT	0x11
 #define MUTEX_DEBUG_FREE	0x22
 #define MUTEX_POISON_WW_CTX	((void *) 0x500 + POISON_POINTER_DELTA)
@@ -79,7 +79,7 @@
 /********** net/ **********/
 #define NET_PTR_POISON		((void *)(0x801 + POISON_POINTER_DELTA))
 
-/********** kernel/bpf/ **********/
+/********** aerosync/bpf/ **********/
 #define BPF_PTR_POISON ((void *)(0xeB9FUL + POISON_POINTER_DELTA))
 
 /********** VFS **********/

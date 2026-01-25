@@ -4,14 +4,14 @@
  *
  * @file include/arch/x86_64/fpu.h
  * @brief FPU/SSE/AVX state management
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  */
 
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 #include <compiler.h>
 
 /* Maximum XSAVE area size - covers AVX-512 and future extensions */

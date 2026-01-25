@@ -4,7 +4,7 @@
  *
  * @file lib/string.c
  * @brief string manipulation functions
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -19,8 +19,8 @@
  */
 
 #include <lib/string.h>
-#include <kernel/fkx/fkx.h>
-#include <mm/slab.h>
+#include <aerosync/fkx/fkx.h>
+#include <mm/slub.h>
 
 bool is_word_boundary(char c) {
   return c == ' ' || c == '\t' || c == '\n' || c == '\0';

@@ -1,0 +1,126 @@
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * AeroSync monolithic kernel
+ *
+ * @file aerosync/sysintf/pci.c
+ * @brief PCI System Interface Implementation
+ * @copyright (C) 2025-2026 assembler-0
+ */
+
+#include <aerosync/classes.h>
+#include <aerosync/fkx/fkx.h>
+#include <aerosync/sysintf/pci.h>
+#include <lib/printk.h>
+#include <lib/string.h>
+
+#include <aerosync/sysintf/class.h>
+#include <aerosync/sysintf/device.h>
+#include <mm/slub.h>
+
+static struct class pci_hw_class = {
+    .name = "pci_hardware",
+};
+
+static bool pci_hw_class_registered = false;
+static const pci_ops_t *current_hw_ops = NULL;
+static const pci_subsystem_ops_t *current_subsys_ops = NULL;
+
+struct pci_hw_device {
+  struct device dev;
+  const pci_ops_t *ops;
+};
+
+void pci_register_ops(const pci_ops_t *ops) {
+  if (unlikely(!pci_hw_class_registered)) {
+    class_register(&pci_hw_class);
+    pci_hw_class_registered = true;
+  }
+
+  struct pci_hw_device *phw = kzalloc(sizeof(struct pci_hw_device));
+  if (!phw)
+    return;
+
+  phw->ops = ops;
+  phw->dev.class = &pci_hw_class;
+  phw->dev.name = ops->name;
+
+  if (device_register(&phw->dev) != 0) {
+    kfree(phw);
+    return;
+  }
+
+  /* Automatically switch if this is higher priority and probes OK */
+  if (!current_hw_ops || ops->priority > current_hw_ops->priority) {
+    if (ops->probe && ops->probe() == 0) {
+      current_hw_ops = ops;
+      printk(KERN_DEBUG PCI_CLASS
+             "Selected %s for PCI hardware access (prio %d)\n",
+             ops->name, ops->priority);
+    }
+  }
+}
+
+EXPORT_SYMBOL(pci_register_ops);
+
+void pci_register_subsystem(const pci_subsystem_ops_t *ops) {
+  current_subsys_ops = ops;
+  printk(KERN_INFO PCI_CLASS "PCI Subsystem core registered\n");
+}
+
+EXPORT_SYMBOL(pci_register_subsystem);
+
+/* Low-level Config Access Dispatchers */
+
+uint32_t pci_read(pci_handle_t *p, uint32_t offset, uint8_t width) {
+  if (current_hw_ops)
+    return current_hw_ops->read(p, offset, width);
+  return 0xFFFFFFFF;
+}
+
+EXPORT_SYMBOL(pci_read);
+
+void pci_write(pci_handle_t *p, uint32_t offset, uint32_t val, uint8_t width) {
+  if (current_hw_ops)
+    current_hw_ops->write(p, offset, val, width);
+}
+
+EXPORT_SYMBOL(pci_write);
+
+/* High-level Subsystem Dispatchers */
+
+int pci_register_driver(struct pci_driver *driver) {
+  if (current_subsys_ops && current_subsys_ops->register_driver)
+    return current_subsys_ops->register_driver(driver);
+  return -1;
+}
+
+EXPORT_SYMBOL(pci_register_driver);
+
+void pci_unregister_driver(struct pci_driver *driver) {
+  if (current_subsys_ops && current_subsys_ops->unregister_driver)
+    current_subsys_ops->unregister_driver(driver);
+}
+
+EXPORT_SYMBOL(pci_unregister_driver);
+
+void pci_enumerate_bus(struct pci_bus *bus) {
+  if (current_subsys_ops && current_subsys_ops->enumerate_bus)
+    current_subsys_ops->enumerate_bus(bus);
+}
+
+EXPORT_SYMBOL(pci_enumerate_bus);
+
+int pci_enable_device(struct pci_dev *dev) {
+  if (current_subsys_ops && current_subsys_ops->enable_device)
+    return current_subsys_ops->enable_device(dev);
+  return -1;
+}
+
+EXPORT_SYMBOL(pci_enable_device);
+
+void pci_set_master(struct pci_dev *dev) {
+  if (current_subsys_ops && current_subsys_ops->set_master)
+    current_subsys_ops->set_master(dev);
+}
+
+EXPORT_SYMBOL(pci_set_master);

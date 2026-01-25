@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 #include <arch/x86_64/mm/paging.h>
 #include <mm/mm_types.h>
 
@@ -70,6 +70,11 @@ uint64_t vmm_get_max_user_address(void);
 void vmm_init(void);
 
 /**
+ * Allocate a zeroed page table frame on a specific NUMA node.
+ */
+uint64_t vmm_alloc_table_node(int nid);
+
+/**
  * Map a virtual page to a physical frame.
  *
  * @param mm        The address space to map in
@@ -80,25 +85,35 @@ void vmm_init(void);
  */
 int vmm_map_page(struct mm_struct *mm, uint64_t virt, uint64_t phys,
                  uint64_t flags);
+int vmm_map_page_no_flush(struct mm_struct *mm, uint64_t virt, uint64_t phys,
+                          uint64_t flags);
 int vmm_map_huge_page(struct mm_struct *mm, uint64_t virt, uint64_t phys,
                       uint64_t flags, uint64_t page_size);
+int vmm_map_huge_page_no_flush(struct mm_struct *mm, uint64_t virt, uint64_t phys,
+                              uint64_t flags, uint64_t page_size);
 int vmm_map_pages(struct mm_struct *mm, uint64_t virt, uint64_t phys,
                   size_t count, uint64_t flags);
+int vmm_map_pages_no_flush(struct mm_struct *mm, uint64_t virt, uint64_t phys,
+                           size_t count, uint64_t flags);
 int vmm_map_pages_list(struct mm_struct *mm, uint64_t virt, const uint64_t *phys_list,
                        size_t count, uint64_t flags);
 
 /**
- * Unmap a virtual page.
+ * Unmap a virtual page and return the folio.
  *
  * @param mm        The address space to unmap from
  * @param virt      Virtual address to unmap
- * @return 0 on success
+ * @return Folio pointer on success, NULL if not mapped
  */
+struct folio;
+struct folio *vmm_unmap_folio(struct mm_struct *mm, uint64_t virt);
+struct folio *vmm_unmap_folio_no_flush(struct mm_struct *mm, uint64_t virt);
+
 int vmm_unmap_page(struct mm_struct *mm, uint64_t virt);
 uint64_t vmm_unmap_page_no_flush(struct mm_struct *mm, uint64_t virt);
 int vmm_unmap_pages(struct mm_struct *mm, uint64_t virt, size_t count);
-int vmm_unmap_pages_and_get_phys(struct mm_struct *mm, uint64_t virt,
-                                 uint64_t *phys_list, size_t count);
+int vmm_unmap_pages_and_get_folios(struct mm_struct *mm, uint64_t virt,
+                                  struct folio **folios, size_t count);
 
 /**
  * Copy user page tables for fork (COW).
@@ -162,5 +177,8 @@ void vmm_switch_pml_root_pcid(uint64_t pml_root_phys, uint16_t pcid, bool no_flu
 
 /* Smoke test */
 void vmm_test(void);
+
+/* debugging */
+void vmm_dump_entry(struct mm_struct *mm, uint64_t virt);
 
 extern uint64_t g_kernel_pml_root;

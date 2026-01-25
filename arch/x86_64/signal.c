@@ -4,7 +4,7 @@
  *
  * @file arch/x86_64/signal.c
  * @brief Signal frame for x86_64
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -19,11 +19,11 @@
  */
 
 
-#include <kernel/signal.h>
-#include <kernel/sched/sched.h>
+#include <aerosync/signal.h>
+#include <aerosync/sched/sched.h>
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/entry.h>
-#include <kernel/sched/process.h>
+#include <aerosync/sched/process.h>
 #include <lib/uaccess.h>
 #include <lib/string.h>
 

@@ -1,14 +1,20 @@
 #pragma once
 
 /* ========================
- * BASIC COMPILER DETECTION
+ * BASIC PLATFORM DETECTION
  * ======================== */
 #if defined(__clang__)
 #  define COMPILER_CLANG 1
 #elif defined(__GNUC__)
-#  define COMPILER_GCC 1
+#  warning "GCC is not officially supported (yet)"
 #else
-#  error "Unsupported compiler"
+#  warning "Unsupported compiler: " __VERSION__
+#endif
+
+#if defined(__x86_64__)
+#  define ARCH_X86_64 1
+#else
+#  warning "Unsupported architecture: " __TARGET__
 #endif
 
 /* ========================
@@ -46,6 +52,8 @@
 #if defined(__x86_64__)
 #  define __ms_abi      __attribute__((ms_abi))
 #  define __sysv_abi    __attribute__((sysv_abi))
+#  define __cdecl       __attribute__((cdecl))
+#  define __stdcall     __attribute__((stdcall))
 #else
 #  define __ms_abi
 #  define __sysv_abi
@@ -67,6 +75,7 @@
 
 #define __fallthrough   __attribute__((fallthrough))
 #define __unreachable() __builtin_unreachable()
+#define __trap()        __builtin_trap()
 #define __likely(x)     __builtin_expect(!!(x), 1)
 #define __unlikely(x)   __builtin_expect(!!(x), 0)
 
@@ -76,15 +85,15 @@
  * likely(x):   We expect x to be TRUE (1)
  * unlikely(x): We expect x to be FALSE (0)
  */
-#define likely(x)      __builtin_expect(!!(x), 1)
-#define unlikely(x)    __builtin_expect(!!(x), 0)
+#define likely(x)      __likely(x)
+#define unlikely(x)    __unlikely(x)
 
 /*
  * Memory Barriers
  * barrier(): Prevents the compiler from reordering instructions across this point.
  *            It does NOT prevent the CPU from reordering.
  */
-#define barrier()      asm volatile("" ::: "memory")
+#define cbarrier()      asm volatile("" ::: "memory")
 
 /*
  * READ_ONCE / WRITE_ONCE
@@ -106,14 +115,16 @@ do { \
 *(volatile typeof(x) *)&(x) = (val); \
 } while (0)
 
-/*
- * If you are porting rbtree, you might run into these too.
- * For x86_64 (TSO - Total Store Order), simple barriers are usually enough
- * for a hobby kernel, but technically you need proper fencing instructions
- * for SMP.
- */
-#define smp_mb()    asm volatile("lock; addl $0, -4(%%rsp)" ::: "memory", "cc")
-#define smp_rmb()   barrier() // x86 loads are ordered
-#define smp_wmb()   barrier() // x86 stores are ordered
+/* ========================
+ * ALIGNMENT HELPERS
+ * ======================== */
 
+#define ALIGN(x, a)             (((x) + (a) - 1) & ~((a) - 1))
+#define ALIGN_DOWN(x, a)        ((x) & ~((a) - 1))
+#define ALIGN_UP(x, a)          ALIGN(x, a)
+
+/* ETC. */
+#define static_assert _Static_assert
 #define __percpu
+#define __rcu
+#define __force

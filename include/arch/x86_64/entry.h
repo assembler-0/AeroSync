@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 
 // Syscall Registers (matches ASM stack layout in syscall.asm)
 struct syscall_regs {

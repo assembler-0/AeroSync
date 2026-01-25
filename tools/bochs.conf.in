@@ -21,3 +21,4 @@ com1: enabled=1, mode=file, dev=bochs-serial.log
 # Debugging / logging
 panic: action=ask
 log: bochs.log
+port_e9_hack: enabled=1

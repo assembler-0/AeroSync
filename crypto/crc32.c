@@ -4,7 +4,7 @@
  *
  * @file crypto/crc32.c
  * @brief CRC32 implementation
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -21,7 +21,7 @@
 #include <compiler.h>
 #include <crypto/crc32.h>
 #include <lib/printk.h>
-#include <kernel/classes.h>
+#include <aerosync/classes.h>
 
 static uint32_t crc32_table[256] __aligned(16);
 

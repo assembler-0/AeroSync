@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 #include <limine/limine.h>
 
 #include <lib/printk.h>

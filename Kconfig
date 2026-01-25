@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# AeroSync root Kconfig script
+
+mainmenu "AeroSync Kernel Configuration"
+
+source "arch/Kconfig"
+source "drivers/Kconfig"
+source "lib/Kconfig"
+source "mm/Kconfig"
+source "aerosync/Kconfig"
+source "aerosync/sched/Kconfig"
+source "kconfig/compatability/Kconfig"
+source "kconfig/miscellaneous/Kconfig"
+

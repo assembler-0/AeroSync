@@ -1,5 +1,8 @@
-*build*
+build
+cmake-build-*
 *cache*
 include/kernel/version.h
 .venv
 .idea
+.config*
+plans

@@ -1,11 +1,11 @@
 #include <fs/vfs.h>
 #include <fs/file.h>
-#include <mm/slab.h>
-#include <kernel/sched/sched.h>
-#include <kernel/spinlock.h>
+#include <mm/slub.h>
+#include <aerosync/sched/sched.h>
+#include <aerosync/spinlock.h>
 #include <lib/string.h>
 #include <lib/bitmap.h>
-#include <kernel/panic.h>
+#include <aerosync/panic.h>
 
 struct files_struct init_files = {
     .count = ATOMIC_INIT(1),

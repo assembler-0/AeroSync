@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+menu "miscellaneous"
+
+config INCLUDE_MM_TESTS
+    bool "Include memory tests"
+    default y
+    help
+      Include memory-related stress tests (only enable on verbose boot)
+
+config ACPI_POWER_BUTTON
+    bool "Enable and configure power button"
+    default y
+    help
+      Enables support for power button through uACPI
+
+config ACPI_SLEEP_BUTTON
+    bool "Enable and configure sleep button"
+    default y
+    help
+      Enables support for sleep button through uACPI
+
+endmenu

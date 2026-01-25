@@ -1,6 +1,6 @@
 #pragma once
 
-#include <kernel/types.h>
+#include <aerosync/types.h>
 
 #define COM1 0x3f8   // COM1
 #define COM2 0x2f8   // COM2

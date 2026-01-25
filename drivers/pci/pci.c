@@ -4,15 +4,15 @@
  *
  * @file drivers/pci/pci.c
  * @brief Modern PCI Subsystem Implementation (Registered Subsystem)
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  */
 
-#include <kernel/classes.h>
-#include <kernel/sysintf/pci.h>
-#include <kernel/fkx/fkx.h>
+#include <aerosync/classes.h>
+#include <aerosync/sysintf/pci.h>
+#include <aerosync/fkx/fkx.h>
 #include <lib/printk.h>
 #include <lib/string.h>
-#include <mm/slab.h>
+#include <mm/slub.h>
 #include <linux/container_of.h>
 #include <drivers/pci/backend_ecam.h>
 #include <drivers/pci/backend_pio.h>

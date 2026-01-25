@@ -164,6 +164,30 @@ static inline bool RBNAME ## _compute_max(RBSTRUCT *node, bool exit)	      \
 RB_DECLARE_CALLBACKS(RBSTATIC, RBNAME,					      \
 		     RBSTRUCT, RBFIELD, RBAUGMENTED, RBNAME ## _compute_max)
 
+#define RB_DECLARE_CALLBACKS_MAX_RCU(RBSTATIC, RBNAME, RBSTRUCT, RBFIELD, \
+				     RBTYPE, RBAUGMENTED, RBCOMPUTE)	\
+static inline bool RBNAME ## _compute_max(RBSTRUCT *node, bool exit)	\
+{									\
+	RBSTRUCT *child;						\
+	RBTYPE max = RBCOMPUTE(node);					\
+	if (node->RBFIELD.rb_left) {					\
+		child = rb_entry(node->RBFIELD.rb_left, RBSTRUCT, RBFIELD); \
+		if (child->RBAUGMENTED > max)				\
+			max = child->RBAUGMENTED;			\
+	}								\
+	if (node->RBFIELD.rb_right) {					\
+		child = rb_entry(node->RBFIELD.rb_right, RBSTRUCT, RBFIELD); \
+		if (child->RBAUGMENTED > max)				\
+			max = child->RBAUGMENTED;			\
+	}								\
+	if (exit && node->RBAUGMENTED == max)				\
+		return true;						\
+	WRITE_ONCE(node->RBAUGMENTED, max);				\
+	return false;							\
+}									\
+RB_DECLARE_CALLBACKS(RBSTATIC, RBNAME,					\
+		     RBSTRUCT, RBFIELD, RBAUGMENTED, RBNAME ## _compute_max)
+
 
 #define	RB_RED		0
 #define	RB_BLACK	1

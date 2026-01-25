@@ -1,11 +1,14 @@
 #pragma once
 
 #include <compiler.h>
-#include <kernel/spinlock.h>
-#include <kernel/types.h>
+#include <aerosync/spinlock.h>
+#include <aerosync/types.h>
 #include <linux/list.h>
-#include <linux/rbtree.h>
-#include <kernel/atomic.h>
+#include <aerosync/atomic.h>
+
+#include <linux/rcupdate.h>
+#include <aerosync/rw_semaphore.h>
+#include <linux/maple_tree.h>
 
 struct vm_area_struct;
 struct vm_fault;
@@ -16,6 +19,51 @@ struct vm_object;
 #define VM_WRITE 0x00000002
 #define VM_EXEC 0x00000004
 #define VM_SHARED 0x00000008
+
+/* Permissions and State */
+#define VM_MAYREAD 0x00000010
+#define VM_MAYWRITE 0x00000020
+#define VM_MAYEXEC 0x00000040
+#define VM_MAYSHARE 0x00000080
+
+#define VM_GROWSDOWN 0x00000100
+#define VM_GROWSUP 0x00000200
+#define VM_PFNMAP 0x00000400
+#define VM_DENYWRITE 0x00000800
+#define VM_VMALLOC   0x00001000
+
+#define VM_LOCKED 0x00002000
+#define VM_IO 0x00004000
+#define VM_DONTCOPY 0x00008000
+#define VM_DONTEXPAND 0x00010000
+#define VM_RESERVED 0x00020000
+#define VM_ACCOUNT 0x00040000
+#define VM_NORESERVE 0x00080000
+#define VM_HUGETLB 0x00100000
+#define VM_SYNC 0x00200000
+#define VM_USER 0x00400000
+#define VM_STACK 0x00800000
+#define VM_HUGE 0x01000000
+#define VM_ALLOC_LAZY 0x02000000
+
+#define VM_RANDOM     0x04000000
+#define VM_SEQUENTIAL 0x08000000
+#define VM_HUGEPAGE   0x10000000
+#define VM_NOHUGEPAGE 0x20000000
+
+#define VMA_MAGIC 0x564d415f41524541ULL /* "VMA_AREA" */
+
+/* Additional state flags */
+#define VM_VMALLOC_PCP 0x100000000ULL
+#define VM_LAZY_FREE   0x200000000ULL
+
+/* Cache Policy Flags */
+#define VM_CACHE_WB 0x00000000
+#define VM_CACHE_WT 0x10000000
+#define VM_CACHE_UC 0x20000000
+#define VM_CACHE_WC 0x30000000
+#define VM_CACHE_WP 0x40000000
+#define VM_CACHE_MASK 0xF0000000
 
 /*
  * anon_vma_chain
@@ -48,7 +96,7 @@ struct vm_operations_struct {
   void (*open)(struct vm_area_struct *area);
   void (*close)(struct vm_area_struct *area);
   int (*fault)(struct vm_area_struct *vma, struct vm_fault *vmf);
-  /* TODO: page_mkwrite for COW on shared mappings */
+  int (*page_mkwrite)(struct vm_area_struct *vma, struct vm_fault *vmf);
 };
 
 /*
@@ -61,29 +109,25 @@ struct vm_fault {
   uint64_t pgoff; /* Page offset within the object */
 
   /* Output from the fault handler */
-  struct page *page; /* The physical page to be mapped */
+  struct folio *folio; /* The folio containing the page (Primary) */
+  uint64_t prot;     /* Protection flags for this specific mapping */
 };
 
 /*
  * vm_area_struct
  * Represents a contiguous range of virtual memory with consistent permissions.
- * Managed effectively by a Red-Black Tree.
+ * Managed effectively by a Maple Tree.
  */
 struct __aligned(sizeof(long)) vm_area_struct {
-  struct rb_node vm_rb; /* Tree node for mm->mm_rb */
-
+  uint64_t vma_magic;      /* Integrity check */
   struct mm_struct *vm_mm; /* The address space we belong to */
 
   uint64_t vm_start; /* Our start address within vm_mm */
   uint64_t vm_end;   /* The first byte after our end address within vm_mm */
 
-  /* For Augmented RB-Tree gap tracking */
-  uint64_t vm_rb_max_gap;
-
-  /* Linked list of VMAs sorted by address */
-  struct list_head vm_list;
-
   uint64_t vm_flags; /* Flags as listed above */
+  uint64_t vm_page_prot; /* Prot flags for the page table */
+  uint32_t vma_seq; /* Sequence counter for speculative faults */
   int preferred_node; /* Preferred NUMA node for this VMA (-1 for none) */
 
   /* Operations for this VMA */
@@ -98,35 +142,47 @@ struct __aligned(sizeof(long)) vm_area_struct {
   struct vm_object *vm_obj;
   struct list_head vm_shared; /* Node in obj->i_mmap */
 
-  /* TODO: Backing store/file pointers will go here */
+  struct rcu_head rcu;
+  struct rw_semaphore vm_lock;
+
   void *vm_private_data;
 };
 
-#include <kernel/atomic.h>
-#include <kernel/rw_semaphore.h>
-#include <kernel/sched/cpumask.h>
+#include <aerosync/atomic.h>
+#include <aerosync/sched/cpumask.h>
 
 /*
  * mm_struct
  * Represents the entire address space of a task.
  */
 struct mm_struct {
-  struct rb_root mm_rb;        /* Root of the VMA Red-Black Tree */
+  struct maple_tree mm_mt;    /* Maple Tree for VMA management */
   uint64_t vmacache_seqnum;   /* Per-thread VMA cache invalidation sequence */
-  struct list_head mmap_list; /* List of VMAs */
 
   uint64_t *pml_root; /* Physical address of the top-level page table */
 
-  spinlock_t page_table_lock; /* Protects page table modifications (fallback) */
   struct rw_semaphore mmap_lock; /* Protects VMA list/tree modifications */
 
   atomic_t mm_count; /* Reference count */
   int map_count; /* Number of VMAs */
 
+  /* Speculative Page Fault Tracking */
+  atomic_t mmap_seq;
+
   uint64_t mmap_base; /* Hint for where to start looking for free space */
+  uint64_t last_hole; /* Cache last successful hole for O(1) Sequential Alloc */
+
+  /* Accounting */
+  size_t total_vm;  /* Total number of pages mapped */
+  size_t locked_vm; /* Number of locked pages */
+  size_t pinned_vm; /* Refcount permanently increased */
+  size_t data_vm;   /* VM_WRITE & ~VM_SHARED & ~VM_STACK */
+  size_t exec_vm;   /* VM_EXEC & ~VM_WRITE */
+  size_t stack_vm;  /* VM_STACK */
 
   uint64_t start_code, end_code, start_data, end_data;
   uint64_t start_brk, brk, start_stack;
+  uint64_t arg_start, arg_end, env_start, env_end;
 
   int preferred_node; /* Default NUMA node for this address space */
 

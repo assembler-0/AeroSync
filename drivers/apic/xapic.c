@@ -4,7 +4,7 @@
  *
  * @file drivers/apic/xapic.c
  * @brief xAPIC driver
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -21,9 +21,11 @@
 #include <arch/x86_64/mm/paging.h>
 #include <drivers/apic/apic_internal.h>
 #include <drivers/apic/xapic.h>
-#include <kernel/classes.h>
-#include <kernel/fkx/fkx.h>
+#include <aerosync/classes.h>
+#include <aerosync/fkx/fkx.h>
 #include <mm/vmalloc.h>
+#include <aerosync/sysintf/madt.h>
+#include <lib/printk.h>
 
 // --- Register Definitions ---
 
@@ -87,16 +89,15 @@ static int xapic_init_lapic(void) {
 
   // Get LAPIC physical base address from MSR
   uint64_t lapic_phys_base = lapic_base_msr & 0xFFFFFFFFFFFFF000ULL;
-  
 
-      // Prefer MADT LAPIC Address Override if present
-      // Accessed via global from apic.c (extern in xapic.h)
-      if (xapic_madt_parsed && xapic_madt_lapic_override_phys) {
-    lapic_phys_base = (uint64_t)xapic_madt_lapic_override_phys;
+  // Prefer MADT LAPIC Address Override if present
+  uint64_t madt_lapic = madt_get_lapic_address();
+  if (madt_lapic != 0) {
+    lapic_phys_base = madt_lapic;
   }
 
   // Map the LAPIC into virtual memory
-  xapic_lapic_base = (volatile uint32_t *)viomap(lapic_phys_base, PAGE_SIZE);
+  xapic_lapic_base = (volatile uint32_t *)ioremap(lapic_phys_base, PAGE_SIZE);
 
   if (!xapic_lapic_base) {
     printk(KERN_ERR APIC_CLASS "Failed to map LAPIC MMIO.\n");
@@ -106,11 +107,9 @@ static int xapic_init_lapic(void) {
   // Enable the LAPIC
   wrmsr(APIC_BASE_MSR, lapic_base_msr | APIC_BASE_MSR_ENABLE);
 
-  // Add a small delay to ensure APIC is ready before register access
-  // Different emulators have different timing requirements
-  for (volatile int i = 0; i < 1000; i++) {
-    __asm__ volatile("nop" ::: "memory");
-  }
+  // Add a delay to ensure APIC is ready before register access
+  // Different emulators (especially Bochs) have different timing requirements
+  time_wait_ns(10000); // 10 microseconds
 
   // Verify that we can read the version register to confirm APIC is working
   uint32_t version = xapic_read(XAPIC_VER);
@@ -174,27 +173,34 @@ static void xapic_send_ipi_op(uint32_t dest_apic_id, uint8_t vector,
   spinlock_unlock_irqrestore(&xapic_ipi_lock, flags);
 }
 
-static void xapic_timer_set_frequency_op(uint32_t ticks_per_target) {
-  if (ticks_per_target == 0)
-    return;
-
-  // First mask the timer to prevent spurious interrupts during configuration
+static void xapic_timer_stop_op(void) {
   xapic_write(XAPIC_LVT_TIMER, (1 << 16)); // Masked
+  xapic_write(XAPIC_TIMER_INIT_COUNT, 0);
+}
 
-  // Set the divisor before initializing the count
-  xapic_write(XAPIC_TIMER_DIV, 0x3); // Divide by 16
+static void xapic_timer_set_oneshot_op(uint32_t ticks) {
+  xapic_write(XAPIC_LVT_TIMER, (1 << 16)); // Masked
+  xapic_write(XAPIC_TIMER_DIV, 0x3);       // Divide by 16
+  xapic_write(XAPIC_TIMER_INIT_COUNT, ticks);
+  xapic_write(XAPIC_LVT_TIMER, 32);        // Vector 32, Oneshot (00), Unmasked
+}
 
-  // Set the initial count (this also resets the current count)
-  xapic_write(XAPIC_TIMER_INIT_COUNT, ticks_per_target);
+static void xapic_timer_set_periodic_op(uint32_t ticks) {
+  xapic_write(XAPIC_LVT_TIMER, (1 << 16)); // Masked
+  xapic_write(XAPIC_TIMER_DIV, 0x3);       // Divide by 16
+  xapic_write(XAPIC_TIMER_INIT_COUNT, ticks);
+  xapic_write(XAPIC_LVT_TIMER, 32 | (1 << 17)); // Vector 32, Periodic (01), Unmasked
+}
 
-  // Start Timer: Periodic, Interrupt Vector 32, Unmasked
-  uint32_t lvt_timer = 32 | (1 << 17) | (0 << 16); // Vector 32, Periodic mode, Unmasked
-  xapic_write(XAPIC_LVT_TIMER, lvt_timer);
+static void xapic_timer_set_tsc_deadline_op(uint64_t tsc_deadline) {
+  // Mode 2 (10b) is TSC-Deadline
+  xapic_write(XAPIC_LVT_TIMER, 32 | (2 << 17)); 
+  wrmsr(0x6E0, tsc_deadline); // IA32_TSC_DEADLINE MSR
 }
 
 static void xapic_shutdown_op(void) {
   // 2. Disable Local APIC Timer
-  xapic_write(XAPIC_LVT_TIMER, (1 << 16)); // Masked
+  xapic_timer_stop_op();
 
   // 3. Disable Local APIC via SVR (clear bit 8)
   uint32_t svr = xapic_read(XAPIC_SVR);
@@ -211,8 +217,10 @@ const struct apic_ops xapic_ops = {
   .send_eoi = xapic_send_eoi_op,
   .send_ipi = xapic_send_ipi_op,
   .get_id = xapic_get_id_raw,
-  .timer_init = NULL,
-  .timer_set_frequency = xapic_timer_set_frequency_op,
+  .timer_stop = xapic_timer_stop_op,
+  .timer_set_oneshot = xapic_timer_set_oneshot_op,
+  .timer_set_periodic = xapic_timer_set_periodic_op,
+  .timer_set_tsc_deadline = xapic_timer_set_tsc_deadline_op,
   .shutdown = xapic_shutdown_op,
   .read = xapic_read,
   .write = xapic_write

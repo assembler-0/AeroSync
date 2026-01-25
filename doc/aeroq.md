@@ -1,0 +1,154 @@
+# [AeroQ](https://github.com/assembler-0/AeroQ) 
+> a modern operating system using the AeroSync 9 kernel
+- userspace
+    - [ ] Xorg ported (or wayland (wlroots))
+    - [ ] pacman package manager (or apk from alpine)
+    - [ ] a lightweight WM (TWM/i3?)
+    - [ ] a neat terminal emulator (Alacritty?)
+    - [ ] proper zsh (with oh my zsh!)
+    - [ ] DOOM (ofc)
+    - [ ] a file explorer (fzf?)
+    - [ ] an image/video viewer (feh + vlc?)
+    - [ ] a minimal browser (hey, not chrome!)
+    - [ ] userspace compressor/decompressor
+    - [ ] userspace crashes should not panic!
+    - [ ] musl/llvm-libc
+    - [ ] initrd
+    - [ ] install to disk
+    - [ ] resource monitor
+    - [ ] use PXS (Pre-eXecution System) as an init (fact: PXS was originally the EFI bootloader for AeroSync-formely known as VoidFrameX-a failed PoC of an asynchronous multikernel-which itself is the successor of Arcline-a barebone kernel for arm64-which is the successor of the original VoidFrame-a ring-0 only slopware, btw, PXS is already a thing in the first kernel as a massive function call)
+    - [ ] systemd/s6??
+- rootfs
+    - / - root
+        - system/ - core system files (mount as RO with EROFS)
+            - extensions/ - [r]FKX extensions
+                - ic.module.fkx - interrupt controllers (APIC driver)
+                - linearfb.module.fkx - linearfb library (fbcon)
+                - uart.module.fkx - serial driver
+                - timer.module.fkx - HPET & PIT driver
+                - splash.module.rfkx - splash screen (plymouth) as a rFKX module
+                - ...
+            - modules/ - ASRX modules
+                - iwlwifi.module.asrx - single file modules, metadata embeded
+                - x11.module.asrx/ - bigger modules requires complex loading
+                    - stage1.mod
+                    - stage2.mod
+                    - meta/
+                    - ...
+                    - aero.asrx.xml - This describes how the module should be load, dependencies, conflicts, etc...
+                - amdgpu.module.asrx.zstd - ZSTD-compressed modules
+            - efi/ - bootloader and boot config (FAT32)
+                - EFI/BOOT/BOOTX64.EFI
+                - core/ - kernel image and initrd
+                    - aerosync.krnl
+                    - initrd.cpio
+                    - intel-ucode.img
+                    - *.img*
+                - limine.conf
+        - runtime/ - runtime directory (devfs, procfs, tmpfs, swap,.. combined)
+            - devices/ - devfs
+                - block/ - block devices
+                    - hda0
+                    - sda0
+                    - nvme0n1
+                    - nvme0n1p1
+                    - ramdev0
+                    - ...
+                - term/ - emulated terminal device
+                    - pty0
+                    - tty0
+                    - ...
+                - bus/ - busses
+                    - usb/
+                        - ...
+                    - pci/
+                        - ...
+                    - net/
+                        - ...
+            - sys/ - modify kernel parameters, behaviour at runtime (tmpfs)
+                - sched/
+                - mm/
+                - perf/
+                - security/
+                - misc/
+                - actl/ - AeroSync ActiveControl (control the kernel directly rather than 'hinting' it)
+                    - mm/
+                    - sched/
+                    - perf/
+                    - security/
+                    - trace/
+                    - ...
+            - processes/ - procfs
+                - *pids*
+        - resources/ - system resources (basically everything)
+            - application/ - Aero's application model (inspired by macOS applications and Android APKs, all big applications that comes with it own libraries and have custom tweaks should be an application rather than ELF binaries)
+                - vscode.app/ - example: vscode application
+                    - bin/
+                    - lib/
+                    - meta/
+                    - ...
+                    - aero.application.xml - Aero doesnt care how your app looks, it only searches for this file and will load it the way defined and resolve depencies as well as preloading dynamic libraries for potentially better performance
+                - ...
+            - binaries/ - /bin; /sbin; /usr/bin merged (cleaner architechture)
+                - ls
+                - cp
+                - mv
+                - init - init system
+                - ...
+            - libraries/ - 32- and 64-bit static/dynamic libraries
+                - framework/ - custom libraries
+                    - x11/
+                    - qt/
+                        - ...
+                        - aero.framework.xml - this will export all the symbols, include, link paths, etc.
+                - static/ - standard C ar archives
+                    - libc.a
+                    - libc++.a
+                    - libgcc.a
+                    - ....
+                - shared/ - standard C shared objects
+                    - libc++.so
+                    - libc.so
+                    - libgcc_s.so
+                - ld-aerosync.so - AeroSync dynamic linker
+            - data/ - system-wide application data (%USERDATA%, /var equivalent)
+                - man/ - manual pages
+                - ...
+            - fonts/ - system fonts
+                - ttf/ - true type fonts
+                - otf/
+                - psf/
+                - bdf/
+                - ...
+            - include/ - C includes
+                - aerosync/ - kernel includes
+                - pch/ - system Pre-Compiled Headers
+                - *.h*
+            - configuration/ - /etc equivalent
+                - init.d/
+                - mkinitcpio.conf
+                - default/ - default values, configurations
+                - template/ - template files (i hate guessing)
+                    - aero/
+                        - aero.framework.xml
+                        - aero.application.xml
+                        - aero.asrx.xml
+                    - ...
+        - workspace/ - /home equivalent
+            - super/ - superuser home
+            - youruser/ - a sample user
+                - .zsh/ - zsh-specific directory
+                - .zshrc - zsh startup script
+                - .workspace/ - .local equivalent (mini rootfs)
+                    - bin/ - generic binaries
+                    - include/ - C includes
+                    - libraries/ - C static/dynamic libraries
+                    - application/ - Aero's application model at local scope
+                    - configuration/ - dotfiles and configuration files
+                    - data/ - local application data
+                - Downloads/ - where your downloads go
+                - Pictures/ - your pictures
+                - Video/ - you videos
+                - Music/ - your music
+                - Documents/ - your docs
+                - workspace/ - your code and projects

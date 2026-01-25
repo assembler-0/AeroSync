@@ -4,7 +4,7 @@
  *
  * @file fs/ustar.c
  * @brief USTAR archive parser
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -19,10 +19,10 @@
  */
 
 #include <fs/ustar.h>
-#include <kernel/classes.h>
+#include <aerosync/classes.h>
 #include <lib/printk.h>
 #include <lib/string.h>
-#include <kernel/types.h>
+#include <aerosync/types.h>
 
 // Helper function to convert octal string to binary
 uint64_t ustar_oct_to_bin(const char *octal, size_t size) {

@@ -4,7 +4,7 @@
  *
  * @file arch/x86_64/mm/pmm.c
  * @brief PMM for x86_64
- * @copyright (C) 2025 assembler-0
+ * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
  *
@@ -23,21 +23,19 @@
 #include <compiler.h>
 #include <arch/x86_64/features/features.h>
 #include <arch/x86_64/mm/vmm.h>
-#include <kernel/classes.h>
-#include <kernel/fkx/fkx.h>
+#include <aerosync/classes.h>
+#include <aerosync/fkx/fkx.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <limine/limine.h>
-#include <linux/container_of.h>
 #include <linux/list.h>
 #include <mm/gfp.h>
 #include <mm/zone.h>
+#include <aerosync/errno.h>
 
 // Global HHDM offset
 uint64_t g_hhdm_offset = 0;
 EXPORT_SYMBOL(g_hhdm_offset);
-
-DEFINE_PER_CPU(struct per_cpu_pages, pcp_pages);
 
 struct page *mem_map = NULL;
 uint64_t pmm_max_pages = 0;
@@ -71,34 +69,12 @@ find_memmap_location(struct limine_memmap_response *memmap,
   return best_region;
 }
 
-static void register_zone_pages(uint64_t start_pfn, uint64_t end_pfn) {
-  // Determine which zone this range belongs to and update zone stats
-  // Zone layout:
-  // DMA: 0 - 16MB
-  // DMA32: 16MB - 4GB
-  // Normal: > 4GB
-
-  struct zone *zone;
-  uint64_t pfn;
-
-  // We simply register pages to the allocator.
-  // The allocator's __free_pages will handle zone finding if we set up zones
-  // correctly. But we need to set up zone boundaries first in free_area_init
-  // logic. For now, let's just initialize the zones with rough boundaries.
-
-  // Actually, we should iterate and set up zone start/end PFNs.
-  // But for simplicity, we just add pages.
-
-  for (pfn = start_pfn; pfn < end_pfn; pfn++) {
-    struct page *page = &mem_map[pfn];
-    ClearPageReserved(page); // It was reserved during mem_map init
-    __free_pages(page, 0); // Free to buddy
-  }
-}
-
 extern void numa_init(void *rsdp);
 
 extern int pfn_to_nid(uint64_t pfn);
+
+uint64_t empty_zero_page = 0;
+EXPORT_SYMBOL(empty_zero_page);
 
 int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
   struct limine_memmap_response *memmap =
@@ -146,7 +122,7 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
       find_memmap_location(memmap, PAGE_ALIGN_UP(memmap_size));
   if (!mm_region) {
     printk(KERN_ERR PMM_CLASS "Failed to allocate mem_map\n");
-    return -1;
+    return -ENOMEM;
   }
 
   uint64_t mm_phys = PAGE_ALIGN_UP(mm_region->base);
@@ -158,6 +134,7 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
     INIT_LIST_HEAD(&mem_map[i].list);
     mem_map[i].flags = PG_reserved;
     mem_map[i].order = 0;
+    mem_map[i].migratetype = MIGRATE_UNMOVABLE;
     mem_map[i].node = 0; // Default
     spinlock_init(&mem_map[i].ptl);
   }
@@ -263,6 +240,7 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
         struct page *page = &mem_map[cur_pfn + i];
         ClearPageReserved(page);
         page->node = nid;
+        page->migratetype = MIGRATE_UNMOVABLE;
 
         int z_idx = 0;
         if ((cur_pfn + i) < 4096) z_idx = ZONE_DMA;
@@ -279,6 +257,14 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
   }
 
   pmm_initialized = true;
+
+  // Allocate and zero out global zero-page singleton
+  empty_zero_page = pmm_alloc_page();
+  if (empty_zero_page) {
+    memset(pmm_phys_to_virt(empty_zero_page), 0, PAGE_SIZE);
+    /* Set as Reserved so it's never freed or swapped */
+    SetPageReserved(&mem_map[PHYS_TO_PFN(empty_zero_page)]);
+  }
 
   // Calculate watermarks and log summary
   for (int n = 0; n < MAX_NUMNODES; n++) {
@@ -304,6 +290,8 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
   printk(KERN_DEBUG PMM_CLASS "Initialized. Max PFN: %llu\n", pmm_max_pages);
 
   pmm_report_capabilities();
+
+  build_all_zonelists();
 
   return 0;
 }
@@ -395,75 +383,24 @@ void pmm_test(void) {
 uint64_t pmm_alloc_page(void) { return pmm_alloc_pages(1); }
 
 uint64_t pmm_alloc_huge(size_t size) {
-    if (!pmm_initialized || !vmm_page_size_supported(size))
-        return 0;
+  if (!pmm_initialized || !vmm_page_size_supported(size))
+    return 0;
 
-    unsigned int order = 0;
-    if (size > PAGE_SIZE) {
-        order = 64 - __builtin_clzll((size >> PAGE_SHIFT) - 1);
-    }
+  unsigned int order = 0;
+  if (size > PAGE_SIZE) {
+    order = 64 - __builtin_clzll((size >> PAGE_SHIFT) - 1);
+  }
 
-    struct folio *folio = alloc_pages(GFP_KERNEL, order);
-    if (!folio) return 0;
+  struct folio *folio = alloc_pages(GFP_KERNEL, order);
+  if (!folio) return 0;
 
-    return folio_to_phys(folio);
-}
-
-static int pcp_refill(struct per_cpu_pages *pcp) {
-    int nid = (int)smp_get_id(); // Default to this CPU's node
-    struct pglist_data *pgdat = node_data[cpu_to_node(nid)];
-    if (!pgdat) pgdat = node_data[0];
-    
-    struct zone *zone = &pgdat->node_zones[ZONE_NORMAL];
-    // Find a zone with present pages
-    for (int i = ZONE_NORMAL; i >= 0; i--) {
-        if (pgdat->node_zones[i].present_pages > 0) {
-            zone = &pgdat->node_zones[i];
-            break;
-        }
-    }
-
-    struct list_head refill_list;
-    INIT_LIST_HEAD(&refill_list);
-    
-    int allocated = rmqueue_bulk(zone, 0, pcp->batch, &refill_list);
-    if (allocated > 0) {
-        list_splice(&refill_list, &pcp->list);
-        pcp->count += allocated;
-    }
-    
-    return allocated;
+  return folio_to_phys(folio);
 }
 
 uint64_t pmm_alloc_pages(size_t count) {
   if (!pmm_initialized)
     return 0;
 
-  // Optimize order-0 allocation with PCP
-  if (count == 1 && percpu_ready()) {
-    irq_flags_t flags = save_irq_flags();
-    struct per_cpu_pages *pcp = this_cpu_ptr(pcp_pages);
-
-    if (pcp->count == 0) {
-        pcp_refill(pcp);
-    }
-
-    if (pcp->count > 0) {
-      struct page *page = list_first_entry(&pcp->list, struct page, list);
-      list_del(&page->list);
-      pcp->count--;
-      
-      // Initialize folio metadata for PCP page
-      page->order = 0;
-      SetPageHead(page);
-      atomic_set(&page->_refcount, 1);
-      
-      restore_irq_flags(flags);
-      return PFN_TO_PHYS((uint64_t)(page - mem_map));
-    }
-
-    restore_irq_flags(flags);
-  }
   // Calculate order
   unsigned int order = 0;
   if (count > 1) {
@@ -494,12 +431,28 @@ void pmm_free_pages(uint64_t phys_addr, size_t count) {
   put_page(page);
 }
 
+uint64_t pmm_get_max_pfn(void) {
+  return pmm_max_pages;
+}
+
+EXPORT_SYMBOL(pmm_get_max_pfn);
+
 void pmm_init_cpu(void) {
-  struct per_cpu_pages *pcp = this_cpu_ptr(pcp_pages);
-  INIT_LIST_HEAD(&pcp->list);
-  pcp->count = 0;
-  pcp->high = 32;
-  pcp->batch = 8;
+  int cpu = (int) smp_get_id();
+  for (int n = 0; n < MAX_NUMNODES; n++) {
+    if (!node_data[n]) continue;
+    struct pglist_data *pgdat = node_data[n];
+    for (int i = 0; i < MAX_NR_ZONES; i++) {
+      struct zone *z = &pgdat->node_zones[i];
+      struct per_cpu_pages *pcp = &z->pageset[cpu];
+      for (int o = 0; o < PCP_ORDERS; o++) {
+        INIT_LIST_HEAD(&pcp->lists[o]);
+      }
+      pcp->count = 0;
+      pcp->high = 64;
+      pcp->batch = 16;
+    }
+  }
 }
 
 pmm_stats_t *pmm_get_stats(void) { return &pmm_stats; }
