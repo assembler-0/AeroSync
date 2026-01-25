@@ -434,6 +434,7 @@ void pmm_free_pages(uint64_t phys_addr, size_t count) {
 uint64_t pmm_get_max_pfn(void) {
   return pmm_max_pages;
 }
+
 EXPORT_SYMBOL(pmm_get_max_pfn);
 
 void pmm_init_cpu(void) {

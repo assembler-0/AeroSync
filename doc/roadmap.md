@@ -1,19 +1,9 @@
 # [AeroSync](https://github.com/assembler-0/AeroSync)
 
-> This is the AeroSync kernel development checklist for release 9 (3–4 years, r0c1-2.2.3 → r9c0-xx.x.x)
+> This is the AeroSync kernel development checklist for release 9 (9–12 years, r0c1-2.2.3 → r9c0-xx.x.x)
 
 ### core
 - memory management (mm)
-	- **Current Implementation Status**:
-		- **PMM**: Buddy Allocator (Order 0-11) with Zone support (DMA, DMA32, Normal) and NUMA-aware Zonelists.
-		- **PCP**: Per-CPU Page Cache for lockless order-0 page allocation/recycling.
-		- **SLUB**: Production-ready SLUB allocator with Per-CPU Magazine Layer and NUMA-aware fallback.
-		- **VMA**: Virtual Memory Area management using a **Linux-style Maple Tree** (O(log N) search).
-		- **VMA Cache**: Per-task MRU cache (size 4) for O(1) lookups in the hot path.
-		- **Vmalloc**: Hybrid system with True Lazy Allocation for large blocks and `vmap_block` for small ones.
-		- **Hardening**: Optional and optimized Poisoning/Redzones (via `MM_HARDENING`) using 64-bit comparisons.
-		- **Security**: ASLR for VMA placement, Guard Pages for stacks/vmalloc, and KASLR support.
-		- **Consistency**: Background MM Scrubber thread for proactive integrity validation.
 	- [x] **Phase 0: The "Aero-Fast" Foundation (Maple & SPF)**
 		- [x] **Maple Tree Integration**: Full migration from RB-tree/Linked-list to **True Maple Tree** MAS API.
 		- [x] **Performance Optimization**: O(1) sequential allocation hinting, range-optimized iteration (O(affected VMAs)), and O(N) bulk destruction.
@@ -37,7 +27,7 @@
 	- [x] Finish RMAP for all subsystems
 	- [ ] Advance ANON object fault
 	- [ ] SHM (SHared Memory) management +IPC)
-	- [ ] Use XArray/Radix tree for `vm_object`
+	- [x] Use XArray/Radix tree for `vm_object`
 	- [x] Selective lazy allocation/free for kernel `vmalloc()
 	- [ ] Fix subtle, logic bugs
 	- [ ] True memory reclaimation
@@ -51,11 +41,11 @@
 	- [ ] Streamline the use of `struct folio` rather than `struct page` for high-level mm
 	- [x] KASLR
 	- [x] ASLR
-	- [x] Guard pages *everywhere* possible
+	- [x] Guard pages where possible
 	- [ ] Proper DMA support for legacy devices
 	- [ ] IOMMU
 	- [ ] more rigid MMIO
-	- [ ] Stack management
+	- [x] Stack management
 	- [ ] handle user MM faults gracully
 - scheduling
 	- [x] PI (Priority Inheritance)
@@ -69,7 +59,7 @@
 	- [x] vruntime normalization/denormalization on migration
 	- [x] Aggressive multi-task load balancing (move load, not just tasks)
 	- [x] Cross-CPU wake-up preemption (IPI)
-	- [ ] XNU-inspired deadline handoff (idk what's it called)
+	- [ ] XNU-inspired deadline inheritence (idk what's it called)
 - VFS
 	- [x] FD allocation
 	- [ ] proper FD table
@@ -88,7 +78,7 @@
 	- [ ] devfs/procfs/tmpfs
 	- [ ] overlayfs
 	- [ ] USTAR
-	- [x] ISOFS (ISO9660 + RockRidge extension)
+	- [ ] ISOFS (ISO9660 + RockRidge extension)
 	- [ ] NEWC CPIO
 	- [ ] File systems as a module
 - POSIX-compliant
@@ -96,7 +86,7 @@
 	- [ ] pipes
 	- [ ] sockets
 	- [ ] mman
-	- [x] System V ABI
+	- [x] System V ABI (implicit!!)
 	- [ ] Binary compatibility with Linux
 	- [ ] Linux syscall table
 - modularity

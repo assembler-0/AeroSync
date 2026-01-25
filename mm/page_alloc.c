@@ -39,23 +39,23 @@
 static void kernel_poison_pages(struct page *page, int numpages, uint8_t val) {
 #ifdef MM_HARDENING
   void *addr = page_address(page);
-  memset(addr, val, (size_t)numpages << PAGE_SHIFT);
+  memset(addr, val, (size_t) numpages << PAGE_SHIFT);
 #else
-  (void)page; (void)numpages; (void)val;
+  (void) page; (void) numpages; (void) val;
 #endif
 }
 
 static void check_page_poison(struct page *page, int numpages) {
 #ifdef MM_HARDENING
-  uint64_t *p = (uint64_t *)page_address(page);
-  size_t count = (size_t)numpages << (PAGE_SHIFT - 3);
+  uint64_t *p = (uint64_t *) page_address(page);
+  size_t count = (size_t) numpages << (PAGE_SHIFT - 3);
   uint64_t expected = 0xfefefefefefefefeULL;
 
   for (size_t i = 0; i < count; i++) {
     if (unlikely(p[i] != expected)) {
       /* Fallback to byte-by-byte to find the exact corrupt byte for the panic message */
-      uint8_t *byte_p = (uint8_t *)p;
-      size_t byte_size = (size_t)numpages << PAGE_SHIFT;
+      uint8_t *byte_p = (uint8_t *) p;
+      size_t byte_size = (size_t) numpages << PAGE_SHIFT;
       for (size_t j = 0; j < byte_size; j++) {
         if (byte_p[j] != PAGE_POISON_FREE) {
           panic(PMM_CLASS "Page poisoning corruption detected at %p (offset %zu, val 0x%02x)\n",
@@ -65,7 +65,7 @@ static void check_page_poison(struct page *page, int numpages) {
     }
   }
 #else
-  (void)page; (void)numpages;
+  (void) page; (void) numpages;
 #endif
 }
 
@@ -84,6 +84,7 @@ extern struct page *mem_map;
 extern uint64_t pmm_max_pages;
 
 extern void wakeup_kswapd(struct zone *zone);
+
 extern size_t try_to_free_pages(struct pglist_data *pgdat, size_t nr_to_reclaim, gfp_t gfp_mask);
 
 /*
@@ -548,10 +549,13 @@ unsigned long alloc_pages_bulk_array(int nid, gfp_t gfp_mask, unsigned int order
   if (!nr_pages) return 0;
   if (nid < 0) nid = 0; // fallback default
   if (!node_data[nid]) {
-      /* find valid node */
-      for(int i=0; i<MAX_NUMNODES; i++) if(node_data[i]) { nid=i; break; }
+    /* find valid node */
+    for (int i = 0; i < MAX_NUMNODES; i++) if (node_data[i]) {
+      nid = i;
+      break;
+    }
   }
-  
+
   struct pglist_data *pgdat = node_data[nid];
   struct zone *z;
   unsigned long allocated = 0;
@@ -560,121 +564,121 @@ unsigned long alloc_pages_bulk_array(int nid, gfp_t gfp_mask, unsigned int order
 
   /* Fast Path: PCP */
   if (order < PCP_ORDERS && percpu_ready()) {
-      int zone_idx = ZONE_NORMAL;
-      if (gfp_mask & ___GFP_DMA) zone_idx = ZONE_DMA;
-      
-      z = &pgdat->node_zones[zone_idx];
-      if (z->present_pages) {
-          irq_flags_t irq_flags = save_irq_flags();
-          int cpu = (int) smp_get_id();
-          struct per_cpu_pages *pcp = &z->pageset[cpu];
-          
-          while (allocated < nr_pages) {
-              if (list_empty(&pcp->lists[order])) {
-                  /* Refill PCP */
-                  int batch = max((int)pcp->batch, (int)(nr_pages - allocated));
-                  if (batch > pcp->high) batch = pcp->high;
-                  
-                  int count = rmqueue_bulk(z, order, batch, &pcp->lists[order], migratetype);
-                  pcp->count += count;
-                  if (list_empty(&pcp->lists[order])) break; // Zone empty
-              }
-              
-              struct page *page = list_first_entry(&pcp->lists[order], struct page, list);
-              list_del(&page->list);
-              pcp->count--;
-              
-              struct folio *folio = (struct folio *)page;
-              folio->order = (uint16_t)order;
-              folio->node = page->node;
-              folio->zone = page->zone;
-              SetPageHead(&folio->page);
-              atomic_set(&folio->_refcount, 1);
-              
-              pages_array[allocated++] = page;
-          }
-          restore_irq_flags(irq_flags);
+    int zone_idx = ZONE_NORMAL;
+    if (gfp_mask & ___GFP_DMA) zone_idx = ZONE_DMA;
+
+    z = &pgdat->node_zones[zone_idx];
+    if (z->present_pages) {
+      irq_flags_t irq_flags = save_irq_flags();
+      int cpu = (int) smp_get_id();
+      struct per_cpu_pages *pcp = &z->pageset[cpu];
+
+      while (allocated < nr_pages) {
+        if (list_empty(&pcp->lists[order])) {
+          /* Refill PCP */
+          int batch = max((int)pcp->batch, (int)(nr_pages - allocated));
+          if (batch > pcp->high) batch = pcp->high;
+
+          int count = rmqueue_bulk(z, order, batch, &pcp->lists[order], migratetype);
+          pcp->count += count;
+          if (list_empty(&pcp->lists[order])) break; // Zone empty
+        }
+
+        struct page *page = list_first_entry(&pcp->lists[order], struct page, list);
+        list_del(&page->list);
+        pcp->count--;
+
+        struct folio *folio = (struct folio *) page;
+        folio->order = (uint16_t) order;
+        folio->node = page->node;
+        folio->zone = page->zone;
+        SetPageHead(&folio->page);
+        atomic_set(&folio->_refcount, 1);
+
+        pages_array[allocated++] = page;
       }
+      restore_irq_flags(irq_flags);
+    }
   }
-  
+
   if (allocated == nr_pages) return allocated;
 
   /* Slow Path: Zone Lock */
   // We just pick the Normal zone for now.
   z = &pgdat->node_zones[ZONE_NORMAL];
   if (!z->present_pages) z = &pgdat->node_zones[ZONE_DMA32];
-  
+
   if (z->present_pages) {
-      flags = spinlock_lock_irqsave(&z->lock);
-      while (allocated < nr_pages) {
-          struct page *page = __rmqueue(z, order, migratetype);
-          if (!page) break;
-          
-          check_page_sanity(page, order);
-          struct folio *folio = (struct folio *) page;
-          folio->order = (uint16_t) order;
-          folio->node = page->node;
-          folio->zone = page->zone;
-          SetPageHead(&folio->page);
-          
-          /* Handle higher orders tail pages if needed, omitted for bulk 0-order opt */
-           if (order > 0) {
-              size_t nr = 1UL << order;
-              for (size_t i = 1; i < nr; i++) {
-                struct page *tail = page + i;
-                tail->flags = 0;
-                SetPageTail(tail);
-                tail->head = page;
-                tail->node = page->node;
-                tail->migratetype = page->migratetype;
-              }
-          }
-          
-          atomic_set(&folio->_refcount, 1);
-          pages_array[allocated++] = page;
+    flags = spinlock_lock_irqsave(&z->lock);
+    while (allocated < nr_pages) {
+      struct page *page = __rmqueue(z, order, migratetype);
+      if (!page) break;
+
+      check_page_sanity(page, order);
+      struct folio *folio = (struct folio *) page;
+      folio->order = (uint16_t) order;
+      folio->node = page->node;
+      folio->zone = page->zone;
+      SetPageHead(&folio->page);
+
+      /* Handle higher orders tail pages if needed, omitted for bulk 0-order opt */
+      if (order > 0) {
+        size_t nr = 1UL << order;
+        for (size_t i = 1; i < nr; i++) {
+          struct page *tail = page + i;
+          tail->flags = 0;
+          SetPageTail(tail);
+          tail->head = page;
+          tail->node = page->node;
+          tail->migratetype = page->migratetype;
+        }
       }
-      spinlock_unlock_irqrestore(&z->lock, flags);
+
+      atomic_set(&folio->_refcount, 1);
+      pages_array[allocated++] = page;
+    }
+    spinlock_unlock_irqrestore(&z->lock, flags);
   }
-  
+
   return allocated;
 }
 
 void free_pages_bulk_array(unsigned long nr_pages, struct page **pages) {
-    if (!nr_pages) return;
-    
-    for (unsigned long i = 0; i < nr_pages; i++) {
-        struct page *page = pages[i];
-        if (!page) continue;
-        
-        int order = page->order;
-        struct zone *z = &managed_zones[page->zone]; // Fallback if node not accessible
-        // Better: use page->node
-        if (node_data[page->node]) {
-            z = &node_data[page->node]->node_zones[page->zone];
-        }
+  if (!nr_pages) return;
 
-        /* Try PCP first */
-        if (order < PCP_ORDERS && percpu_ready()) {
-            irq_flags_t irq_flags = save_irq_flags();
-            int cpu = (int) smp_get_id();
-            struct per_cpu_pages *pcp = &z->pageset[cpu];
-            
-            list_add(&page->list, &pcp->lists[order]);
-            pcp->count++;
-            
-            if (pcp->count >= pcp->high) {
-                drain_zone_pages(z, &pcp->lists[order], pcp->batch, order);
-                pcp->count -= pcp->batch;
-            }
-            restore_irq_flags(irq_flags);
-            continue;
-        }
+  for (unsigned long i = 0; i < nr_pages; i++) {
+    struct page *page = pages[i];
+    if (!page) continue;
 
-        /* Slow path */
-        irq_flags_t flags = spinlock_lock_irqsave(&z->lock);
-        __free_one_page(page, (unsigned long)(page - mem_map), z, order, page->migratetype);
-        spinlock_unlock_irqrestore(&z->lock, flags);
+    int order = page->order;
+    struct zone *z = &managed_zones[page->zone]; // Fallback if node not accessible
+    // Better: use page->node
+    if (node_data[page->node]) {
+      z = &node_data[page->node]->node_zones[page->zone];
     }
+
+    /* Try PCP first */
+    if (order < PCP_ORDERS && percpu_ready()) {
+      irq_flags_t irq_flags = save_irq_flags();
+      int cpu = (int) smp_get_id();
+      struct per_cpu_pages *pcp = &z->pageset[cpu];
+
+      list_add(&page->list, &pcp->lists[order]);
+      pcp->count++;
+
+      if (pcp->count >= pcp->high) {
+        drain_zone_pages(z, &pcp->lists[order], pcp->batch, order);
+        pcp->count -= pcp->batch;
+      }
+      restore_irq_flags(irq_flags);
+      continue;
+    }
+
+    /* Slow path */
+    irq_flags_t flags = spinlock_lock_irqsave(&z->lock);
+    __free_one_page(page, (unsigned long) (page - mem_map), z, order, page->migratetype);
+    spinlock_unlock_irqrestore(&z->lock, flags);
+  }
 }
 
 struct folio *alloc_pages(gfp_t gfp_mask, unsigned int order) {
@@ -728,7 +732,7 @@ void __free_pages(struct page *page, unsigned int order) {
   if (order < PCP_ORDERS && percpu_ready()) {
     irq_flags_t flags = save_irq_flags();
     int cpu = (int) smp_get_id();
-    
+
     struct pglist_data *pgdat = node_data[page->node];
     struct zone *zone = &pgdat->node_zones[page->zone];
     struct per_cpu_pages *pcp = &zone->pageset[cpu];
@@ -741,7 +745,7 @@ void __free_pages(struct page *page, unsigned int order) {
       /* Drain half the batch to reduce lock acquisition frequency */
       int to_drain = pcp->batch;
       if (to_drain > pcp->count) to_drain = pcp->count;
-      
+
       drain_zone_pages(zone, &pcp->lists[order], to_drain, order);
       pcp->count -= to_drain;
     }
@@ -779,7 +783,7 @@ void pmm_verify(void) {
           list_for_each_entry(page, &z->free_area[order].free_list[mt], list) {
             if (unlikely(!PageBuddy(page))) {
               panic("PMM: Page in free list without PageBuddy set! (pfn %lu)\n",
-                    (unsigned long)(page - mem_map));
+                    (unsigned long) (page - mem_map));
             }
             if (unlikely(page->order != order)) {
               panic("PMM: Page in free list with wrong order! (expected %d, got %d)\n",
