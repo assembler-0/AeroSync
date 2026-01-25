@@ -124,13 +124,14 @@ static void __dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se) {
  */
 static void update_curr_fair(struct rq *rq) {
   struct task_struct *curr = rq->curr;
+
+  if (!curr || curr->sched_class != &fair_sched_class)
+    return;
+
   struct sched_entity *se = &curr->se;
   struct cfs_rq *cfs_rq = &rq->cfs;
   uint64_t now_ns = rq->clock_task;
   uint64_t delta_exec_ns;
-
-  if (curr->sched_class != &fair_sched_class)
-    return;
 
   if (now_ns < se->exec_start_ns) {
     delta_exec_ns = 0;
@@ -368,60 +369,117 @@ static void check_preempt_curr_fair(struct rq *rq, struct task_struct *p,
 static int select_idle_sibling(struct task_struct *p, int prev_cpu, int target) {
   struct sched_domain *sd;
   struct rq *target_rq = per_cpu_ptr(runqueues, target);
-  int best_cpu = target;
-  unsigned long min_load = ULONG_MAX;
+  int best_idle_cpu = -1;
+  unsigned long max_cap = 0;
+  bool idle_core_found = false;
 
   /* 1. If target (waker) is idle, prioritize it (cache locality with waker) */
-  if (target_rq->nr_running == 0)
+  if (target_rq->nr_running == 0) {
+#ifdef CONFIG_SCHED_SMT
+    /* Check if sibling is also idle (real idle core) */
+    DECLARE_PER_CPU(struct cpumask, cpu_sibling_map);
+    struct cpumask *sib = per_cpu_ptr(cpu_sibling_map, target);
+    int s;
+    bool core_idle = true;
+    for_each_cpu(s, sib) {
+        if (per_cpu_ptr(runqueues, s)->nr_running > 0) {
+            core_idle = false;
+            break;
+        }
+    }
+    if (core_idle) return target;
+    /* Else keep it as a candidate */
+    best_idle_cpu = target;
+    max_cap = target_rq->cpu_capacity;
+#else
     return target;
-
-  /* 2. If prev_cpu is idle, prioritize it (cache locality for task) */
-  if (prev_cpu != target) {
-    struct rq *prev_rq = per_cpu_ptr(runqueues, prev_cpu);
-    if (prev_rq->nr_running == 0)
-      return prev_cpu;
+#endif
   }
 
-  /* 3. Scan the MC (Multi-Core / LLC) domain for an idle core */
-  /* Start from target's domain */
-  sd = target_rq->sd;
+  /* 2. If prev_cpu is idle, prioritize it (cache locality for task) */
+  if (prev_cpu != target && prev_cpu >= 0) {
+    struct rq *prev_rq = per_cpu_ptr(runqueues, prev_cpu);
+    if (prev_rq->nr_running == 0) {
+#ifdef CONFIG_SCHED_SMT
+      DECLARE_PER_CPU(struct cpumask, cpu_sibling_map);
+      struct cpumask *sib = per_cpu_ptr(cpu_sibling_map, prev_cpu);
+      int s;
+      bool core_idle = true;
+      for_each_cpu(s, sib) {
+          if (per_cpu_ptr(runqueues, s)->nr_running > 0) {
+              core_idle = false;
+              break;
+          }
+      }
+      if (core_idle) return prev_cpu;
+      if (best_idle_cpu == -1) {
+          best_idle_cpu = prev_cpu;
+          max_cap = prev_rq->cpu_capacity;
+      }
+#else
+      return prev_cpu;
+#endif
+    }
+  }
 
-  /* Find MC domain (or whatever is the highest shared cache domain) */
-  /* In our topology: SMT -> MC. We want MC. */
+  /* 3. Scan the MC (Multi-Core / LLC) domain for an idle core/thread */
+  sd = target_rq->sd;
   while (sd && !(sd->flags & SD_SHARE_PKG_RESOURCES))
       sd = sd->parent;
 
   if (!sd)
-      return target;
+      return (best_idle_cpu != -1) ? best_idle_cpu : target;
 
-  /* Search for idle CPU in this domain */
   int cpu;
   for_each_cpu(cpu, &sd->span) {
       if (!cpumask_test_cpu(cpu, &p->cpus_allowed))
           continue;
 
-      if (cpu == target || cpu == prev_cpu)
+      struct rq *rq = per_cpu_ptr(runqueues, cpu);
+      if (rq->nr_running > 0)
           continue;
 
-      struct rq *rq = per_cpu_ptr(runqueues, cpu);
-
-      /* Found an idle CPU? */
-      if (rq->nr_running == 0) {
-          return cpu;
+      bool this_core_idle = true;
+#ifdef CONFIG_SCHED_SMT
+      DECLARE_PER_CPU(struct cpumask, cpu_sibling_map);
+      struct cpumask *sib = per_cpu_ptr(cpu_sibling_map, cpu);
+      int s;
+      for_each_cpu(s, sib) {
+          if (per_cpu_ptr(runqueues, s)->nr_running > 0) {
+              this_core_idle = false;
+              break;
+          }
       }
+#endif
 
-      /* Track least loaded CPU as fallback */
-      /* Use load_avg from PELT for better decision */
-      if (rq->cfs.avg.load_avg < min_load) {
-          min_load = rq->cfs.avg.load_avg;
-          best_cpu = cpu;
+      /* Priority logic:
+       * 1. Idle Core + Higher Capacity (Hybrid P-core)
+       * 2. Idle Core + Lower Capacity (Hybrid E-core)
+       * 3. Idle Thread + Higher Capacity
+       * 4. Idle Thread + Lower Capacity
+       */
+      
+      if (this_core_idle && !idle_core_found) {
+          /* First idle core found */
+          idle_core_found = true;
+          best_idle_cpu = cpu;
+          max_cap = rq->cpu_capacity;
+      } else if (this_core_idle && idle_core_found) {
+          /* Compare capacities of idle cores */
+          if (rq->cpu_capacity > max_cap) {
+              best_idle_cpu = cpu;
+              max_cap = rq->cpu_capacity;
+          }
+      } else if (!this_core_idle && !idle_core_found) {
+          /* No idle core yet, compare idle threads */
+          if (best_idle_cpu == -1 || rq->cpu_capacity > max_cap) {
+              best_idle_cpu = cpu;
+              max_cap = rq->cpu_capacity;
+          }
       }
   }
 
-  /*
-   * Fallback: If no idle CPU, return best_cpu (least loaded).
-   */
-  return best_cpu;
+  return (best_idle_cpu != -1) ? best_idle_cpu : target;
 }
 
 static int select_task_rq_fair(struct task_struct *p, int cpu, int wake_flags) {

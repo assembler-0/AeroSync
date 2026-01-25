@@ -11,6 +11,7 @@
 #include <arch/x86_64/mm/paging.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/mm/vmm.h>
+#include <arch/x86_64/mm/layout.h>
 #include <aerosync/classes.h>
 #include <aerosync/panic.h>
 #include <aerosync/spinlock.h>
@@ -1135,22 +1136,28 @@ void vmm_init(void) {
   int levels = vmm_get_paging_levels();
 
   /*
-   * Copy kernel to the higher half (for both 4 and 5 level paging),
-   * HHDM is active when we get here, could manually remap sections
-   * with their corresponding flags and permission,
-   * but it is prone to failure (too many sections lmao)
+   * AeroSync constructs its own kernel page tables to gain full control
+   * and independence from the bootloader's initial setup.
    */
-  /*
-   * Hey!, AeroSync memcpy() uses rep movsb, i know what you are thinking,
-   * BUT rep movsb is NOT slow, in fact, it is perfect for (early) kernel operations
-   * have fun trying to align and reduce FPU overhead with your hand-optimized
-   * AVX512 memcpy!
-   */
-  memcpy(kernel_pml_root + 256, boot_pml_root + 256, 256 * sizeof(uint64_t));
+  for (int i = 256; i < 512; i++) {
+    kernel_pml_root[i] = boot_pml_root[i];
+  }
 
-  vmm_switch_pml_root(g_kernel_pml_root);
   mm_init(&init_mm);
   init_mm.pml_root = (uint64_t *) g_kernel_pml_root;
+
+  /*
+   * Explicitly map the HHDM (Direct Map) to ensure optimal page sizes (2MB/1GB)
+   * and consistent attributes across the entire physical address space.
+   * This also ensures that Limine modules (which live in HHDM) are correctly mapped.
+   */
+  uint64_t max_pfn = pmm_get_max_pfn();
+  for (uint64_t pfn = 0; pfn < max_pfn; pfn += 512) {
+      uint64_t virt = HHDM_VIRT_BASE + (pfn << 12);
+      vmm_map_huge_page_no_flush(&init_mm, virt, pfn << 12, PTE_PRESENT | PTE_RW | PTE_GLOBAL, VMM_PAGE_SIZE_2M);
+  }
+
+  vmm_switch_pml_root(g_kernel_pml_root);
   printk(VMM_CLASS "VMM Initialized (%d levels active, NX:%s, 1GB:%s).\n",
          levels, features->nx ? "yes" : "no", features->pdpe1gb ? "yes" : "no");
 }

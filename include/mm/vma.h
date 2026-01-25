@@ -16,6 +16,16 @@
 #define MAP_STACK   0x40
 #define MAP_LOCKED  0x80
 
+/* Madvise hints */
+#define MADV_NORMAL     0
+#define MADV_RANDOM     1
+#define MADV_SEQUENTIAL 2
+#define MADV_WILLNEED   3
+#define MADV_DONTNEED   4
+#define MADV_FREE       8
+#define MADV_HUGEPAGE   14
+#define MADV_NOHUGEPAGE 15
+
 /* VMA merge flags */
 #define VMA_MERGE_PREV 0x1
 #define VMA_MERGE_NEXT 0x2
@@ -50,11 +60,13 @@ void vma_free(struct vm_area_struct *vma);
 struct vm_area_struct *vma_create(uint64_t start, uint64_t end, uint64_t flags);
 
 struct file;
+struct shm_object;
 
 /* High-level VMA management (POSIX-like) */
-uint64_t do_mmap(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot, uint64_t flags, struct file *file, uint64_t pgoff);
+uint64_t do_mmap(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot, uint64_t flags, struct file *file, struct shm_object *shm, uint64_t pgoff);
 int do_munmap(struct mm_struct *mm, uint64_t addr, size_t len);
 int do_mprotect(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot);
+int do_madvise(struct mm_struct *mm, uint64_t addr, size_t len, int advice);
 
 /* Internal VMA Helpers */
 struct vm_area_struct *vma_find(struct mm_struct *mm, uint64_t addr);

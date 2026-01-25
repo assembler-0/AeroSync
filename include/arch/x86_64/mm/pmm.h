@@ -1,7 +1,6 @@
 #pragma once
 
 #include <aerosync/types.h>
-#include <mm/page.h>
 #include <arch/x86_64/mm/paging.h>
 
 #define MAX_ORDER 19

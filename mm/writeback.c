@@ -26,8 +26,22 @@ static DECLARE_WAIT_QUEUE_HEAD(writeback_wait);
 
 /* Accounting */
 static atomic_t nr_dirty_pages = ATOMIC_INIT(0);
-#define DIRTY_THRESHOLD_WAKEUP 1024  /* 4MB dirty -> start writeback */
-#define DIRTY_THRESHOLD_THROTTLE 8192 /* 32MB dirty -> throttle processes */
+
+#ifndef DIRTY_THRESHOLD_WAKEUP
+  #ifndef CONFIG_DIRTY_THRESHOLD_WAKEUP
+    #define DIRTY_THRESHOLD_WAKEUP 1024  /* 4MB dirty -> start writeback */
+  #else
+    #define DIRTY_THRESHOLD_WAKEUP CONFIG_DIRTY_THRESHOLD_WAKEUP
+  #endif
+#endif
+
+#ifndef DIRTY_THRESHOLD_THROTTLE
+  #ifndef CONFIG_DIRTY_THRESHOLD_THROTTLE
+    #define DIRTY_THRESHOLD_THROTTLE 8192 /* 32MB dirty -> throttle processes */
+  #else
+    #define DIRTY_THRESHOLD_THROTTLE CONFIG_DIRTY_THRESHOLD_THROTTLE
+  #endif
+#endif
 
 /**
  * account_page_dirtied - Increments global dirty page count.
@@ -128,7 +142,7 @@ static int kwritebackd(void *data) {
   printk(KERN_INFO WRITEBACK_CLASS "kwritebackd started\n");
 
   while (1) {
-    wait_event_interruptible(&writeback_wait,
+    wait_event_interruptible(writeback_wait,
                              !list_empty(&dirty_objects));
 
     irq_flags_t flags = spinlock_lock_irqsave(&dirty_lock);

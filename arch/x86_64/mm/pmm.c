@@ -73,6 +73,9 @@ extern void numa_init(void *rsdp);
 
 extern int pfn_to_nid(uint64_t pfn);
 
+uint64_t empty_zero_page = 0;
+EXPORT_SYMBOL(empty_zero_page);
+
 int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
   struct limine_memmap_response *memmap =
       (struct limine_memmap_response *) memmap_response_ptr;
@@ -254,6 +257,14 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
   }
 
   pmm_initialized = true;
+
+  // Allocate and zero out global zero-page singleton
+  empty_zero_page = pmm_alloc_page();
+  if (empty_zero_page) {
+    memset(pmm_phys_to_virt(empty_zero_page), 0, PAGE_SIZE);
+    /* Set as Reserved so it's never freed or swapped */
+    SetPageReserved(&mem_map[PHYS_TO_PFN(empty_zero_page)]);
+  }
 
   // Calculate watermarks and log summary
   for (int n = 0; n < MAX_NUMNODES; n++) {

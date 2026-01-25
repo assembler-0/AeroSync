@@ -1,8 +1,8 @@
 #pragma once
 
 #include <aerosync/spinlock.h>
-#include <aerosync/wait_types.h>
 #include <aerosync/atomic.h>
+#include <aerosync/wait.h>
 
 /**
  * @file include/aerosync/rw_semaphore.h

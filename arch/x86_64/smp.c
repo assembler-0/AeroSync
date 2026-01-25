@@ -101,6 +101,10 @@ static void smp_ap_entry(struct limine_mp_info *info) {
   // Enable per-CPU features (SSE, AVX, etc.)
   cpu_features_init_ap();
 
+  // Detect topology for this CPU
+  extern void detect_cpu_topology(void);
+  detect_cpu_topology();
+
   ic_set_timer(IC_DEFAULT_TICK);
 
   // Initialize GDT and TSS for this AP
@@ -232,7 +236,7 @@ void smp_call_function_many(const struct cpumask *mask, smp_call_func_t func, vo
         INIT_LIST_HEAD(&csd->list);
 
         struct smp_call_queue *q = per_cpu_ptr(cpu_call_queue, i);
-        irq_flags_t f = spinlock_lock_irqsave(&q->lock); // wait, fix this
+        irq_flags_t f = spinlock_lock_irqsave(&q->lock);
         list_add_tail(&csd->list, &q->list);
         spinlock_unlock_irqrestore(&q->lock, f);
 
@@ -325,6 +329,9 @@ void smp_prepare_boot_cpu(void) {
   // BSP is always CPU 0
   this_cpu_write(cpu_number, 0);
   cpumask_set_cpu(0, &cpu_online_mask);
+
+  extern void detect_cpu_topology(void);
+  detect_cpu_topology();
 }
 
 uint64_t smp_get_cpu_count(void) { return cpu_count; }

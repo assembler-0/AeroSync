@@ -123,8 +123,8 @@ void rcu_qs(void) {
  */
 static void rcu_process_callbacks(void) {
   struct rcu_head *list = NULL;
-  irq_flags_t flags = local_irq_save();
   struct rcu_data *rdp = this_cpu_ptr(rcu_percpu_data);
+  irq_flags_t flags = spinlock_lock_irqsave(&rcu_state.lock);
 
   /* 1. If current wait list finished its GP, move to local list for execution */
   if (rdp->wait_callbacks && rcu_state.completed_gp >= rdp->gp_num) {
@@ -135,8 +135,6 @@ static void rcu_process_callbacks(void) {
 
   /* 2. If no wait list pending, move new callbacks to wait list and start GP */
   if (!rdp->wait_callbacks && rdp->callbacks) {
-    spinlock_lock(&rcu_state.lock);
-
     rdp->wait_callbacks = rdp->callbacks;
     rdp->wait_tail = rdp->callbacks_tail;
     rdp->callbacks = NULL;
@@ -146,11 +144,9 @@ static void rcu_process_callbacks(void) {
     rcu_start_gp();
     rdp->gp_num = rcu_state.cur_gp;
     rdp->qs_pending = true;
-
-    spinlock_unlock(&rcu_state.lock);
   }
 
-  local_irq_restore(flags);
+  spinlock_unlock_irqrestore(&rcu_state.lock, flags);
 
   /* 3. Execute ready callbacks */
   while (list) {
@@ -207,5 +203,5 @@ void synchronize_rcu(void) {
   rcu_qs();
 
   /* Wait for the GP to complete */
-  wait_event(&rcu_state.gp_wait, rcu_state.completed_gp >= wait_gp);
+  wait_event(rcu_state.gp_wait, rcu_state.completed_gp >= wait_gp);
 }

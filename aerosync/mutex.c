@@ -34,7 +34,7 @@ void mutex_init(mutex_t *m) {
 
 void mutex_lock(mutex_t *m) {
   struct task_struct *curr = current;
-  wait_queue_t wait;
+  wait_queue_entry_t wait;
 
   if (unlikely(!curr)) {
     /* Early boot: no scheduler yet. Spin until lock acquired. */
@@ -98,10 +98,7 @@ void mutex_unlock(mutex_t *m) {
   /* PI Logic: Restore priority if we were boosted */
   if (curr && m->pi_enabled) {
     bool changed = false;
-    /* 
-     * Optimization: Only iterate over tasks that were actually blocked on 
-     * THIS mutex. Since we are releasing it, they are no longer boosting us.
-     */
+    irq_flags_t pflags = spinlock_lock_irqsave(&curr->pi_lock);
     struct task_struct *waiter, *tmp;
     list_for_each_entry_safe(waiter, tmp, &curr->pi_waiters, pi_list) {
       if (waiter->pi_blocked_on == m) {
@@ -111,8 +108,9 @@ void mutex_unlock(mutex_t *m) {
     }
     
     if (changed) {
-      update_task_prio(curr);
+      __update_task_prio(curr);
     }
+    spinlock_unlock_irqrestore(&curr->pi_lock, pflags);
   }
 
   m->count = 1;

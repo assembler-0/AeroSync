@@ -178,4 +178,7 @@ void vmm_switch_pml_root_pcid(uint64_t pml_root_phys, uint16_t pcid, bool no_flu
 /* Smoke test */
 void vmm_test(void);
 
+/* debugging */
+void vmm_dump_entry(struct mm_struct *mm, uint64_t virt);
+
 extern uint64_t g_kernel_pml_root;

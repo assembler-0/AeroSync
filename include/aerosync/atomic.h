@@ -1,5 +1,6 @@
 #pragma once
 
+#include <aerosync/types.h>
 #include <arch/x86_64/atomic.h>
 
 /**
@@ -26,6 +27,16 @@ typedef atomic64_t atomic_long_t;
 #define atomic_long_xchg(v, n) atomic64_xchg(v, n)
 #define atomic_long_cmpxchg(v, o, n) atomic64_cmpxchg(v, o, n)
 
+static __always_inline bool atomic_try_cmpxchg(atomic_t *v, int *old, int new) {
+    return try_cmpxchg(&v->counter, old, new);
+}
+
+static __always_inline bool atomic64_try_cmpxchg(atomic64_t *v, long *old, long new) {
+    return try_cmpxchg64(&v->counter, old, new);
+}
+
+#define atomic_long_try_cmpxchg(v, o, n) atomic64_try_cmpxchg(v, o, n)
+
 #else
 typedef atomic_t atomic_long_t;
 
@@ -37,6 +48,39 @@ typedef atomic_t atomic_long_t;
 #define atomic_long_dec(v) atomic_dec(v)
 #define atomic_long_xchg(v, n) atomic_xchg(v, n)
 #define atomic_long_cmpxchg(v, o, n) atomic_cmpxchg(v, o, n)
+
+static __always_inline bool atomic_long_try_cmpxchg(atomic_long_t *v, long *old, long new) {
+    return try_cmpxchg(&v->counter, (int *)old, (int)new);
+}
+#endif
+
+/*
+ * Linux Compatibility Layer (ATOMIC_LINUX_COMPAT)
+ */
+#ifdef ATOMIC_LINUX_COMPAT
+#define atomic_set_release(v, i) atomic_set(v, i)
+#define atomic_read_acquire(v) atomic_read(v)
+
+#define atomic_add_return_relaxed(i, v) atomic_add_return(i, v)
+#define atomic_add_return_acquire(i, v) atomic_add_return(i, v)
+#define atomic_add_return_release(i, v) atomic_add_return(i, v)
+
+#define atomic_sub_return_relaxed(i, v) atomic_sub_return(i, v)
+#define atomic_sub_return_acquire(i, v) atomic_sub_return(i, v)
+#define atomic_sub_return_release(i, v) atomic_sub_return(i, v)
+
+#define atomic_inc_return_relaxed(v) atomic_inc_return(v)
+#define atomic_dec_return_relaxed(v) atomic_dec_return(v)
+
+#define atomic_cmpxchg_relaxed(v, o, n) atomic_cmpxchg(v, o, n)
+#define atomic_cmpxchg_acquire(v, o, n) atomic_cmpxchg(v, o, n)
+#define atomic_cmpxchg_release(v, o, n) atomic_cmpxchg(v, o, n)
+
+#define atomic_try_cmpxchg_relaxed(v, o, n) atomic_try_cmpxchg(v, o, n)
+#define atomic_try_cmpxchg_acquire(v, o, n) atomic_try_cmpxchg(v, o, n)
+#define atomic_try_cmpxchg_release(v, o, n) atomic_try_cmpxchg(v, o, n)
+
+#define atomic64_try_cmpxchg_relaxed(v, o, n) atomic64_try_cmpxchg(v, o, n)
 #endif
 
 /*

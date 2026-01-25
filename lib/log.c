@@ -295,7 +295,6 @@ static int klogd_thread(void *data) {
   (void)data;
   char out_buf[512];
   while (1) {
-    int drained_any = 0;
     uint64_t slice_start = get_time_ns();
     int records = 0;
     size_t bytes = 0;
@@ -347,7 +346,6 @@ static int klogd_thread(void *data) {
           klog_console_sink(out_buf[j]);
         spinlock_unlock_irqrestore(&klog_console_lock, cf);
       }
-      drained_any = 1;
       records++;
       bytes += n;
 

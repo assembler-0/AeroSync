@@ -82,13 +82,33 @@ struct zone {
 }
     __aligned(64); // Cache line aligned
 
-#define MAX_NUMNODES 8
+#ifndef MAX_NUMNODES
+  #ifndef CONFIG_MAX_NUMNODES
+    #define MAX_NUMNODES 8
+  #else
+    #define MAX_NUMNODES CONFIG_MAX_NUMNODES
+  #endif
+#endif
 #define NUMA_NO_NODE (-1)
 
 #define MAX_ZONES_PER_ZONELIST (MAX_NUMNODES * MAX_NR_ZONES + 1)
 
 struct zonelist {
   struct zone *_zones[MAX_ZONES_PER_ZONELIST];
+};
+
+#define MAX_NR_GENS 4
+
+struct lrugen {
+  /* [generation][anon/file] */
+  struct list_head lists[MAX_NR_GENS][2];
+  atomic_long_t nr_pages[MAX_NR_GENS][2];
+
+  unsigned long max_seq;
+  unsigned long min_seq[2]; /* [0] = file, [1] = anon */
+
+  /* Generation walk state */
+  atomic_t gen_counter;
 };
 
 struct pglist_data {
@@ -102,6 +122,10 @@ struct pglist_data {
   
   wait_queue_head_t kswapd_wait;
   struct task_struct *kswapd_task;
+
+  /* LRU Management */
+  spinlock_t lru_lock;
+  struct lrugen lrugen;
 } __aligned(64);
 
 extern struct pglist_data *node_data[MAX_NUMNODES];

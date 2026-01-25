@@ -130,7 +130,7 @@ void vfs_init(void) {
     register_filesystem(&rootfs_type);
     rootfs_mount(&rootfs_type, NULL, "/", 0, NULL);
 
-    printk(VFS_CLASS "Initialization complete.\n");
+    printk(VFS_CLASS "VFS initialization complete.\n");
 }
 EXPORT_SYMBOL(vfs_init);
 

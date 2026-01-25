@@ -26,6 +26,7 @@
 #include <mm/vma.h>
 #include <mm/vm_object.h>
 #include <mm/page.h>
+#include <mm/zmm.h>
 
 /* Page Tree Management - Now using embedded obj_node in struct page for O(1) node allocation */
 
@@ -55,8 +56,14 @@ void vm_object_free(struct vm_object *obj) {
   xa_for_each(&obj->page_tree, index, folio) {
     xa_erase(&obj->page_tree, index);
     if (folio && !xa_is_err(folio)) {
-      folio->mapping = NULL;
-      folio_put(folio);
+      if ((uintptr_t)folio & 0x1) {
+#ifdef CONFIG_MM_ZMM
+        zmm_free_handle((zmm_handle_t)((uintptr_t)folio & ~0x1));
+#endif
+      } else {
+        folio->mapping = NULL;
+        folio_put(folio);
+      }
     }
   }
 
@@ -133,6 +140,8 @@ void vm_object_remove_page(struct vm_object *obj, uint64_t pgoff) {
   vm_object_remove_folio(obj, pgoff);
 }
 
+#include <mm/zmm.h>
+
 /* Anonymous Object Implementation */
 static int anon_obj_fault(struct vm_object *obj, struct vm_area_struct *vma, struct vm_fault *vmf) {
   /*
@@ -140,9 +149,9 @@ static int anon_obj_fault(struct vm_object *obj, struct vm_area_struct *vma, str
    * If the folio exists, we can handle it completely locklessly (with RCU).
    * If it doesn't, we can still proceed if we can take the object lock without blocking.
    */
+  struct folio *folio = vm_object_find_folio(obj, vmf->pgoff);
   if (vmf->flags & FAULT_FLAG_SPECULATIVE) {
     if (!down_read_trylock(&obj->lock)) return VM_FAULT_RETRY;
-    struct folio *folio = vm_object_find_folio(obj, vmf->pgoff);
     if (folio) {
       folio_get(folio);
       vmf->folio = folio;
@@ -172,15 +181,76 @@ static int anon_obj_fault(struct vm_object *obj, struct vm_area_struct *vma, str
   }
 
   // 2. Check if folio already exists
-  struct folio *folio = vm_object_find_folio(obj, vmf->pgoff);
-  if (folio) {
-    folio_get(folio);
-    vmf->folio = folio;
-    vmf->prot = vma->vm_page_prot;
-    up_read(&obj->lock);
-    return 0;
+  void *entry = xa_load(&obj->page_tree, vmf->pgoff);
+  
+  if (entry && !xa_is_err(entry)) {
+    if ((uintptr_t)entry & 0x1) {
+#ifdef CONFIG_MM_ZMM
+      zmm_handle_t handle = (zmm_handle_t)((uintptr_t)entry & ~0x1);
+      
+      up_read(&obj->lock);
+      struct folio *new_folio = alloc_pages(GFP_KERNEL, 0);
+      if (!new_folio) return VM_FAULT_OOM;
+      
+      if (zmm_decompress_to_folio(handle, new_folio) != 0) {
+        folio_put(new_folio);
+        return VM_FAULT_SIGBUS;
+      }
+      
+      down_write(&obj->lock);
+      void *recheck = xa_load(&obj->page_tree, vmf->pgoff);
+      if (recheck != entry) {
+        up_write(&obj->lock);
+        folio_put(new_folio);
+        return VM_FAULT_RETRY;
+      }
+      
+      xa_store(&obj->page_tree, vmf->pgoff, new_folio, GFP_KERNEL);
+      zmm_free_handle(handle);
+      
+      folio_get(new_folio);
+      vmf->folio = new_folio;
+      vmf->prot = vma->vm_page_prot;
+      
+      up_write(&obj->lock);
+      if (vma->anon_vma) folio_add_anon_rmap(new_folio, vma, vmf->address);
+      return 0;
+#else
+      return VM_FAULT_SIGBUS;
+#endif
+    } else {
+      struct folio *folio = (struct folio *)entry;
+      
+      /* COW for Zero Page */
+      if ((vmf->flags & FAULT_FLAG_WRITE) && folio_to_phys(folio) == empty_zero_page) {
+          goto allocate_new;
+      }
+
+      folio_get(folio);
+      vmf->folio = folio;
+      vmf->prot = vma->vm_page_prot;
+      if (folio_to_phys(folio) == empty_zero_page) vmf->prot &= ~PTE_RW;
+
+      up_read(&obj->lock);
+      return 0;
+    }
   }
 
+  /* Zero-Page Optimization for initial reads */
+  if (!(vmf->flags & FAULT_FLAG_WRITE)) {
+      struct folio *zf = (struct folio *)&mem_map[PHYS_TO_PFN(empty_zero_page)];
+      vmf->folio = zf;
+      vmf->prot = vma->vm_page_prot & ~PTE_RW;
+      
+      down_write(&obj->lock);
+      if (!xa_load(&obj->page_tree, vmf->pgoff)) {
+          xa_store(&obj->page_tree, vmf->pgoff, zf, GFP_KERNEL);
+      }
+      up_write(&obj->lock);
+      return 0;
+  }
+
+allocate_new:
   up_read(&obj->lock);
 
   /* 3. Prepare new folio (ALLOCATION OUTSIDE LOCK) */
@@ -272,6 +342,8 @@ static const struct vm_object_operations device_obj_ops = {
 
 /**
  * vm_object_collapse - Collapses a shadow chain.
+ * Professional implementation: Collapses the backing object into the shadow
+ * if the backing object is no longer shared.
  */
 void vm_object_collapse(struct vm_object *obj) {
   struct vm_object *backing;
@@ -280,72 +352,76 @@ void vm_object_collapse(struct vm_object *obj) {
     backing = obj->backing_object;
     if (!backing) return;
 
-    /* Check if backing can be collapsed (only 1 ref, and it's us) */
+    /* 
+     * Optimization: If the backing object has only 1 reference (us), 
+     * we can merge its pages into our tree and bypass it.
+     */
     if (backing->type != VM_OBJECT_ANON || atomic_read(&backing->refcount) != 1) {
       return;
     }
 
-    vm_object_get(backing);
-
-    /* LOCK ORDER: Shadow (child) -> Backing (parent) to avoid ABBA deadlock with fault path */
-    down_write(&obj->lock);
-    down_write(&backing->lock);
-
-    /* Re-check refcount under lock to avoid race */
-    if (atomic_read(&backing->refcount) != 2) {
-      up_write(&backing->lock);
+    /* LOCK ORDER: Child -> Parent */
+    if (!down_write_trylock(&obj->lock)) return;
+    if (!down_write_trylock(&backing->lock)) {
       up_write(&obj->lock);
-      vm_object_put(backing);
       return;
     }
 
-    /* 
-     * Collapse pages from backing to shadow using efficient XArray iterator.
-     */
+    /* Re-check refcount under lock */
+    if (atomic_read(&backing->refcount) != 1) {
+      up_write(&backing->lock);
+      up_write(&obj->lock);
+      return;
+    }
+
     unsigned long backing_idx;
     struct folio *folio;
     xa_for_each(&backing->page_tree, backing_idx, folio) {
       if (!folio || xa_is_err(folio)) continue;
 
-      if (folio->index < (obj->shadow_offset >> PAGE_SHIFT)) {
-        goto skip_page;
-      }
-
-      uint64_t obj_pgoff = folio->index - (obj->shadow_offset >> PAGE_SHIFT);
-      if (obj_pgoff >= (obj->size >> PAGE_SHIFT)) {
-        goto skip_page;
-      }
-
-      if (!vm_object_find_folio(obj, obj_pgoff)) {
+      uint64_t backing_offset = backing_idx << PAGE_SHIFT;
+      if (backing_offset < obj->shadow_offset) {
+        /* Page is before our window, just free it */
         xa_erase(&backing->page_tree, backing_idx);
-        vm_object_add_folio(obj, obj_pgoff, folio);
+        folio->mapping = NULL;
+        folio_put(folio);
         continue;
       }
 
-    skip_page:
-      xa_erase(&backing->page_tree, backing_idx);
-      folio->mapping = NULL;
-      folio_put(folio);
+      uint64_t obj_pgoff = (backing_offset - obj->shadow_offset) >> PAGE_SHIFT;
+      if (obj_pgoff >= (obj->size >> PAGE_SHIFT)) {
+        /* Page is after our window */
+        xa_erase(&backing->page_tree, backing_idx);
+        folio->mapping = NULL;
+        folio_put(folio);
+        continue;
+      }
+
+      /* If we don't have this page yet, take it from backing */
+      if (!vm_object_find_folio(obj, obj_pgoff)) {
+        xa_erase(&backing->page_tree, backing_idx);
+        vm_object_add_folio(obj, obj_pgoff, folio);
+      } else {
+        /* We already have a newer version, discard the old one */
+        xa_erase(&backing->page_tree, backing_idx);
+        folio->mapping = NULL;
+        folio_put(folio);
+      }
     }
-    xa_erase(&backing->page_tree, backing_idx);
-    folio->mapping = NULL;
-    folio_put(folio);
+
+    /* Link to the next object in the chain */
+    struct vm_object *new_backing = backing->backing_object;
+    if (new_backing) vm_object_get(new_backing);
+    
+    obj->backing_object = new_backing;
+    obj->shadow_offset += backing->shadow_offset;
+
+    up_write(&backing->lock);
+    up_write(&obj->lock);
+
+    /* backing is now orphaned and will be freed by vm_object_put */
+    vm_object_put(backing);
   }
-
-  struct vm_object *new_backing = backing->backing_object;
-  if (new_backing) vm_object_get(new_backing);
-
-  struct vm_object *old_backing = backing->backing_object;
-  backing->backing_object = NULL;
-
-  obj->backing_object = new_backing;
-  obj->shadow_offset += backing->shadow_offset;
-
-  up_write(&backing->lock);
-  up_write(&obj->lock);
-
-  vm_object_put(backing);
-  vm_object_put(old_backing);
 }
 
 

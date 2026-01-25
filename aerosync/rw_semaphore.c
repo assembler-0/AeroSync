@@ -52,7 +52,7 @@ void down_read(struct rw_semaphore *sem) {
         }
         
         // Wait for it to become positive
-        wait_queue_t wait;
+        wait_queue_entry_t wait;
         init_wait(&wait);
         prepare_to_wait(&sem->wait_list, &wait, TASK_UNINTERRUPTIBLE);
         if (atomic_read(&sem->count) < 0) {
@@ -83,7 +83,7 @@ void down_write(struct rw_semaphore *sem) {
         if (atomic_cmpxchg(&sem->count, 0, -1) == 0)
             return;
 
-        wait_queue_t wait;
+        wait_queue_entry_t wait;
         init_wait(&wait);
         prepare_to_wait(&sem->wait_list, &wait, TASK_UNINTERRUPTIBLE);
         if (atomic_read(&sem->count) != 0) {

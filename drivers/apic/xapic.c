@@ -106,11 +106,9 @@ static int xapic_init_lapic(void) {
   // Enable the LAPIC
   wrmsr(APIC_BASE_MSR, lapic_base_msr | APIC_BASE_MSR_ENABLE);
 
-  // Add a small delay to ensure APIC is ready before register access
-  // Different emulators have different timing requirements
-  for (volatile int i = 0; i < 1000; i++) {
-    __asm__ volatile("nop" ::: "memory");
-  }
+  // Add a delay to ensure APIC is ready before register access
+  // Different emulators (especially Bochs) have different timing requirements
+  time_wait_ns(10000); // 10 microseconds
 
   // Verify that we can read the version register to confirm APIC is working
   uint32_t version = xapic_read(XAPIC_VER);

@@ -57,7 +57,17 @@
 #include <mm/vm_object.h>
 #include <uacpi/uacpi.h>
 
+#include <mm/zmm.h>
+
+#include <mm/shm.h>
+
 static struct task_struct bsp_task __aligned(16);
+
+static int test(void *u) {
+  while (1) {
+    printk("hello");
+  }
+}
 
 static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
   (void) unused;
@@ -66,6 +76,8 @@ static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
 
   fkx_init_module_class(FKX_GENERIC_CLASS);
 
+  zmm_init();
+  shm_init();
   kswapd_init();
   khugepaged_init();
   vm_writeback_init();
@@ -211,6 +223,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   fpu_init();
   sched_init();
+  bsp_task.active_mm = &init_mm;
   sched_init_task(&bsp_task);
 
 #ifdef INCLUDE_MM_TESTS
@@ -244,11 +257,15 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     printk(KERN_WARNING KERN_CLASS "Time subsystem initialization failed\n");
   }
 
-  // Recalibrate TSC using the best available time source
-  if (time_calibrate_tsc_system() != 0) {
-    printk(KERN_WARNING KERN_CLASS "TSC System Calibration failed.\n");
+  // Recalibrate TSC using the best available time source if not already calibrated accurately
+  if (tsc_freq_get() < 1000000) {
+    if (time_calibrate_tsc_system() != 0) {
+      printk(KERN_WARNING KERN_CLASS "TSC System Calibration failed.\n");
+    } else {
+      printk(KERN_CLASS "TSC calibrated successfully via %s.\n", time_get_source_name());
+    }
   } else {
-    printk(KERN_CLASS "TSC calibrated successfully.\n");
+    printk(KERN_CLASS "TSC already calibrated via CPUID (%lu Hz).\n", tsc_freq_get());
   }
 
   timer_init_subsystem();

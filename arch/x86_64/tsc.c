@@ -33,10 +33,22 @@ void tsc_calibrate_early(void) {
   /* ---------- Tier 1: CPUID 0x15 ---------- */
   cpuid(0x15, &eax, &ebx, &ecx, &edx);
 
-  if (eax && ebx && ecx) {
+  if (eax && ebx) {
     uint64_t crystal_hz = ecx;
-    uint64_t tsc_hz = (crystal_hz * ebx) / eax;
 
+    /* 
+     * On many modern Intel CPUs (Skylake+), the crystal frequency is 24MHz 
+     * but CPUID.15H:ECX might be 0. 
+     */
+    if (crystal_hz == 0) {
+      /* 
+       * Assume 24MHz as a safe default for modern Intel.
+       * Some Atom CPUs use 19.2MHz, but Core CPUs use 24MHz.
+       */
+      crystal_hz = 24000000;
+    }
+
+    uint64_t tsc_hz = (crystal_hz * ebx) / eax;
     tsc_freq = tsc_hz;
     return;
   }
@@ -46,7 +58,7 @@ void tsc_calibrate_early(void) {
 
   if (eax) {
     /* eax = base frequency in MHz */
-    tsc_freq = eax * 1000000;
+    tsc_freq = (uint64_t)eax * 1000000;
     return;
   }
 

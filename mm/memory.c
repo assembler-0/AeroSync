@@ -37,10 +37,17 @@
 #include <aerosync/wait.h>
 #include <aerosync/sched/process.h>
 
+/* LRU Management */
+#ifdef CONFIG_MM_LRU
 /* Global LRU Lists - Per-CPU to reduce cache line bouncing */
 DEFINE_PER_CPU(struct list_head, inactive_list);
 DEFINE_PER_CPU(struct list_head, active_list);
 DEFINE_PER_CPU(spinlock_t, lru_lock);
+#endif
+
+#ifdef CONFIG_MM_MGLRU
+/* MGLRU per-CPU batching (Future optimization) */
+#endif
 
 /**
  * struct scan_control - Control parameters for a reclamation pass.
@@ -51,8 +58,57 @@ struct scan_control {
   int priority; /* 0 (max) to 12 (min) */
   size_t nr_reclaimed;
   size_t nr_scanned;
+  int nid;      /* Node being scanned */
 };
 
+#ifdef CONFIG_MM_MGLRU
+static inline int folio_lru_gen(struct folio *folio) {
+  return (int)((folio->flags >> LRU_GEN_SHIFT) & LRU_GEN_MASK);
+}
+
+static inline int folio_is_file(struct folio *folio) {
+  return !((uintptr_t)folio->mapping & 0x1);
+}
+
+/**
+ * folio_add_lru - Add a folio to the MGLRU.
+ */
+void folio_add_lru(struct folio *folio) {
+  if (!folio || (folio->flags & PG_lru)) return;
+
+  int nid = folio->node;
+  struct pglist_data *pgdat = node_data[nid];
+  if (!pgdat) return;
+
+  int type = !folio_is_file(folio); /* 0 = file, 1 = anon */
+  
+  irq_flags_t flags = spinlock_lock_irqsave(&pgdat->lru_lock);
+  
+  /* Re-check under lock */
+  if (folio->flags & PG_lru) {
+    spinlock_unlock_irqrestore(&pgdat->lru_lock, flags);
+    return;
+  }
+
+  int gen = pgdat->lrugen.max_seq % MAX_NR_GENS;
+  
+  /* Update folio flags with generation and type info */
+  unsigned long old_flags, new_flags;
+  do {
+    old_flags = folio->flags;
+    new_flags = old_flags | PG_lru;
+    new_flags &= ~(LRU_GEN_MASK << LRU_GEN_SHIFT);
+    new_flags |= ((unsigned long)gen << LRU_GEN_SHIFT);
+  } while (!__atomic_compare_exchange_n(&folio->flags, &old_flags, new_flags, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
+
+  list_add(&folio->lru, &pgdat->lrugen.lists[gen][type]);
+  atomic_long_inc(&pgdat->lrugen.nr_pages[gen][type]);
+
+  spinlock_unlock_irqrestore(&pgdat->lru_lock, flags);
+}
+#endif
+
+#ifdef CONFIG_MM_LRU
 /**
  * folio_add_lru - Add a folio to the inactive LRU list.
  */
@@ -74,6 +130,7 @@ void folio_add_lru(struct folio *folio) {
 
   spinlock_unlock_irqrestore(lock, flags);
 }
+#endif
 
 /**
  * try_to_unmap_folio - The core of memory reclamation.
@@ -220,20 +277,56 @@ int folio_referenced(struct folio *folio) {
   return referenced;
 }
 
+#include <mm/zmm.h>
+
 /**
  * folio_reclaim - Attempt to free a folio by unmapping it from all users.
  */
 int folio_reclaim(struct folio *folio, struct mmu_gather *tlb) {
   if (folio_referenced(folio)) {
-    /* Recently accessed, move to active list (if on inactive) */
     return -EAGAIN;
   }
 
+  bool is_anon = (uintptr_t)folio->mapping & 0x1;
+
+  if (is_anon) {
+#ifdef CONFIG_MM_ZMM
+    /* Try ZMM compression for anonymous pages */
+    zmm_handle_t handle = zmm_compress_folio(folio);
+    if (handle != 0) {
+      struct vm_object *obj = (struct vm_object *)((uintptr_t)folio->mapping & ~0x1);
+      
+      down_write(&obj->lock);
+      /* 
+       * XArray 'exceptional' entry: we store the handle with bit 0 set to 1.
+       * Since our handles are zmm_entry pointers (8-byte aligned), bit 1 is free.
+       * We use bit 0=1 to mark it as NOT a folio pointer.
+       */
+      void *exceptional = (void *)(handle | 0x1);
+      xa_store(&obj->page_tree, folio->index, exceptional, GFP_ATOMIC);
+      
+      /* Unmap from all users before freeing physical page */
+      try_to_unmap_folio(folio, tlb);
+      
+      up_write(&obj->lock);
+
+      if (!tlb) {
+        pmm_free_pages(folio_to_phys(folio), folio_nr_pages(folio));
+      }
+      return 0;
+    }
+#endif
+    /* If no ZMM and no Swap, we cannot reclaim anonymous pages */
+    return -1;
+  }
+
+  /* File-backed pages can always be reclaimed (if not dirty) */
+  if (folio->page.flags & PG_dirty) {
+     wakeup_writeback();
+     return -EAGAIN;
+  }
+
   if (try_to_unmap_folio(folio, tlb)) {
-    /* 
-     * If TLB context is provided, we don't free pages immediately.
-     * The TLB finish pass will free them after the shootdown.
-     */
     if (!tlb) {
       pmm_free_pages(folio_to_phys(folio), folio_nr_pages(folio));
     }
@@ -243,6 +336,7 @@ int folio_reclaim(struct folio *folio, struct mmu_gather *tlb) {
   return -1;
 }
 
+#ifdef CONFIG_MM_LRU
 /**
  * shrink_active_list - Move pages from active to inactive if they aren't referenced.
  */
@@ -332,7 +426,87 @@ size_t shrink_inactive_list(size_t nr_to_scan) {
 
   return reclaimed;
 }
+#endif
 
+#ifdef CONFIG_MM_MGLRU
+/**
+ * scan_gen - Scans a specific generation for pages to reclaim.
+ */
+static size_t scan_gen(struct pglist_data *pgdat, int gen, int type, struct scan_control *sc) {
+  size_t reclaimed = 0;
+  struct list_head folio_list;
+  INIT_LIST_HEAD(&folio_list);
+  
+  struct mmu_gather tlb;
+  tlb_gather_mmu(&tlb, &init_mm, 0, 0);
+
+  irq_flags_t flags = spinlock_lock_irqsave(&pgdat->lru_lock);
+  struct list_head *src = &pgdat->lrugen.lists[gen][type];
+  
+  int scanned = 0;
+  while (!list_empty(src) && scanned < 32) {
+    struct folio *folio = list_last_entry(src, struct folio, lru);
+    list_move(&folio->lru, &folio_list);
+    scanned++;
+  }
+  spinlock_unlock_irqrestore(&pgdat->lru_lock, flags);
+
+  struct list_head *pos, *q;
+  list_for_each_safe(pos, q, &folio_list) {
+    struct folio *folio = list_entry(pos, struct folio, lru);
+    
+    /* 
+     * Optimization: If recently accessed, promote to newest generation.
+     */
+    if (folio_referenced(folio)) {
+      int new_gen = pgdat->lrugen.max_seq % MAX_NR_GENS;
+      flags = spinlock_lock_irqsave(&pgdat->lru_lock);
+      
+      /* Update generation in flags */
+      unsigned long old_f, new_f;
+      do {
+        old_f = folio->flags;
+        new_f = (old_f & ~(LRU_GEN_MASK << LRU_GEN_SHIFT)) | ((unsigned long)new_gen << LRU_GEN_SHIFT);
+      } while (!__atomic_compare_exchange_n(&folio->flags, &old_f, new_f, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED));
+
+      list_add(&folio->lru, &pgdat->lrugen.lists[new_gen][type]);
+      spinlock_unlock_irqrestore(&pgdat->lru_lock, flags);
+      continue;
+    }
+
+    if (folio_reclaim(folio, &tlb) == 0) {
+      reclaimed++;
+      atomic_long_dec(&pgdat->lrugen.nr_pages[gen][type]);
+    } else {
+      /* Re-insert into current generation if reclaim failed */
+      flags = spinlock_lock_irqsave(&pgdat->lru_lock);
+      list_add(&folio->lru, src);
+      spinlock_unlock_irqrestore(&pgdat->lru_lock, flags);
+    }
+  }
+  
+  tlb_finish_mmu(&tlb);
+  return reclaimed;
+}
+
+static void shrink_node(struct pglist_data *pgdat, struct scan_control *sc) {
+  /* MGLRU walks from oldest generation upwards */
+  for (int gen = 0; gen < MAX_NR_GENS; gen++) {
+    sc->nr_reclaimed += scan_gen(pgdat, gen, 0, sc); /* file */
+    if (sc->nr_reclaimed >= sc->nr_to_reclaim) return;
+    
+    sc->nr_reclaimed += scan_gen(pgdat, gen, 1, sc); /* anon */
+    if (sc->nr_reclaimed >= sc->nr_to_reclaim) return;
+  }
+
+  /* Advance generations if we couldn't reclaim enough from existing ones */
+  irq_flags_t flags = spinlock_lock_irqsave(&pgdat->lru_lock);
+  pgdat->lrugen.max_seq++;
+  spinlock_unlock_irqrestore(&pgdat->lru_lock, flags);
+}
+#endif
+
+#ifdef CONFIG_MM_LRU
 /**
  * shrink_zone - Standard reclamation for a single zone.
  */
@@ -350,6 +524,18 @@ static void shrink_zone(struct zone *zone, struct scan_control *sc) {
   /* Reclamation */
   sc->nr_reclaimed += shrink_inactive_list(nr_inactive);
 }
+
+static void shrink_node(struct pglist_data *pgdat, struct scan_control *sc) {
+  for (int i = MAX_NR_ZONES - 1; i >= 0; i--) {
+    struct zone *z = &pgdat->node_zones[i];
+    if (z->present_pages == 0) continue;
+
+    if (z->nr_free_pages < z->watermark[WMARK_HIGH]) {
+      shrink_zone(z, sc);
+    }
+  }
+}
+#endif
 
 void wakeup_kswapd(struct zone *zone) {
   if (!zone || !zone->zone_pgdat) return;
@@ -370,23 +556,17 @@ static int kswapd_thread(void *data) {
   printk(KERN_INFO SWAP_CLASS "kswapd started for node %d\n", pgdat->node_id);
 
   while (1) {
-    wait_event(&pgdat->kswapd_wait, kswapd_should_run(pgdat));
+    wait_event(pgdat->kswapd_wait, kswapd_should_run(pgdat));
 
     struct scan_control sc = {
       .gfp_mask = GFP_KERNEL,
       .nr_to_reclaim = 128,
       .priority = 12, /* Start with lowest priority */
+      .nid = pgdat->node_id,
     };
 
     while (sc.priority >= 0) {
-      for (int i = MAX_NR_ZONES - 1; i >= 0; i--) {
-        struct zone *z = &pgdat->node_zones[i];
-        if (z->present_pages == 0) continue;
-
-        if (z->nr_free_pages < z->watermark[WMARK_HIGH]) {
-          shrink_zone(z, &sc);
-        }
-      }
+      shrink_node(pgdat, &sc);
 
       if (sc.nr_reclaimed >= sc.nr_to_reclaim) break;
 
@@ -395,6 +575,32 @@ static int kswapd_thread(void *data) {
     }
   }
   return 0;
+}
+
+/**
+ * try_to_free_pages - Unified entry point for direct reclamation.
+ */
+size_t try_to_free_pages(struct pglist_data *pgdat, size_t nr_to_reclaim, gfp_t gfp_mask) {
+  struct scan_control sc = {
+    .nr_to_reclaim = nr_to_reclaim,
+    .gfp_mask = gfp_mask,
+    .priority = 12,
+    .nid = pgdat->node_id,
+    .nr_reclaimed = 0,
+    .nr_scanned = 0,
+  };
+
+  /* 
+   * We attempt to reclaim with increasing pressure.
+   * Professional kernels back off if we're scanning too much without success.
+   */
+  while (sc.priority >= 0) {
+    shrink_node(pgdat, &sc);
+    if (sc.nr_reclaimed >= nr_to_reclaim) break;
+    sc.priority--;
+  }
+
+  return sc.nr_reclaimed;
 }
 
 void kswapd_init(void) {
@@ -412,6 +618,7 @@ void kswapd_init(void) {
 }
 
 void lru_init(void) {
+#ifdef CONFIG_MM_LRU
   int cpu;
   for_each_possible_cpu(cpu) {
     struct list_head *inactive = per_cpu_ptr(inactive_list, cpu);
@@ -422,6 +629,7 @@ void lru_init(void) {
     INIT_LIST_HEAD(active);
     spinlock_init(lock);
   }
+#endif
 }
 
 /**
@@ -512,6 +720,24 @@ const struct vm_operations_struct shmem_vm_ops = {
  * Generic fault handler that dispatches to VMA-specific operations.
  */
 int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int flags) {
+  struct mm_struct *mm = vma->vm_mm;
+  uint32_t vma_seq = vma->vma_seq;
+
+  /* 
+   * SPF (Speculative Page Fault) Check:
+   * If this is a speculative fault, we must ensure the VMA didn't change
+   * under us. We use the sequence counter for this.
+   */
+  if (flags & FAULT_FLAG_SPECULATIVE) {
+    /* 
+     * In a production kernel, we would check if the mmap_lock is NOT held 
+     * and use RCU to safely access the VMA.
+     */
+#ifndef CONFIG_MM_SPF
+    return VM_FAULT_RETRY;
+#endif
+  }
+
   struct vm_fault vmf;
   vmf.address = address & PAGE_MASK;
   vmf.flags = flags;
@@ -557,6 +783,16 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
   if (ret != 0) return ret;
 
   if (vmf.folio) {
+    /* 
+     * SPF COMMIT: Before we map the page, we MUST verify the VMA didn't change.
+     */
+    if (flags & FAULT_FLAG_SPECULATIVE) {
+      if (unlikely(vma->vma_seq != vma_seq)) {
+        if (vmf.folio) folio_put(vmf.folio);
+        return VM_FAULT_RETRY;
+      }
+    }
+
     struct folio *folio = vmf.folio;
     uint64_t phys = folio_to_phys(folio);
 

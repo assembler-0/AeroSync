@@ -25,6 +25,7 @@
 #include <aerosync/spinlock.h>
 #include <aerosync/sysintf/ic.h>
 #include <aerosync/wait.h>
+#include <aerosync/signal.h>
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/io.h>
 #include <arch/x86_64/irq.h>
@@ -323,21 +324,23 @@ uacpi_status uacpi_kernel_acquire_mutex(uacpi_handle h, uacpi_u16 timeout) {
     return UACPI_STATUS_OK;
   }
 
-  // timeout-based lock (not yet implemented in our mutex, but we can fake it or
-  // implement it) For now, since timeout is rarely used with
-  // non-infinite/non-zero values in uACPI, we'll just use a loop with trylock
-  // and tsc_delay or similar for simple implementation. However, a better way
-  // would be adding timeout support to mutex_lock.
-
   uint64_t start = get_time_ns();
   uint64_t limit = (uint64_t)timeout * 1000000;
 
   while (1) {
     if (mutex_trylock(&obj->mutex))
       return UACPI_STATUS_OK;
-    if (get_time_ns() - start > limit)
+    
+    uint64_t now = get_time_ns();
+    if (now - start >= limit)
       return UACPI_STATUS_TIMEOUT;
-    schedule(); // Yield
+    
+    uint64_t remaining = limit - (now - start);
+    // Sleep for a short while or remaining time
+    uint64_t sleep_ns = remaining > 10000000 ? 10000000 : remaining;
+    
+    current->state = TASK_UNINTERRUPTIBLE;
+    schedule_timeout(sleep_ns);
   }
 }
 
@@ -359,7 +362,7 @@ void uacpi_kernel_free_event(uacpi_handle h) { kfree(h); }
 
 uacpi_bool uacpi_kernel_wait_for_event(uacpi_handle h, uacpi_u16 timeout) {
   uacpi_event_obj_t *obj = h;
-  wait_queue_t wait;
+  wait_queue_entry_t wait;
   init_wait(&wait);
 
   uint64_t start = get_time_ns();
@@ -380,16 +383,25 @@ uacpi_bool uacpi_kernel_wait_for_event(uacpi_handle h, uacpi_u16 timeout) {
       return UACPI_FALSE;
     }
 
-    prepare_to_wait(&obj->wait_q, &wait, TASK_UNINTERRUPTIBLE);
-    spinlock_unlock_irqrestore(&obj->lock, flags);
-
-    schedule();
-
     if (timeout != 0xFFFF) {
-      if (get_time_ns() - start > limit) {
+      uint64_t now = get_time_ns();
+      if (now - start >= limit) {
+        printk(KERN_WARNING ACPI_CLASS "Event timeout: %u ms (start=%llu, now=%llu, diff=%llu)\n", 
+               timeout, start, now, now - start);
+        spinlock_unlock_irqrestore(&obj->lock, flags);
         finish_wait(&obj->wait_q, &wait);
         return UACPI_FALSE;
       }
+
+      prepare_to_wait(&obj->wait_q, &wait, TASK_UNINTERRUPTIBLE);
+      spinlock_unlock_irqrestore(&obj->lock, flags);
+      
+      uint64_t remaining = limit - (now - start);
+      schedule_timeout(remaining);
+    } else {
+      prepare_to_wait(&obj->wait_q, &wait, TASK_UNINTERRUPTIBLE);
+      spinlock_unlock_irqrestore(&obj->lock, flags);
+      schedule();
     }
   }
 }
@@ -615,7 +627,7 @@ static wait_queue_head_t work_wait_q;
 
 static int acpi_worker_thread(void *data) {
   (void)data;
-  wait_queue_t wait;
+  wait_queue_entry_t wait;
   init_wait(&wait);
 
   while (1) {
@@ -693,22 +705,26 @@ uacpi_status uacpi_kernel_wait_for_work_completion(void) {
   return UACPI_STATUS_OK;
 }
 
+static struct task_struct *worker = NULL;
+
 /*
  * Initialization
  */
 uacpi_status uacpi_kernel_initialize(uacpi_init_level current_init_lvl) {
-  if (current_init_lvl == UACPI_INIT_LEVEL_EARLY) {
+  if (current_init_lvl == UACPI_INIT_LEVEL_SUBSYSTEM_INITIALIZED) {
     spinlock_init(&work_lock);
     init_waitqueue_head(&work_wait_q);
     // Start worker thread
-    kthread_run(kthread_create(acpi_worker_thread, NULL, "acpi_worker"));
+    worker = kthread_create(acpi_worker_thread, NULL, "acpi_worker");
+    kthread_run(worker);
   }
   return UACPI_STATUS_OK;
 }
 
 void uacpi_kernel_deinitialize(void) {
-  // Cleanup
+  send_signal(SIGKILL, worker);
 }
+
 #include <aerosync/fkx/fkx.h>
 EXPORT_SYMBOL(uacpi_table_find_by_signature);
 EXPORT_SYMBOL(uacpi_status_to_string);

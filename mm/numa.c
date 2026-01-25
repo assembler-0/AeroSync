@@ -140,21 +140,6 @@ static void parse_srat(struct acpi_srat *srat) {
           lapic_node_map[lapic_node_count].nid = (int) domain;
           lapic_node_count++;
         }
-        
-        /* Not perfect: We need CPU ID, not LAPIC ID for cpumask. 
-           But since we don't have full SMP init yet, we'll defer or 
-           assume a temporary mapping. For now, we can't easily populate 
-           cpumask here without CPU ID lookup.
-           
-           FIX: We will populate node_to_cpumask_map in cpu_to_node lookups later
-           or during SMP init.
-           
-           Actually, let's try to map if possible, or just leave it empty 
-           and let SMP init fill it.
-           
-           Wait, build_sched_domains needs it.
-           We can assume linear CPU IDs for now or update it in smp_init.
-        */
         break;
       }
       case ACPI_SRAT_ENTRY_TYPE_MEMORY_AFFINITY: {

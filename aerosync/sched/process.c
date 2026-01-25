@@ -125,6 +125,7 @@ struct task_struct *copy_process(uint64_t clone_flags,
   INIT_LIST_HEAD(&p->run_list);
 
   /* PI initialization */
+  spinlock_init(&p->pi_lock);
   p->pi_blocked_on = NULL;
   INIT_LIST_HEAD(&p->pi_waiters);
   INIT_LIST_HEAD(&p->pi_list);

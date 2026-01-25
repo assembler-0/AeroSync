@@ -11,14 +11,10 @@
 #include <lib/string.h>
 #include <mm/slub.h>
 
-#ifndef ALIGN
-#define ALIGN(x, a) (((x) + (a) - 1) & ~((a) - 1))
-#endif
-
 unsigned long __per_cpu_offset[MAX_CPUS];
 static bool g_percpu_ready = false;
 
-bool percpu_ready(void) { return g_percpu_ready; }
+int percpu_ready(void) { return g_percpu_ready; }
 EXPORT_SYMBOL(percpu_ready);
 
 void setup_per_cpu_areas(void) {

@@ -46,11 +46,14 @@ struct vm_object;
 #define VM_HUGE 0x01000000
 #define VM_ALLOC_LAZY 0x02000000
 
+#define VM_RANDOM     0x04000000
+#define VM_SEQUENTIAL 0x08000000
+#define VM_HUGEPAGE   0x10000000
+#define VM_NOHUGEPAGE 0x20000000
+
 #define VMA_MAGIC 0x564d415f41524541ULL /* "VMA_AREA" */
 
-/* New flags for compatibility with vma.h */
-#define VM_HUGEPAGE 0x04000000
-#define VM_NOHUGEPAGE 0x08000000
+/* Additional state flags */
 #define VM_VMALLOC_PCP 0x100000000ULL
 #define VM_LAZY_FREE   0x200000000ULL
 

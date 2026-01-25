@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+menu "scheduler"
+
+config SCHED_SMT
+    bool "SMT (Hyperthreading) scheduler support"
+    default y
+    help
+      Improve the scheduler's decision making when dealing with SMT (Simultaneous
+      Multi-Threading) siblings. This ensures that the scheduler avoids
+      scheduling multiple tasks on the same physical core if other cores are
+      completely idle.
+
+config SCHED_MC
+    bool "Multi-core scheduler support"
+    default y
+    help
+      Enable Multi-core (MC) domain scheduling. This helps the scheduler
+      understand cache sharing (LLC) between cores, allowing for better
+      locality-aware task placement.
+
+config SCHED_HYBRID
+    bool "Hybrid (P/E core) scheduler support"
+    default y
+    help
+      Enable support for Intel Hybrid architectures (e.g. Alder Lake, Raptor Lake).
+      The scheduler will distinguish between Performance (P) cores and Efficiency (E)
+      cores, preferring P-cores for compute-intensive tasks and E-cores for
+      background tasks.
+
+config SCHED_AUTOGROUP
+    bool "Automatic process group scheduling"
+    default y
+    help
+      This option optimizes the scheduler for desktop workloads by grouping
+      tasks by session and ensuring that each session gets a fair share of
+      CPU time, regardless of how many threads it contains.
+
+endmenu

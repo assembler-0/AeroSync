@@ -1,9 +1,8 @@
 #pragma once
 
 #include <aerosync/types.h>
-#include <linux/list.h>
 #include <aerosync/spinlock.h>
-#include <aerosync/wait_types.h>
+#include <aerosync/wait.h>
 
 struct work_struct;
 typedef void (*work_func_t)(struct work_struct *work);

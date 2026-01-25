@@ -53,10 +53,14 @@
  * 3. Vmalloc Allocator Region
  * Used by vmalloc() and viomap() for non-contiguous or IO mappings.
  * Starts at 16TB offset, ensuring it never overlaps HHDM.
- * Size: 64GB
+ * Size: Configurable via Kconfig (default 64GB)
  */
+#ifndef CONFIG_VMALLOC_SIZE_GB
+#define CONFIG_VMALLOC_SIZE_GB 64
+#endif
+
 #define VMALLOC_VIRT_BASE 0xFFFF900000000000ULL
-#define VMALLOC_VIRT_SIZE (64ULL * 1024 * 1024 * 1024)
+#define VMALLOC_VIRT_SIZE ((uint64_t)CONFIG_VMALLOC_SIZE_GB * 1024 * 1024 * 1024)
 #define VMALLOC_VIRT_END  (VMALLOC_VIRT_BASE + VMALLOC_VIRT_SIZE)
 
 /* Helper to check if address is in kernel high memory */

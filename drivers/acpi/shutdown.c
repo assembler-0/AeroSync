@@ -22,7 +22,6 @@
 #include <lib/printk.h>
 #include <uacpi/uacpi.h>
 #include <uacpi/sleep.h>
-#include <arch/x86_64/io.h>
 #include <aerosync/classes.h>
 #include <aerosync/panic.h>
 #include <aerosync/sysintf/ic.h>
@@ -30,48 +29,62 @@
 void acpi_shutdown(void) {
   printk(POWER_CLASS "Preparing for S5 Soft Off...\n");
 
+  uacpi_status ret = uacpi_prepare_for_sleep_state(UACPI_SLEEP_STATE_S5);
+  if (uacpi_unlikely_error(ret)) {
+    printk(KERN_ERR POWER_CLASS "Failed to prepare for S5: %s\n", uacpi_status_to_string(ret));
+    return;
+  }
+
+#ifdef ACPI_POWER_KERNEL_DEINITIALIZE
   irq_flags_t flags = save_irq_flags();
   cpu_cli();
   ic_shutdown_controller();
 
-  uacpi_status ret = uacpi_prepare_for_sleep_state(UACPI_SLEEP_STATE_S5);
-  if (uacpi_unlikely_error(ret)) {
-    printk(KERN_ERR POWER_CLASS "Failed to prepare for S5: %s\n", uacpi_status_to_string(ret));
-    goto rollback;
-  }
-
   printk_disable();
+#endif
 
   ret = uacpi_enter_sleep_state(UACPI_SLEEP_STATE_S5);
   if (uacpi_unlikely_error(ret)) {
-    printk_enable();
     printk(KERN_ERR POWER_CLASS "Failed to enter S5: %s\n", uacpi_status_to_string(ret));
+#ifdef ACPI_POWER_KERNEL_DEINITIALIZE
+    printk_enable();
     goto rollback;
+#endif
   }
 
+#ifdef ACPI_POWER_KERNEL_DEINITIALIZE
   printk_enable();
+#endif
 
+#ifdef ACPI_POWER_KERNEL_DEINITIALIZE
 rollback:
   /* if we reached here, ACPI sleep failed */
   ic_install();
   restore_irq_flags(flags);
+#endif
 }
 
 void acpi_reboot(void) {
   printk(POWER_CLASS "Attempting ACPI Reboot...\n");
 
+#ifdef ACPI_POWER_KERNEL_DEINITIALIZE
   irq_flags_t flags = save_irq_flags();
   cpu_cli();
   ic_shutdown_controller();
 
   printk_disable();
+#endif
 
   uacpi_status ret = uacpi_reboot();
   if (uacpi_unlikely_error(ret)) {
-    printk_enable();
     printk(KERN_ERR POWER_CLASS "ACPI Reboot failed: %s\n", uacpi_status_to_string(ret));
+#ifdef ACPI_POWER_KERNEL_DEINITIALIZE
+    printk_enable();
     goto rollback;
+#endif
   }
+
+#ifdef ACPI_POWER_KERNEL_DEINITIALIZE
 
   printk_enable();
 
@@ -79,4 +92,5 @@ rollback:
   /* if we reached here, ACPI sleep failed */
   ic_install();
   restore_irq_flags(flags);
+#endif
 }

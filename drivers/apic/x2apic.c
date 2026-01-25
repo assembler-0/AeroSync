@@ -73,9 +73,9 @@ static void x2apic_send_ipi_op(uint32_t dest_apic_id, uint8_t vector, uint32_t d
 
   uint64_t icr_value = (uint64_t) vector |
                        (uint64_t) delivery_mode |
-                       (1ULL << 14) |
-                       (1ULL << 15) |
-                       (0ULL << 16) |
+                       (1ULL << 14) | // Assert
+                       (0ULL << 15) | // Edge Trigger
+                       (0ULL << 16) | // Physical Destination Mode
                        ((uint64_t) dest_apic_id << 32);
 
   x2apic_write(X2APIC_ICR, icr_value);

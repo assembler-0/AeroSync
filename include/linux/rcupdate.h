@@ -28,12 +28,12 @@ static inline void rcu_read_unlock(void) {
  */
 #define rcu_dereference(p) ({\
     typeof(p) _________p1 = READ_ONCE(p); \
-    barrier(); \
+    cbarrier(); \
     _________p1; \
 })
 
 #define rcu_assign_pointer(p, v) do { \
-    barrier(); \
+    cbarrier(); \
     WRITE_ONCE(p, v); \
 } while (0)
 

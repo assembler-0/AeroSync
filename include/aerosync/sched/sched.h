@@ -22,6 +22,7 @@ struct fpu_state;
 #define TASK_ZOMBIE 3
 #define TASK_STOPPED 4
 #define TASK_DEAD 5
+#define TASK_WAKEKILL			0x00000100
 
 /* Enqueue/Dequeue Flags */
 #define ENQUEUE_WAKEUP 0x01
@@ -55,6 +56,8 @@ struct fpu_state;
 #define WF_SYNC 0x01
 #define WF_FORK 0x02
 #define WF_MIGRATED 0x04
+#define WF_CURRENT_CPU		0x40 /* Prefer to move the wakee to the current CPU. */
+#define WF_RQ_SELECTED		0x80 /* ->select_task_rq() was called */
 
 /* Priority Macros */
 #define MAX_USER_RT_PRIO 100
@@ -222,6 +225,7 @@ struct task_struct {
   /*
    * Priority Inheritance (PI) support
    */
+  spinlock_t pi_lock;          /* Protects prio, pi_waiters, pi_blocked_on */
   struct mutex *pi_blocked_on; /* Mutex this task is blocked on */
   struct list_head pi_waiters; /* List of tasks waiting on mutexes held by this task */
   struct list_head pi_list;    /* Node for parent's pi_waiters list */
@@ -239,7 +243,13 @@ struct task_struct {
   struct mm_struct *active_mm;
 
   /* Per-thread VMA Cache */
-  #define MM_VMA_CACHE_SIZE 4
+  #ifndef MM_VMA_CACHE_SIZE
+    #ifndef CONFIG_MM_VMA_CACHE_SIZE
+      #define MM_VMA_CACHE_SIZE 4
+    #else
+      #define MM_VMA_CACHE_SIZE CONFIG_MM_VMA_CACHE_SIZE
+    #endif
+  #endif
   struct vm_area_struct *vmacache[MM_VMA_CACHE_SIZE];
   uint64_t vmacache_seqnum;
 
@@ -305,9 +315,9 @@ struct task_struct {
  */
 #define preempt_disable()                                                      \
   do {                                                                         \
-    struct task_struct *_________curr = get_current();                        \
+    struct task_struct *_________curr = get_current();                         \
     if (_________curr) _________curr->preempt_count++;                         \
-    barrier();                                                                 \
+    cbarrier();                                                                \
   } while (0)
 
 /**
@@ -317,8 +327,8 @@ struct task_struct {
  */
 #define preempt_enable_no_resched()                                            \
   do {                                                                         \
-    barrier();                                                                 \
-    struct task_struct *_________curr = get_current();                        \
+    cbarrier();                                                                \
+    struct task_struct *_________curr = get_current();                         \
     if (_________curr) _________curr->preempt_count--;                         \
   } while (0)
 
@@ -329,8 +339,8 @@ struct task_struct {
  */
 #define preempt_enable()                                                       \
   do {                                                                         \
-    barrier();                                                                 \
-    struct task_struct *_________curr = get_current();                        \
+    cbarrier();                                                                \
+    struct task_struct *_________curr = get_current();                         \
     if (_________curr) {                                                       \
         if (--_________curr->preempt_count == 0 && this_cpu_read(need_resched))\
             schedule();                                                        \
@@ -348,6 +358,9 @@ struct task_struct {
  * preemptible - Check if current context is preemptible
  */
 #define preemptible() (preempt_count() == 0)
+
+#define __set_current_state(x) (current ? current->state = (x) : 0)
+#define set_current_state(x) ({ __set_current_state(x); x; })
 
 /*
  * Runqueue statistics
@@ -426,6 +439,7 @@ struct sched_domain {
   #define SD_BALANCE_NEWIDLE 0x0002
   #define SD_SHARE_PKG_RESOURCES 0x0004 /* SMT/Core level */
   #define SD_NUMA            0x0008
+  #define SD_ASYM_PACKING    0x0010 /* P/E core balancing */
 
   char *name;
 };
@@ -462,6 +476,9 @@ struct rq {
   /* Statistics */
   struct rq_stats stats;
 
+  /* CPU capacity (Hybrid/SMT) */
+  unsigned long cpu_capacity;
+
   /* CPU identification */
   int cpu;
 };
@@ -493,11 +510,13 @@ int sched_getscheduler(struct task_struct *p);
 void task_sleep(void);
 void task_wake_up(struct task_struct *task);
 void task_wake_up_all(void);
+long schedule_timeout(uint64_t ns);
 
 /* Priority Inheritance (PI) functions */
 void pi_boost_prio(struct task_struct *owner, struct task_struct *waiter);
 void pi_restore_prio(struct task_struct *owner, struct task_struct *waiter);
 void update_task_prio(struct task_struct *p);
+void __update_task_prio(struct task_struct *p);
 
 /* Helper to get current task */
 extern struct task_struct *get_current(void);

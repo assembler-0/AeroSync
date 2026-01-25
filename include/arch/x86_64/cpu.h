@@ -21,6 +21,36 @@
 
 typedef uint64_t irq_flags_t;
 
+#define __smp_mb() __asm__ volatile("mfence" ::: "memory")
+#define __smp_store_mb(var, value)  do { WRITE_ONCE(var, value); __smp_mb(); } while (0)
+#define smp_store_mb(var, value) __smp_store_mb(var, value)
+
+/*
+ * For x86_64 (TSO - Total Store Order), simple barriers are usually enough
+ * for a hobby kernel, but technically you need proper fencing instructions
+ * for SMP.
+ */
+#define smp_mb()    __asm__ volatile("lock; addl $0, -4(%%rsp)" ::: "memory", "cc")
+#define smp_rmb()   cbarrier() // x86 loads are ordered
+#define smp_wmb()   cbarrier() // x86 stores are ordered
+
+#ifndef smp_store_release
+# define smp_store_release(p, v)		\
+do {						\
+  smp_mb();				\
+  WRITE_ONCE(*p, v);			\
+} while (0)
+#endif
+
+#ifndef smp_load_acquire
+# define smp_load_acquire(p)			\
+({						\
+  typeof(*p) ___p1 = READ_ONCE(*p);	\
+  smp_mb();				\
+  ___p1;					\
+})
+#endif
+
 irq_flags_t save_irq_flags(void);
 void restore_irq_flags(irq_flags_t flags);
 irq_flags_t local_irq_save(void);
@@ -68,3 +98,22 @@ void cpuid_count(uint32_t leaf, uint32_t subleaf, uint32_t *eax, uint32_t *ebx,
 // MSR access
 uint64_t rdmsr(uint32_t msr);
 void wrmsr(uint32_t msr, uint64_t value);
+
+enum x86_core_type {
+  CORE_TYPE_UNKNOWN = 0x00,
+  CORE_TYPE_INTEL_ATOM = 0x20, /* Efficiency (E) core */
+  CORE_TYPE_INTEL_CORE = 0x40, /* Performance (P) core */
+};
+
+struct cpuinfo_x86 {
+  int package_id;
+  int die_id;
+  int core_id;
+  int thread_id;
+  enum x86_core_type core_type;
+  uint32_t x86_max_cores;
+  uint32_t x86_max_threads;
+};
+
+#include <arch/x86_64/percpu.h>
+DECLARE_PER_CPU(struct cpuinfo_x86, cpu_info);

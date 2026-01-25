@@ -315,7 +315,7 @@ static void sys_mmap(struct syscall_regs *regs) {
       return;
   }
 
-  uint64_t ret = do_mmap(mm, addr, len, prot, flags, file, off >> PAGE_SHIFT);
+  uint64_t ret = do_mmap(mm, addr, len, prot, flags, file, NULL, off >> PAGE_SHIFT);
   REGS_RETURN_VAL(regs, ret);
 }
 

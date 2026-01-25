@@ -52,7 +52,7 @@ void timer_add(struct timer_list *timer, uint64_t expires_ns) {
     insert_after = &pos->entry;
   }
 
-  list_add(&timer->entry, insert_after);
+  list_add_tail(&timer->entry, insert_after);
 
   // If we are the new head, reprogram
   if (base->active_timers.next == &timer->entry) {
@@ -81,7 +81,7 @@ void timer_handler(void) {
   uint64_t now = get_time_ns();
 
   // 1. Process expired timers
-  spinlock_lock(&base->lock);
+  irq_flags_t flags = spinlock_lock_irqsave(&base->lock);
   while (!list_empty(&base->active_timers)) {
     struct timer_list *timer = list_first_entry(&base->active_timers, struct timer_list, entry);
     if (timer->expires > now) {
@@ -89,18 +89,18 @@ void timer_handler(void) {
     }
 
     list_del_init(&timer->entry);
-    spinlock_unlock(&base->lock);
+    spinlock_unlock_irqrestore(&base->lock, flags);
 
     if (timer->function) {
       timer->function(timer);
     }
 
-    spinlock_lock(&base->lock);
+    flags = spinlock_lock_irqsave(&base->lock);
   }
 
   // 2. Reprogram for next timer
   __timer_reprogram(base);
-  spinlock_unlock(&base->lock);
+  spinlock_unlock_irqrestore(&base->lock, flags);
 
   // 3. Scheduler tick
   scheduler_tick();

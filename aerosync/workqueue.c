@@ -22,7 +22,7 @@ static int worker_thread(void *data) {
   struct workqueue_struct *wq = data;
 
   while (1) {
-    wait_event(&wq->wait, !list_empty(&wq->worklist));
+    wait_event(wq->wait, !list_empty(&wq->worklist));
 
     irq_flags_t flags = spinlock_lock_irqsave(&wq->lock);
     while (!list_empty(&wq->worklist)) {

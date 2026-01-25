@@ -47,7 +47,7 @@ static inline int down_trylock(struct semaphore *sem)
 
 static inline void down(struct semaphore *sem)
 {
-    wait_queue_t wait;
+    wait_queue_entry_t wait;
     init_wait(&wait);
 
     while (1) {
@@ -71,7 +71,7 @@ static inline void down(struct semaphore *sem)
 
 static inline int down_interruptible(struct semaphore *sem)
 {
-    wait_queue_t wait;
+    wait_queue_entry_t wait;
     init_wait(&wait);
     int ret = 0;
 

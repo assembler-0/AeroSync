@@ -856,7 +856,9 @@ struct vm_area_struct *vma_create(uint64_t start, uint64_t end, uint64_t flags) 
  * High-level VMA management (mmap/munmap/mprotect)
  * ======================================================================== */
 
-uint64_t do_mmap(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot, uint64_t flags, struct file *file,
+#include <mm/shm.h>
+
+uint64_t do_mmap(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot, uint64_t flags, struct file *file, struct shm_object *shm,
                  uint64_t pgoff) {
   struct vm_area_struct *vma;
   uint64_t vm_flags = 0;
@@ -904,7 +906,7 @@ uint64_t do_mmap(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot,
 
   /* 3. Attempt proactive merge */
   vma = vma_merge(mm, NULL, addr, addr + len, vm_flags, NULL, pgoff);
-  if (vma && !file) {
+  if (vma && !file && !shm) {
     goto out;
   }
 
@@ -918,7 +920,7 @@ uint64_t do_mmap(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot,
   vma->vm_pgoff = pgoff;
   vma->preferred_node = mm->preferred_node;
 
-  /* 5. Handle File-backed mapping */
+  /* 5. Handle File-backed or SHM mapping */
   if (file) {
     extern int vfs_mmap(struct file *file, struct vm_area_struct *vma);
     int ret = vfs_mmap(file, vma);
@@ -927,6 +929,15 @@ uint64_t do_mmap(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot,
       up_write(&mm->mmap_lock);
       return ret;
     }
+  } else if (shm) {
+    /* Map the SHM object's VMO */
+    vma->vm_obj = shm->vmo;
+    vm_object_get(vma->vm_obj);
+    
+    /* Standard linking to object's mmap list */
+    down_write(&vma->vm_obj->lock);
+    list_add(&vma->vm_shared, &vma->vm_obj->i_mmap);
+    up_write(&vma->vm_obj->lock);
   }
 
   /* 6. Insert */
@@ -1061,7 +1072,7 @@ int vma_map_range(struct mm_struct *mm, uint64_t start, uint64_t end, uint64_t f
   uint64_t mmap_flags = MAP_FIXED | MAP_PRIVATE;
   if (flags & VM_SHARED) mmap_flags = MAP_FIXED | MAP_SHARED;
 
-  uint64_t ret = do_mmap(mm, start, end - start, prot, mmap_flags, NULL, 0);
+  uint64_t ret = do_mmap(mm, start, end - start, prot, mmap_flags, NULL, NULL, 0);
   return (ret > 0xFFFFFFFFFFFFF000ULL) ? (int) ret : 0;
 }
 
@@ -1312,6 +1323,90 @@ int vma_verify_list(struct mm_struct *mm) {
 #else
   (void)mm;
 #endif
+  return 0;
+}
+
+/**
+ * do_madvise - Provide hints about memory usage for a range.
+ */
+int do_madvise(struct mm_struct *mm, uint64_t addr, size_t len, int advice) {
+  struct vm_area_struct *vma;
+  uint64_t end;
+
+  if (!mm || len == 0 || (addr & (PAGE_SIZE - 1))) return -EINVAL;
+
+  len = PAGE_ALIGN_UP(len);
+  end = addr + len;
+
+  down_write(&mm->mmap_lock);
+
+  /* 1. Split VMAs at boundaries if necessary */
+  vma = vma_find(mm, addr);
+  if (vma && vma->vm_start < addr) {
+    if (vma_split(mm, vma, addr) != 0) {
+      up_write(&mm->mmap_lock);
+      return -ENOMEM;
+    }
+  }
+  vma = vma_find(mm, end - 1);
+  if (vma && vma->vm_start < end && vma->vm_end > end) {
+    if (vma_split(mm, vma, end) != 0) {
+      up_write(&mm->mmap_lock);
+      return -ENOMEM;
+    }
+  }
+
+  /* 2. Apply advice to all VMAs in range */
+  for_each_vma_range(mm, vma, addr, end) {
+    switch (advice) {
+      case MADV_NORMAL:
+        vma->vm_flags &= ~(VM_RANDOM | VM_SEQUENTIAL);
+        break;
+      case MADV_RANDOM:
+        vma->vm_flags &= ~VM_SEQUENTIAL;
+        vma->vm_flags |= VM_RANDOM;
+        break;
+      case MADV_SEQUENTIAL:
+        vma->vm_flags &= ~VM_RANDOM;
+        vma->vm_flags |= VM_SEQUENTIAL;
+        break;
+      case MADV_HUGEPAGE:
+        vma->vm_flags &= ~VM_NOHUGEPAGE;
+        vma->vm_flags |= VM_HUGEPAGE;
+        break;
+      case MADV_NOHUGEPAGE:
+        vma->vm_flags &= ~VM_HUGEPAGE;
+        vma->vm_flags |= VM_NOHUGEPAGE;
+        break;
+      case MADV_DONTNEED:
+      case MADV_FREE:
+        /* 
+         * For DONTNEED/FREE, we unmap the physical pages.
+         * The VMA remains, but subsequent accesses will fault them back in.
+         */
+        if (mm->pml_root) {
+          for (uint64_t curr = vma->vm_start; curr < vma->vm_end; curr += PAGE_SIZE) {
+            struct folio *folio = vmm_unmap_folio(mm, curr);
+            if (folio) {
+              /* 
+               * Release the page. If it was anonymous, it's discarded (DONTNEED behavior).
+               */
+              folio_put(folio);
+            }
+          }
+        }
+        break;
+      case MADV_WILLNEED:
+        /* Pre-faulting could be implemented here */
+        break;
+      default:
+        break;
+    }
+    mm->vmacache_seqnum++;
+    atomic_inc(&mm->mmap_seq);
+  }
+
+  up_write(&mm->mmap_lock);
   return 0;
 }
 

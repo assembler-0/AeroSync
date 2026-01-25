@@ -38,6 +38,7 @@
 #include <linux/container_of.h>
 #include <mm/slub.h>
 #include <mm/vma.h>
+#include <aerosync/timer.h>
 #include <vsprintf.h>
 #include <arch/x86_64/gdt/gdt.h>
 
@@ -224,21 +225,25 @@ int task_top_pi_prio(struct task_struct *p) {
   return top_waiter->prio;
 }
 
+static inline int task_on_rq(struct task_struct *p) {
+  if (p->sched_class == &fair_sched_class) return p->se.on_rq;
+  if (p->sched_class == &rt_sched_class) return p->rt.on_rq;
+  if (p->sched_class == &dl_sched_class) return p->dl.on_rq;
+  return 0;
+}
+
 /**
- * update_task_prio - update the effective priority of a task
+ * __update_task_prio - update the effective priority of a task
+ * Must be called with p->pi_lock held.
  */
-void update_task_prio(struct task_struct *p) {
+void __update_task_prio(struct task_struct *p) {
   int old_prio = p->prio;
   int top_pi = task_top_pi_prio(p);
   const struct sched_class *old_class = p->sched_class;
 
   int new_prio = prio_less(p->normal_prio, top_pi) ? p->normal_prio : top_pi;
 
-  /* If priority hasn't changed, we might still need to check class if policy changed,
-   * but usually we can bail out early here for performance. */
   if (old_prio == new_prio && old_class->pick_next_task) {
-      // If we are not changing priority and class, we can usually skip the rest
-      // but let's check for policy-driven class changes.
       bool policy_matches = true;
       if (dl_prio(new_prio) && old_class != &dl_sched_class) policy_matches = false;
       else if (rt_prio(new_prio) && old_class != &rt_sched_class) policy_matches = false;
@@ -248,28 +253,26 @@ void update_task_prio(struct task_struct *p) {
 
   p->prio = new_prio;
 
-  /* Check if class needs to change based on new priority */
   if (dl_prio(p->prio)) {
     p->sched_class = &dl_sched_class;
   } else if (rt_prio(p->prio)) {
     p->sched_class = &rt_sched_class;
   } else {
-    /* If strictly fair/idle policy, revert to fair class */
-    /* Note: if policy is SCHED_BATCH/IDLE, fair_sched_class handles it */
     p->sched_class = &fair_sched_class;
   }
   
-  /* 
-   * Restore original class if priority boost is gone and policy matches.
-   * Logic above is simplified; if we track policy separately we should use it.
-   */
-   if (!dl_prio(p->prio) && !rt_prio(p->prio)) {
+  if (!dl_prio(p->prio) && !rt_prio(p->prio)) {
        if (task_has_dl_policy(p)) p->sched_class = &dl_sched_class;
        else if (task_has_rt_policy(p)) p->sched_class = &rt_sched_class;
    }
 
   if (old_prio != p->prio || old_class != p->sched_class) {
     struct rq *rq = per_cpu_ptr(runqueues, p->cpu);
+    
+    spinlock_lock(&rq->lock);
+
+    int on_rq = task_on_rq(p);
+    if (on_rq) deactivate_task(rq, p, DEQUEUE_SAVE);
 
     if (old_class != p->sched_class) {
       if (old_class->switched_from) old_class->switched_from(rq, p);
@@ -278,6 +281,10 @@ void update_task_prio(struct task_struct *p) {
       p->sched_class->prio_changed(rq, p, old_prio);
     }
 
+    if (on_rq) activate_task(rq, p, ENQUEUE_RESTORE);
+    
+    spinlock_unlock(&rq->lock);
+
     /* Propagate if this task is also blocked on a mutex */
     if (p->pi_blocked_on && p->pi_blocked_on->owner) {
       pi_boost_prio(p->pi_blocked_on->owner, p);
@@ -285,15 +292,20 @@ void update_task_prio(struct task_struct *p) {
   }
 }
 
+void update_task_prio(struct task_struct *p) {
+  irq_flags_t flags = spinlock_lock_irqsave(&p->pi_lock);
+  __update_task_prio(p);
+  spinlock_unlock_irqrestore(&p->pi_lock, flags);
+}
+
 /**
  * pi_boost_prio - boost the priority of the owner of a mutex
  */
 void pi_boost_prio(struct task_struct *owner, struct task_struct *waiter) {
-  /* Add waiter to owner's pi_waiters list if not already there, sorted */
+  irq_flags_t flags = spinlock_lock_irqsave(&owner->pi_lock);
   struct task_struct *pos;
   bool added = false;
 
-  /* Remove if already present (to update position) */
   if (!list_empty(&waiter->pi_list)) {
     list_del_init(&waiter->pi_list);
   }
@@ -309,15 +321,18 @@ void pi_boost_prio(struct task_struct *owner, struct task_struct *waiter) {
     list_add_tail(&waiter->pi_list, &owner->pi_waiters);
   }
 
-  update_task_prio(owner);
+  __update_task_prio(owner);
+  spinlock_unlock_irqrestore(&owner->pi_lock, flags);
 }
 
 /**
  * pi_restore_prio - restore the priority of the owner of a mutex
  */
 void pi_restore_prio(struct task_struct *owner, struct task_struct *waiter) {
+  irq_flags_t flags = spinlock_lock_irqsave(&owner->pi_lock);
   list_del_init(&waiter->pi_list);
-  update_task_prio(owner);
+  __update_task_prio(owner);
+  spinlock_unlock_irqrestore(&owner->pi_lock, flags);
 }
 
 /*
@@ -330,18 +345,7 @@ void task_sleep(void) {
 
   irq_flags_t flags = spinlock_lock_irqsave(&rq->lock);
 
-  /* If already running, we are going to sleep.
-     If task state is RUNNING, user probably forgot to set state to SLEEPING?
-     Wait, standard semantics: user sets state, then calls schedule.
-     This helper forces sleep?
-     Let's match existing behavior but be safe.
-  */
-
   if (curr->state == TASK_RUNNING) {
-    /* If called explicitly to sleep without setting state, assume
-     * interruptible? */
-    /* Actually, usually you set state then call schedule().
-       This helper is "force sleep". */
     curr->state = TASK_INTERRUPTIBLE;
   }
 
@@ -355,6 +359,33 @@ void task_sleep(void) {
   spinlock_unlock_irqrestore(&rq->lock, flags);
 
   schedule();
+}
+
+static void schedule_timeout_handler(struct timer_list *timer) {
+  struct task_struct *task = (struct task_struct *)timer->data;
+  task_wake_up(task);
+}
+
+long schedule_timeout(uint64_t ns) {
+  struct timer_list timer;
+  uint64_t expire;
+
+  if (ns == 0) {
+    schedule();
+    return 0;
+  }
+
+  expire = get_time_ns() + ns;
+
+  timer_setup(&timer, schedule_timeout_handler, get_current());
+  timer_add(&timer, expire);
+
+  schedule();
+
+  timer_del(&timer);
+
+  long remaining = (long)(expire - get_time_ns());
+  return remaining < 0 ? 0 : remaining;
 }
 
 void task_wake_up(struct task_struct *task) {
@@ -671,9 +702,19 @@ static void load_balance(void) {
 
     /* 
      * Threshold: Only pull if imbalance is significant.
-     * Imbalance > 25% of our load or if we are idle and they are busy.
+     * OR if ASYM_PACKING is enabled and we are a higher-capacity CPU.
      */
-    if (busiest_cpu != -1 && max_load > rq->cfs.avg.load_avg + (rq->cfs.avg.load_avg / 4) + NICE_0_LOAD) {
+    bool force_balance = false;
+#ifdef CONFIG_SCHED_HYBRID
+    if ((sd->flags & SD_ASYM_PACKING) && busiest_cpu != -1) {
+        struct rq *src_rq = per_cpu_ptr(runqueues, busiest_cpu);
+        if (rq->cpu_capacity > src_rq->cpu_capacity && rq->nr_running < src_rq->nr_running) {
+            force_balance = true;
+        }
+    }
+#endif
+
+    if (busiest_cpu != -1 && (force_balance || max_load > rq->cfs.avg.load_avg + (rq->cfs.avg.load_avg / 4) + NICE_0_LOAD)) {
       struct rq *src_rq = per_cpu_ptr(runqueues, busiest_cpu);
 
       irq_flags_t flags = save_irq_flags();
@@ -822,13 +863,13 @@ void __hot scheduler_tick(void) {
     curr->sched_class->task_tick(rq, curr, 1 /* queued status? */);
   }
 
+  spinlock_unlock((volatile int *) &rq->lock);
+
   if (rq->clock % LOAD_BALANCE_INTERVAL_TICKS == 0) {
     load_balance();
   }
 
   rcu_check_callbacks();
-
-  spinlock_unlock((volatile int *) &rq->lock);
 }
 
 void check_preempt(void) {
@@ -856,6 +897,7 @@ void sched_init(void) {
     struct rq *rq = per_cpu_ptr(runqueues, i);
     spinlock_init(&rq->lock);
     rq->cpu = i;
+    rq->cpu_capacity = 1024; /* Default */
 
     /* Init CFS */
     rq->cfs.tasks_timeline = RB_ROOT;
@@ -901,6 +943,7 @@ void sched_init_task(struct task_struct *initial_task) {
   initial_task->se.exec_start_ns = get_time_ns();
 
   /* PI initialization */
+  spinlock_init(&initial_task->pi_lock);
   initial_task->pi_blocked_on = NULL;
   INIT_LIST_HEAD(&initial_task->pi_waiters);
   INIT_LIST_HEAD(&initial_task->pi_list);
@@ -955,6 +998,7 @@ void sched_init_ap(void) {
   cpumask_set_cpu(cpu, &idle->cpus_allowed);
 
   /* PI initialization */
+  spinlock_init(&idle->pi_lock);
   idle->pi_blocked_on = NULL;
   INIT_LIST_HEAD(&idle->pi_waiters);
   INIT_LIST_HEAD(&idle->pi_list);
@@ -964,6 +1008,20 @@ void sched_init_ap(void) {
   INIT_LIST_HEAD(&idle->sibling);
 
   struct rq *rq = this_rq();
+  
+#ifdef CONFIG_SCHED_HYBRID
+  struct cpuinfo_x86 *ci = this_cpu_ptr(cpu_info);
+  if (ci->core_type == CORE_TYPE_INTEL_CORE) {
+    rq->cpu_capacity = 1024;
+  } else if (ci->core_type == CORE_TYPE_INTEL_ATOM) {
+    rq->cpu_capacity = 512;
+  } else {
+    rq->cpu_capacity = 1024;
+  }
+#else
+  rq->cpu_capacity = 1024;
+#endif
+
   rq->curr = idle;
   rq->idle = idle;
   idle->active_mm = &init_mm;

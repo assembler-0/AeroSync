@@ -16,6 +16,13 @@
 #define PG_dirty (1 << 8)  /* Page has been modified and needs writeback */
 #define PG_locked (1 << 9) /* Page is locked (bit-spinlock for SLUB) */
 
+/* MGLRU flags (bits 50-53) */
+#define LRU_GEN_MASK      0x7ULL
+#define LRU_GEN_SHIFT     50
+#define LRU_REFS_MASK     0x3ULL
+#define LRU_REFS_SHIFT    53
+#define LRU_REFS_FLAGS    (LRU_REFS_MASK << LRU_REFS_SHIFT)
+
 struct kmem_cache;
 
 #include <aerosync/spinlock.h>
@@ -120,6 +127,8 @@ struct folio {
 
 #define PageLocked(page)     ((page)->flags & PG_locked)
 
+#define offset_in_page(p) (((unsigned long)p) % PAGE_SIZE)
+
 /*
  * Bit-spinlock operations for per-page locking (SLUB allocator)
  * These provide lockless synchronization at page granularity.
@@ -195,6 +204,7 @@ static inline size_t folio_size(struct folio *folio) {
 
 extern uint64_t g_hhdm_offset;
 extern struct page *mem_map;
+extern uint64_t empty_zero_page; /* Physical address of the global zero page */
 
 static inline void *page_address(struct page *page) {
   uint64_t pfn = (uint64_t)(page - mem_map);

@@ -2,7 +2,7 @@
 /**
  * AeroSync monolithic kernel
  *
- * @file mm/slab.c
+ * @file mm/slub.c
  * @brief Advanced SLUB allocator implementation
  * @copyright (C) 2025-2026 assembler-0
  *
@@ -44,10 +44,6 @@ static kmem_cache_t *kmalloc_caches[15];
 
 /* Advanced SLUB/Magazine Hybrid with NUMA-awareness */
 
-/*
- * Slab Merging - Optimization for VFS/FD
- * If a cache with the same size/align/flags exists, reuse it.
- */
 static kmem_cache_t *find_mergeable(size_t size, size_t align,
                                     unsigned long flags) {
   kmem_cache_t *s;
@@ -835,7 +831,7 @@ kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align,
     s->order++;
   }
 
-  s->min_partial = 5;
+  s->min_partial = CONFIG_SLAB_MIN_PARTIAL;
 
   /*
    * Allocate per-CPU slabs - ensure CACHE_LINE_SIZE alignment.
@@ -917,7 +913,7 @@ static struct kmem_cache *create_boot_cache(const char *name, size_t size,
     s->order++;
   }
 
-  s->min_partial = 2;
+  s->min_partial = CONFIG_SLAB_MIN_PARTIAL;
   s->cpu_slab = static_cpu_slabs[static_idx];
   for (int i = 0; i < MAX_CPUS; i++) {
     init_kmem_cache_cpu(&s->cpu_slab[i]);

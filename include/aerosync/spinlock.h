@@ -26,39 +26,18 @@ static inline void backoff_delay(uint64_t cycles) {
   }
 }
 
-// Advanced spinlock with multiple anti-race mechanisms
+// Advanced spinlock with exponential backoff
 static inline void spinlock_lock(volatile int *lock) {
-  uint64_t start = rdtsc();
-  uint64_t backoff = 1;
-  uint32_t attempts = 0;
+  uint32_t backoff = 1;
 
-  while (1) {
-    // Try to acquire without contention first
-    if (!*lock && !__atomic_test_and_set(lock, __ATOMIC_ACQUIRE)) {
-      return;
+  while (__atomic_test_and_set(lock, __ATOMIC_ACQUIRE)) {
+    // Exponential backoff to reduce contention
+    for (uint32_t i = 0; i < backoff; i++) {
+      cpu_relax();
     }
-
-    // Deadlock detection
-    if (rdtsc() - start > DEADLOCK_TIMEOUT_CYCLES) {
-      backoff_delay(MAX_BACKOFF_CYCLES);
-      start = rdtsc();
-      attempts = 0;
-      continue;
-    }
-
-    attempts++;
-
-    // Adaptive spinning strategy
-    if (attempts < 100) {
-      // Initial fast spinning with pause
-      for (int i = 0; i < 64; i++) {
-        if (!*lock) break;
-        cpu_relax();
-      }
-    } else {
-      // Switch to exponential backoff after many attempts
-      backoff_delay(backoff);
-      backoff = (backoff * 2) > MAX_BACKOFF_CYCLES ? MAX_BACKOFF_CYCLES : (backoff * 2);
+    // Cap backoff at 1024 iterations
+    if (backoff < 1024) {
+      backoff <<= 1;
     }
   }
 }
@@ -91,13 +70,17 @@ static inline void spinlock_unlock_irqrestore(volatile int *lock, irq_flags_t fl
 
 # define __SPINLOCK_UNLOCKED SPINLOCK_UNLOCKED
 # define __SPINLOCK_LOCKED SPINLOCK_LOCKED
-# define __SPIN_LOCK_UNLOCKED(x) do { (x) = SPINLOCK_UNLOCKED; } while (0)
-# define __SPINLOCK_INIT(x) do { (x) = SPINLOCK_INIT; } while (0)
+# define __SPIN_LOCK_UNLOCKED(x) __SPINLOCK_UNLOCKED
+# define __SPINLOCK_INIT(x) __SPINLOCK_UNLOCKED
 
 static inline void spin_lock_irqsave(volatile int *lock, irq_flags_t *flags) {
   *flags = save_irq_flags();
   cpu_cli();
   spinlock_lock(lock);
+}
+
+static inline int spin_trylock(volatile int *lock) {
+  return spinlock_trylock(lock);
 }
 
 static inline void spin_unlock_irqrestore(volatile int *lock, irq_flags_t flags) {

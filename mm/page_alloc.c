@@ -84,6 +84,7 @@ extern struct page *mem_map;
 extern uint64_t pmm_max_pages;
 
 extern void wakeup_kswapd(struct zone *zone);
+extern size_t try_to_free_pages(struct pglist_data *pgdat, size_t nr_to_reclaim, gfp_t gfp_mask);
 
 /*
  * Debugging helper
@@ -501,7 +502,7 @@ retry:
    * Direct Reclaim / Demand Allocation
    */
   if (can_reclaim && reclaim_retries > 0) {
-    size_t reclaimed = shrink_inactive_list(32);
+    size_t reclaimed = try_to_free_pages(pgdat, 32, gfp_mask);
     if (reclaimed > 0) {
       reclaim_retries--;
       goto retry;
@@ -805,6 +806,18 @@ void free_area_init(void) {
     struct pglist_data *pgdat = node_data[n];
     init_waitqueue_head(&pgdat->kswapd_wait);
     pgdat->kswapd_task = NULL;
+
+    spinlock_init(&pgdat->lru_lock);
+    for (int gen = 0; gen < MAX_NR_GENS; gen++) {
+      for (int type = 0; type < 2; type++) {
+        INIT_LIST_HEAD(&pgdat->lrugen.lists[gen][type]);
+        atomic_long_set(&pgdat->lrugen.nr_pages[gen][type], 0);
+      }
+    }
+    pgdat->lrugen.max_seq = 0;
+    pgdat->lrugen.min_seq[0] = 0;
+    pgdat->lrugen.min_seq[1] = 0;
+    atomic_set(&pgdat->lrugen.gen_counter, 0);
 
     for (int i = 0; i < MAX_NR_ZONES; i++) {
       struct zone *z = &pgdat->node_zones[i];

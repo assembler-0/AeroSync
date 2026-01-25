@@ -8,4 +8,10 @@ config SPINLOCK_LINUX_COMPAT
     help
       Enables Linux-style spinlock definitions
 
+config ATOMIC_LINUX_COMPAT
+    bool "Enable common Linux atomic-related macros/methods"
+    default y
+    help
+      Enables Linux-style atomic operations
+
 endmenu

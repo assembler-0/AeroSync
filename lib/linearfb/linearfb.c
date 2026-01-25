@@ -703,7 +703,11 @@ static void linearfb_console_scroll(void) {
           memset32(line, console_bg, fb->width);
       }
 
-      // Blit entire screen to VRAM (ONE BIG WRITE - high throughput with WC)
+      // We can drop the lock and enable IRQs before the slow VRAM copy.
+      // Tearing is acceptable on console, and shadow buffer is stable.
+      // But wait, the caller (linearfb_console_putc) holds the lock.
+      // So we have to rely on the caller or change the architecture here.
+      // For now, let's keep it here but note the latency.
       memcpy(fb->address, shadow_fb, fb_h * fb_pitch);
   } else {
     linearfb_console_redraw();
@@ -715,31 +719,51 @@ static void linearfb_console_scroll(void) {
 
 void linearfb_console_putc(char c) {
   irq_flags_t flags = spinlock_lock_irqsave(&fb_lock);
+  bool needs_scroll = false;
+  
   if (c == '\n') {
     console_col = 0;
-    if (++console_row >= console_rows) linearfb_console_scroll();
+    if (++console_row >= console_rows) {
+        needs_scroll = true;
+    }
+    
+    if (needs_scroll) {
+        linearfb_console_scroll();
+        spinlock_unlock_irqrestore(&fb_lock, flags);
+        return;
+    }
+    
     spinlock_unlock_irqrestore(&fb_lock, flags);
     return;
   }
+  
   if (c == '\r') {
     console_col = 0;
     spinlock_unlock_irqrestore(&fb_lock, flags);
     return;
   }
+  
   size_t buf_idx = console_row * console_cols + console_col;
   if (buf_idx < CONSOLE_BUF_MAX) {
     console_buffer[buf_idx] = c;
   }
+  
   linearfb_draw_glyph_at(console_col, console_row, c);
+  
   if (++console_col >= console_cols) {
     console_col = 0;
-    if (++console_row >= console_rows) linearfb_console_scroll();
+    if (++console_row >= console_rows) needs_scroll = true;
   }
+  
+  if (needs_scroll) {
+      linearfb_console_scroll();
+  }
+  
   spinlock_unlock_irqrestore(&fb_lock, flags);
 }
 
 void linearfb_console_puts(const char *s) {
-  while (*s++) linearfb_console_putc(*s++);
+  while (*s) linearfb_console_putc(*s++);
 }
 
 int linearfb_load_font(const linearfb_font_t *font, const uint32_t count) {

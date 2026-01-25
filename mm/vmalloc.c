@@ -221,114 +221,68 @@ static struct vmap_area *alloc_vmap_area(unsigned long size,
    */
   unsigned long real_size = size + PAGE_SIZE;
 
-  /* PCP Fastpath - Disabled for now due to address reuse bugs */
-#if 0
-  int bin = pcp_bin_index(size >> PAGE_SHIFT);
-  if (bin >= 0 && align <= PAGE_SIZE && vstart == VMALLOC_VIRT_BASE) {
-    struct vmap_pcp *pcp = this_cpu_ptr(vmap_pcp);
-    irq_flags_t flags = spinlock_lock_irqsave(&pcp->lock);
-    if (!list_empty(&pcp->bins[bin])) {
-      va = list_first_entry(&pcp->bins[bin], struct vmap_area, list);
-      list_del(&va->list);
-      pcp->bin_count[bin]--;
-      spinlock_unlock_irqrestore(&pcp->lock, flags);
-
-      va->nid = target_node;
-      struct vmap_node *vn = &vmap_nodes[target_node];
-      irq_flags_t nflags = spinlock_lock_irqsave(&vn->lock);
-
-      p = &vn->root.rb_node;
-      while (*p) {
-        parent = *p;
-        tmp = rb_entry(parent, struct vmap_area, rb_node);
-        if (va->va_start < tmp->va_start)
-          p = &(*p)->rb_left;
-        else
-          p = &(*p)->rb_right;
-      }
-      rb_link_node(&va->rb_node, parent, p);
-      rb_insert_augmented(&va->rb_node, &vn->root, &vmap_area_rb_callbacks);
-      list_add_tail_rcu(&va->list, &vn->list);
-      va->flags = VMAP_AREA_USED;
-
-      spinlock_unlock_irqrestore(&vn->lock, nflags);
-      return va;
-    }
-    spinlock_unlock_irqrestore(&pcp->lock, flags);
-  }
-#endif
-
   va = alloc_vmap_area_metadata(target_node);
   if (!va)
     return NULL;
 
-  struct vmap_node *vn = &vmap_nodes[target_node];
-  irq_flags_t flags = spinlock_lock_irqsave(&vn->lock);
+  /*
+   * CRITICAL BUG FIX: We must ensure the allocated range doesn't overlap
+   * with ANY VMA on ANY node. Since we have per-node RB-trees, we must
+   * coordinate. For simplicity and correctness, we find a gap that is
+   * free across ALL nodes.
+   */
+  
+  // Start searching from vstart
+  addr = ALIGN_UP(vstart, align);
 
-  if (unlikely(!vn->root.rb_node)) {
-    addr = ALIGN_UP(vstart, align);
-  } else {
-    struct rb_node *n = vn->root.rb_node;
-    struct vmap_area *best = NULL;
+  while (addr + real_size <= vend) {
+    bool conflict = false;
+    unsigned long next_addr = 0;
 
-    while (n) {
-      tmp = rb_entry(n, struct vmap_area, rb_node);
-      unsigned long gap = vmap_area_compute_gap(tmp);
-
-      if (gap >= real_size) {
-        unsigned long candidate = ALIGN_UP(tmp->va_start - gap, align);
-        if (candidate >= vstart && candidate + real_size <= tmp->va_start) {
-          best = tmp;
-          n = n->rb_left;
-          continue;
+    for (int i = 0; i < MAX_NUMNODES; i++) {
+      struct vmap_node *vn = &vmap_nodes[i];
+      irq_flags_t flags = spinlock_lock_irqsave(&vn->lock);
+      
+      struct rb_node *n = vn->root.rb_node;
+      while (n) {
+        tmp = rb_entry(n, struct vmap_area, rb_node);
+        if (addr < tmp->va_end && (addr + real_size) > tmp->va_start) {
+          // Overlap!
+          conflict = true;
+          next_addr = max(next_addr, tmp->va_end);
+          break;
         }
+        if (addr < tmp->va_start)
+          n = n->rb_left;
+        else
+          n = n->rb_right;
       }
-
-      if (n->rb_right &&
-          rb_entry(n->rb_right, struct vmap_area, rb_node)->rb_max_gap >=
-              real_size) {
-        n = n->rb_right;
-      } else {
-        n = NULL; // No more candidates in this branch
-      }
+      spinlock_unlock_irqrestore(&vn->lock, flags);
+      if (conflict) break;
     }
 
-    if (best) {
-      unsigned long gap = vmap_area_compute_gap(best);
-      addr = ALIGN_UP(best->va_start - gap, align);
-      if (addr < vstart)
-        addr = ALIGN_UP(vstart, align);
-
-      /*
-       * Safety check: even after finding 'best' based on gap,
-       * ALIGN_UP might have pushed 'addr' beyond what fits in the gap.
-       * If so, we must fall back to allocating after the last node.
-       */
-      if (addr + real_size > best->va_start) {
-        struct rb_node *last = rb_last(&vn->root);
-        tmp = rb_entry(last, struct vmap_area, rb_node);
-        addr = ALIGN_UP(tmp->va_end, align);
-      }
-    } else {
-      struct rb_node *last = rb_last(&vn->root);
-      tmp = rb_entry(last, struct vmap_area, rb_node);
-      addr = ALIGN_UP(tmp->va_end, align);
+    if (!conflict) {
+      // Found a gap!
+      goto found;
     }
+
+    addr = ALIGN_UP(next_addr, align);
   }
 
-  if (addr + real_size > vend) {
-    spinlock_unlock_irqrestore(&vn->lock, flags);
-    free_vmap_area_metadata(va);
-    return NULL;
-  }
+  free_vmap_area_metadata(va);
+  return NULL;
 
+found:
   va->va_start = addr;
   va->va_end = addr + real_size;
   va->nid = target_node;
   va->flags = VMAP_AREA_USED;
   va->vb = NULL;
 
-  p = &vn->root.rb_node;
+  struct vmap_node *target_vn = &vmap_nodes[target_node];
+  irq_flags_t flags = spinlock_lock_irqsave(&target_vn->lock);
+
+  p = &target_vn->root.rb_node;
   while (*p) {
     parent = *p;
     tmp = rb_entry(parent, struct vmap_area, rb_node);
@@ -338,10 +292,10 @@ static struct vmap_area *alloc_vmap_area(unsigned long size,
       p = &(*p)->rb_right;
   }
   rb_link_node(&va->rb_node, parent, p);
-  rb_insert_augmented(&va->rb_node, &vn->root, &vmap_area_rb_callbacks);
-  list_add_tail_rcu(&va->list, &vn->list);
+  rb_insert_augmented(&va->rb_node, &target_vn->root, &vmap_area_rb_callbacks);
+  list_add_tail_rcu(&va->list, &target_vn->list);
 
-  spinlock_unlock_irqrestore(&vn->lock, flags);
+  spinlock_unlock_irqrestore(&target_vn->lock, flags);
   return va;
 }
 

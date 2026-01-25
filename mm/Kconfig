@@ -1,6 +1,41 @@
-# SPDX-License-Identifier: GPL-2.0-only
-
 menu "memory"
+
+choice
+    prompt "Page Reclamation Algorithm"
+    default MM_MGLRU
+    help
+      Select the algorithm used for page aging and reclamation.
+
+config MM_LRU
+    bool "Standard LRU (Active/Inactive)"
+    help
+      The traditional two-list (active/inactive) LRU algorithm. Good stability
+      but can suffer from 'LRU thrashing' under certain workloads.
+
+config MM_MGLRU
+    bool "Multi-Gen LRU (MGLRU)"
+    help
+      A modern, high-performance reclamation algorithm that uses multiple
+      generations to better track page working sets. Highly recommended for
+      performance and memory pressure handling.
+
+endchoice
+
+config MM_ZMM
+    bool "Anonymous Page Compression (ZMM)"
+    default y
+    help
+      Enables a compressed in-memory pool for anonymous pages. This allows
+      the kernel to "reclaim" anonymous memory without a swap device by
+      compressing cold pages.
+
+config MM_SPF
+    bool "Speculative Page Faults (SPF)"
+    default y
+    help
+      Allows handling page faults without holding the mmap_lock by using
+      VMA sequence counters. Dramatically improves scalability on multi-core
+      systems.
 
 config MM_HARDENING
     bool "Enable MM poisoning and redzones"
@@ -9,5 +44,120 @@ config MM_HARDENING
       Enables additional memory manager hardening features such as page
       poisoning and redzone checks. Highly affects performance, use only for
       testing purposes
+
+menu "SLUB Allocator Tuning"
+
+config SLAB_MAG_SIZE
+    int "Per-CPU Magazine Size"
+    default 16
+    range 4 128
+    help
+      The number of objects cached in the per-CPU magazine layer. Larger
+      values improve performance for small frequent allocations but
+      increase memory overhead.
+
+config SLAB_MIN_PARTIAL
+    int "Minimum Partial Slabs per Node"
+    default 5
+    range 1 50
+    help
+      Minimum number of partial slabs to keep per node before freeing
+      them back to the PMM.
+
+config SLAB_MAX_ORDER
+    int "Maximum Slab Order"
+    default 5
+    range 0 10
+    help
+      Maximum buddy order used for slab pages. Larger orders allow more
+      objects per slab, reducing fragmentation, but can fail under high
+      memory pressure.
+
+endmenu
+
+menu "VMA Tuning"
+
+config MM_VMA_CACHE_SIZE
+    int "Per-Task VMA Cache Size"
+    default 4
+    range 1 16
+    help
+      Number of recently accessed VMAs to cache per thread for O(1) lookup.
+
+endmenu
+
+menu "Writeback Tuning"
+
+config DIRTY_THRESHOLD_WAKEUP
+    int "Dirty Page Wakeup Threshold (Pages)"
+    default 1024
+    help
+      Number of dirty pages that triggers the background writeback daemon.
+
+config DIRTY_THRESHOLD_THROTTLE
+    int "Dirty Page Throttle Threshold (Pages)"
+    default 8192
+    help
+      Number of dirty pages at which processes are throttled during writes.
+
+endmenu
+
+menu "ZMM Tuning"
+
+config ZMM_COMPRESSION_THRESHOLD
+    int "Minimum Compression Percentage"
+    default 75
+    range 10 95
+    help
+      The minimum compression ratio required to store a page in ZMM.
+      Expressed as percentage of original size.
+
+choice
+    prompt "Compression Algorithm"
+    default ZMM_ALGO_RLE
+    depends on MM_ZMM
+
+config ZMM_ALGO_RLE
+    bool "Run-Length Encoding (RLE)"
+    help
+      Extremely fast compression, works well for pages with lots of zeros
+      or repetitive patterns. Very low CPU overhead.
+
+config ZMM_ALGO_LZ4
+    bool "LZ4 (Placeholder)"
+    help
+      High-speed general purpose compression. (Currently a skeleton).
+
+config ZMM_ALGO_NONE
+    bool "No Compression (Raw)"
+    help
+      Stores pages as-is. Useful only for testing the ZMM storage
+      infrastructure.
+
+endchoice
+
+endmenu
+
+menu "Kernel Memory Layout"
+
+config VMALLOC_SIZE_GB
+    int "Vmalloc Region Size (GB)"
+    default 64
+    range 1 512
+    help
+      Size of the virtual address range reserved for vmalloc and ioremap.
+
+endmenu
+
+menu "NUMA and Zones"
+
+config MAX_NUMNODES
+    int "Maximum NUMA Nodes"
+    default 8
+    range 1 64
+    help
+      Maximum number of physical NUMA nodes supported by the memory manager.
+
+endmenu
 
 endmenu

@@ -22,6 +22,8 @@
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/exception.h>
 #include <arch/x86_64/mm/vmm.h>
+#include <arch/x86_64/mm/layout.h>
+#include <arch/x86_64/mm/pmm.h>
 #include <aerosync/classes.h>
 #include <aerosync/panic.h>
 #include <aerosync/sched/sched.h>
@@ -87,6 +89,45 @@ void do_page_fault(cpu_regs *regs) {
       regs->rip = fixup;
       return;
     }
+  }
+
+  /*
+   * KERNEL SPACE FAULT HANDLING
+   * For addresses in HHDM or Kernel Image, we don't use VMAs.
+   * We only use VMAs for dynamic kernel ranges like vmalloc/ioremap.
+   */
+  if (cr2 >= HHDM_VIRT_BASE) {
+    /* 
+     * KERNEL SYNC PATH:
+     * If this is a vmalloc address, it might just need a PML4 sync.
+     */
+    if (cr2 >= VMALLOC_VIRT_BASE && cr2 < VMALLOC_VIRT_END) {
+        uint64_t current_cr3;
+        __asm__ volatile("mov %%cr3, %0" : "=r"(current_cr3));
+        current_cr3 &= PTE_ADDR_MASK;
+
+        if (current_cr3 != (uint64_t)init_mm.pml_root) {
+            uint64_t *src_pml4 = (uint64_t *)pmm_phys_to_virt((uint64_t)init_mm.pml_root);
+            uint64_t *dst_pml4 = (uint64_t *)pmm_phys_to_virt(current_cr3);
+            uint64_t idx = (vmm_get_paging_levels() == 5) ? PML5_INDEX(cr2) : PML4_INDEX(cr2);
+
+            if (!(dst_pml4[idx] & PTE_PRESENT) && (src_pml4[idx] & PTE_PRESENT)) {
+                dst_pml4[idx] = src_pml4[idx];
+                return;
+            }
+        }
+    }
+
+    /* 
+     * PERMANENT RANGE VERIFICATION:
+     * For HHDM or Kernel range, check the master table.
+     * If present, it's a minor fault (A/D bit update).
+     */
+    if (vmm_virt_to_phys(&init_mm, cr2) != 0) {
+        return;
+    }
+
+    goto kernel_panic;
   }
 
   /*
@@ -232,6 +273,7 @@ signal_segv:
   }
 
 kernel_panic:
-  printk(KERN_EMERG FAULT_CLASS "kernel fault at %llx\n", cr2);
+  printk(KERN_EMERG FAULT_CLASS "unrecoverable fault at %llx\n", cr2);
+  vmm_dump_entry(&init_mm, cr2);
   panic_exception(regs);
 }
