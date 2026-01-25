@@ -96,8 +96,6 @@ static void smp_ap_entry(struct limine_mp_info *info) {
   // and use per-CPU caches in kmalloc()
   ic_ap_init();
 
-  // ... rest of function ...
-
   // Enable per-CPU features (SSE, AVX, etc.)
   cpu_features_init_ap();
 

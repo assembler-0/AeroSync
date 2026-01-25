@@ -46,6 +46,7 @@
 #include <aerosync/timer.h>
 #include <aerosync/types.h>
 #include <aerosync/version.h>
+#include <aerosync/softirq.h>
 #include <lib/log.h>
 #include <lib/printk.h>
 #include <limine/limine.h>
@@ -272,6 +273,8 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     smp_init();
   crc32_init();
   vfs_init();
+
+  softirq_init();
 
 #ifdef ASYNC_PRINTK
   printk_init_async();

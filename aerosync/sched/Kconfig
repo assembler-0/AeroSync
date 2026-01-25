@@ -28,12 +28,32 @@ config SCHED_HYBRID
       cores, preferring P-cores for compute-intensive tasks and E-cores for
       background tasks.
 
-config SCHED_AUTOGROUP
-    bool "Automatic process group scheduling"
+
+config SCHED_LOAD_TRACKING_PELT
+    bool "PELT (Per-Entity Load Tracking)"
     default y
     help
-      This option optimizes the scheduler for desktop workloads by grouping
-      tasks by session and ensuring that each session gets a fair share of
-      CPU time, regardless of how many threads it contains.
+      Use Linux-like PELT for tracking task and runqueue load.
+
+config SCHED_AUTO_BALANCE
+    bool "Automatic scheduler load balancing"
+    default n
+    help
+      Enable dynamic load balancing and tasks migration across CPUs
+
+config SCHED_TICK_STAGGER
+    bool "Stagger periodic scheduler tasks"
+    depends on SCHED_AUTO_BALANCE
+    default y
+    help
+      Stagger periodic tasks like load balancing across CPUs to avoid
+      synchronized lock contention.
+
+config SCHED_LB_PERIOD_MS
+    int "Load balancing period (ms)"
+    depends on SCHED_AUTO_BALANCE
+    default 100
+    help
+      Interval between periodic load balancing attempts.
 
 endmenu

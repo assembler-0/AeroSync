@@ -171,6 +171,19 @@ void build_sched_domains(void) {
     }
     sd_child = sd_mc;
 
+    /* Update CPU capacity for Hybrid systems */
+#ifdef CONFIG_SCHED_HYBRID
+    if (ci->core_type == CORE_TYPE_INTEL_CORE) {
+        rq->cpu_capacity = 1024; /* P-Core */
+    } else if (ci->core_type == CORE_TYPE_INTEL_ATOM) {
+        rq->cpu_capacity = 512;  /* E-Core */
+    } else {
+        rq->cpu_capacity = 1024;
+    }
+#else
+    rq->cpu_capacity = 1024;
+#endif
+
     /* 3. Build NUMA Domain */
     if (numa_enabled && nr_node_ids > 1) {
       struct sched_domain *sd_numa = alloc_sd("NUMA");

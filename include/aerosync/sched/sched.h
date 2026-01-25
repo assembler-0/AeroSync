@@ -526,8 +526,6 @@ extern struct task_struct *get_current(void);
 extern struct task_struct *switch_to(struct task_struct *prev,
                                      struct task_struct *next);
 
-extern int cpu_id(void);
-
 /* Per-CPU need_resched flag */
 DECLARE_PER_CPU(int, need_resched);
 

@@ -123,8 +123,8 @@ do { \
 #define ALIGN_DOWN(x, a)        ((x) & ~((a) - 1))
 #define ALIGN_UP(x, a)          ALIGN(x, a)
 
-
 /* ETC. */
+#define static_assert _Static_assert
 #define __percpu
 #define __rcu
 #define __force
