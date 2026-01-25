@@ -26,6 +26,15 @@
 #include <lib/string.h>
 #include <aerosync/classes.h>
 #include <aerosync/ksymtab.h>
+#include <crypto/hmac.h>
+#include "fkx_key.h"
+
+struct fkx_signature_footer {
+    uint8_t signature[64];
+    uint32_t magic; // 'SIG!'
+};
+
+#define SIG_MAGIC 0x21474953 // 'SIG!'
 
 // Structure to represent a loaded module image
 struct fkx_loaded_image {
@@ -52,7 +61,29 @@ static struct fkx_loaded_image *g_unlinked_modules = NULL;
 static int fkx_relocate_module(struct fkx_loaded_image *img);
 
 int fkx_load_image(void *data, size_t size) {
-  if (!elf_verify(data, size)) {
+  // 0. Verify Signature
+  if (size < sizeof(struct fkx_signature_footer)) {
+    printk(KERN_ERR FKX_CLASS "Module too small for signature\n");
+    return -1;
+  }
+
+  size_t data_size = size - sizeof(struct fkx_signature_footer);
+  struct fkx_signature_footer *footer = (struct fkx_signature_footer *)((uint8_t *)data + data_size);
+
+  if (footer->magic != SIG_MAGIC) {
+    printk(KERN_ERR FKX_CLASS "Module is NOT signed!\n");
+    return -1;
+  }
+
+  uint8_t calculated_mac[64];
+  hmac_sha512(g_fkx_root_key, FKX_KEY_SIZE, data, data_size, calculated_mac);
+
+  if (memcmp(calculated_mac, footer->signature, 64) != 0) {
+    printk(KERN_ERR FKX_CLASS "Module signature verification failed\n");
+    return -1;
+  }
+
+  if (!elf_verify(data, data_size)) {
     printk(KERN_ERR FKX_CLASS "Invalid ELF magic or architecture\n");
     return -1;
   }

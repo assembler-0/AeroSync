@@ -45,16 +45,17 @@ file(GLOB_RECURSE MM_SAN_SOURCES "mm/san/*.c")
 list(APPEND MM_SOURCES
     ${MM_SAN_SOURCES}
 )
-file(GLOB CRYPTO_SOURCES "crypto/*.c")
+file(GLOB CRYPTO_SOURCES "crypto/*.c" "crypto/sha/*.c")
 file(GLOB FS_SOURCES "fs/*.c")
 
 # ============================================================================
 # Build Include Directories
 # ============================================================================
-include_directories(
+include_directories(SYSTEM
         .
         include
         include/lib
+        ${CMAKE_BINARY_DIR}
         ${UACPI_INCLUDES}
 )
 

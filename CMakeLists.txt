@@ -69,6 +69,9 @@ if(DEFINED AEROSYNC_KCONFIG_DEFINES)
     add_compile_definitions(${AEROSYNC_KCONFIG_DEFINES})
 endif()
 
+# compile sub-projects
+add_subdirectory(tools/fkx_signer)
+
 include(lib/uACPI/uacpi.cmake)
 include(source)
 include(fkx)
@@ -129,7 +132,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # ============================================================================
 add_executable(aerosync.krnl
     ${AEROSYNC_SOURCES}
+    ${FKX_PUB_HEADER}
 )
+
+add_dependencies(aerosync.krnl fkx_key_header)
 
 target_sources(aerosync.krnl 
 	PRIVATE
@@ -242,7 +248,7 @@ configure_file(
 add_custom_command(
         OUTPUT bootd
         COMMAND ${CMAKE_COMMAND} -E touch bootd
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir/kernel
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir/aerosync
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir/module
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bootdir/EFI/BOOT
         # Copy Limine UEFI bootloader
