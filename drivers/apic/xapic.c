@@ -25,6 +25,7 @@
 #include <aerosync/fkx/fkx.h>
 #include <mm/vmalloc.h>
 #include <aerosync/sysintf/madt.h>
+#include <lib/printk.h>
 
 // --- Register Definitions ---
 

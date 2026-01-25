@@ -12,6 +12,8 @@
 #include <aerosync/fkx/fkx.h>
 #include <arch/x86_64/io.h>
 #include <arch/x86_64/tsc.h>
+#include <aerosync/sysintf/ic.h>
+#include <arch/x86_64/cpu.h>
 
 #define PIT_CMD_PORT 0x43
 #define PIT_CH0_PORT 0x40
@@ -49,6 +51,7 @@ void pit_set_frequency(uint32_t frequency) {
 
   restore_irq_flags(flags);
 }
+EXPORT_SYMBOL(pit_set_frequency);
 
 static void pit_wait_internal(uint32_t ms) {
   irq_flags_t flags = save_irq_flags();
@@ -130,6 +133,5 @@ void pit_wait(uint32_t ms) {
   pit_wait_internal(ms);
 }
 
-EXPORT_SYMBOL(pit_set_frequency);
 EXPORT_SYMBOL(pit_wait);
 EXPORT_SYMBOL(pit_get_time_source);

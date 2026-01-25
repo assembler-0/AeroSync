@@ -1,3 +1,23 @@
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * AeroSync monolithic kernel
+ *
+ * @file aerosync/fkx/loader.c
+ * @brief FKX extension loader
+ * @copyright (C) 2025-2026 assembler-0
+ *
+ * This file is part of the AeroSync kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #include <aerosync/fkx/fkx.h>
 #include <aerosync/fkx/elf_parser.h>
 #include <mm/slub.h>
@@ -5,19 +25,18 @@
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <aerosync/classes.h>
-
-#define FKX_DEBUG 1
+#include <aerosync/ksymtab.h>
 
 // Structure to represent a loaded module image
 struct fkx_loaded_image {
-  struct fkx_loaded_image *next;      /* Next image in the list */
-  struct fkx_module_info *info;       /* Module info pointer */
-  void *base_addr;                    /* Base address where module is loaded */
-  size_t size;                        /* Size of the loaded module */
-  fkx_module_class_t module_class;    /* Class of the module */
-  uint32_t flags;                     /* Module flags */
-  int linked;                         /* Whether relocations have been applied */
-  int initialized;                    /* Whether the module has been initialized */
+  struct fkx_loaded_image *next; /* Next image in the list */
+  struct fkx_module_info *info; /* Module info pointer */
+  void *base_addr; /* Base address where module is loaded */
+  size_t size; /* Size of the loaded module */
+  fkx_module_class_t module_class; /* Class of the module */
+  uint32_t flags; /* Module flags */
+  int linked; /* Whether relocations have been applied */
+  int initialized; /* Whether the module has been initialized */
 
   // Stored for the relocation phase
   void *raw_data;
@@ -115,7 +134,7 @@ int fkx_load_image(void *data, size_t size) {
   }
 
   // 5. Create loaded image structure and add to unlinked list
-  struct fkx_loaded_image *loaded_img = (struct fkx_loaded_image *)kmalloc(sizeof(struct fkx_loaded_image));
+  struct fkx_loaded_image *loaded_img = (struct fkx_loaded_image *) kmalloc(sizeof(struct fkx_loaded_image));
   if (!loaded_img) {
     printk(KERN_ERR FKX_CLASS "Failed to allocate memory for loaded image structure\n");
     vfree(base);
@@ -171,11 +190,11 @@ static int fkx_relocate_module(struct fkx_loaded_image *img) {
         } else {
           const char *sym_name = "?";
           if (symtab_sec->sh_link != 0) {
-              Elf64_Shdr *strtab_sec = &sections[symtab_sec->sh_link];
-              const char *strtab = (const char *)((uint8_t *)data + strtab_sec->sh_offset);
-              sym_name = strtab + sym->st_name;
+            Elf64_Shdr *strtab_sec = &sections[symtab_sec->sh_link];
+            const char *strtab = (const char *) ((uint8_t *) data + strtab_sec->sh_offset);
+            sym_name = strtab + sym->st_name;
           }
-          S = fkx_lookup_symbol(sym_name);
+          S = lookup_ksymbol(sym_name);
         }
 
         switch (type) {
@@ -187,9 +206,9 @@ static int fkx_relocate_module(struct fkx_loaded_image *img) {
             if (S == 0 && sym->st_shndx == SHN_UNDEF) {
               const char *sym_name = "?";
               if (symtab_sec->sh_link != 0) {
-                  Elf64_Shdr *strtab_sec = &sections[symtab_sec->sh_link];
-                  const char *strtab = (const char *)((uint8_t *)data + strtab_sec->sh_offset);
-                  sym_name = strtab + sym->st_name;
+                Elf64_Shdr *strtab_sec = &sections[symtab_sec->sh_link];
+                const char *strtab = (const char *) ((uint8_t *) data + strtab_sec->sh_offset);
+                sym_name = strtab + sym->st_name;
               }
               printk(KERN_ERR FKX_CLASS "Undefined symbol '%s' in R_X86_64_64 relocation\n", sym_name);
               return -1;
@@ -202,9 +221,9 @@ static int fkx_relocate_module(struct fkx_loaded_image *img) {
             if (S == 0 && sym->st_shndx == SHN_UNDEF) {
               const char *sym_name = "?";
               if (symtab_sec->sh_link != 0) {
-                  Elf64_Shdr *strtab_sec = &sections[symtab_sec->sh_link];
-                  const char *strtab = (const char *)((uint8_t *)data + strtab_sec->sh_offset);
-                  sym_name = strtab + sym->st_name;
+                Elf64_Shdr *strtab_sec = &sections[symtab_sec->sh_link];
+                const char *strtab = (const char *) ((uint8_t *) data + strtab_sec->sh_offset);
+                sym_name = strtab + sym->st_name;
               }
               printk(KERN_ERR FKX_CLASS "Undefined symbol '%s' in PLT/GOT relocation\n", sym_name);
               return -1;
@@ -213,8 +232,7 @@ static int fkx_relocate_module(struct fkx_loaded_image *img) {
             break;
 
           case R_X86_64_PC32:
-          case R_X86_64_PLT32:
-          {
+          case R_X86_64_PLT32: {
             uint64_t P = (uint64_t) target;
             int32_t value = (int32_t) ((S + addend) - P);
             *(int32_t *) target = value;
@@ -231,14 +249,14 @@ static int fkx_relocate_module(struct fkx_loaded_image *img) {
   }
 
   // Register module symbols
-  const Elf64_Shdr *ksymtab_sec = elf_get_section(data, "fkx_ksymtab");
+  const Elf64_Shdr *ksymtab_sec = elf_get_section(data, "ksymtab");
   if (ksymtab_sec) {
-      struct fkx_symbol *syms = (struct fkx_symbol *)(base_addr + (ksymtab_sec->sh_addr - min_vaddr));
-      size_t count = ksymtab_sec->sh_size / sizeof(struct fkx_symbol);
-      
-      for (size_t i = 0; i < count; i++) {
-          fkx_register_symbol(syms[i].addr, syms[i].name);
-      }
+    struct ksymbol *syms = (struct ksymbol *) (base_addr + (ksymtab_sec->sh_addr - min_vaddr));
+    size_t count = ksymtab_sec->sh_size / sizeof(struct ksymbol);
+
+    for (size_t i = 0; i < count; i++) {
+      register_ksymbol(syms[i].addr, syms[i].name);
+    }
   }
 
   img->linked = 1;
@@ -295,7 +313,7 @@ int fkx_finalize_loading(void) {
                      curr->info->name, dep_name);
               // This module can never be satisfied.
               deps_satisfied = 0;
-              break; 
+              break;
             }
             deps_satisfied = 0;
             break;
@@ -306,12 +324,12 @@ int fkx_finalize_loading(void) {
       if (deps_satisfied) {
         if (fkx_relocate_module(curr) == 0) {
           printk(KERN_DEBUG FKX_CLASS "Linked module '%s'\n", curr->info->name);
-          
+
           // Remove from unlinked list
           struct fkx_loaded_image *to_link = curr;
           if (prev) prev->next = curr->next;
           else g_unlinked_modules = curr->next;
-          
+
           curr = curr->next;
 
           // Add to class list

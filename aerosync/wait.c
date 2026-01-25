@@ -9,6 +9,7 @@
 #include <aerosync/wait.h>
 #include <aerosync/spinlock.h>
 #include <aerosync/fkx/fkx.h>
+#include <aerosync/errno.h>
 
 void __init_waitqueue_head(struct wait_queue_head *wq_head, const char *name, struct lock_class_key *key)
 {

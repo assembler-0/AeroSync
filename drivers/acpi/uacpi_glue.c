@@ -41,6 +41,7 @@
 #include <uacpi/kernel_api.h>
 #include <uacpi/types.h>
 #include <uacpi/uacpi.h>
+#include <uacpi/tables.h>
 
 static volatile int s_ic_ready = 0;
 // Pending ACPI IRQ handlers before IC is ready

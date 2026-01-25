@@ -7,12 +7,13 @@
  * @copyright (C) 2025-2026 assembler-0
  */
 
-#include <arch/x86_64/mm/paging.h>
-#include <drivers/timer/hpet.h>
-#include <aerosync/classes.h> 
+#include <aerosync/classes.h>
 #include <aerosync/fkx/fkx.h>
-#include <lib/printk.h>
+#include <aerosync/sysintf/acpi.h>
+#include <arch/x86_64/mm/paging.h>
 #include <arch/x86_64/tsc.h>
+#include <drivers/timer/hpet.h>
+#include <lib/printk.h>
 #include <mm/vmalloc.h>
 
 hpet_info_t hpet_info = {0};
@@ -119,19 +120,13 @@ int hpet_init(void) {
   if (hpet_info.initialized)
     return 0;
 
-  uacpi_table hpet_table;
-  uacpi_status status;
-
   printk(HPET_CLASS "Initializing HPET driver...\n");
 
-  status = uacpi_table_find_by_signature(ACPI_HPET_SIGNATURE, &hpet_table);
-  if (uacpi_unlikely_error(status)) {
-    printk(KERN_WARNING HPET_CLASS "HPET table not found: %s\n",
-           uacpi_status_to_string(status));
+  const struct acpi_hpet *hpet = acpi_get_hpet();
+  if (!hpet) {
+    printk(KERN_WARNING HPET_CLASS "HPET table not found in ACPI inventory\n");
     return -1;
   }
-
-  const struct acpi_hpet *hpet = (const struct acpi_hpet *)hpet_table.hdr;
 
   hpet_info.base_address = hpet->address.address;
   hpet_info.revision_id = hpet->block_id & 0xFF;
@@ -144,16 +139,18 @@ int hpet_init(void) {
   hpet_info.page_protection = hpet->flags & ACPI_HPET_PAGE_PROTECTION_MASK;
 
   printk(KERN_DEBUG HPET_CLASS "HPET found:\n");
-  printk(KERN_DEBUG HPET_CLASS "  Base Address: 0x%lx\n", hpet_info.base_address);
+  printk(KERN_DEBUG HPET_CLASS "  Base Address: 0x%lx\n",
+         hpet_info.base_address);
   printk(KERN_DEBUG HPET_CLASS "  Revision: %d\n", hpet_info.revision_id);
   printk(KERN_DEBUG HPET_CLASS "  Vendor ID: 0x%x\n", hpet_info.vendor_id);
-  printk(KERN_DEBUG HPET_CLASS "  Num Comparators: %d\n", hpet_info.num_comparators);
-  printk(KERN_DEBUG HPET_CLASS "  Page Protection: %d\n", hpet_info.page_protection);
+  printk(KERN_DEBUG HPET_CLASS "  Num Comparators: %d\n",
+         hpet_info.num_comparators);
+  printk(KERN_DEBUG HPET_CLASS "  Page Protection: %d\n",
+         hpet_info.page_protection);
 
   hpet_mapped_base = ioremap(hpet_info.base_address, PAGE_SIZE);
   if (!hpet_mapped_base) {
     printk(KERN_ERR HPET_CLASS "Failed to map HPET registers\n");
-    uacpi_table_unref(&hpet_table);
     return -1;
   }
 
@@ -174,7 +171,6 @@ int hpet_init(void) {
   hpet_write64(HPET_MAIN_COUNTER_VALUE, 0);
   hpet_info.initialized = true;
 
-  uacpi_table_unref(&hpet_table);
   hpet_enable();
 
   if (hpet_validate() != 0) {
@@ -279,7 +275,7 @@ int hpet_calibrate_tsc(void) {
     uint64_t tsc_start = rdtsc();
 
     uint64_t tsc_start_delay = rdtsc();
-    uint64_t tsc_freq = tsc_freq_get(); 
+    uint64_t tsc_freq = tsc_freq_get();
     uint64_t tsc_ticks_for_100ms = (tsc_freq * 100) / 100;
 
     uint64_t hpet_wait_until = hpet_start + 7000000;
@@ -306,15 +302,17 @@ int hpet_calibrate_tsc(void) {
       total_tsc_freq += sample_freq;
       measurements++;
 
-      printk(KERN_DEBUG HPET_CLASS "Sample %d: HPET elapsed: %lu ns, TSC elapsed: %lu "
-                        "ticks, freq: %lu Hz\n",
+      printk(KERN_DEBUG HPET_CLASS
+             "Sample %d: HPET elapsed: %lu ns, TSC elapsed: %lu "
+             "ticks, freq: %lu Hz\n",
              i + 1, hpet_elapsed_ns, tsc_elapsed, sample_freq);
     }
   }
 
   if (measurements > 0) {
     uint64_t avg_tsc_freq = total_tsc_freq / measurements;
-    printk(KERN_DEBUG HPET_CLASS "Average TSC frequency from %d samples: %lu Hz\n",
+    printk(KERN_DEBUG HPET_CLASS
+           "Average TSC frequency from %d samples: %lu Hz\n",
            measurements, avg_tsc_freq);
     tsc_recalibrate_with_freq(avg_tsc_freq);
     printk(HPET_CLASS "TSC recalibrated using HPET reference\n");

@@ -13,6 +13,8 @@
 
 #include <aerosync/fkx/fkx.h>
 #include <linux/llist.h>
+#include <arch/x86_64/atomic.h>
+#include <arch/x86_64/cpu.h>
 
 /**
  * llist_del_first - delete the first entry of lock-less list

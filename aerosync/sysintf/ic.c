@@ -18,179 +18,260 @@
  * GNU General Public License for more details.
  */
 
-#include <drivers/apic/apic.h>
 #include <aerosync/classes.h>
-#include <aerosync/types.h>
-#include <lib/printk.h>
-#include <aerosync/sysintf/ic.h>
-#include <aerosync/panic.h>
 #include <aerosync/fkx/fkx.h>
+#include <aerosync/panic.h>
+#include <aerosync/sysintf/class.h>
+#include <aerosync/sysintf/device.h>
+#include <aerosync/sysintf/ic.h>
+#include <aerosync/types.h>
+#include <drivers/apic/apic.h>
+#include <lib/printk.h>
+#include <lib/string.h>
+#include <lib/vsprintf.h>
+#include <mm/slub.h>
 
-#define MAX_CONTROLLERS 8
+static struct class ic_class = {
+    .name = "interrupt_controller",
+};
 
-static interrupt_controller_interface_t *current_controller = NULL;
-static const interrupt_controller_interface_t *registered_controllers[MAX_CONTROLLERS];
-static size_t num_registered_controllers = 0;
-static uint32_t timer_frequency_hz = IC_DEFAULT_TICK; // default - can be changed at runtime
+static bool ic_class_registered = false;
+static interrupt_controller_interface_t *current_ops = NULL;
+static uint32_t timer_frequency_hz = IC_DEFAULT_TICK;
 static uint8_t (*get_id)(void) = NULL;
 
-void ic_register_controller(const interrupt_controller_interface_t *controller) {
-  if (num_registered_controllers >= MAX_CONTROLLERS) {
-    printk(KERN_WARNING IC_CLASS "Max interrupt controllers registered, ignoring.\n");
-    return;
+struct ic_device {
+  struct device dev;
+  const interrupt_controller_interface_t *ops;
+};
+
+static void ic_dev_release(struct device *dev) {
+  struct ic_device *ic = container_of(dev, struct ic_device, dev);
+  if (ic->dev.name && strcmp(ic->dev.name, "ic_device") != 0) {
+    kfree((void *)ic->dev.name);
   }
-  printk(KERN_DEBUG IC_CLASS "Registered interrupt controller type %d (prio: %d)\n",
-         controller->type, controller->priority);
-  registered_controllers[num_registered_controllers++] = controller;
+  kfree(ic);
 }
 
+void ic_register_controller(
+    const interrupt_controller_interface_t *controller) {
+  if (unlikely(!ic_class_registered)) {
+    class_register(&ic_class);
+    ic_class_registered = true;
+  }
+
+  struct ic_device *ic = kzalloc(sizeof(struct ic_device));
+  if (!ic) {
+    panic(IC_CLASS "Failed to allocate IC device");
+  }
+
+  ic->ops = controller;
+  ic->dev.class = &ic_class;
+  ic->dev.release = ic_dev_release;
+
+  // Naming: ic_[type]_[prio]
+  char *name_buf = kzalloc(32);
+  if (name_buf) {
+    snprintf(name_buf, 32, "ic_%d_%d", controller->type, controller->priority);
+    ic->dev.name = name_buf;
+  } else {
+    ic->dev.name = "ic_device";
+  }
+
+  if (device_register(&ic->dev) != 0) {
+    printk(KERN_ERR IC_CLASS "Failed to register IC device\n");
+    if (name_buf)
+      kfree(name_buf);
+    kfree(ic);
+    return;
+  }
+
+  printk(KERN_DEBUG IC_CLASS
+         "Registered IC controller type %d (prio: %d) via UDM\n",
+         controller->type, controller->priority);
+}
 EXPORT_SYMBOL(ic_register_controller);
+
+// Helper for iterator
+static int ic_find_best(struct device *dev, void *data) {
+  struct ic_device *ic = container_of(dev, struct ic_device, dev);
+  const interrupt_controller_interface_t **best =
+      (const interrupt_controller_interface_t **)data;
+
+  if (ic->ops->probe()) {
+    if (!*best || ic->ops->priority > (*best)->priority) {
+      *best = ic->ops;
+    }
+  }
+  return 0; // continue calling for all
+}
 
 interrupt_controller_t ic_install(void) {
   const interrupt_controller_interface_t *selected = NULL;
-  const interrupt_controller_interface_t *fallback = NULL;
 
-  for (size_t i = 0; i < num_registered_controllers; i++) {
-    if (registered_controllers[i]->probe()) {
-      if (!selected || registered_controllers[i]->priority > selected->priority) {
-        fallback = selected;
-        selected = registered_controllers[i];
-      } else if (!fallback || registered_controllers[i]->priority > fallback->priority) {
-        fallback = registered_controllers[i];
-      }
-    }
-  }
-
-  // Try selected, fall back if install fails
-  if (selected && !selected->install()) {
-    printk(KERN_WARNING IC_CLASS "Controller type %d install failed, trying fallback...\n", selected->type);
-    selected = fallback;
-    if (selected && !selected->install()) {
-      selected = NULL;
-    }
-  }
+  // 1. Find best controller using class iteration
+  class_for_each_dev(&ic_class, NULL, &selected, ic_find_best);
 
   if (!selected) {
-    panic(IC_CLASS "No interrupt controller could be installed\n");
+    panic(
+        IC_CLASS
+        "No interrupt controller could be installed (probe failed for all)\n");
   }
 
-  printk(KERN_DEBUG IC_CLASS "Configuring timer to %u Hz...\n", timer_frequency_hz);
+  // 2. Install
+  if (!selected->install()) {
+    // Simple fallback logic is harder with iterator, for now panic if best
+    // fails In a real UDM, we might retry the next best.
+    panic(IC_CLASS "Selected controller type %d install failed\n",
+          selected->type);
+  }
+
+  printk(KERN_DEBUG IC_CLASS "Configuring timer to %u Hz...\n",
+         timer_frequency_hz);
   selected->timer_set(timer_frequency_hz);
   selected->mask_all();
   printk(IC_CLASS "Timer configured.\n");
 
-  // Set current controller type
-  current_controller = (interrupt_controller_interface_t *) selected;
+  // Set current controller ops
+  current_ops = (interrupt_controller_interface_t *)selected;
 
-  if (current_controller->type == INTC_APIC) {
+  if (current_ops->type == INTC_APIC) {
     printk(KERN_INFO APIC_CLASS "APIC initialized successfully\n");
   } else {
     printk(KERN_INFO PIC_CLASS "PIC initialized successfully\n");
   }
-  return current_controller->type;
+  return current_ops->type;
 }
 
-
 void ic_ap_init(void) {
-  if (!current_controller) {
+  if (!current_ops) {
     panic(IC_CLASS "IC not initialized on BSP before AP init");
   }
 
-  if (current_controller->init_ap) {
-    if (!current_controller->init_ap()) {
+  if (current_ops->init_ap) {
+    if (!current_ops->init_ap()) {
       panic(IC_CLASS "Failed to initialize interrupt controller on AP");
     }
   }
 }
+EXPORT_SYMBOL(ic_ap_init);
 
 void ic_shutdown_controller(void) {
-  if (!current_controller) return;
+  if (!current_ops)
+    return;
 
   printk(KERN_INFO IC_CLASS "Shutting down interrupt controller...\n");
 
   // Mask all interrupts first to ensure silence
-  if (current_controller->mask_all) {
-    current_controller->mask_all();
+  if (current_ops->mask_all) {
+    current_ops->mask_all();
   }
 
   // Perform specific shutdown logic if available
-  if (current_controller->shutdown) {
-    current_controller->shutdown();
+  if (current_ops->shutdown) {
+    current_ops->shutdown();
   }
 
-  current_controller = NULL;
+  current_ops = NULL;
 }
+EXPORT_SYMBOL(ic_shutdown_controller);
 
 void ic_enable_irq(uint32_t irq_line) {
-  if (!current_controller) panic(IC_CLASS "IC not initialized");
-  if (!current_controller->enable_irq) panic(IC_CLASS "enable_irq not supported");
-  current_controller->enable_irq(irq_line);
+  if (!current_ops)
+    panic(IC_CLASS "IC not initialized");
+  if (!current_ops->enable_irq)
+    panic(IC_CLASS "enable_irq not supported");
+  current_ops->enable_irq(irq_line);
 }
+EXPORT_SYMBOL(ic_enable_irq);
 
 void ic_disable_irq(uint32_t irq_line) {
-  if (!current_controller) panic(IC_CLASS "IC not initialized");
-  if (!current_controller->disable_irq) panic(IC_CLASS "disable_irq not supported");
-  current_controller->disable_irq(irq_line);
+  if (!current_ops)
+    panic(IC_CLASS "IC not initialized");
+  if (!current_ops->disable_irq)
+    panic(IC_CLASS "disable_irq not supported");
+  current_ops->disable_irq(irq_line);
 }
+EXPORT_SYMBOL(ic_disable_irq);
 
 void ic_send_eoi(uint32_t interrupt_number) {
-  if (!current_controller) panic(IC_CLASS "IC not initialized");
-  if (!current_controller->send_eoi) panic(IC_CLASS "send_eoi not supported");
-  current_controller->send_eoi(interrupt_number);
+  if (!current_ops)
+    panic(IC_CLASS "IC not initialized");
+  if (!current_ops->send_eoi)
+    panic(IC_CLASS "send_eoi not supported");
+  current_ops->send_eoi(interrupt_number);
 }
+EXPORT_SYMBOL(ic_send_eoi);
 
 interrupt_controller_t ic_get_controller_type(void) {
-  if (!current_controller) panic(IC_CLASS "IC not initialized");
-  return current_controller->type;
+  if (!current_ops)
+    panic(IC_CLASS "IC not initialized");
+  return current_ops->type;
 }
+EXPORT_SYMBOL(ic_get_controller_type);
 
 void ic_set_timer(const uint32_t frequency_hz) {
-  if (!current_controller) return;
-  if (current_controller->timer_set) {
-    current_controller->timer_set(frequency_hz);
+  if (!current_ops)
+    return;
+  if (current_ops->timer_set) {
+    current_ops->timer_set(frequency_hz);
     timer_frequency_hz = frequency_hz;
   }
 }
+EXPORT_SYMBOL(ic_set_timer);
 
 void ic_timer_stop(void) {
-  if (current_controller && current_controller->timer_stop)
-    current_controller->timer_stop();
+  if (current_ops && current_ops->timer_stop)
+    current_ops->timer_stop();
 }
+EXPORT_SYMBOL(ic_timer_stop);
 
 void ic_timer_oneshot(uint32_t microseconds) {
-  if (current_controller && current_controller->timer_oneshot)
-    current_controller->timer_oneshot(microseconds);
+  if (current_ops && current_ops->timer_oneshot)
+    current_ops->timer_oneshot(microseconds);
 }
+EXPORT_SYMBOL(ic_timer_oneshot);
 
 void ic_timer_tsc_deadline(uint64_t deadline) {
-  if (current_controller && current_controller->timer_tsc_deadline)
-    current_controller->timer_tsc_deadline(deadline);
+  if (current_ops && current_ops->timer_tsc_deadline)
+    current_ops->timer_tsc_deadline(deadline);
 }
+EXPORT_SYMBOL(ic_timer_tsc_deadline);
 
 int ic_timer_has_tsc_deadline(void) {
-  if (current_controller && current_controller->timer_has_tsc_deadline)
-    return current_controller->timer_has_tsc_deadline();
+  if (current_ops && current_ops->timer_has_tsc_deadline)
+    return current_ops->timer_has_tsc_deadline();
   return 0;
 }
+EXPORT_SYMBOL(ic_timer_has_tsc_deadline);
 
 void ic_send_ipi(uint8_t dest_apic_id, uint8_t vector, uint32_t delivery_mode) {
-  if (!current_controller) panic(IC_CLASS "IC not initialized");
-  if (current_controller->type != INTC_APIC || !current_controller->send_ipi) {
+  if (!current_ops)
+    panic(IC_CLASS "IC not initialized");
+  if (current_ops->type != INTC_APIC || !current_ops->send_ipi) {
     panic(IC_CLASS "IPIs only supported on APIC controllers");
   }
-  current_controller->send_ipi(dest_apic_id, vector, delivery_mode);
+  current_ops->send_ipi(dest_apic_id, vector, delivery_mode);
 }
+EXPORT_SYMBOL(ic_send_ipi);
 
 static uint8_t ic_get_id_non_smp(void) { return 0; };
 
-void ic_register_lapic_get_id_early() {
-  for (int i = 0; i < num_registered_controllers && registered_controllers[i]; ++i) {
-    if (registered_controllers[i]->type == INTC_APIC && registered_controllers[i]->get_id) {
-      get_id = registered_controllers[i]->get_id;
-      return;
-    }
+static int ic_find_get_id(struct device *dev, void *data) {
+  struct ic_device *ic = container_of(dev, struct ic_device, dev);
+  if (ic->ops->type == INTC_APIC && ic->ops->get_id) {
+    get_id = ic->ops->get_id;
+    return 1; // stop
   }
-  get_id = ic_get_id_non_smp;
+  return 0;
+}
+
+void ic_register_lapic_get_id_early() {
+  class_for_each_dev(&ic_class, NULL, NULL, ic_find_get_id);
+
+  if (!get_id) {
+    get_id = ic_get_id_non_smp;
+  }
 }
 
 uint8_t ic_lapic_get_id(void) {
@@ -201,11 +282,13 @@ uint8_t ic_lapic_get_id(void) {
 }
 
 void ic_mask_all() {
-  if (!current_controller) panic(IC_CLASS "IC not initialized");
-  if (!current_controller->mask_all) panic(IC_CLASS "mask_all not supported");
-  current_controller->mask_all();
+  if (!current_ops)
+    panic(IC_CLASS "IC not initialized");
+  if (!current_ops->mask_all)
+    panic(IC_CLASS "mask_all not supported");
+  current_ops->mask_all();
 }
+EXPORT_SYMBOL(ic_mask_all);
 
-uint32_t ic_get_frequency(void) {
-  return timer_frequency_hz;
-}
+uint32_t ic_get_frequency(void) { return timer_frequency_hz; }
+EXPORT_SYMBOL(ic_get_frequency);

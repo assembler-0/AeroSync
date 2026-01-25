@@ -1,4 +1,4 @@
-///SPDX-License-Identifier: GPL-2.0-only
+/// SPDX-License-Identifier: GPL-2.0-only
 /**
  * AeroSync monolithic kernel
  *
@@ -7,27 +7,55 @@
  * @copyright (C) 2025-2026 assembler-0
  */
 
-#include <aerosync/sysintf/pci.h>
-#include <lib/string.h>
-#include <lib/printk.h>
 #include <aerosync/classes.h>
 #include <aerosync/fkx/fkx.h>
+#include <aerosync/sysintf/pci.h>
+#include <lib/printk.h>
+#include <lib/string.h>
 
-#define MAX_PCI_OPS 4
-static const pci_ops_t *registered_ops[MAX_PCI_OPS];
-static int num_registered_ops = 0;
+#include <aerosync/sysintf/class.h>
+#include <aerosync/sysintf/device.h>
+#include <mm/slub.h>
+
+static struct class pci_hw_class = {
+    .name = "pci_hardware",
+};
+
+static bool pci_hw_class_registered = false;
 static const pci_ops_t *current_hw_ops = NULL;
-
 static const pci_subsystem_ops_t *current_subsys_ops = NULL;
 
-void pci_register_ops(const pci_ops_t *ops) {
-  if (num_registered_ops >= MAX_PCI_OPS) return;
-  registered_ops[num_registered_ops++] = ops;
+struct pci_hw_device {
+  struct device dev;
+  const pci_ops_t *ops;
+};
 
+void pci_register_ops(const pci_ops_t *ops) {
+  if (unlikely(!pci_hw_class_registered)) {
+    class_register(&pci_hw_class);
+    pci_hw_class_registered = true;
+  }
+
+  struct pci_hw_device *phw = kzalloc(sizeof(struct pci_hw_device));
+  if (!phw)
+    return;
+
+  phw->ops = ops;
+  phw->dev.class = &pci_hw_class;
+  phw->dev.name = ops->name;
+
+  if (device_register(&phw->dev) != 0) {
+    kfree(phw);
+    return;
+  }
+
+  /* Automatically switch if this is higher priority and probes OK */
   if (!current_hw_ops || ops->priority > current_hw_ops->priority) {
     if (ops->probe && ops->probe() == 0) {
       current_hw_ops = ops;
-      printk(KERN_DEBUG PCI_CLASS "Switched to %s hardware ops\n", ops->name);
+      printk(KERN_DEBUG PCI_CLASS
+             "Selected %s for PCI hardware access (prio %d)\n",
+             ops->name, ops->priority);
     }
   }
 }
@@ -44,14 +72,16 @@ EXPORT_SYMBOL(pci_register_subsystem);
 /* Low-level Config Access Dispatchers */
 
 uint32_t pci_read(pci_handle_t *p, uint32_t offset, uint8_t width) {
-  if (current_hw_ops) return current_hw_ops->read(p, offset, width);
+  if (current_hw_ops)
+    return current_hw_ops->read(p, offset, width);
   return 0xFFFFFFFF;
 }
 
 EXPORT_SYMBOL(pci_read);
 
 void pci_write(pci_handle_t *p, uint32_t offset, uint32_t val, uint8_t width) {
-  if (current_hw_ops) current_hw_ops->write(p, offset, val, width);
+  if (current_hw_ops)
+    current_hw_ops->write(p, offset, val, width);
 }
 
 EXPORT_SYMBOL(pci_write);

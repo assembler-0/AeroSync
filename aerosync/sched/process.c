@@ -39,6 +39,7 @@
 #include <lib/vsprintf.h>
 #include <fs/file.h>
 #include <aerosync/signal.h>
+#include <aerosync/errno.h>
 
 /*
  * Process/Thread Management

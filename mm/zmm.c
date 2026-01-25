@@ -21,7 +21,7 @@ static spinlock_t zmm_lock = 0;
 
 int zmm_init(void) {
     zmm_cache = kmem_cache_create("zmm_entries", 64, 0, SLAB_HWCACHE_ALIGN);
-    printk(KERN_INFO "ZMM: Anonymous memory compression pool initialized.\n");
+    printk(KERN_INFO VMM_CLASS "ZMM Anonymous memory compression pool initialized.\n");
     return 0;
 }
 

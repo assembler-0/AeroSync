@@ -49,6 +49,7 @@
  */
 
 #include <linux/container_of.h>
+#include <arch/x86_64/atomic.h>
 
 struct llist_head {
 	struct llist_node *first;

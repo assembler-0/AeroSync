@@ -24,6 +24,7 @@
 #include <aerosync/fkx/fkx.h>
 #include <uacpi/acpi.h>
 #include <mm/vmalloc.h>
+#include <lib/printk.h>
 
 static volatile uint32_t *ioapic_base = NULL;
 

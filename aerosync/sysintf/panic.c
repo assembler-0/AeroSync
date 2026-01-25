@@ -25,6 +25,7 @@
 #include <aerosync/classes.h>
 #include <aerosync/fkx/fkx.h>
 #include <aerosync/sysintf/panic.h>
+#include <lib/printk.h>
 
 static const panic_ops_t *registered_backends[MAX_PANIC_HANDLERS];
 static int num_registered_backends = 0;

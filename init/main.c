@@ -18,52 +18,52 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x86_64/fpu.h>
-#include <arch/x86_64/cpu.h>
-#include <arch/x86_64/entry.h>
-#include <arch/x86_64/features/features.h>
-#include <arch/x86_64/gdt/gdt.h>
-#include <arch/x86_64/idt/idt.h>
-#include <arch/x86_64/mm/pmm.h>
-#include <arch/x86_64/mm/vmm.h>
-#include <arch/x86_64/percpu.h>
-#include <arch/x86_64/smp.h>
-#include <arch/x86_64/requests.h>
-#include <compiler.h>
-#include <crypto/crc32.h>
-#include <drivers/acpi/power.h>
-#include <drivers/qemu/debugcon/debugcon.h>
-#include <fs/vfs.h>
 #include <aerosync/classes.h>
 #include <aerosync/cmdline.h>
 #include <aerosync/fkx/fkx.h>
 #include <aerosync/panic.h>
 #include <aerosync/sched/process.h>
 #include <aerosync/sched/sched.h>
-#include <aerosync/sysintf/ic.h>
-#include <aerosync/sysintf/madt.h>
+#include <aerosync/softirq.h>
+#include <aerosync/sysintf/acpi.h>
 #include <aerosync/sysintf/time.h>
+#include <aerosync/sysintf/ic.h>
 #include <aerosync/timer.h>
 #include <aerosync/types.h>
 #include <aerosync/version.h>
-#include <aerosync/softirq.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/entry.h>
+#include <arch/x86_64/features/features.h>
+#include <arch/x86_64/fpu.h>
+#include <arch/x86_64/gdt/gdt.h>
+#include <arch/x86_64/idt/idt.h>
+#include <arch/x86_64/mm/pmm.h>
+#include <arch/x86_64/mm/vmm.h>
+#include <arch/x86_64/percpu.h>
+#include <arch/x86_64/requests.h>
+#include <arch/x86_64/smp.h>
+#include <compiler.h>
+#include <crypto/crc32.h>
+#include <drivers/acpi/power.h>
+#include <drivers/qemu/debugcon/debugcon.h>
+#include <fs/vfs.h>
 #include <lib/log.h>
 #include <lib/printk.h>
 #include <limine/limine.h>
 #include <linux/maple_tree.h>
 #include <linux/radix-tree.h>
+#include <mm/shm.h>
 #include <mm/slub.h>
+#include <mm/vm_object.h>
 #include <mm/vma.h>
 #include <mm/vmalloc.h>
-#include <mm/vm_object.h>
 #include <mm/zmm.h>
-#include <mm/shm.h>
 #include <uacpi/uacpi.h>
 
 static struct task_struct bsp_task __aligned(16);
 
 static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
-  (void) unused;
+  (void)unused;
 
   printk(KERN_INFO KERN_CLASS "finishing system initialization\n");
 
@@ -92,7 +92,8 @@ static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
   }
 }
 
-static int __init __noinline __sysv_abi system_load_extensions(const volatile struct limine_module_request *request) {
+static int __init __noinline __sysv_abi
+system_load_extensions(const volatile struct limine_module_request *request) {
   if (request->response) {
     printk(KERN_DEBUG FKX_CLASS "Found %lu modules, \n",
            request->response->module_count);
@@ -110,11 +111,11 @@ static int __init __noinline __sysv_abi system_load_extensions(const volatile st
     }
   } else {
     printk(KERN_NOTICE FKX_CLASS
-      "no FKX module found/loaded"
-      ", you probably do not want this"
-      ", this build of AeroSync does not have "
-      "any built-in hardware drivers"
-      ", expect exponential lack of hardware support.\n");
+           "no FKX module found/loaded"
+           ", you probably do not want this"
+           ", this build of AeroSync does not have "
+           "any built-in hardware drivers"
+           ", expect exponential lack of hardware support.\n");
     return -ENOSYS;
   }
   return 0;
@@ -143,30 +144,31 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   if (get_bootloader_info_request()->response &&
       get_bootloader_performance_request()->response) {
     printk(KERN_CLASS
-       "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
-       get_bootloader_info_request()->response->name
-         ? get_bootloader_info_request()->response->name
-         : "(null)",
-       get_bootloader_info_request()->response->version
-         ? get_bootloader_info_request()->response->version
-         : "(null-version)",
-       get_bootloader_performance_request()->response->exec_usec,
-       get_bootloader_performance_request()->response->init_usec
-    );
+           "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
+           get_bootloader_info_request()->response->name
+               ? get_bootloader_info_request()->response->name
+               : "(null)",
+           get_bootloader_info_request()->response->version
+               ? get_bootloader_info_request()->response->version
+               : "(null-version)",
+           get_bootloader_performance_request()->response->exec_usec,
+           get_bootloader_performance_request()->response->init_usec);
   }
 
   if (get_fw_request()->response) {
-    printk(FW_CLASS "firmware type: %s\n",
-       get_fw_request()->response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI64
-       ? "UEFI (64-bit)"
-       : get_fw_request()->response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI32
-       ? "UEFI (32-bit)"
-       : get_fw_request()->response->firmware_type == LIMINE_FIRMWARE_TYPE_X86BIOS
-       ? "BIOS (x86)"
-       : get_fw_request()->response->firmware_type == LIMINE_FIRMWARE_TYPE_SBI
-       ? "SBI"
-       : "(unknown)"
-    );
+    printk(
+        FW_CLASS "firmware type: %s\n",
+        get_fw_request()->response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI64
+            ? "UEFI (64-bit)"
+        : get_fw_request()->response->firmware_type ==
+                LIMINE_FIRMWARE_TYPE_EFI32
+            ? "UEFI (32-bit)"
+        : get_fw_request()->response->firmware_type ==
+                LIMINE_FIRMWARE_TYPE_X86BIOS
+            ? "BIOS (x86)"
+        : get_fw_request()->response->firmware_type == LIMINE_FIRMWARE_TYPE_SBI
+            ? "SBI"
+            : "(unknown)");
   }
 
   printk(KERN_CLASS "system pagination level: %d\n", vmm_get_paging_levels());
@@ -196,7 +198,8 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   cpu_features_init();
   pmm_init(get_memmap_request()->response, get_hhdm_request()->response->offset,
-           get_rsdp_request()->response ? get_rsdp_request()->response->address : NULL);
+           get_rsdp_request()->response ? get_rsdp_request()->response->address
+                                        : NULL);
   lru_init();
   vmm_init();
   slab_init();
@@ -239,7 +242,9 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   ic_register_lapic_get_id_early();
 
   uacpi_kernel_init_early();
-  madt_init();
+
+  acpi_tables_init();
+  
   interrupt_controller_t ic_type = ic_install();
   uacpi_notify_ic_ready();
 
@@ -250,21 +255,25 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     printk(KERN_WARNING KERN_CLASS "Time subsystem initialization failed\n");
   }
 
-  // Recalibrate TSC using the best available time source if not already calibrated accurately
+  // Recalibrate TSC using the best available time source if not already
+  // calibrated accurately
   if (tsc_freq_get() < 1000000) {
     if (time_calibrate_tsc_system() != 0) {
       printk(KERN_WARNING KERN_CLASS "TSC System Calibration failed.\n");
     } else {
-      printk(KERN_CLASS "TSC calibrated successfully via %s.\n", time_get_source_name());
+      printk(KERN_CLASS "TSC calibrated successfully via %s.\n",
+             time_get_source_name());
     }
   } else {
-    printk(KERN_CLASS "TSC already calibrated via CPUID (%lu Hz).\n", tsc_freq_get());
+    printk(KERN_CLASS "TSC already calibrated via CPUID (%lu Hz).\n",
+           tsc_freq_get());
   }
 
   timer_init_subsystem();
 
   // -- initialize the rest of uACPI ---
   uacpi_kernel_init_late();
+  acpi_bus_enumerate();
   acpi_power_init();
 
   fkx_init_module_class(FKX_DRIVER_CLASS);
@@ -281,7 +290,8 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 #endif
 
   // Start kernel_init thread
-  struct task_struct *init_task = kthread_create(kernel_init, NULL, "kernel_init");
+  struct task_struct *init_task =
+      kthread_create(kernel_init, NULL, "kernel_init");
   if (!init_task)
     panic(KERN_CLASS "Failed to create kernel_init thread");
   kthread_run(init_task);

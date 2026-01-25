@@ -13,6 +13,7 @@
 #include <aerosync/sched/sched.h>
 #include <aerosync/spinlock.h>
 #include <aerosync/wait.h>
+#include <aerosync/fkx/fkx.h>
 
 void wait_for_completion(struct completion *x) {
   /* Use DEFINE_WAIT from wait.h which sets up wait_queue_t correctly for
@@ -40,6 +41,7 @@ void wait_for_completion(struct completion *x) {
   get_current()->state = TASK_RUNNING;
   remove_wait_queue(&x->wait, &wait);
 }
+EXPORT_SYMBOL(wait_for_completion);
 
 unsigned long wait_for_completion_timeout(struct completion *x,
                                           unsigned long timeout) {
@@ -47,6 +49,7 @@ unsigned long wait_for_completion_timeout(struct completion *x,
   wait_for_completion(x);
   return 1;
 }
+EXPORT_SYMBOL(wait_for_completion_timeout);
 
 void complete(struct completion *x) {
   irq_flags_t flags = spinlock_lock_irqsave(&x->wait.lock);
@@ -54,6 +57,7 @@ void complete(struct completion *x) {
   wake_up(&x->wait); /* Wakes one */
   spinlock_unlock_irqrestore(&x->wait.lock, flags);
 }
+EXPORT_SYMBOL(complete);
 
 void complete_all(struct completion *x) {
   irq_flags_t flags = spinlock_lock_irqsave(&x->wait.lock);
@@ -61,3 +65,4 @@ void complete_all(struct completion *x) {
   wake_up_all(&x->wait); /* Wakes all */
   spinlock_unlock_irqrestore(&x->wait.lock, flags);
 }
+EXPORT_SYMBOL(complete_all);

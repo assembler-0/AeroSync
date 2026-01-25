@@ -1087,11 +1087,11 @@ void vmm_dump_entry(struct mm_struct *mm, uint64_t virt) {
     }
     uint64_t entry = current_table[idx];
     if (!(entry & PTE_PRESENT)) {
-      printk("  Level %d missing\n", level);
+      printk(VMM_CLASS "  Level %d missing\n", level);
       return;
     }
     if (entry & PTE_HUGE) {
-      printk("  Level %d: HUGE PAGE, entry: %llx\n", level, entry);
+      printk(VMM_CLASS "  Level %d: HUGE PAGE, entry: %llx\n", level, entry);
       return;
     }
     current_table = (uint64_t *) phys_to_virt(PTE_GET_ADDR(entry));

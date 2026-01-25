@@ -21,16 +21,8 @@
 #pragma once
 
 #include <aerosync/sysintf/time.h>
-#include <aerosync/sysintf/ic.h>
-#include <lib/printk.h>
-#include <arch/x86_64/cpu.h>
-#include <aerosync/mutex.h>
-#include <aerosync/semaphore.h>
-#include <aerosync/wait.h>
-#include <aerosync/errno.h>
-#include <uacpi/acpi.h>
-#include <uacpi/tables.h>
 #include <uacpi/types.h>
+#include <aerosync/export.h>
 
 /* FKX Magic: "FKX1" in little-endian */
 #define FKX_MAGIC 0x31584B46
@@ -45,28 +37,6 @@
 /* Return codes */
 #define FKX_SUCCESS          0
 // use errno.h!
-
-/**
- * Kernel Symbol structure
- */
-struct fkx_symbol {
-    uintptr_t addr;
-    const char *name;
-};
-
-/**
- * EXPORT_SYMBOL - Export a symbol to the global kernel symbol table
- *
- * This macro places symbol information into a dedicated section that
- * the FKX loader can parse.
- */
-#define EXPORT_SYMBOL(sym) \
-    static const char __fkx_sym_name_##sym[] = #sym; \
-    __attribute__((section("fkx_ksymtab"), used)) \
-    const struct fkx_symbol __fkx_sym_##sym = { \
-        .addr = (uintptr_t)&sym, \
-        .name = __fkx_sym_name_##sym \
-    }
 
 typedef enum {
   FKX_PRINTK_CLASS,
@@ -149,6 +119,7 @@ struct fkx_module_info {
 /**
  * FKX_NO_DEPENDENCIES - Use when module has no dependencies
  */
+#define FKX_NO_DEPENDENCIES NULL
 
 /**
  * Load an FKX module image into memory without calling init
@@ -158,23 +129,6 @@ struct fkx_module_info {
  * @return FKX_SUCCESS on success, error code otherwise
  */
 int fkx_load_image(void *data, size_t size);
-
-/**
- * Lookup a symbol in the global kernel symbol table
- *
- * @param name Name of the symbol
- * @return Address of the symbol or 0 if not found
- */
-uintptr_t fkx_lookup_symbol(const char *name);
-
-/**
- * Register a new symbol in the global kernel symbol table
- *
- * @param addr Address of the symbol
- * @param name Name of the symbol
- * @return 0 on success, error code otherwise
- */
-int fkx_register_symbol(uintptr_t addr, const char *name);
 
 /**
  * Initialize all modules of a specific class

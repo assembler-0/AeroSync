@@ -78,6 +78,7 @@ include(drivers/uart/uart.cmake)
 include(drivers/apic/ic.cmake)
 include(drivers/pci/pci.cmake)
 include(drivers/timer/timer.cmake)
+include(drivers/block/ide/ide.cmake)
 include(FetchContent)
 
 # ============================================================================

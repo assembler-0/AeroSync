@@ -1,12 +1,13 @@
 #pragma once
 
-#include <compiler.h>
 #include <aerosync/types.h>
+#include <arch/x86_64/cpu.h>
+#include <compiler.h>
 
 typedef void (*panic_regs)(cpu_regs *regs) __noreturn __sysv_abi;
 typedef void (*panic_msg)(const char *msg) __noreturn __sysv_abi;
 typedef void (*panic_simple)(void) __noreturn __sysv_abi;
-typedef int  (*panic_init)(void);
+typedef int (*panic_init)(void);
 typedef void (*panic_cleanup)(void);
 
 typedef struct {

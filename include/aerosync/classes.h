@@ -13,7 +13,7 @@
 #define ACPI_CLASS "[sys::acpi] " // ACPI table parsing (RSDP, MADT, FADT)
 #define ACPI_BUTTON_CLASS "[sys::acpi::btn] " // ACPI Power/Sleep button handling
 #define POWER_CLASS "[sys::acpi::power] "
-#define HAL_CLASS "[sys::hal] "   // Hardware Abstraction Layer generic
+#define HAL_CLASS "[sys::sysintf::udm] "   // Hardware Abstraction Layer generic (UDM)
 
 ///@section CPU & Interrupts
 #define GDT_CLASS "[sys::gdt] "   // Global Descriptor Table
@@ -39,6 +39,7 @@
 #define SYSCALL_CLASS "[sys::core::syscall] "      // System call entry/exit tracing
 #define ATOMIC_CLASS "[sys::core::atomic] "     // Atomic operations
 #define FW_CLASS "[sys::core::fw] "           // Firmware interfaces (BIOS/UEFI)
+#define SMBIOS_CLASS "[sys::core::fw::smbios] " // SMBIOS parsing
 #define FKX_CLASS "[sys::sysintf::fkx] "         // FKX Module Loader
 #define SYNC_CLASS "[sys::core::sync] " // Synchronization (Mutex, Semaphores, Spinlocks)
 #define NUMA_CLASS "[sys::core::numa] "

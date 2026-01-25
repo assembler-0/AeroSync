@@ -21,6 +21,7 @@
 #include <aerosync/mutex.h>
 #include <aerosync/sched/sched.h>
 #include <aerosync/wait.h>
+#include <aerosync/fkx/fkx.h>
 #include <linux/container_of.h>
 
 void mutex_init(mutex_t *m) {
@@ -31,6 +32,7 @@ void mutex_init(mutex_t *m) {
   INIT_LIST_HEAD(&m->waiters);
   m->pi_enabled = true;
 }
+EXPORT_SYMBOL(mutex_init);
 
 void mutex_lock(mutex_t *m) {
   struct task_struct *curr = current;
@@ -86,6 +88,7 @@ void mutex_lock(mutex_t *m) {
   finish_wait(&m->wait_q, &wait);
   spinlock_unlock_irqrestore(&m->lock, flags);
 }
+EXPORT_SYMBOL(mutex_lock);
 
 void mutex_unlock(mutex_t *m) {
   irq_flags_t flags = spinlock_lock_irqsave(&m->lock);
@@ -121,6 +124,7 @@ void mutex_unlock(mutex_t *m) {
 
   spinlock_unlock_irqrestore(&m->lock, flags);
 }
+EXPORT_SYMBOL(mutex_unlock);
 
 int mutex_trylock(mutex_t *m) {
   irq_flags_t flags = spinlock_lock_irqsave(&m->lock);
@@ -136,3 +140,4 @@ int mutex_trylock(mutex_t *m) {
   spinlock_unlock_irqrestore(&m->lock, flags);
   return 0;
 }
+EXPORT_SYMBOL(mutex_trylock);

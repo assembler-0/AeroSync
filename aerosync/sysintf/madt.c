@@ -24,6 +24,7 @@
 #include <lib/printk.h>
 #include <uacpi/uacpi.h>
 #include <uacpi/platform/types.h>
+#include <uacpi/tables.h>
 
 static uint64_t s_lapic_address = 0xfee00000; // Default x86 base
 static madt_ioapic_t s_ioapics[MADT_MAX_IOAPICS];

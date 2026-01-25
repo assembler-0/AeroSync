@@ -44,6 +44,13 @@ static inline void init_completion(struct completion *x) {
 }
 
 /**
+ * reinit_completion - Reset a completion to be reused
+ */
+static inline void reinit_completion(struct completion *x) {
+    x->done = 0;
+}
+
+/**
  * wait_for_completion - Wait for completion to be signaled
  */
 void wait_for_completion(struct completion *x);

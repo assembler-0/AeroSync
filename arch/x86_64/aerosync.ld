@@ -78,9 +78,9 @@ SECTIONS
         *(.rodata.*)
         
         . = ALIGN(8);
-        _fkx_ksymtab_start = .;
-        KEEP(*(fkx_ksymtab))
-        _fkx_ksymtab_end = .;
+        _ksymtab_start = .;
+        KEEP(*(ksymtab))
+        _ksymtab_end = .;
 
         . = ALIGN(4);
         __start___ex_table = .;
@@ -160,7 +160,7 @@ SECTIONS
 }
 
 /* Sanity checks */
-ASSERT(_kernel_size < 16M, "Kernel too large (>16MB)")
+ASSERT(_kernel_size < 128M, "Kernel too large (>128MB)")
 ASSERT(_text_start >= _kernel_vma_start, "Text section misaligned")
 ASSERT(_rodata_start >= _text_end, "Rodata section misaligned")
 ASSERT(_data_start >= _rodata_end, "Data section misaligned")

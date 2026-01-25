@@ -25,6 +25,7 @@
 #include <aerosync/panic.h>
 #include <aerosync/sched/sched.h>
 #include <aerosync/signal.h>
+#include <aerosync/fkx/fkx.h>
 #include <lib/printk.h>
 
 #include <aerosync/timer.h>
@@ -41,8 +42,10 @@ static irq_handler_t irq_handlers[MAX_INTERRUPTS];
 void irq_install_handler(uint8_t vector, irq_handler_t handler) {
   irq_handlers[vector] = handler;
 }
+EXPORT_SYMBOL(irq_install_handler);
 
 void irq_uninstall_handler(uint8_t vector) { irq_handlers[vector] = NULL; }
+EXPORT_SYMBOL(irq_uninstall_handler);
 
 void __used __hot irq_common_stub(cpu_regs *regs) {
   // CPU exceptions are vectors 0-31

@@ -9,47 +9,51 @@
 
 #pragma once
 
+#include <aerosync/mutex.h>
 #include <aerosync/types.h>
 #include <linux/list.h>
-#include <aerosync/mutex.h>
 
 struct device;
 struct device_driver;
 struct bus_type;
+struct class;
 
 /**
  * struct device_driver - The basic driver structure
  */
 struct device_driver {
-    const char *name;
-    struct bus_type *bus;
+  const char *name;
+  struct bus_type *bus;
 
-    int (*probe)(struct device *dev);
-    void (*remove)(struct device *dev);
-    void (*shutdown)(struct device *dev);
+  int (*probe)(struct device *dev);
+  void (*remove)(struct device *dev);
+  void (*shutdown)(struct device *dev);
 
-    struct list_head bus_node; /* node in bus_type->drivers_list */
+  struct list_head bus_node; /* node in bus_type->drivers_list */
 };
 
 /**
  * struct device - The basic device structure
  */
 struct device {
-    struct device *parent;
-    const char *name;
+  struct device *parent;
+  const char *name;
 
-    struct bus_type *bus;           /* type of bus device is on */
-    struct device_driver *driver;    /* which driver has allocated this device */
-    
-    void *platform_data;            /* Platform specific data, eg. ACPI handle */
-    void *driver_data;              /* Driver specific data */
+  struct bus_type *bus;         /* type of bus device is on */
+  struct device_driver *driver; /* which driver has allocated this device */
 
-    struct list_head node;          /* node in global device list */
-    struct list_head bus_node;      /* node in bus_type->devices_list */
-    struct list_head children;      /* list of child devices */
-    struct list_head child_node;    /* node in parent->children list */
+  void *platform_data; /* Platform specific data, eg. ACPI handle */
+  void *driver_data;   /* Driver specific data */
 
-    void (*release)(struct device *dev);
+  struct list_head node;       /* node in global device list */
+  struct list_head bus_node;   /* node in bus_type->devices_list */
+  struct list_head children;   /* list of child devices */
+  struct list_head child_node; /* node in parent->children list */
+
+  struct class *class;         /* class this device belongs to */
+  struct list_head class_node; /* node in class->devices list */
+
+  void (*release)(struct device *dev);
 };
 
 /* --- Registration API --- */
@@ -77,9 +81,9 @@ void driver_unregister(struct device_driver *drv);
 /* --- Helpers --- */
 
 static inline void dev_set_drvdata(struct device *dev, void *data) {
-    dev->driver_data = data;
+  dev->driver_data = data;
 }
 
 static inline void *dev_get_drvdata(const struct device *dev) {
-    return dev->driver_data;
+  return dev->driver_data;
 }
