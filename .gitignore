@@ -2,6 +2,8 @@ build
 cmake-build-*
 *cache*
 include/kernel/version.h
+version.h
+keys/
 .venv
 .idea
 .config*
