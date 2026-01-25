@@ -45,7 +45,7 @@ execute_process(
 set(AEROSYNC_RELEASE "0" CACHE STRING "AeroSync release")
 set(AEROSYNC_CANDIDATE "2" CACHE STRING "AeroSync release candidate")
 set(AEROSYNC_ABI_LEVEL "0" CACHE STRING "AeroSync ABI level")
-set(AEROSYNC_CODENAME "Invariant" CACHE STRING "AeroSync codename")
+set(AEROSYNC_CODENAME "Convergence" CACHE STRING "AeroSync codename")
 configure_file(
         ${CMAKE_CURRENT_SOURCE_DIR}/include/aerosync/version.h.in
         ${CMAKE_CURRENT_SOURCE_DIR}/include/aerosync/version.h
