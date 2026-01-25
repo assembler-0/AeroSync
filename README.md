@@ -1,7 +1,6 @@
 # AeroSync
 
-**Version:** v1.0.1
-**License:** GPL-2.0
+**Version:** r0c2-3.2.5
 
 <p align="center">
   <img src="https://img.shields.io/github/languages/top/assembler-0/AeroSync?style=for-the-badge&color=blueviolet" />
