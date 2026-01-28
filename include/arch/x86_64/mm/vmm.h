@@ -15,6 +15,7 @@
 #define PTE_HUGE (1ULL << 7)     // Huge Page (2MB/1GB)
 #define PTE_PAT (1ULL << 7)      // Page Attribute Table (4KB pages)
 #define PTE_GLOBAL (1ULL << 8)   // Global Translation
+#define PTE_NUMA_HINT (1ULL << 11) // Software bit for NUMA hinting (Must be Present=0)
 #define PTE_NX (1ULL << 63)      // No Execute
 
 #define PDE_PAT (1ULL << 12)     // Page Attribute Table (2MB/1GB pages)
@@ -151,6 +152,13 @@ int vmm_is_dirty(struct mm_struct *mm, uint64_t virt);
 void vmm_clear_dirty(struct mm_struct *mm, uint64_t virt);
 int vmm_is_accessed(struct mm_struct *mm, uint64_t virt);
 void vmm_clear_accessed(struct mm_struct *mm, uint64_t virt);
+void vmm_clear_accessed_no_flush(struct mm_struct *mm, uint64_t virt);
+
+/**
+ * Page Table Cache
+ * Pre-zeroed page cache for fast page table allocation.
+ */
+void pgt_cache_refill(void);
 
 /**
  * Huge Page Helpers
@@ -174,6 +182,13 @@ int vmm_page_size_supported(size_t size);
  */
 void vmm_switch_pml_root(uint64_t pml_root_phys);
 void vmm_switch_pml_root_pcid(uint64_t pml_root_phys, uint16_t pcid, bool no_flush);
+
+/**
+ * NUMA Hinting Support
+ */
+int vmm_is_numa_hint(struct mm_struct *mm, uint64_t virt);
+struct folio *vmm_get_folio(struct mm_struct *mm, uint64_t virt);
+void vmm_set_numa_hint(struct mm_struct *mm, uint64_t virt);
 
 /* Smoke test */
 void vmm_test(void);

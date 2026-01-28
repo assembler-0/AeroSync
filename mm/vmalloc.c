@@ -5,6 +5,10 @@
  * @file mm/vmalloc.c
  * @brief Ultra-High Performance Hybrid Kernel Virtual Memory Allocator
  * @copyright (C) 2025-2026 assembler-0
+ *
+ * This implementation uses Maple Tree for O(log n) gap finding and RCU-safe
+ * lookups when CONFIG_VMALLOC_MAPLE_TREE is enabled. The Maple Tree provides
+ * significantly better scalability under contention compared to RB-trees.
  */
 
 #include <aerosync/atomic.h>
@@ -23,7 +27,7 @@
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <linux/container_of.h>
-#include <linux/rbtree_augmented.h>
+#include <linux/maple_tree.h>
 #include <linux/rculist.h>
 #include <linux/rcupdate.h>
 #include <mm/mm_types.h>
@@ -34,43 +38,42 @@
 #include <mm/vmalloc.h>
 #include <mm/zone.h>
 
+#ifndef CONFIG_VMALLOC_MAPLE_TREE
+#include <linux/rbtree_augmented.h>
+#endif
+
 /* ========================================================================
  * Configuration & Constants
  * ======================================================================= */
 
-#define VM_LAZY_FREE_THRESHOLD (32 * 1024 * 1024ULL)
 #define PCP_VA_THRESHOLD 128
 #define PCP_RANGE_THRESHOLD 16
 
 #define VMAP_BLOCK_PAGES VMAP_BBMAP_BITS
 #define VMAP_BLOCK_SIZE_BYTES (VMAP_BLOCK_PAGES << PAGE_SHIFT)
 
-#define PCP_BIN_1P 0
-#define PCP_BIN_2P 1
-#define PCP_BIN_4P 2
-#define PCP_BIN_8P 3
-#define PCP_BINS 4
+/* NUMA partitioning - divide vmalloc space across nodes */
+#ifdef CONFIG_VMALLOC_NUMA_PARTITION
+#define VMALLOC_NODE_SIZE (VMALLOC_VIRT_SIZE / MAX_NUMNODES)
 
-/* ========================================================================
- * Data Structures
- * ======================================================================= */
+static inline unsigned long vmalloc_node_start(int nid) {
+  return VMALLOC_VIRT_BASE + ((unsigned long)nid * VMALLOC_NODE_SIZE);
+}
 
-struct vmap_node {
-  spinlock_t lock;
-  struct rb_root root;
-  struct list_head list;
-  struct list_head purge_list;
-  atomic_long_t nr_purged;
-  int nid;
-} __aligned(64);
+static inline unsigned long vmalloc_node_end(int nid) {
+  return vmalloc_node_start(nid) + VMALLOC_NODE_SIZE;
+}
+#else
+static inline unsigned long vmalloc_node_start(int nid) {
+  (void)nid;
+  return VMALLOC_VIRT_BASE;
+}
 
-struct vmap_pcp {
-  spinlock_t lock;
-  struct list_head free_va;
-  int nr_va;
-  struct list_head bins[PCP_BINS];
-  int bin_count[PCP_BINS];
-} __aligned(64);
+static inline unsigned long vmalloc_node_end(int nid) {
+  (void)nid;
+  return VMALLOC_VIRT_END;
+}
+#endif
 
 /* ========================================================================
  * Global State
@@ -81,16 +84,177 @@ static DEFINE_PER_CPU(struct vmap_pcp, vmap_pcp);
 static struct kmem_cache *vmap_area_cachep;
 static struct kmem_cache *vmap_block_cachep;
 
-struct vmap_block_queue {
-  spinlock_t lock;
-  struct list_head free;
-};
-
 static DEFINE_PER_CPU(struct vmap_block_queue, vmap_block_queues);
 
 /* ========================================================================
- * Augmented RB-Tree (Gap Tracking)
+ * Tree Operations (Maple Tree or RB-Tree)
  * ======================================================================= */
+
+#ifdef CONFIG_VMALLOC_MAPLE_TREE
+
+/*
+ * Maple Tree based operations - O(log n) gap finding with RCU-safe lookups.
+ * This is the preferred implementation for production systems.
+ */
+
+static struct vmap_area *find_vmap_area(unsigned long addr) {
+  struct vmap_area *va;
+  unsigned long index;
+
+  rcu_read_lock();
+
+#ifdef CONFIG_VMALLOC_NUMA_PARTITION
+  /* With NUMA partitioning, we know exactly which node to search */
+  int nid = (addr - VMALLOC_VIRT_BASE) / VMALLOC_NODE_SIZE;
+  if (nid >= 0 && nid < MAX_NUMNODES) {
+    struct vmap_node *vn = &vmap_nodes[nid];
+    index = addr;
+    va = mt_find(&vn->va_mt, &index, addr);
+    if (va && addr >= va->va_start && addr < va->va_end) {
+      rcu_read_unlock();
+      return va;
+    }
+  }
+#else
+  /* Search all nodes - but with maple tree this is still fast */
+  for (int i = 0; i < MAX_NUMNODES; i++) {
+    struct vmap_node *vn = &vmap_nodes[i];
+    index = addr;
+    va = mt_find(&vn->va_mt, &index, addr);
+    if (va && addr >= va->va_start && addr < va->va_end) {
+      rcu_read_unlock();
+      return va;
+    }
+  }
+#endif
+
+  rcu_read_unlock();
+  return NULL;
+}
+
+static struct vmap_area *alloc_vmap_area(unsigned long size,
+                                         unsigned long align,
+                                         unsigned long vstart,
+                                         unsigned long vend, int nid) {
+  struct vmap_area *va;
+  int target_node = (nid == NUMA_NO_NODE) ? this_node() : nid;
+  unsigned long addr;
+  int ret;
+
+  size = PAGE_ALIGN_UP(size);
+  align = max(align, PAGE_SIZE);
+
+  /*
+   * Add a guard page at the end of the requested range.
+   * This is unmapped and acts as a safety buffer for kernel overflows.
+   */
+  unsigned long real_size = size + PAGE_SIZE;
+
+  va = kmem_cache_alloc_node(vmap_area_cachep, target_node);
+  if (!va)
+    return NULL;
+
+#ifdef CONFIG_VMALLOC_NUMA_PARTITION
+  /* Use node-local address space partition */
+  unsigned long node_start = max(vstart, vmalloc_node_start(target_node));
+  unsigned long node_end = min(vend, vmalloc_node_end(target_node));
+#else
+  unsigned long node_start = vstart;
+  unsigned long node_end = vend;
+#endif
+
+  struct vmap_node *vn = &vmap_nodes[target_node];
+  irq_flags_t flags = spinlock_lock_irqsave(&vn->lock);
+
+  /*
+   * Use mas_empty_area() for O(log n) gap finding.
+   * This is the key performance improvement over the RB-tree linear search.
+   */
+  MA_STATE(mas, &vn->va_mt, 0, 0);
+
+  ret = mas_empty_area(&mas, node_start, node_end - 1, real_size);
+  if (ret) {
+#ifdef CONFIG_VMALLOC_NUMA_PARTITION
+    /* Try fallback to other nodes */
+    spinlock_unlock_irqrestore(&vn->lock, flags);
+
+    for (int i = 0; i < MAX_NUMNODES; i++) {
+      if (i == target_node)
+        continue;
+
+      vn = &vmap_nodes[i];
+      node_start = max(vstart, vmalloc_node_start(i));
+      node_end = min(vend, vmalloc_node_end(i));
+
+      flags = spinlock_lock_irqsave(&vn->lock);
+      mas_init(&mas, &vn->va_mt, 0);
+      ret = mas_empty_area(&mas, node_start, node_end - 1, real_size);
+      if (!ret) {
+        target_node = i;
+        goto found;
+      }
+      spinlock_unlock_irqrestore(&vn->lock, flags);
+    }
+
+    kmem_cache_free(vmap_area_cachep, va);
+    return NULL;
+#else
+    spinlock_unlock_irqrestore(&vn->lock, flags);
+    kmem_cache_free(vmap_area_cachep, va);
+    return NULL;
+#endif
+  }
+
+found:
+  /* Align the address as requested */
+  addr = ALIGN_UP(mas.index, align);
+  if (addr + real_size > node_end) {
+    spinlock_unlock_irqrestore(&vn->lock, flags);
+    kmem_cache_free(vmap_area_cachep, va);
+    return NULL;
+  }
+
+  va->va_start = addr;
+  va->va_end = addr + real_size;
+  va->nid = target_node;
+  va->flags = VMAP_AREA_USED;
+  va->vb = NULL;
+  INIT_LIST_HEAD(&va->list);
+  INIT_LIST_HEAD(&va->purge_list);
+
+  /*
+   * Insert into the maple tree. We store the va indexed by its start address.
+   * The range stored is [va_start, va_end - 1] (inclusive).
+   */
+  mas_set_range(&mas, addr, addr + real_size - 1);
+  ret = mas_store_gfp(&mas, va, GFP_ATOMIC);
+  if (ret) {
+    spinlock_unlock_irqrestore(&vn->lock, flags);
+    kmem_cache_free(vmap_area_cachep, va);
+    return NULL;
+  }
+
+  list_add_tail_rcu(&va->list, &vn->list);
+  spinlock_unlock_irqrestore(&vn->lock, flags);
+
+  mas_destroy(&mas);
+  return va;
+}
+
+static void __vmap_area_remove_locked(struct vmap_node *vn, struct vmap_area *va) {
+  MA_STATE(mas, &vn->va_mt, va->va_start, va->va_end - 1);
+
+  mas_erase(&mas);
+  list_del_rcu(&va->list);
+  mas_destroy(&mas);
+}
+
+#else /* !CONFIG_VMALLOC_MAPLE_TREE - Legacy RB-tree implementation */
+
+/*
+ * Augmented RB-Tree based operations (Legacy).
+ * This path is retained for fallback and comparison purposes.
+ */
 
 static inline unsigned long vmap_area_compute_gap(struct vmap_area *va) {
   struct rb_node *prev_node = rb_prev(&va->rb_node);
@@ -121,64 +285,6 @@ static unsigned long vmap_area_rb_compute_max_gap(struct vmap_area *va) {
 RB_DECLARE_CALLBACKS_MAX(static, vmap_area_rb_callbacks, struct vmap_area,
                          rb_node, unsigned long, rb_max_gap,
                          vmap_area_rb_compute_max_gap)
-
-/* ========================================================================
- * Internal Metadata Helpers
- * ======================================================================= */
-
-static struct vmap_area *alloc_vmap_area_metadata(int nid) {
-  struct vmap_pcp *pcp = this_cpu_ptr(vmap_pcp);
-  struct vmap_area *va = NULL;
-
-  irq_flags_t flags = spinlock_lock_irqsave(&pcp->lock);
-  if (!list_empty(&pcp->free_va)) {
-    va = list_first_entry(&pcp->free_va, struct vmap_area, list);
-    list_del(&va->list);
-    pcp->nr_va--;
-    spinlock_unlock_irqrestore(&pcp->lock, flags);
-    return va;
-  }
-  spinlock_unlock_irqrestore(&pcp->lock, flags);
-
-  va = kmem_cache_alloc_node(vmap_area_cachep, nid);
-  if (va)
-    RB_CLEAR_NODE(&va->rb_node);
-  return va;
-}
-
-static void free_vmap_area_metadata(struct vmap_area *va) {
-  struct vmap_pcp *pcp = this_cpu_ptr(vmap_pcp);
-
-  va->flags = 0;
-  RB_CLEAR_NODE(&va->rb_node);
-
-  irq_flags_t flags = spinlock_lock_irqsave(&pcp->lock);
-  if (pcp->nr_va < PCP_VA_THRESHOLD) {
-    list_add(&va->list, &pcp->free_va);
-    pcp->nr_va++;
-    spinlock_unlock_irqrestore(&pcp->lock, flags);
-    return;
-  }
-  spinlock_unlock_irqrestore(&pcp->lock, flags);
-
-  kmem_cache_free(vmap_area_cachep, va);
-}
-
-static inline int pcp_bin_index(unsigned long pages) {
-  if (pages == 1)
-    return PCP_BIN_1P;
-  if (pages == 2)
-    return PCP_BIN_2P;
-  if (pages == 4)
-    return PCP_BIN_4P;
-  if (pages == 8)
-    return PCP_BIN_8P;
-  return -1;
-}
-
-/* ========================================================================
- * Virtual Address Space Management
- * ======================================================================= */
 
 static struct vmap_area *find_vmap_area(unsigned long addr) {
   struct rb_node *n;
@@ -215,24 +321,13 @@ static struct vmap_area *alloc_vmap_area(unsigned long size,
   size = PAGE_ALIGN_UP(size);
   align = max(align, PAGE_SIZE);
 
-  /*
-   * Add a guard page at the end of the requested range.
-   * This is unmapped and acts as a safety buffer for kernel overflows.
-   */
   unsigned long real_size = size + PAGE_SIZE;
 
-  va = alloc_vmap_area_metadata(target_node);
+  va = kmem_cache_alloc_node(vmap_area_cachep, target_node);
   if (!va)
     return NULL;
 
-  /*
-   * CRITICAL BUG FIX: We must ensure the allocated range doesn't overlap
-   * with ANY VMA on ANY node. Since we have per-node RB-trees, we must
-   * coordinate. For simplicity and correctness, we find a gap that is
-   * free across ALL nodes.
-   */
-  
-  // Start searching from vstart
+  RB_CLEAR_NODE(&va->rb_node);
   addr = ALIGN_UP(vstart, align);
 
   while (addr + real_size <= vend) {
@@ -242,12 +337,11 @@ static struct vmap_area *alloc_vmap_area(unsigned long size,
     for (int i = 0; i < MAX_NUMNODES; i++) {
       struct vmap_node *vn = &vmap_nodes[i];
       irq_flags_t flags = spinlock_lock_irqsave(&vn->lock);
-      
+
       struct rb_node *n = vn->root.rb_node;
       while (n) {
         tmp = rb_entry(n, struct vmap_area, rb_node);
         if (addr < tmp->va_end && (addr + real_size) > tmp->va_start) {
-          // Overlap!
           conflict = true;
           next_addr = max(next_addr, tmp->va_end);
           break;
@@ -261,15 +355,13 @@ static struct vmap_area *alloc_vmap_area(unsigned long size,
       if (conflict) break;
     }
 
-    if (!conflict) {
-      // Found a gap!
+    if (!conflict)
       goto found;
-    }
 
     addr = ALIGN_UP(next_addr, align);
   }
 
-  free_vmap_area_metadata(va);
+  kmem_cache_free(vmap_area_cachep, va);
   return NULL;
 
 found:
@@ -299,11 +391,134 @@ found:
   return va;
 }
 
+static void __vmap_area_remove_locked(struct vmap_node *vn, struct vmap_area *va) {
+  rb_erase_augmented(&va->rb_node, &vn->root, &vmap_area_rb_callbacks);
+  list_del_rcu(&va->list);
+  RB_CLEAR_NODE(&va->rb_node);
+}
+
+#endif /* CONFIG_VMALLOC_MAPLE_TREE */
+
+/* ========================================================================
+ * Internal Metadata Helpers
+ * ======================================================================= */
+
+static struct vmap_area *alloc_vmap_area_metadata(int nid) {
+  struct vmap_pcp *pcp = this_cpu_ptr(vmap_pcp);
+  struct vmap_area *va = NULL;
+
+  irq_flags_t flags = spinlock_lock_irqsave(&pcp->lock);
+  if (!list_empty(&pcp->free_va)) {
+    va = list_first_entry(&pcp->free_va, struct vmap_area, list);
+    list_del(&va->list);
+    pcp->nr_va--;
+    spinlock_unlock_irqrestore(&pcp->lock, flags);
+    return va;
+  }
+  spinlock_unlock_irqrestore(&pcp->lock, flags);
+
+  va = kmem_cache_alloc_node(vmap_area_cachep, nid);
+#ifndef CONFIG_VMALLOC_MAPLE_TREE
+  if (va)
+    RB_CLEAR_NODE(&va->rb_node);
+#endif
+  return va;
+}
+
+static void free_vmap_area_metadata(struct vmap_area *va) {
+  struct vmap_pcp *pcp = this_cpu_ptr(vmap_pcp);
+
+  va->flags = 0;
+#ifndef CONFIG_VMALLOC_MAPLE_TREE
+  RB_CLEAR_NODE(&va->rb_node);
+#endif
+
+  irq_flags_t flags = spinlock_lock_irqsave(&pcp->lock);
+  if (pcp->nr_va < PCP_VA_THRESHOLD) {
+    list_add(&va->list, &pcp->free_va);
+    pcp->nr_va++;
+    spinlock_unlock_irqrestore(&pcp->lock, flags);
+    return;
+  }
+  spinlock_unlock_irqrestore(&pcp->lock, flags);
+
+  kmem_cache_free(vmap_area_cachep, va);
+}
+
+/*
+ * Enhanced PCP bin index - uses power-of-two sizing.
+ * bin[i] holds ranges of (1 << i) pages.
+ */
+static inline int pcp_bin_index(unsigned long pages) {
+  if (pages == 0 || pages > (1UL << (VMALLOC_PCP_BINS - 1)))
+    return -1;
+
+  /* Find the smallest bin that fits this allocation */
+  int bin = 0;
+  unsigned long bin_size = 1;
+  while (bin_size < pages && bin < VMALLOC_PCP_BINS - 1) {
+    bin++;
+    bin_size <<= 1;
+  }
+  return bin;
+}
+
 /* ========================================================================
  * Purging & TLB Invalidation
  * ======================================================================= */
 
+#ifdef CONFIG_VMALLOC_UNIFIED_FLUSH
+/*
+ * Enhanced batch purging with unified TLB flush range.
+ * Instead of issuing one IPI per freed region, compute a unified range
+ * and issue a single TLB shootdown for the entire batch.
+ */
+static void __purge_vmap_node_batched(struct vmap_node *vn) {
+  struct vmap_area *va, *n;
+  LIST_HEAD(local_purge_list);
+  unsigned long flush_start = ULONG_MAX, flush_end = 0;
+
+  irq_flags_t flags = spinlock_lock_irqsave(&vn->lock);
+  list_splice_init(&vn->purge_list, &local_purge_list);
+  atomic_long_set(&vn->nr_purged, 0);
+  spinlock_unlock_irqrestore(&vn->lock, flags);
+
+  if (list_empty(&local_purge_list))
+    return;
+
+  /* First pass: unmap all pages and compute unified flush range */
+  list_for_each_entry(va, &local_purge_list, purge_list) {
+    size_t data_pages = (va->va_end - va->va_start - PAGE_SIZE) >> PAGE_SHIFT;
+    vmm_unmap_pages(&init_mm, va->va_start, data_pages);
+
+    /* Track unified flush range */
+    if (va->va_start < flush_start)
+      flush_start = va->va_start;
+    if (va->va_end > flush_end)
+      flush_end = va->va_end;
+  }
+
+  /* Single TLB shootdown for the entire range */
+  if (flush_end > flush_start)
+    vmm_tlb_shootdown(&init_mm, flush_start, flush_end);
+
+  /* Remove from tree after TLB flush */
+  list_for_each_entry_safe(va, n, &local_purge_list, purge_list) {
+    list_del(&va->purge_list);
+
+    spinlock_lock(&vn->lock);
+    __vmap_area_remove_locked(vn, va);
+    spinlock_unlock(&vn->lock);
+
+    free_vmap_area_metadata(va);
+  }
+}
+#endif /* CONFIG_VMALLOC_UNIFIED_FLUSH */
+
 static void __purge_vmap_node(struct vmap_node *vn) {
+#ifdef CONFIG_VMALLOC_UNIFIED_FLUSH
+  __purge_vmap_node_batched(vn);
+#else
   struct vmap_area *va, *n;
   LIST_HEAD(local_purge_list);
 
@@ -316,19 +531,10 @@ static void __purge_vmap_node(struct vmap_node *vn) {
     return;
 
   list_for_each_entry(va, &local_purge_list, purge_list) {
-    /*
-     * va_end includes the guard page.
-     * We only need to unmap the data pages.
-     */
     size_t data_pages = (va->va_end - va->va_start - PAGE_SIZE) >> PAGE_SHIFT;
     vmm_unmap_pages(&init_mm, va->va_start, data_pages);
   }
 
-  /*
-   * OPTIMIZATION: Instead of flushing the entire VMALLOC range,
-   * only flush the specific ranges being purged to reduce overhead.
-   * This is critical for uACPI hardware access timing.
-   */
   list_for_each_entry(va, &local_purge_list, purge_list) {
     vmm_tlb_shootdown(&init_mm, va->va_start, va->va_end);
   }
@@ -336,18 +542,13 @@ static void __purge_vmap_node(struct vmap_node *vn) {
   list_for_each_entry_safe(va, n, &local_purge_list, purge_list) {
     list_del(&va->purge_list);
 
-    /*
-     * Now that the TLB is flushed, we can safely remove the area from the
-     * allocator's view. We need to re-acquire the lock for rb_erase.
-     */
     spinlock_lock(&vn->lock);
-    rb_erase_augmented(&va->rb_node, &vn->root, &vmap_area_rb_callbacks);
-    list_del_rcu(&va->list);
-    RB_CLEAR_NODE(&va->rb_node);
+    __vmap_area_remove_locked(vn, va);
     spinlock_unlock(&vn->lock);
 
     free_vmap_area_metadata(va);
   }
+#endif
 }
 
 static int kvmap_purged_thread(void *data) {
@@ -389,9 +590,10 @@ static struct vmap_block *new_vmap_block(int nid) {
   va->vb = vb;
   spinlock_init(&vb->lock);
   vb->va = va;
-  vb->free_map = 0;
-  vb->dirty_map = 0;
+  memset(vb->free_map, 0, sizeof(vb->free_map));
+  memset(vb->dirty_map, 0, sizeof(vb->dirty_map));
   memset(vb->sizes, 0, sizeof(vb->sizes));
+  vb->free_count = VMAP_BBMAP_BITS;
   vb->nid = va->nid;
   vb->cpu = smp_get_id();
 
@@ -414,10 +616,11 @@ static void *vb_alloc(size_t size, int nid) {
       continue;
     if (spinlock_trylock(&vb->lock)) {
       unsigned long bit = bitmap_find_next_zero_area(
-          &vb->free_map, VMAP_BBMAP_BITS, 0, pages, 0);
+          vb->free_map, VMAP_BBMAP_BITS, 0, pages, 0);
       if (bit < VMAP_BBMAP_BITS) {
-        bitmap_set(&vb->free_map, bit, pages);
+        bitmap_set(vb->free_map, bit, pages);
         vb->sizes[bit] = (uint8_t)pages;
+        vb->free_count -= pages;
         spinlock_unlock(&vb->lock);
         rcu_read_unlock();
         return (void *)(vb->va->va_start + (bit << PAGE_SHIFT));
@@ -431,8 +634,9 @@ static void *vb_alloc(size_t size, int nid) {
   if (!vb)
     return NULL;
   spinlock_lock(&vb->lock);
-  bitmap_set(&vb->free_map, 0, pages);
+  bitmap_set(vb->free_map, 0, pages);
   vb->sizes[0] = (uint8_t)pages;
+  vb->free_count -= pages;
   spinlock_unlock(&vb->lock);
   return (void *)vb->va->va_start;
 }
@@ -517,8 +721,9 @@ void vfree(void *addr) {
     spinlock_lock(&vb->lock);
     unsigned int pages = vb->sizes[bit];
     if (pages) {
-      bitmap_clear(&vb->free_map, bit, pages);
+      bitmap_clear(vb->free_map, bit, pages);
       vb->sizes[bit] = 0;
+      vb->free_count += pages;
       vmm_unmap_pages(&init_mm, vaddr, pages);
     }
     spinlock_unlock(&vb->lock);
@@ -537,9 +742,7 @@ void vfree(void *addr) {
 
     struct vmap_node *vn = &vmap_nodes[va->nid];
     irq_flags_t flags = spinlock_lock_irqsave(&vn->lock);
-    rb_erase_augmented(&va->rb_node, &vn->root, &vmap_area_rb_callbacks);
-    list_del_rcu(&va->list);
-    RB_CLEAR_NODE(&va->rb_node);
+    __vmap_area_remove_locked(vn, va);
     spinlock_unlock_irqrestore(&vn->lock, flags);
 
     free_vmap_area_metadata(va);
@@ -562,9 +765,7 @@ void vfree(void *addr) {
 
       struct vmap_node *vn = &vmap_nodes[va->nid];
       spinlock_lock(&vn->lock);
-      rb_erase_augmented(&va->rb_node, &vn->root, &vmap_area_rb_callbacks);
-      list_del_rcu(&va->list);
-      RB_CLEAR_NODE(&va->rb_node);
+      __vmap_area_remove_locked(vn, va);
       spinlock_unlock(&vn->lock);
 
       list_add(&va->list, &pcp->bins[bin]);
@@ -671,10 +872,26 @@ void vmalloc_init(void) {
 
   for (int i = 0; i < MAX_NUMNODES; i++) {
     spinlock_init(&vmap_nodes[i].lock);
+#ifdef CONFIG_VMALLOC_MAPLE_TREE
+    /*
+     * Initialize maple tree with:
+     * - MT_FLAGS_ALLOC_RANGE: Track gaps for fast allocation
+     * - MT_FLAGS_USE_RCU: Enable RCU-safe lockless reads
+     * - MT_FLAGS_LOCK_EXTERN: We manage locking externally via vn->lock
+     */
+    mt_init_flags(&vmap_nodes[i].va_mt,
+                  MT_FLAGS_ALLOC_RANGE | MT_FLAGS_USE_RCU | MT_FLAGS_LOCK_EXTERN);
+#else
     vmap_nodes[i].root = RB_ROOT;
+#endif
     INIT_LIST_HEAD(&vmap_nodes[i].list);
     INIT_LIST_HEAD(&vmap_nodes[i].purge_list);
     atomic_long_set(&vmap_nodes[i].nr_purged, 0);
+#ifdef CONFIG_VMALLOC_NUMA_PARTITION
+    vmap_nodes[i].va_start = vmalloc_node_start(i);
+    vmap_nodes[i].va_end = vmalloc_node_end(i);
+#endif
+    vmap_nodes[i].last_flush_time = 0;
     vmap_nodes[i].nid = i;
   }
 
@@ -683,14 +900,26 @@ void vmalloc_init(void) {
     struct vmap_pcp *pcp = per_cpu_ptr(vmap_pcp, cpu);
     spinlock_init(&pcp->lock);
     INIT_LIST_HEAD(&pcp->free_va);
-    for (int b = 0; b < PCP_BINS; b++)
+    pcp->nr_va = 0;
+    for (int b = 0; b < VMALLOC_PCP_BINS; b++) {
       INIT_LIST_HEAD(&pcp->bins[b]);
+      pcp->bin_count[b] = 0;
+    }
+#ifdef CONFIG_MM_HARDENING
+    pcp->hits = 0;
+    pcp->misses = 0;
+    pcp->refills = 0;
+#endif
     struct vmap_block_queue *vbq = per_cpu_ptr(vmap_block_queues, cpu);
     spinlock_init(&vbq->lock);
     INIT_LIST_HEAD(&vbq->free);
   }
 
-  printk(KERN_INFO VMM_CLASS "vmalloc: hybrid vmalloc initialized\n");
+#ifdef CONFIG_VMALLOC_MAPLE_TREE
+  printk(KERN_INFO VMM_CLASS "vmalloc: maple tree vmalloc initialized\n");
+#else
+  printk(KERN_INFO VMM_CLASS "vmalloc: rbtree vmalloc initialized\n");
+#endif
 }
 
 void kvmap_purged_init(void) {

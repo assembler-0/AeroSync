@@ -21,13 +21,81 @@ config MM_MGLRU
 
 endchoice
 
+menu "MGLRU Tuning"
+    depends on MM_MGLRU
+
+config MM_MGLRU_GENERATIONS
+    int "Number of LRU Generations"
+    default 4
+    range 2 8
+    help
+      Number of age generations to track. More generations provide
+      finer-grained aging but consume more memory for tracking.
+
+config MM_MGLRU_BLOOM_FILTER
+    bool "Bloom Filter for Page Table Scanning"
+    default y
+    help
+      Use bloom filters to skip cold page tables during aging scans.
+      Reduces CPU overhead significantly for large address spaces at
+      the cost of minor additional memory usage (~64KB per node per gen).
+
+endmenu
+
+config MM_WORKINGSET
+    bool "Workingset Refault Detection"
+    default y
+    depends on MM_MGLRU || MM_LRU
+    help
+      Track recently evicted pages using shadow entries. When a page
+      refaults within a short time window, it is immediately activated
+      to prevent thrashing. Essential for workload-aware reclamation.
+
+config MM_WORKINGSET_THRESHOLD
+    int "Workingset Refault Distance"
+    default 2
+    range 1 8
+    depends on MM_WORKINGSET
+    help
+      Number of LRU generations within which a refault triggers
+      immediate activation. Lower values are more aggressive.
+
 config MM_ZMM
     bool "Anonymous Page Compression (ZMM)"
     default y
     help
       Enables a compressed in-memory pool for anonymous pages. This allows
       the kernel to "reclaim" anonymous memory without a swap device by
-      compressing cold pages.
+      compressing cold pages. Fast and efficient for most workloads.
+
+config MM_SWAP
+    bool "Swap Device Support"
+    default y
+    help
+      Enable swapping anonymous pages to block devices. Pages that don't
+      compress well with ZMM fall back to swap. Essential for systems
+      without sufficient RAM for peak workloads.
+
+menu "Swap Tuning"
+    depends on MM_SWAP
+
+config MM_SWAP_SLOTS_CACHE
+    bool "Per-CPU Swap Slot Caching"
+    default y
+    help
+      Cache free swap slots per-CPU to reduce lock contention during
+      heavy swapping workloads.
+
+config MM_SWAP_READAHEAD
+    int "Swap Readahead Cluster Size"
+    default 8
+    range 1 64
+    help
+      Number of contiguous swap pages to read ahead on fault. Higher
+      values improve sequential access patterns but waste bandwidth
+      for random access.
+
+endmenu
 
 config MM_SPF
     bool "Speculative Page Faults (SPF)"
@@ -35,7 +103,22 @@ config MM_SPF
     help
       Allows handling page faults without holding the mmap_lock by using
       VMA sequence counters. Dramatically improves scalability on multi-core
-      systems.
+      systems for fault-heavy workloads.
+
+config MM_COMPACTION
+    bool "Memory Compaction"
+    default y
+    help
+      Enables background memory defragmentation (kcompactd). Essential for
+      Transparent Huge Page (THP) performance in long-running systems.
+
+config MM_NUMA_BALANCING
+    bool "Automatic NUMA Balancing"
+    default y
+    depends on MAX_NUMNODES > 1
+    help
+      Enables automatic migration of pages to the NUMA node where the
+      accessing thread is running, reducing memory latency.
 
 config MM_HARDENING
     bool "Enable MM poisoning and redzones"
@@ -43,7 +126,37 @@ config MM_HARDENING
     help
       Enables additional memory manager hardening features such as page
       poisoning and redzone checks. Highly affects performance, use only for
-      testing purposes
+      testing purposes.
+
+menu "Shadow Chain Tuning"
+
+config MM_SHADOW_COLLAPSE
+    bool "Aggressive Shadow Chain Collapsing"
+    default y
+    help
+      Enable aggressive collapsing of shadow object chains during page faults.
+      Reduces memory overhead and improves lookup performance for deeply
+      nested COW hierarchies (common after many fork() calls).
+
+config MM_SHADOW_DEPTH_LIMIT
+    int "Maximum Shadow Chain Depth"
+    default 8
+    range 2 32
+    depends on MM_SHADOW_COLLAPSE
+    help
+      Maximum depth of shadow chains before forcing synchronous collapse.
+      Lower values reduce lookup latency but may increase collapse overhead.
+
+config MM_SHADOW_ASYNC_COLLAPSE
+    bool "Asynchronous Shadow Chain Collapse"
+    default y
+    depends on MM_SHADOW_COLLAPSE
+    help
+      Collapse deep shadow chains in a background workqueue instead of
+      inline during page faults. Reduces fault latency at the cost of
+      slightly delayed memory reclamation.
+
+endmenu
 
 menu "SLUB Allocator Tuning"
 
@@ -103,6 +216,7 @@ config DIRTY_THRESHOLD_THROTTLE
 endmenu
 
 menu "ZMM Tuning"
+    depends on MM_ZMM
 
 config ZMM_COMPRESSION_THRESHOLD
     int "Minimum Compression Percentage"
@@ -110,12 +224,12 @@ config ZMM_COMPRESSION_THRESHOLD
     range 10 95
     help
       The minimum compression ratio required to store a page in ZMM.
-      Expressed as percentage of original size.
+      Expressed as percentage of original size. Pages that don't compress
+      well enough will fall back to swap (if enabled).
 
 choice
     prompt "Compression Algorithm"
     default ZMM_ALGO_RLE
-    depends on MM_ZMM
 
 config ZMM_ALGO_RLE
     bool "Run-Length Encoding (RLE)"
@@ -146,6 +260,131 @@ config VMALLOC_SIZE_GB
     range 1 512
     help
       Size of the virtual address range reserved for vmalloc and ioremap.
+
+endmenu
+
+menu "vmalloc Tuning"
+
+config VMALLOC_MAPLE_TREE
+    bool "Use Maple Tree for vmalloc address management"
+    default y
+    help
+      Replaces the augmented RB-tree with a Maple Tree for O(1) gap
+      finding in vmalloc address allocation. The Maple Tree provides
+      significantly better scalability under contention and enables
+      RCU-safe lockless lookups. Highly recommended for production.
+
+config VMALLOC_LOCKLESS_FAST_PATH
+    bool "Enable lock-free vmalloc fast path"
+    default y
+    depends on VMALLOC_MAPLE_TREE
+    help
+      Uses per-CPU caching and trylock-based optimistic allocation
+      to avoid global lock contention on the hot path. Allocations
+      that hit the per-CPU cache complete without taking any locks.
+
+config VMALLOC_PCP_BIN_COUNT
+    int "Per-CPU VA Cache Size Classes"
+    default 8
+    range 4 16
+    depends on VMALLOC_LOCKLESS_FAST_PATH
+    help
+      Number of size classes in the per-CPU virtual address cache.
+      Each class handles a power-of-two page count (1, 2, 4, 8, ...).
+      More classes reduce fragmentation but increase memory usage.
+      Default of 8 covers allocations from 4KB to 512KB.
+
+config VMALLOC_PCP_BIN_THRESHOLD
+    int "Per-CPU VA Cache Threshold per Bin"
+    default 64
+    range 16 256
+    depends on VMALLOC_LOCKLESS_FAST_PATH
+    help
+      Maximum number of cached virtual address ranges per size class
+      per CPU. Higher values improve cache hit rate but consume more
+      virtual address space in caches.
+
+config VMALLOC_PCP_BATCH_SIZE
+    int "Per-CPU VA Cache Batch Refill Size"
+    default 16
+    range 4 64
+    depends on VMALLOC_LOCKLESS_FAST_PATH
+    help
+      Number of virtual address ranges to allocate at once when
+      refilling an empty per-CPU cache bin. Batching amortizes the
+      cost of acquiring the global lock.
+
+config VMALLOC_LARGE_BLOCKS
+    bool "Use larger vmap_block size (1MB)"
+    default y
+    help
+      Increases vmap_block size from 256KB (64 pages) to 1MB (256 pages).
+      This improves density and reduces metadata overhead for workloads
+      with many small vmalloc allocations (e.g., kernel module loading,
+      BPF programs, network buffers).
+
+config VMALLOC_BLOCK_CLASSES
+    bool "Multiple vmap_block size classes"
+    default y
+    depends on VMALLOC_LARGE_BLOCKS
+    help
+      Instead of one-size-fits-all vmap_blocks, use multiple block
+      classes optimized for different allocation sizes. This reduces
+      internal fragmentation and improves utilization.
+
+config VMALLOC_NUMA_PARTITION
+    bool "Partition vmalloc space by NUMA node"
+    default y
+    depends on MAX_NUMNODES > 1
+    help
+      Divides the vmalloc address space into per-node regions to
+      eliminate cross-node allocation conflicts. Each node gets
+      VMALLOC_SIZE / MAX_NUMNODES of address space. Allocations
+      prefer the local node's region, falling back to remote nodes
+      only when local space is exhausted.
+
+menu "Lazy TLB Flush Tuning"
+
+config VMALLOC_LAZY_FLUSH
+    bool "Enable lazy TLB flush for vfree"
+    default y
+    help
+      Defers TLB shootdown for freed vmalloc regions until a threshold
+      is reached or a timeout expires. This batches multiple frees into
+      a single IPI, dramatically reducing shootdown overhead. Safe for
+      all workloads as freed addresses are not reused until flushed.
+
+config VMALLOC_LAZY_THRESHOLD_MB
+    int "Lazy flush threshold (MB)"
+    default 32
+    range 1 512
+    depends on VMALLOC_LAZY_FLUSH
+    help
+      Amount of freed virtual address space (in megabytes) to accumulate
+      before triggering a batched TLB shootdown. Higher values reduce
+      IPI frequency but delay address space reclamation.
+
+config VMALLOC_LAZY_TIMEOUT_MS
+    int "Lazy flush timeout (ms)"
+    default 100
+    range 10 1000
+    depends on VMALLOC_LAZY_FLUSH
+    help
+      Maximum time in milliseconds to defer TLB shootdown before forcing
+      a flush, even if the threshold hasn't been reached. Ensures timely
+      reclamation under light load.
+
+config VMALLOC_UNIFIED_FLUSH
+    bool "Unified flush range optimization"
+    default y
+    depends on VMALLOC_LAZY_FLUSH
+    help
+      When flushing multiple pending regions, compute a single unified
+      address range and issue one TLB shootdown instead of per-region
+      flushes. Reduces IPI count at the cost of potentially flushing
+      some still-valid entries.
+
+endmenu
 
 endmenu
 

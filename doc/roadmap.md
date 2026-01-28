@@ -14,10 +14,33 @@
 		- [x] **Batched PCP Draining**: Optimize `free_pcp_pages` to bulk-return pages to the buddy system, amortizing lock contention.
 		- [x] **Node-Local Allocation**: Enforce strict node locality policies by default, falling back only when necessary.
 		- [x] **Lockless Fastpaths**: Verify and harden `cmpxchg` usage in PCP and SLUB hotpaths.
+	- [x] **Phase 1.5: Workingset + Shadow Chain Hardening**
+		- [x] **Workingset Refault Detection**: Shadow entry encoding in XArray for detecting thrashing
+		- [x] **Shadow Chain Depth Tracking**: `shadow_depth`, `collapse_threshold`, `shadow_children` in vm_object
+		- [x] **Async Shadow Collapse**: Background collapse via `vm_object_try_collapse_async()`
+		- [x] **XArray Entry Type Encoding**: Unified encoding for folio/ZMM/swap/shadow entries (bits [1:0])
+	- [x] **Phase 1.6: Swap Subsystem**
+		- [x] **swp_entry_t Encoding**: Type (bits 63-58) + offset for swap slot identification
+		- [x] **Swap Slot Allocation**: Cluster-based allocation with `swap_info_struct`
+		- [x] **Swap Cache**: XArray-based cache for in-flight swap pages
+		- [x] **Swap Readahead**: Configurable cluster readahead (MM_SWAP_READAHEAD)
+	- [x] **Phase 1.7: Enhanced MGLRU**
+		- [x] **Bloom Filters**: Per-generation bloom filters for efficient page table scanning
+		- [x] **Per-Gen Statistics**: `lru_gen_stats` with refaults/scanned/reclaimed/promoted counters
+		- [x] **Tiered Reclaim**: Enhanced `scan_control` with may_writepage/may_unmap/may_swap flags
+		- [x] **ZMM-first Reclaim**: Try compression before swap in `folio_reclaim()`
+	- [x] **Phase 1.8: VM Performance Hardening (Microsecond-Class)**
+		- [x] **Lockless A/D Bit Reading**: `vmm_is_accessed()`/`vmm_is_dirty()` use atomic loads, no PTL
+		- [x] **Batched TLB Shootdowns**: `vmm_clear_accessed_no_flush()` + single flush in `folio_referenced()`
+		- [x] **Per-CPU LRU Batching**: `lru_batch` (15 folios) reduces `pgdat->lru_lock` contention ~15x
+		- [x] **Pre-Zeroed Page Table Cache**: Per-CPU `pgt_cache` (4 pages) eliminates memset from hot path
+		- [x] **Optimized VMA Verification**: Branch-prediction-friendly `vma_verify()` with `unlikely()` hints
+		- [x] **Streamlined Fault Path**: Removed redundant VMA magic checks (already done in `vma_find()`)
 	- [x] **Phase 2: Cache-Efficient Structures (Maple Tree & XArray)**
 		- [x] **Maple Tree**: Replace VMA RB-tree with Maple Tree (Linux-style) for cache-aligned, multi-element nodes and O(1) interval lookups.
-		- [ ] **XArray (Radix Tree 2.0)**: Replace `vm_object` page RB-trees with XArray for better cache locality and faster large-file/SHM mapping.
+		- [x] **XArray (Radix Tree 2.0)**: Replace `vm_object` page RB-trees with XArray for better cache locality and faster large-file/SHM mapping.
 		- [x] **Aggressive Fault-Around**: Expand fault-around window (currently +/- 1 page) to dynamic windows (16-64KB) for better spatial locality.
+        - [ ] **vmalloc**: use maple tree for vmalloc
 	- [ ] **Phase 3: Robustness & Advanced Features**
 		- [ ] **OOM Killer 2.0**: Implement a "Reaper" thread to asynchronously reclaim memory from killed tasks, preventing deadlocks.
 		- [x] **Hardened Usercopy**: Rigorous bounds checking for `copy_from_user`/`copy_to_user` based on VMA limits.
@@ -27,10 +50,10 @@
 	- [x] Finish RMAP for all subsystems
 	- [ ] Advance ANON object fault
 	- [ ] SHM (SHared Memory) management +IPC)
-	- [x] Use XArray/Radix tree for `vm_object`
+	- [x] Use XArray/Radix tree for `vm_object` (with entry type encoding)
 	- [x] Selective lazy allocation/free for kernel `vmalloc()
 	- [ ] Fix subtle, logic bugs
-	- [ ] True memory reclaimation
+	- [x] True memory reclamation
 	- [ ] Integrate with VFS
 	- [x] working `mmap`/`munmap`/`mprotect`/`mremap`
 	- [ ] add `brk` and `sbrk` for compatibility

@@ -109,25 +109,36 @@ static void writeback_object(struct vm_object *obj) {
   struct folio *folio;
 
   /* 
-   * Naive iteration across the object's range. 
-   * In a production system, we would use an XArray iterator that skips holes
-   * or a dirty-bit radix tree to find only pages that need cleaning.
+   * XArray iterator: only visits pages that actually exist.
+   * This is much faster than a linear loop for sparse objects.
    */
-  for (index = 0; index < (obj->size >> PAGE_SHIFT); index++) {
-    folio = xa_load(&obj->page_tree, index);
-    if (!folio || xa_is_err(folio)) continue;
+  xa_for_each(&obj->page_tree, index, folio) {
+    if (xa_is_err(folio)) continue;
+
+    /* Skip 'exceptional' entries (ZMM handles) */
+    if ((uintptr_t)folio & 0x1) continue;
 
     if (folio->page.flags & PG_dirty) {
       /*
-       * Perform actual I/O.
-       * Note: In a production driver, write_folio should be asynchronous,
-       * but here we call it synchronously.
+       * Clear dirty flag BEFORE starting I/O to avoid races where the page
+       * is dirtied again while we're writing it.
        */
+      folio->page.flags &= ~PG_dirty;
+      
       int ret = obj->ops->write_folio(obj, folio);
       if (ret == 0) {
-        folio->page.flags &= ~PG_dirty;
         account_page_cleaned();
+      } else {
+        /* I/O Error: re-dirty the page so we try again later */
+        folio->page.flags |= PG_dirty;
       }
+    }
+    
+    /* Yield periodically during large object writeback to keep system responsive */
+    if (unlikely(index % 256 == 0)) {
+        up_write(&obj->lock);
+        schedule();
+        down_write(&obj->lock);
     }
   }
 
@@ -142,8 +153,10 @@ static int kwritebackd(void *data) {
   printk(KERN_INFO WRITEBACK_CLASS "kwritebackd started\n");
 
   while (1) {
+    /* Wait until there are dirty objects OR system-wide dirty pressure is high */
     wait_event_interruptible(writeback_wait,
-                             !list_empty(&dirty_objects));
+                             !list_empty(&dirty_objects) || 
+                             atomic_read(&nr_dirty_pages) > DIRTY_THRESHOLD_WAKEUP);
 
     irq_flags_t flags = spinlock_lock_irqsave(&dirty_lock);
     while (!list_empty(&dirty_objects)) {
@@ -152,12 +165,21 @@ static int kwritebackd(void *data) {
       obj->flags &= ~VM_OBJECT_DIRTY;
       spinlock_unlock_irqrestore(&dirty_lock, flags);
 
+      /* 
+       * Check if object is still valid. 
+       * (refcount was increased in vm_object_mark_dirty)
+       */
       writeback_object(obj);
-      vm_object_put(obj); // Release list reference
+      vm_object_put(obj); 
+
+      /* Throttling and fairness: yield to other threads */
+      schedule();
 
       flags = spinlock_lock_irqsave(&dirty_lock);
     }
     spinlock_unlock_irqrestore(&dirty_lock, flags);
+    
+    /* Additional periodic cleanup for non-listed but dirty objects if needed */
   }
 
   return 0;

@@ -148,6 +148,9 @@ void lru_init(void);
 void kswapd_init(void);
 void khugepaged_init(void);
 
+/* Compaction */
+void kcompactd_init(void);
+
 struct folio;
 struct vm_object;
 

@@ -1,6 +1,8 @@
 # ============================================================================
 # Sources Organization
 # ============================================================================
+include(lib/uACPI/uacpi.cmake)
+
 file(GLOB ARCH_SOURCES "arch/x86_64/*.c")
 file(GLOB_RECURSE ARCH_FEATURE_SOURCES "arch/x86_64/features/*.c")
 file(GLOB_RECURSE ARCH_GDT_SOURCES "arch/x86_64/gdt/*.c")
@@ -71,4 +73,5 @@ set(AEROSYNC_SOURCES
         ${ARCH_SOURCES}
         ${CRYPTO_SOURCES}
         ${FS_SOURCES}
+        ${UACPI_SOURCES}
 )

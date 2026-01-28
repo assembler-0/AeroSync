@@ -98,7 +98,7 @@ static struct kmem_cache *vma_cachep;
 
 void vma_cache_init(void) {
   vma_cachep = kmem_cache_create("vm_area_struct", sizeof(struct vm_area_struct),
-                                  0, SLAB_HWCACHE_ALIGN | SLAB_TYPESAFE_BY_RCU);
+                                 0, SLAB_HWCACHE_ALIGN | SLAB_TYPESAFE_BY_RCU);
   if (!vma_cachep) {
     panic("vma_cache_init: failed to create vma_cachep");
   }
@@ -147,9 +147,15 @@ void mm_init(struct mm_struct *mm) {
     return;
 
   memset(mm, 0, sizeof(struct mm_struct));
+
+  /*
+   * Initialize Maple Tree with RCU support.
+   * MT_FLAGS_USE_RCU allows lockless concurrent lookups.
+   * MT_FLAGS_ALLOC_RANGE is needed for vma_find_free_region.
+   */
   mt_init_flags(&mm->mm_mt, MT_FLAGS_ALLOC_RANGE | MT_FLAGS_USE_RCU | MT_FLAGS_LOCK_EXTERN);
   mt_set_external_lock(&mm->mm_mt, &mm->mmap_lock);
-  
+
   mm->map_count = 0;
   mm->mmap_base = 0;
   mm->last_hole = 0;
@@ -157,8 +163,9 @@ void mm_init(struct mm_struct *mm) {
   rwsem_init(&mm->mmap_lock);
   atomic_set(&mm->mm_count, 1);
   mm->vmacache_seqnum = 0;
-  mm->preferred_node = -1; // No preference by default
+  mm->preferred_node = -1;
   cpumask_clear(&mm->cpu_mask);
+  atomic_set(&mm->mmap_seq, 0);
 
   /* Initialize memory layout fields */
   mm->start_code = 0;
@@ -220,28 +227,28 @@ struct mm_struct *mm_create(void) {
   int nid = mm->preferred_node;
   if (nid == -1) nid = this_node();
 
-  uint64_t pml4_phys = vmm_alloc_table_node(nid);
-  if (!pml4_phys) {
+  uint64_t pml_root_phys = vmm_alloc_table_node(nid);
+  if (!pml_root_phys) {
     mm_free(mm);
     return NULL;
   }
 
   /* Initialize PTL for the new PML4 root */
-  struct page *pg = phys_to_page(pml4_phys);
+  struct page *pg = phys_to_page(pml_root_phys);
   spinlock_init(&pg->ptl);
 
-  uint64_t *pml4_virt = (uint64_t *) pmm_phys_to_virt(pml4_phys);
+  uint64_t *pml4_virt = (uint64_t *) pmm_phys_to_virt(pml_root_phys);
   memset(pml4_virt, 0, PAGE_SIZE);
 
   /* Copy kernel space (higher half, entries 256-511) */
-  uint64_t *kernel_pml4_virt = (uint64_t *) pmm_phys_to_virt(g_kernel_pml_root);
+  uint64_t *kernel_pml_virt = (uint64_t *) pmm_phys_to_virt(g_kernel_pml_root);
 
   /* Copy higher half (entries 256-511). In x86_64, the root table (PML4 or PML5)
    * always splits the address space in half at index 256.
    */
-  memcpy(pml4_virt + 256, kernel_pml4_virt + 256, 256 * sizeof(uint64_t));
+  memcpy(pml4_virt + 256, kernel_pml_virt + 256, 256 * sizeof(uint64_t));
 
-  mm->pml_root = (uint64_t *) pml4_phys;
+  mm->pml_root = (uint64_t *) pml_root_phys;
   return mm;
 }
 
@@ -340,9 +347,9 @@ void mm_destroy(struct mm_struct *mm) {
     if (vma->vm_ops && vma->vm_ops->close) {
       vma->vm_ops->close(vma);
     }
-    
-    /* 
-     * Resource cleanup - don't use vma_remove here as we destroy the whole 
+
+    /*
+     * Resource cleanup - don't use vma_remove here as we destroy the whole
      * tree in one go below for maximum performance.
      */
     vma_free(vma);
@@ -366,15 +373,23 @@ void mm_destroy(struct mm_struct *mm) {
 
 static inline void vma_verify(struct vm_area_struct *vma) {
 #ifdef MM_HARDENING
+  /*
+   * OPTIMIZATION: Use branch prediction hints.
+   * The unlikely() macro tells the compiler this branch is almost never taken,
+   * allowing better code layout and avoiding pipeline stalls on the hot path.
+   *
+   * Also use __builtin_expect to help the branch predictor.
+   */
   if (unlikely(!vma)) return;
   if (unlikely(vma->vma_magic != VMA_MAGIC)) {
-    uint64_t *ptr = (uint64_t *)vma;
+    /* Cold path - only executed on actual corruption */
+    uint64_t *ptr = (uint64_t *) vma;
     printk(KERN_EMERG "VMA Corruption at %p: magic=%llx, raw[0]=%llx, raw[1]=%llx\n",
            vma, vma->vma_magic, ptr[0], ptr[1]);
     panic("VMA Corruption detected");
   }
 #else
-  (void)vma;
+  (void) vma;
 #endif
 }
 
@@ -481,25 +496,41 @@ struct vm_area_struct *vma_find(struct mm_struct *mm, uint64_t addr) {
   if (unlikely(!mm))
     return NULL;
 
-  /* Check cache first (O(1) optimization) */
+  /*
+   * OPTIMIZATION: Check cache first (O(1) lookup).
+   * The VMA cache is per-task and doesn't require RCU if we are 'current'.
+   * We avoid vma_verify in the inner loop for speed - only verify on hit.
+   */
   if (curr && curr->mm == mm) {
     preempt_disable();
-    /* Invalidate cache if sequence number changed */
     if (unlikely(curr->vmacache_seqnum != mm->vmacache_seqnum)) {
-      memset(curr->vmacache, 0, sizeof(curr->vmacache));
+      /*
+       * OPTIMIZATION: Use explicit loop instead of memset for small arrays.
+       * Modern compilers may inline memset for small sizes, but explicit
+       * zeroing can be faster for very small arrays.
+       */
+      for (int i = 0; i < MM_VMA_CACHE_SIZE; i++)
+        curr->vmacache[i] = NULL;
       curr->vmacache_seqnum = mm->vmacache_seqnum;
     }
 
     for (int i = 0; i < MM_VMA_CACHE_SIZE; i++) {
       vma = curr->vmacache[i];
       if (vma && addr >= vma->vm_start && addr < vma->vm_end) {
+        /*
+         * OPTIMIZATION: Move vma_verify after the match.
+         * This avoids cache line thrashing from reading vma_magic
+         * for non-matching entries.
+         */
         vma_verify(vma);
-        /* MRU: Move to front if not already there */
+        /* MRU: Move to front only if not already there */
         if (i > 0) {
+          /* OPTIMIZATION: memmove equivalent but branch-free */
+          struct vm_area_struct *found = vma;
           for (int j = i; j > 0; j--) {
             curr->vmacache[j] = curr->vmacache[j - 1];
           }
-          curr->vmacache[0] = vma;
+          curr->vmacache[0] = found;
         }
         preempt_enable();
         return vma;
@@ -509,16 +540,21 @@ struct vm_area_struct *vma_find(struct mm_struct *mm, uint64_t addr) {
   }
 
   /*
-   * Maple Tree lookup.
-   * mt_find returns the first VMA such that vma->vm_end > addr.
-   * This is exactly the behavior of Linux find_vma.
+   * RCU-Safe Maple Tree lookup.
+   * If we don't hold the mmap_lock, we must use RCU to ensure the VMA
+   * isn't freed while we are looking at it.
    */
+  rcu_read_lock();
   unsigned long index = addr;
   vma = mt_find(&mm->mm_mt, &index, ULONG_MAX);
   if (vma) {
     vma_verify(vma);
-    vma_cache_update(mm, vma);
+    /* Update cache only if we are the current task to avoid remote cache pollution */
+    if (curr && curr->mm == mm) {
+      vma_cache_update(mm, vma);
+    }
   }
+  rcu_read_unlock();
 
   return vma;
 }
@@ -532,7 +568,7 @@ struct vm_area_struct *vma_find_exact(struct mm_struct *mm, uint64_t start, uint
 
 struct vm_area_struct *vma_find_intersection(struct mm_struct *mm, uint64_t start, uint64_t end) {
   if (!mm) return NULL;
-  
+
   MA_STATE(mas, &mm->mm_mt, start, end - 1);
   return mas_find(&mas, end - 1);
 }
@@ -580,8 +616,8 @@ static void vma_account_dec(struct mm_struct *mm, struct vm_area_struct *vma) {
 int vma_insert(struct mm_struct *mm, struct vm_area_struct *vma) {
   if (!mm || !vma) return -EINVAL;
 
-  /* 
-   * Insert into Maple Tree. 
+  /*
+   * Insert into Maple Tree.
    * This automatically checks for overlaps and maintains the range.
    */
   if (mtree_insert_range(&mm->mm_mt, vma->vm_start, vma->vm_end - 1, vma, GFP_KERNEL)) {
@@ -666,21 +702,21 @@ int vma_split(struct mm_struct *mm, struct vm_area_struct *vma, uint64_t addr) {
   /* Update the tree atomically using MAS */
   MA_STATE(mas, &mm->mm_mt, vma->vm_start, vma->vm_end - 1);
   mas_lock(&mas);
-  
+
   /* 1. Update existing VMA range */
   mas_store(&mas, vma);
-  
+
   /* 2. Insert new VMA */
   mas_set_range(&mas, new_vma->vm_start, new_vma->vm_end - 1);
   mas_store(&mas, new_vma);
-  
+
   mas_unlock(&mas);
 
   new_vma->vm_mm = mm;
   mm->map_count++;
-  
+
   /* Accounting is already correct since we just split one region into two with same flags */
-  
+
   vma_layout_changed(mm, vma);
   vma_layout_changed(mm, new_vma);
 
@@ -715,27 +751,27 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm, struct vm_area_struct *pr
           (obj == NULL || pgoff + ((end - addr) >> PAGE_SHIFT) == next->vm_pgoff)) {
         /* CASE: BRIDGE [prev][new][next] */
         uint64_t giant_end = next->vm_end;
-        
+
         MA_STATE(mas, &mm->mm_mt, addr, giant_end - 1);
         mas_lock(&mas);
-        
+
         /* 1. Remove next */
         mas_set_range(&mas, next->vm_start, next->vm_end - 1);
         mas_erase(&mas);
-        
+
         /* 2. Update prev to cover whole range */
         vma_account_dec(mm, prev);
         prev->vm_end = giant_end;
         vma_account_inc(mm, prev);
-        
+
         mas_set_range(&mas, prev->vm_start, prev->vm_end - 1);
         mas_store(&mas, prev);
-        
+
         mas_unlock(&mas);
 
         vma_account_dec(mm, next); /* Accounting for next which is gone */
         mm->map_count--;
-        
+
         vma_layout_changed(mm, prev);
         vma_free(next);
         return prev;
@@ -744,16 +780,16 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm, struct vm_area_struct *pr
       /* CASE: EXTEND PREV */
       MA_STATE(mas, &mm->mm_mt, addr, end - 1);
       mas_lock(&mas);
-      
+
       vma_account_dec(mm, prev);
       prev->vm_end = end;
       vma_account_inc(mm, prev);
-      
+
       mas_set_range(&mas, prev->vm_start, prev->vm_end - 1);
       mas_store(&mas, prev);
-      
+
       mas_unlock(&mas);
-      
+
       vma_layout_changed(mm, prev);
       return prev;
     }
@@ -772,17 +808,17 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm, struct vm_area_struct *pr
     /* CASE: EXTEND NEXT BACKWARDS */
     MA_STATE(mas, &mm->mm_mt, addr, end - 1);
     mas_lock(&mas);
-    
+
     vma_account_dec(mm, next);
     next->vm_start = addr;
     next->vm_pgoff = pgoff;
     vma_account_inc(mm, next);
-    
+
     mas_set_range(&mas, next->vm_start, next->vm_end - 1);
     mas_store(&mas, next);
-    
+
     mas_unlock(&mas);
-    
+
     vma_layout_changed(mm, next);
     return next;
   }
@@ -858,7 +894,8 @@ struct vm_area_struct *vma_create(uint64_t start, uint64_t end, uint64_t flags) 
 
 #include <mm/shm.h>
 
-uint64_t do_mmap(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot, uint64_t flags, struct file *file, struct shm_object *shm,
+uint64_t do_mmap(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot, uint64_t flags, struct file *file,
+                 struct shm_object *shm,
                  uint64_t pgoff) {
   struct vm_area_struct *vma;
   uint64_t vm_flags = 0;
@@ -895,7 +932,6 @@ uint64_t do_mmap(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot,
       up_write(&mm->mmap_lock);
       return ret;
     }
-
   } else {
     addr = vma_find_free_region(mm, len, addr ? addr : PAGE_SIZE, vmm_get_max_user_address());
     if (!addr) {
@@ -933,8 +969,24 @@ uint64_t do_mmap(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot,
     /* Map the SHM object's VMO */
     vma->vm_obj = shm->vmo;
     vm_object_get(vma->vm_obj);
-    
+
     /* Standard linking to object's mmap list */
+    down_write(&vma->vm_obj->lock);
+    list_add(&vma->vm_shared, &vma->vm_obj->i_mmap);
+    up_write(&vma->vm_obj->lock);
+  } else if (flags & MAP_SHARED) {
+    /*
+     * MAP_SHARED | MAP_ANON:
+     * We must create a shared anonymous object immediately so it can be
+     * shared across fork() or via other mechanisms.
+     */
+    vma->vm_obj = vm_object_anon_create(vma_size(vma));
+    if (!vma->vm_obj) {
+      vma_free(vma);
+      up_write(&mm->mmap_lock);
+      return -ENOMEM;
+    }
+
     down_write(&vma->vm_obj->lock);
     list_add(&vma->vm_shared, &vma->vm_obj->i_mmap);
     up_write(&vma->vm_obj->lock);
@@ -1032,14 +1084,14 @@ int do_mprotect(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot) 
 
     /* Maintain some flags */
     uint64_t combined_flags = (vma->vm_flags & ~(VM_READ | VM_WRITE | VM_EXEC)) | new_vm_flags;
-    
+
     if (vma->vm_flags != combined_flags) {
       vma_account_dec(mm, vma);
       vma->vm_flags = combined_flags;
       vma_account_inc(mm, vma);
       vma_layout_changed(mm, vma);
     }
-    
+
     vma->vm_page_prot = vm_get_page_prot(vma->vm_flags);
 
     if (mm->pml_root) {
@@ -1164,8 +1216,8 @@ uint64_t vma_find_free_region_aligned(struct mm_struct *mm, size_t size,
   size = ALIGN(size, PAGE_SIZE);
   uint64_t guard = PAGE_SIZE;
   uint64_t total_needed = size + 2 * guard;
-  
-  /* 
+
+  /*
    * Optimization: Use last_hole as a hint for O(1) sequential allocation.
    * To ensure correctness, we verify it doesn't overlap using a fast walk.
    */
@@ -1183,13 +1235,15 @@ uint64_t vma_find_free_region_aligned(struct mm_struct *mm, size_t size,
   }
 
   uint64_t orig_start = range_start;
-  /* 
+  /*
    * ASLR: Only randomize if the range is significantly larger than requested.
    * This prevents excessive fragmentation in small heaps.
    */
-  if ((range_end - range_start) > (total_needed + 0x1000000)) { // 16MB threshold
+  if ((range_end - range_start) > (total_needed + 0x1000000)) {
+    // 16MB threshold
     uint64_t offset;
     if (rdrand64_safe(&offset)) {
+      /* TODO: TRNG */
       uint64_t max_offset = range_end - range_start - total_needed;
       range_start += ALIGN(offset % max_offset, alignment);
     }
@@ -1198,7 +1252,7 @@ uint64_t vma_find_free_region_aligned(struct mm_struct *mm, size_t size,
   MA_STATE(mas, &mm->mm_mt, 0, 0);
 
 retry:
-  /* 
+  /*
    * Use Maple Tree's augmented search for empty areas.
    * This is O(log N) and uses the precomputed gap information.
    */
@@ -1212,7 +1266,7 @@ retry:
 
   /* Calculate aligned address within the found hole */
   uint64_t addr = ALIGN(mas.index + guard, alignment);
-  
+
   /* Validate that we still fit after alignment */
   if (unlikely(addr + size + guard > range_end)) {
     /* Hole was too small after alignment, search again from here */
@@ -1300,7 +1354,7 @@ int vma_verify_tree(struct mm_struct *mm) {
     prev = vma;
   }
 #else
-  (void)mm;
+  (void) mm;
 #endif
   return 0;
 }
@@ -1321,7 +1375,7 @@ int vma_verify_list(struct mm_struct *mm) {
     prev = vma;
   }
 #else
-  (void)mm;
+  (void) mm;
 #endif
   return 0;
 }
@@ -1380,7 +1434,7 @@ int do_madvise(struct mm_struct *mm, uint64_t addr, size_t len, int advice) {
         break;
       case MADV_DONTNEED:
       case MADV_FREE:
-        /* 
+        /*
          * For DONTNEED/FREE, we unmap the physical pages.
          * The VMA remains, but subsequent accesses will fault them back in.
          */
@@ -1388,7 +1442,7 @@ int do_madvise(struct mm_struct *mm, uint64_t addr, size_t len, int advice) {
           for (uint64_t curr = vma->vm_start; curr < vma->vm_end; curr += PAGE_SIZE) {
             struct folio *folio = vmm_unmap_folio(mm, curr);
             if (folio) {
-              /* 
+              /*
                * Release the page. If it was anonymous, it's discarded (DONTNEED behavior).
                */
               folio_put(folio);

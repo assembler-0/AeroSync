@@ -35,14 +35,63 @@ static inline void *phys_to_virt(uint64_t phys) {
   return pmm_phys_to_virt(phys);
 }
 
-// Helper to allocate a zeroed page table frame
-uint64_t vmm_alloc_table_node(int nid) {
+/*
+ * Per-CPU Pre-Zeroed Page Table Cache
+ *
+ * OPTIMIZATION: Page table allocation is a hot path during fork/mmap.
+ * The memset() to zero a 4KB page is expensive. We maintain a small
+ * per-CPU cache of pre-zeroed pages that can be used immediately.
+ *
+ * Pages are zeroed in the background or when the cache is refilled.
+ */
+#define PGT_CACHE_SIZE 4
+
+struct pgt_cache {
+  uint64_t pages[PGT_CACHE_SIZE];
+  int count;
+};
+
+static DEFINE_PER_CPU(struct pgt_cache, pgt_cache);
+
+static uint64_t pgt_cache_alloc(int nid) {
+  preempt_disable();
+  struct pgt_cache *cache = this_cpu_ptr(pgt_cache);
+
+  if (cache->count > 0) {
+    uint64_t phys = cache->pages[--cache->count];
+    preempt_enable();
+    return phys;
+  }
+  preempt_enable();
+
+  /* Cache empty - allocate and zero synchronously */
   struct folio *folio = alloc_pages_node(nid, GFP_KERNEL, 0);
   if (!folio) return 0;
 
   uint64_t phys = folio_to_phys(folio);
   memset(phys_to_virt(phys), 0, PAGE_SIZE);
   return phys;
+}
+
+/* Refill the cache with pre-zeroed pages (call from idle or background) */
+void pgt_cache_refill(void) {
+  preempt_disable();
+  struct pgt_cache *cache = this_cpu_ptr(pgt_cache);
+
+  while (cache->count < PGT_CACHE_SIZE) {
+    struct folio *folio = alloc_pages_node(-1, GFP_KERNEL | __GFP_NOWARN, 0);
+    if (!folio) break;
+
+    uint64_t phys = folio_to_phys(folio);
+    memset(phys_to_virt(phys), 0, PAGE_SIZE);
+    cache->pages[cache->count++] = phys;
+  }
+  preempt_enable();
+}
+
+// Helper to allocate a zeroed page table frame
+uint64_t vmm_alloc_table_node(int nid) {
+  return pgt_cache_alloc(nid);
 }
 
 static uint64_t vmm_alloc_table(void) {
@@ -386,11 +435,12 @@ int vmm_is_dirty(struct mm_struct *mm, uint64_t virt) {
   if (!mm) mm = &init_mm;
   uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, mm->preferred_node, NULL);
   if (!pte_p) return 0;
-  struct page *table_page = phys_to_page(pmm_virt_to_phys((void *) ((uint64_t) pte_p & PAGE_MASK)));
-  irq_flags_t flags = spinlock_lock_irqsave(&table_page->ptl);
-  int dirty = (*pte_p & PTE_DIRTY) ? 1 : 0;
-  spinlock_unlock_irqrestore(&table_page->ptl, flags);
-  return dirty;
+  /*
+   * OPTIMIZATION: Lockless read of dirty bit.
+   * Same rationale as vmm_is_accessed - reading is atomic on x86_64.
+   */
+  uint64_t entry = __atomic_load_n(pte_p, __ATOMIC_ACQUIRE);
+  return (entry & PTE_DIRTY) ? 1 : 0;
 }
 
 void vmm_clear_dirty(struct mm_struct *mm, uint64_t virt) {
@@ -410,24 +460,45 @@ int vmm_is_accessed(struct mm_struct *mm, uint64_t virt) {
   if (!mm) mm = &init_mm;
   uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, mm->preferred_node, NULL);
   if (!pte_p) return 0;
-  struct page *table_page = phys_to_page(pmm_virt_to_phys((void *) ((uint64_t) pte_p & PAGE_MASK)));
-  irq_flags_t flags = spinlock_lock_irqsave(&table_page->ptl);
-  int accessed = (*pte_p & PTE_ACCESSED) ? 1 : 0;
-  spinlock_unlock_irqrestore(&table_page->ptl, flags);
-  return accessed;
+  /*
+   * OPTIMIZATION: Lockless read of accessed bit.
+   * Reading a single bit is atomic on x86_64 and doesn't require locking.
+   * The CPU sets this bit atomically, so we just need an acquire fence.
+   */
+  uint64_t entry = __atomic_load_n(pte_p, __ATOMIC_ACQUIRE);
+  return (entry & PTE_ACCESSED) ? 1 : 0;
 }
 
 void vmm_clear_accessed(struct mm_struct *mm, uint64_t virt) {
-  if (!mm) mm = &init_mm;
+  vmm_clear_accessed_no_flush(mm, virt);
   int level = 0;
-  uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, mm->preferred_node, &level);
-  if (!pte_p) return;
-  struct page *table_page = phys_to_page(pmm_virt_to_phys((void *) ((uint64_t) pte_p & PAGE_MASK)));
-  irq_flags_t flags = spinlock_lock_irqsave(&table_page->ptl);
-  *pte_p &= ~PTE_ACCESSED;
-  spinlock_unlock_irqrestore(&table_page->ptl, flags);
+  vmm_get_pte_ptr(mm, virt, false, mm ? mm->preferred_node : -1, &level);
   uint64_t size = (level == 2) ? VMM_PAGE_SIZE_2M : ((level == 3) ? VMM_PAGE_SIZE_1G : PAGE_SIZE);
   vmm_tlb_shootdown(mm, virt & ~(size - 1), (virt & ~(size - 1)) + size);
+}
+
+/**
+ * vmm_clear_accessed_no_flush - Clear the accessed bit without TLB shootdown.
+ *
+ * OPTIMIZATION: For batched operations (like folio_referenced scanning multiple
+ * mappings), we clear the accessed bit without flushing. The caller is responsible
+ * for a single batched TLB shootdown at the end.
+ *
+ * This avoids O(n) TLB shootdowns when scanning n mappings of a folio.
+ */
+void vmm_clear_accessed_no_flush(struct mm_struct *mm, uint64_t virt) {
+  if (!mm) mm = &init_mm;
+  uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, mm->preferred_node, NULL);
+  if (!pte_p) return;
+  /*
+   * OPTIMIZATION: Use atomic AND to clear bit without lock.
+   * On x86_64, the CPU updates A/D bits atomically, so we can use
+   * atomic_and to clear without holding the page table lock.
+   * This is safe because:
+   * 1. Only the CPU can SET the accessed bit
+   * 2. We only CLEAR it (no read-modify-write race on the bit itself)
+   */
+  __atomic_and_fetch(pte_p, ~PTE_ACCESSED, __ATOMIC_RELEASE);
 }
 
 int vmm_set_flags(struct mm_struct *mm, uint64_t virt, uint64_t flags) {
@@ -1228,4 +1299,56 @@ void vmm_test(void) {
   printk(KERN_DEBUG VMM_CLASS "  - Huge Page Shatter Stress: OK\n");
 
   printk(KERN_DEBUG VMM_CLASS "VMM Production Stress Test Passed.\n");
+}
+
+/**
+ * NUMA Hinting Support
+ */
+
+int vmm_is_numa_hint(struct mm_struct *mm, uint64_t virt) {
+  if (!mm) mm = &init_mm;
+  uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, -1, NULL);
+  if (!pte_p) return 0;
+  
+  uint64_t entry = *pte_p;
+  /* NUMA hint: NOT present, but PTE_NUMA_HINT bit set */
+  return (!(entry & PTE_PRESENT) && (entry & PTE_NUMA_HINT));
+}
+
+struct folio *vmm_get_folio(struct mm_struct *mm, uint64_t virt) {
+  if (!mm) mm = &init_mm;
+  uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, -1, NULL);
+  if (!pte_p) return NULL;
+  
+  uint64_t entry = *pte_p;
+  if (!(entry & (PTE_PRESENT | PTE_NUMA_HINT))) return NULL;
+  
+  uint64_t phys = PTE_GET_ADDR(entry);
+  struct page *page = phys_to_page(phys);
+  if (!page) return NULL;
+  
+  struct folio *folio = page_folio(page);
+  folio_get(folio);
+  return folio;
+}
+
+void vmm_set_numa_hint(struct mm_struct *mm, uint64_t virt) {
+  if (!mm) mm = &init_mm;
+  uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, -1, NULL);
+  if (!pte_p) return;
+  
+  struct page *table_page = phys_to_page(pmm_virt_to_phys((void *)((uint64_t)pte_p & PAGE_MASK)));
+  irq_flags_t flags = spinlock_lock_irqsave(&table_page->ptl);
+  
+  uint64_t entry = *pte_p;
+  if (entry & PTE_PRESENT) {
+      /* Clear present, set hint bit */
+      entry &= ~PTE_PRESENT;
+      entry |= PTE_NUMA_HINT;
+      *pte_p = entry;
+  }
+  
+  spinlock_unlock_irqrestore(&table_page->ptl, flags);
+  /* We MUST flush TLB so the CPU sees the 'not present' state */
+  vmm_tlb_shootdown(mm, virt, virt + PAGE_SIZE);
 }

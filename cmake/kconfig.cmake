@@ -48,6 +48,11 @@ if(EXISTS ${AEROSYNC_KCONFIG_CACHE})
 endif()
 
 set(_kconfig_env "KCONFIG_CONFIG=${AEROSYNC_CONFIG}")
+
+if(DEFINED AEROSYNC_KCONFIG_DEFINES)
+    add_compile_definitions(${AEROSYNC_KCONFIG_DEFINES})
+endif()
+
 add_custom_target(menuconfig
         COMMAND ${CMAKE_COMMAND} -E env ${_kconfig_env}
         ${Python3_EXECUTABLE} -m menuconfig ${AEROSYNC_KCONFIG}

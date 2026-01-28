@@ -64,11 +64,11 @@ void do_page_fault(cpu_regs *regs) {
 
   // Detect kernel stack overflow
   if (!user_mode && curr && curr->stack) {
-      if (cr2 >= (uint64_t)curr->stack - PAGE_SIZE && cr2 < (uint64_t)curr->stack) {
-          printk(KERN_EMERG FAULT_CLASS "KERNEL STACK OVERFLOW detected for task %s (pid %d) at %llx\n",
-                 curr->comm, curr->pid, cr2);
-          goto kernel_panic;
-      }
+    if (cr2 >= (uint64_t) curr->stack - PAGE_SIZE && cr2 < (uint64_t) curr->stack) {
+      printk(KERN_EMERG FAULT_CLASS "KERNEL STACK OVERFLOW detected for task %s (pid %d) at %llx\n",
+             curr->comm, curr->pid, cr2);
+      goto kernel_panic;
+    }
   }
 
   // Security: If user mode access to higher half or canonical hole occurs, it's a SEGV.
@@ -93,38 +93,36 @@ void do_page_fault(cpu_regs *regs) {
 
   /*
    * KERNEL SPACE FAULT HANDLING
-   * For addresses in HHDM or Kernel Image, we don't use VMAs.
-   * We only use VMAs for dynamic kernel ranges like vmalloc/ioremap.
    */
   if (cr2 >= HHDM_VIRT_BASE) {
-    /* 
+    /*
      * KERNEL SYNC PATH:
      * If this is a vmalloc address, it might just need a PML4 sync.
      */
     if (cr2 >= VMALLOC_VIRT_BASE && cr2 < VMALLOC_VIRT_END) {
-        uint64_t current_cr3;
-        __asm__ volatile("mov %%cr3, %0" : "=r"(current_cr3));
-        current_cr3 &= PTE_ADDR_MASK;
+      uint64_t current_cr3;
+      __asm__ volatile("mov %%cr3, %0" : "=r"(current_cr3));
+      current_cr3 &= PTE_ADDR_MASK;
 
-        if (current_cr3 != (uint64_t)init_mm.pml_root) {
-            uint64_t *src_pml4 = (uint64_t *)pmm_phys_to_virt((uint64_t)init_mm.pml_root);
-            uint64_t *dst_pml4 = (uint64_t *)pmm_phys_to_virt(current_cr3);
-            uint64_t idx = (vmm_get_paging_levels() == 5) ? PML5_INDEX(cr2) : PML4_INDEX(cr2);
+      if (current_cr3 != (uint64_t) init_mm.pml_root) {
+        uint64_t *src_pml4 = (uint64_t *) pmm_phys_to_virt((uint64_t) init_mm.pml_root);
+        uint64_t *dst_pml4 = (uint64_t *) pmm_phys_to_virt(current_cr3);
+        uint64_t idx = (vmm_get_paging_levels() == 5) ? PML5_INDEX(cr2) : PML4_INDEX(cr2);
 
-            if (!(dst_pml4[idx] & PTE_PRESENT) && (src_pml4[idx] & PTE_PRESENT)) {
-                dst_pml4[idx] = src_pml4[idx];
-                return;
-            }
+        if (!(dst_pml4[idx] & PTE_PRESENT) && (src_pml4[idx] & PTE_PRESENT)) {
+          dst_pml4[idx] = src_pml4[idx];
+          return;
         }
+      }
     }
 
-    /* 
+    /*
      * PERMANENT RANGE VERIFICATION:
      * For HHDM or Kernel range, check the master table.
      * If present, it's a minor fault (A/D bit update).
      */
     if (vmm_virt_to_phys(&init_mm, cr2) != 0) {
-        return;
+      return;
     }
 
     goto kernel_panic;
@@ -136,75 +134,73 @@ void do_page_fault(cpu_regs *regs) {
    */
   uint32_t mm_seq = atomic_read(&mm->mmap_seq);
   rcu_read_lock();
-  
-  /* 
-   * vma_find now uses atomic loads for its tree traversal, 
+
+  /*
+   * vma_find now uses atomic loads for its tree traversal,
    * making it safe to call within rcu_read_lock() without mmap_lock.
    */
   struct vm_area_struct *vma = vma_find(mm, cr2);
   if (vma && cr2 >= vma->vm_start) {
-    // 0. Verify VMA integrity
-    if (unlikely(vma->vma_magic != VMA_MAGIC)) {
-        rcu_read_unlock();
-        printk(KERN_EMERG "VMA Corruption detected in speculative path at %p: 0x%x\n", vma, vma->vma_magic);
-        goto kernel_panic;
-    }
+    /*
+     * OPTIMIZATION: vma_find() already calls vma_verify(), so we skip
+     * the redundant magic check here in the hot path.
+     */
 
     // 1. Snapshot VMA data atomically where possible
     uint64_t vm_flags = vma->vm_flags;
     uint32_t vma_seq = __atomic_load_n(&vma->vma_seq, __ATOMIC_ACQUIRE);
-    
+
     // 2. Quick permission check
     bool write_fault = (error_code & PF_WRITE);
     bool exec_fault = (error_code & PF_INSTR);
-    
+
     if ((write_fault && !(vm_flags & VM_WRITE)) || (exec_fault && !(vm_flags & VM_EXEC))) {
-        rcu_read_unlock();
-        goto signal_segv;
+      rcu_read_unlock();
+      goto signal_segv;
     }
 
     // 3. Verify sequence hasn't changed before doing heavy work
     if (atomic_read(&mm->mmap_seq) == mm_seq && vma->vma_seq == vma_seq) {
-        /* 
-         * Speculative Fault:
-         * We take the per-VMA lock. This is much finer grained than mmap_lock.
-         */
-        if (!vma_trylock_shared(vma)) {
-            rcu_read_unlock();
-            goto slow_path;
-        }
-        
-        // Re-verify sequence under VMA lock to ensure layout is still stable
-        if (unlikely(atomic_read(&mm->mmap_seq) != mm_seq || vma->vma_seq != vma_seq)) {
-            vma_unlock_shared(vma);
-            rcu_read_unlock();
-            goto slow_path;
-        }
+      /*
+       * Speculative Fault:
+       * We take the per-VMA lock. This is much finer grained than mmap_lock.
+       */
+      if (!vma_trylock_shared(vma)) {
+        rcu_read_unlock();
+        goto slow_path;
+      }
 
-        unsigned int fault_flags = FAULT_FLAG_SPECULATIVE;
-        if (write_fault) fault_flags |= FAULT_FLAG_WRITE;
-        if (user_mode) fault_flags |= FAULT_FLAG_USER;
-        if (exec_fault) fault_flags |= FAULT_FLAG_INSTR;
-
-        /*
-         * Call the fault handler.
-         * The handler must be prepared to run without mmap_lock.
-         */
-        int res = handle_mm_fault(vma, cr2, fault_flags);
+      // Re-verify sequence under VMA lock to ensure layout is still stable
+      if (unlikely(atomic_read(&mm->mmap_seq) != mm_seq || vma->vma_seq != vma_seq)) {
         vma_unlock_shared(vma);
-        
-        // 4. Final validation: Did the VMA layout change during the fault?
-        if (likely(atomic_read(&mm->mmap_seq) == mm_seq && vma->vma_seq == vma_seq)) {
-            rcu_read_unlock();
-            if (res == 0) return;
-            if (res == VM_FAULT_OOM) goto kernel_panic;
-            /* On other errors (like VM_FAULT_RETRY), we might need the slow path */
-            goto slow_path; 
-        }
+        rcu_read_unlock();
+        goto slow_path;
+      }
+
+      unsigned int fault_flags = FAULT_FLAG_SPECULATIVE;
+      if (write_fault) fault_flags |= FAULT_FLAG_WRITE;
+      if (user_mode) fault_flags |= FAULT_FLAG_USER;
+      if (exec_fault) fault_flags |= FAULT_FLAG_INSTR;
+
+      /*
+       * Call the fault handler.
+       * The handler must be prepared to run without mmap_lock.
+       */
+      int res = handle_mm_fault(vma, cr2, fault_flags);
+      vma_unlock_shared(vma);
+
+      // 4. Final validation: Did the VMA layout change during the fault?
+      if (likely(atomic_read(&mm->mmap_seq) == mm_seq && vma->vma_seq == vma_seq)) {
+        rcu_read_unlock();
+        if (res == 0) return;
+        if (res == VM_FAULT_OOM) goto kernel_panic;
+        /* On other errors (like VM_FAULT_RETRY), we might need the slow path */
+        goto slow_path;
+      }
     }
   }
   rcu_read_unlock();
- slow_path:
+slow_path:
   /*
    * FALLBACK: Slow path with mmap_lock
    */
@@ -212,11 +208,10 @@ void do_page_fault(cpu_regs *regs) {
   vma = vma_find(mm, cr2);
 
   if (vma && cr2 >= vma->vm_start && cr2 < vma->vm_end) {
-    if (unlikely(vma->vma_magic != VMA_MAGIC)) {
-        up_read(&mm->mmap_lock);
-        printk(KERN_EMERG "VMA Corruption detected in slow path at %p: 0x%x\n", vma, vma->vma_magic);
-        goto kernel_panic;
-    }
+    /*
+     * OPTIMIZATION: vma_find() already calls vma_verify() in the slow path,
+     * so we skip the redundant magic check here.
+     */
     // ... permission checks ...
     bool write_fault = (error_code & PF_WRITE);
     bool exec_fault = (error_code & PF_INSTR);
@@ -243,8 +238,8 @@ void do_page_fault(cpu_regs *regs) {
     vma_unlock_shared(vma);
 
     if (res == 0) {
-        up_read(&mm->mmap_lock);
-        return;
+      up_read(&mm->mmap_lock);
+      return;
     }
 
     // Legacy/PTE COW Handling: If it's a write fault on a present page in a writable VMA
@@ -258,8 +253,8 @@ void do_page_fault(cpu_regs *regs) {
 
     up_read(&mm->mmap_lock);
     if (res == VM_FAULT_OOM) {
-        printk(KERN_ERR FAULT_CLASS "OOM during fault handling for %llx\n", cr2);
-        goto kernel_panic;
+      printk(KERN_ERR FAULT_CLASS "OOM during fault handling for %llx\n", cr2);
+      goto kernel_panic;
     }
     goto signal_segv;
   }

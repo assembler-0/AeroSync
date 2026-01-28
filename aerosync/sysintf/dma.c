@@ -23,6 +23,7 @@
 #include <lib/printk.h>
 #include <mm/gfp.h>
 #include <aerosync/fkx/fkx.h>
+#include <aerosync/classes.h>
 
 void *dma_alloc_coherent(size_t size, dma_addr_t *dma_handle, gfp_t gfp) {
   if (!size || !dma_handle) return NULL;
@@ -34,16 +35,11 @@ void *dma_alloc_coherent(size_t size, dma_addr_t *dma_handle, gfp_t gfp) {
   }
 
   size_t count = (size + PAGE_SIZE - 1) / PAGE_SIZE;
-  // struct folio *page = alloc_pages(gfp, 0); // TODO: Implement order allocation correctly if needed
-
-  // Simple implementation for now: only single page or order-based allocation
-  // For contiguous pages, we need to pass the correct order.
-
   uint32_t order = 0;
   while ((1u << order) < count) order++;
 
   if (order >= MAX_ORDER) {
-    printk(KERN_ERR "DMA: Requested size %zu too large (order %u)\n", size, order);
+    printk(KERN_ERR PMM_CLASS "Requested size %zu too large (order %u)\n", size, order);
     return NULL;
   }
 

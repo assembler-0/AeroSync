@@ -10,6 +10,8 @@
 #define SPINLOCK_LOCKED 1
 #define SPINLOCK_UNLOCKED 0
 
+#define DEFINE_SPINLOCK(name) spinlock_t name = SPINLOCK_INIT
+
 // A spinlock is a simple integer flag stored inline; pass its address to APIs
 typedef volatile int spinlock_t;
 

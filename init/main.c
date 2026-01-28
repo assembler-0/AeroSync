@@ -72,6 +72,7 @@ static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
   zmm_init();
   shm_init();
   kswapd_init();
+  kcompactd_init();
   khugepaged_init();
   vm_writeback_init();
   kvmap_purged_init();

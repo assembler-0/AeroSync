@@ -23,7 +23,7 @@
  * @index is the index of the entry being operated on
  * @mark is an xa_mark_t; a small number indicating one of the mark bits.
  * @node refers to an xa_node; usually the primary one being operated on by
- * this function.
+ * this function./
  * @offset is the index into the slots array inside an xa_node.
  * @parent refers to the @xa_node closer to the head than @node.
  * @entry refers to something stored in a slot in the xarray

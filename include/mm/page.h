@@ -229,3 +229,7 @@ static inline uint64_t page_to_phys(struct page *page) {
   uint64_t pfn = (uint64_t)(page - mem_map);
   return pfn << 12;
 }
+
+/* LRU management */
+void folio_add_lru(struct folio *folio);
+void lru_batch_flush_cpu(void);
