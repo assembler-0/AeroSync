@@ -35,33 +35,33 @@ list(APPEND CMAKE_MODULE_PATH
 )
 
 # configuration includes
-include(cache)
-include(ccache)
-include(dependencies)
-include(configuration)
-include(kconfig)
-include(platform)
-include(standard)
-include(version)
-include(FetchContent)
+include(cache)                        # unorganized cache variables
+include(ccache)                       # ccache find & enable
+include(dependencies)                 # dependencies
+include(configuration)                # build options
+include(kconfig)                      # Kconfig-cmake integration
+include(platform)                     # platform detection
+include(standard)                     # Language standards
+include(version)                      # AeroSync versioning system
+include(FetchContent)                 # fetcher
 
 # compile sub-projects
-add_subdirectory(tools/fkx_signer)
+add_subdirectory(tools/fkx_signer)    # FKX modules signer
 
 # sources and frameworks
-include(source)
-include(fkx)
+include(source)                       # kernel sources
+include(fkx)                          # FKX framework
 
 # libraries, drivers configuration
-include(lib/linearfb/linearfb.cmake)
-include(drivers/uart/uart.cmake)
-include(drivers/apic/ic.cmake)
-include(drivers/pci/pci.cmake)
-include(drivers/timer/timer.cmake)
-include(drivers/block/ide/ide.cmake)
+include(lib/linearfb/linearfb.cmake)  # linearfb graphics library
+include(drivers/uart/uart.cmake)      # serial (UART) driver
+include(drivers/apic/ic.cmake)        # interrupt controller drivers
+include(drivers/pci/pci.cmake)        # pci bus drivers
+include(drivers/timer/timer.cmake)    # timer drivers
+include(drivers/block/ide/ide.cmake)  # IDE/ATA block driver
 
 # build and post-build
-include(aerosync-compile)
-include(limine)
-include(isogen)
-include(run)
+include(aerosync-compile)             # core kernel compilation
+include(limine)                       # limine fetcher
+include(isogen)                       # iso generation
+include(run)                          # runnable targets (menuconfig, run, etc.)

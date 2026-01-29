@@ -2,4 +2,6 @@
 
 menu "drivers"
 
+source "drivers/graphics/Kconfig"
+
 endmenu
