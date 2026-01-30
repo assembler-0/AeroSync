@@ -173,12 +173,12 @@ struct task_struct *pick_next_task_rt(struct rq *rq) {
   int idx;
 
   if (rt_rq->rt_nr_running == 0)
-    return NULL;
+    return nullptr;
 
   /* Find highest priority (lowest index) with runnable tasks */
   idx = sched_find_first_bit(rt_rq->bitmap);
   if (idx >= MAX_RT_PRIO_LEVELS)
-    return NULL;
+    return nullptr;
 
   /* Get first task from that priority level */
   rt_se =

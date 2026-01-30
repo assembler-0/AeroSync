@@ -9,7 +9,7 @@ add_executable(aerosync.krnl
 add_dependencies(aerosync.krnl fkx_key_header)
 
 target_compile_options(aerosync.krnl PRIVATE
-        $<$<COMPILE_LANGUAGE:C>:
+    $<$<COMPILE_LANGUAGE:C>:
         -m64
         -target ${CLANG_TARGET_TRIPLE}
         -O2
@@ -29,42 +29,50 @@ target_compile_options(aerosync.krnl PRIVATE
         -fno-pie
         -mcmodel=kernel
         -fvisibility=hidden
-        >
-        $<$<COMPILE_LANGUAGE:ASM_NASM>:
+    >
+    $<$<COMPILE_LANGUAGE:ASM_NASM>:
         -felf64
-        >
+    >
 )
+
+if(STACK_PROTECTION_ALL)
+    target_compile_options(aerosync.krnl PRIVATE
+        $<$<COMPILE_LANGUAGE:C>:
+            -fstack-protector-all
+            -D_FORTIFY_SOURCE=2
+        >
+    )
+endif()
 
 if(STACK_PROTECTION)
     target_compile_options(aerosync.krnl PRIVATE
-            $<$<COMPILE_LANGUAGE:C>:
-            -fstack-protector-all
-            -D_FORTIFY_SOURCE=2
-            >
+        $<$<COMPILE_LANGUAGE:C>:
+            -fstack-protector-strong
+        >
     )
 endif()
 
 if(INTEL_CET)
     target_compile_options(aerosync.krnl PRIVATE
-            $<$<COMPILE_LANGUAGE:C>:
+        $<$<COMPILE_LANGUAGE:C>:
             -fcf-protection=full
-            >
+        >
     )
 endif()
 
 if (LTO)
     target_compile_options(aerosync.krnl PRIVATE
-            $<$<COMPILE_LANGUAGE:C>:
+        $<$<COMPILE_LANGUAGE:C>:
             -flto
-            >
+        >
     )
 endif()
 
 if(SANITIZER)
     target_compile_options(aerosync.krnl PRIVATE
-            $<$<COMPILE_LANGUAGE:C>:
+        $<$<COMPILE_LANGUAGE:C>:
             -fsanitize=undefined,bounds,null,return,vla-bound
-            >
+        >
     )
 endif()
 

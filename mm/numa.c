@@ -17,7 +17,7 @@
 
 #include <aerosync/sched/cpumask.h>
 
-struct pglist_data *node_data[MAX_NUMNODES] = {NULL};
+struct pglist_data *node_data[MAX_NUMNODES] = {nullptr};
 static struct pglist_data static_node_data[MAX_NUMNODES];
 
 /* Global NUMA state */
@@ -148,7 +148,7 @@ static void parse_srat(struct acpi_srat *srat) {
 
         uint32_t domain = ma->proximity_domain;
         if (domain < MAX_NUMNODES) {
-          if (node_data[domain] == NULL) {
+          if (node_data[domain] == nullptr) {
             node_data[domain] = &static_node_data[domain];
             node_data[domain]->node_id = domain;
             node_data[domain]->node_start_pfn = ~0UL;
@@ -205,7 +205,7 @@ void numa_init(void *rsdp_ptr) {
   }
 
   struct acpi_rsdp *rsdp = (struct acpi_rsdp *) rsdp_ptr;
-  struct acpi_xsdt *xsdt = NULL;
+  struct acpi_xsdt *xsdt = nullptr;
 
   if (rsdp->revision >= 2 && rsdp->xsdt_addr) {
     xsdt = (struct acpi_xsdt *) pmm_phys_to_virt(rsdp->xsdt_addr);

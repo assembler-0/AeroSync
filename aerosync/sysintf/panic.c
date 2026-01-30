@@ -29,7 +29,7 @@
 
 static const panic_ops_t *registered_backends[MAX_PANIC_HANDLERS];
 static int num_registered_backends = 0;
-static const panic_ops_t *active_backend = NULL;
+static const panic_ops_t *active_backend = nullptr;
 
 void panic_register_handler(const panic_ops_t *ops) {
   if (num_registered_backends >= MAX_PANIC_HANDLERS) {
@@ -40,7 +40,7 @@ void panic_register_handler(const panic_ops_t *ops) {
 }
 
 void panic_handler_install() {
-  const panic_ops_t *best = NULL;
+  const panic_ops_t *best = nullptr;
 
   for (int i = 0; i < num_registered_backends; i++) {
     const panic_ops_t *b = registered_backends[i];
@@ -52,7 +52,7 @@ void panic_handler_install() {
   }
 
   if (!best) {
-    active_backend = NULL;
+    active_backend = nullptr;
     return;
   }
   active_backend = best;

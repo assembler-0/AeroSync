@@ -49,7 +49,7 @@ static kmem_cache_t *find_mergeable(size_t size, size_t align,
   kmem_cache_t *s;
 
   if (flags & (SLAB_POISON | SLAB_RED_ZONE))
-    return NULL;
+    return nullptr;
 
   list_for_each_entry(s, &slab_caches, list) {
     if (s->object_size == (int)size && s->align == (int)align &&
@@ -57,7 +57,7 @@ static kmem_cache_t *find_mergeable(size_t size, size_t align,
       return s;
     }
   }
-  return NULL;
+  return nullptr;
 }
 
 /*
@@ -167,7 +167,7 @@ static void check_redzone(kmem_cache_t *s, void *obj) {
 /* Helper to get the next object in the freelist with XOR obfuscation */
 static inline void *get_freelist_next(void *obj, int offset) {
   uint64_t val = *(uint64_t *)((char *)obj + offset);
-  if (!val) return NULL;
+  if (!val) return nullptr;
   return (void *)(val ^ slab_secret ^ (uint64_t)obj);
 }
 
@@ -187,7 +187,7 @@ static struct page *allocate_slab(kmem_cache_t *s, gfp_t flags, int node) {
 
   folio = alloc_pages_node(node, flags, s->order);
   if (!folio)
-    return NULL;
+    return nullptr;
 
   page = &folio->page;
   start = page_address(page);
@@ -214,7 +214,7 @@ static struct page *allocate_slab(kmem_cache_t *s, gfp_t flags, int node) {
   if (s->flags & SLAB_POISON)
     poison_obj(s, p, POISON_FREE);
   set_redzone(s, p);
-  set_freelist_next(p, s->offset, NULL);
+  set_freelist_next(p, s->offset, nullptr);
 
   return page;
 }
@@ -243,8 +243,8 @@ static void *__slab_alloc(kmem_cache_t *s, gfp_t gfpflags, int node,
   /* If page is from wrong node, unfreeze it and get a new one */
   if (node != -1 && page->node != node) {
     page->frozen = 0;
-    c->page = NULL;
-    c->freelist = NULL;
+    c->page = nullptr;
+    c->freelist = nullptr;
     goto find_slab;
   }
 
@@ -253,7 +253,7 @@ static void *__slab_alloc(kmem_cache_t *s, gfp_t gfpflags, int node,
   spinlock_lock(&n->list_lock);
   freelist = page->freelist;
   if (freelist) {
-    page->freelist = NULL; /* Take the whole freelist */
+    page->freelist = nullptr; /* Take the whole freelist */
     page->inuse = (unsigned short)page->objects;
     spinlock_unlock(&n->list_lock);
     c->freelist = get_freelist_next(freelist, s->offset);
@@ -264,7 +264,7 @@ static void *__slab_alloc(kmem_cache_t *s, gfp_t gfpflags, int node,
   spinlock_unlock(&n->list_lock);
   /* Page is full, unfreeze it */
   page->frozen = 0;
-  c->page = NULL;
+  c->page = nullptr;
 
 find_slab:;
   /*
@@ -326,7 +326,7 @@ find_slab:;
   page = allocate_slab(s, gfpflags, alloc_node);
   if (!page) {
     restore_irq_flags(flags);
-    return NULL;
+    return nullptr;
   }
   atomic_long_inc(&s->active_slabs);
   atomic_long_inc(&s->node[alloc_node]->alloc_refills);
@@ -335,7 +335,7 @@ freeze:
   page->frozen = 1;
   c->page = page;
   freelist = page->freelist;
-  page->freelist = NULL;
+  page->freelist = nullptr;
   page->inuse = (unsigned short)page->objects;
   c->freelist = get_freelist_next(freelist, s->offset);
   c->tid = next_tid(c->tid);
@@ -370,7 +370,7 @@ static void rcu_free_slab_callback(struct rcu_head *head) {
  */
 static void *refill_magazine(kmem_cache_t *s, struct kmem_cache_cpu *c,
                              int node) {
-  void *object = NULL;
+  void *object = nullptr;
   struct kmem_cache_node *n;
   struct page *page;
 
@@ -690,8 +690,8 @@ static void init_kmem_cache_node(struct kmem_cache_node *n) {
 }
 
 static void init_kmem_cache_cpu(struct kmem_cache_cpu *c) {
-  c->freelist = NULL;
-  c->page = NULL;
+  c->freelist = nullptr;
+  c->page = nullptr;
   c->tid = 0;
 }
 
@@ -710,7 +710,7 @@ static void setup_numa_fallback(kmem_cache_t *s) {
     /* Allocate fallback list for this node */
     int *fallback = kmalloc(sizeof(int) * MAX_NUMNODES);
     if (!fallback) {
-      s->node_fallback[node] = NULL;
+      s->node_fallback[node] = nullptr;
       continue;
     }
 
@@ -761,7 +761,7 @@ void *kmalloc_aligned(size_t size, size_t align) {
   size_t total_size = size + align - 1 + 2 * sizeof(void *);
   void *raw = kmalloc(total_size);
   if (!raw)
-    return NULL;
+    return nullptr;
 
   // Calculate aligned address, ensuring at least 16 bytes for metadata
   uintptr_t aligned = (uintptr_t)raw + 2 * sizeof(void *);
@@ -790,7 +790,7 @@ kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align,
 
   s = kmalloc(sizeof(kmem_cache_t));
   if (!s)
-    return NULL;
+    return nullptr;
 
   memset(s, 0, sizeof(kmem_cache_t));
   s->name = name;
@@ -841,7 +841,7 @@ kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align,
                                 CACHE_LINE_SIZE);
   if (!s->cpu_slab) {
     kfree(s);
-    return NULL;
+    return nullptr;
   }
 
   memset(s->cpu_slab, 0, sizeof(struct kmem_cache_cpu) * MAX_CPUS);
@@ -980,7 +980,7 @@ void *kmalloc_node(size_t size, int node) {
 
   int idx = kmalloc_index(size);
   if (unlikely(idx < 0))
-    return NULL;
+    return nullptr;
 
   return kmem_cache_alloc_node(kmalloc_caches[idx], node);
 }
@@ -1165,14 +1165,14 @@ EXPORT_SYMBOL(slab_test);
 
 /**
  * krealloc - Reallocate memory with new size
- * @ptr: Pointer to previously allocated memory (or NULL)
+ * @ptr: Pointer to previously allocated memory (or nullptr)
  * @new_size: New size in bytes
  * @flags: GFP allocation flags
  *
- * Returns: Pointer to reallocated memory, or NULL on failure
+ * Returns: Pointer to reallocated memory, or nullptr on failure
  *
- * If ptr is NULL, behaves like kmalloc().
- * If new_size is 0, frees ptr and returns NULL.
+ * If ptr is nullptr, behaves like kmalloc().
+ * If new_size is 0, frees ptr and returns nullptr.
  * Otherwise, allocates new memory, copies old data, and frees old memory.
  */
 void *krealloc(void *ptr, size_t new_size, gfp_t flags) {
@@ -1181,14 +1181,14 @@ void *krealloc(void *ptr, size_t new_size, gfp_t flags) {
   kmem_cache_t *cache;
   size_t old_size;
 
-  /* NULL ptr: behave like kmalloc */
+  /* nullptr ptr: behave like kmalloc */
   if (!ptr)
     return kmalloc(new_size);
 
-  /* Zero size: free and return NULL */
+  /* Zero size: free and return nullptr */
   if (new_size == 0) {
     kfree(ptr);
-    return NULL;
+    return nullptr;
   }
 
   /* Get old object size */
@@ -1219,7 +1219,7 @@ void *krealloc(void *ptr, size_t new_size, gfp_t flags) {
   /* Allocate new memory */
   new_ptr = kmalloc(new_size);
   if (!new_ptr)
-    return NULL;
+    return nullptr;
 
   /* Copy old data (use smaller of old/new size) */
   memcpy(new_ptr, ptr, old_size < new_size ? old_size : new_size);

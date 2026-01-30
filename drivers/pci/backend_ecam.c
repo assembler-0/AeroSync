@@ -23,7 +23,7 @@ typedef struct {
   uint8_t end_bus;
 } ecam_region_t;
 
-static ecam_region_t *regions = NULL;
+static ecam_region_t *regions = nullptr;
 static int num_regions = 0;
 
 static uint32_t pci_ecam_read(pci_handle_t *p, uint32_t offset, uint8_t width) {

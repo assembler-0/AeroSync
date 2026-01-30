@@ -1,0 +1,180 @@
+
+#
+# arch
+#
+CONFIG_SYMMETRIC_MP=y
+# end of arch
+
+#
+# drivers
+#
+
+#
+# graphics
+#
+
+#
+# drm
+#
+CONFIG_SIMPLE_FB_SUPPORT=y
+# end of drm
+# end of graphics
+# end of drivers
+
+#
+# lib
+#
+# CONFIG_CONFIG_LIST_HARDENED is not set
+# end of lib
+
+#
+# memory
+#
+# CONFIG_MM_LRU is not set
+CONFIG_MM_MGLRU=y
+
+#
+# MGLRU Tuning
+#
+CONFIG_MM_MGLRU_GENERATIONS=4
+CONFIG_MM_MGLRU_BLOOM_FILTER=y
+# end of MGLRU Tuning
+
+CONFIG_MM_WORKINGSET=y
+CONFIG_MM_WORKINGSET_THRESHOLD=2
+CONFIG_MM_ZMM=y
+CONFIG_MM_SWAP=y
+
+#
+# Swap Tuning
+#
+CONFIG_MM_SWAP_SLOTS_CACHE=y
+CONFIG_MM_SWAP_READAHEAD=8
+# end of Swap Tuning
+
+CONFIG_MM_SPF=y
+CONFIG_MM_COMPACTION=y
+CONFIG_MM_NUMA_BALANCING=y
+# CONFIG_MM_HARDENING is not set
+
+#
+# Shadow Chain Tuning
+#
+CONFIG_MM_SHADOW_COLLAPSE=y
+CONFIG_MM_SHADOW_DEPTH_LIMIT=8
+CONFIG_MM_SHADOW_ASYNC_COLLAPSE=y
+# end of Shadow Chain Tuning
+
+#
+# SLUB Allocator Tuning
+#
+CONFIG_SLAB_MAG_SIZE=16
+CONFIG_SLAB_MIN_PARTIAL=5
+CONFIG_SLAB_MAX_ORDER=5
+# end of SLUB Allocator Tuning
+
+#
+# VMA Tuning
+#
+CONFIG_MM_VMA_CACHE_SIZE=4
+# end of VMA Tuning
+
+#
+# Writeback Tuning
+#
+CONFIG_DIRTY_THRESHOLD_WAKEUP=1024
+CONFIG_DIRTY_THRESHOLD_THROTTLE=8192
+# end of Writeback Tuning
+
+#
+# ZMM Tuning
+#
+CONFIG_ZMM_COMPRESSION_THRESHOLD=75
+CONFIG_ZMM_ALGO_RLE=y
+# CONFIG_ZMM_ALGO_LZ4 is not set
+# CONFIG_ZMM_ALGO_NONE is not set
+# end of ZMM Tuning
+
+#
+# Kernel Memory Layout
+#
+CONFIG_VMALLOC_SIZE_GB=128
+# end of Kernel Memory Layout
+
+#
+# vmalloc Tuning
+#
+CONFIG_VMALLOC_MAPLE_TREE=y
+CONFIG_VMALLOC_LOCKLESS_FAST_PATH=y
+CONFIG_VMALLOC_PCP_BIN_COUNT=8
+CONFIG_VMALLOC_PCP_BIN_THRESHOLD=64
+CONFIG_VMALLOC_PCP_BATCH_SIZE=16
+CONFIG_VMALLOC_LARGE_BLOCKS=y
+CONFIG_VMALLOC_BLOCK_CLASSES=y
+CONFIG_VMALLOC_NUMA_PARTITION=y
+
+#
+# Lazy TLB Flush Tuning
+#
+CONFIG_VMALLOC_LAZY_FLUSH=y
+CONFIG_VMALLOC_LAZY_THRESHOLD_MB=32
+CONFIG_VMALLOC_LAZY_TIMEOUT_MS=100
+CONFIG_VMALLOC_UNIFIED_FLUSH=y
+# end of Lazy TLB Flush Tuning
+# end of vmalloc Tuning
+
+#
+# NUMA and Zones
+#
+CONFIG_MAX_NUMNODES=8
+# end of NUMA and Zones
+# end of memory
+
+#
+# system
+#
+CONFIG_ASYNC_PRINTK=y
+CONFIG_MAX_CPUS=512
+
+#
+# RCU Subsystem
+#
+CONFIG_TREE_RCU=y
+CONFIG_RCU_FANOUT=16
+CONFIG_RCU_BOOST=y
+CONFIG_RCU_KTHREAD_PRIO=1
+# CONFIG_RCU_PERCPU_TEST is not set
+# end of RCU Subsystem
+
+#
+# Per-CPU Subsystem
+#
+CONFIG_DYNAMIC_PER_CPU=y
+CONFIG_PER_CPU_CHUNK_SIZE=64
+# end of Per-CPU Subsystem
+# end of system
+
+#
+# scheduler
+#
+CONFIG_SCHED_SMT=y
+CONFIG_SCHED_MC=y
+CONFIG_SCHED_HYBRID=y
+CONFIG_SCHED_LOAD_TRACKING_PELT=y
+# CONFIG_SCHED_AUTO_BALANCE is not set
+# end of scheduler
+
+#
+# compatability
+#
+CONFIG_SPINLOCK_LINUX_COMPAT=y
+CONFIG_ATOMIC_LINUX_COMPAT=y
+# end of compatability
+
+#
+# miscellaneous
+#
+CONFIG_INCLUDE_MM_TESTS=y
+CONFIG_ACPI_POWER_BUTTON=y
+CONFIG_ACPI_SLEEP_BUTTON=y
+# end of miscellaneous

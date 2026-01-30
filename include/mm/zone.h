@@ -55,7 +55,7 @@ struct per_cpu_pages {
   struct list_head lists[PCP_ORDERS]; /* lists of pages for each order */
 };
 
-struct zone {
+alignas(64) struct zone {
   /* Write-intensive fields used by page allocator */
   spinlock_t lock;
 
@@ -79,8 +79,7 @@ struct zone {
   atomic_long_t vm_stat[32]; // NR_FREE_PAGES, etc.
 
   struct pglist_data *zone_pgdat;
-}
-    __aligned(64); // Cache line aligned
+}; // Cache line aligned
 
 #ifndef MAX_NUMNODES
   #ifndef CONFIG_MAX_NUMNODES
@@ -111,7 +110,7 @@ struct lrugen {
   atomic_t gen_counter;
 };
 
-struct pglist_data {
+alignas(64) struct pglist_data {
   struct zone node_zones[MAX_NR_ZONES];
   struct zonelist node_zonelists[MAX_NR_ZONES];
 
@@ -126,7 +125,7 @@ struct pglist_data {
   /* LRU Management */
   spinlock_t lru_lock;
   struct lrugen lrugen;
-} __aligned(64);
+};
 
 extern struct pglist_data *node_data[MAX_NUMNODES];
 

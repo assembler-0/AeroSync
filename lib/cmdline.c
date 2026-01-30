@@ -32,14 +32,14 @@ static struct cmdline_entry *find_entry(const char *key) {
         if (strcmp(entries[i].key, key) == 0)
             return &entries[i];
     }
-    return NULL;
+    return nullptr;
 }
 
 static struct cmdline_entry *get_or_create_entry(const char *key) {
     struct cmdline_entry *e = find_entry(key);
     if (e) return e;
 
-    if (entry_count >= MAX_OPTS) return NULL;
+    if (entry_count >= MAX_OPTS) return nullptr;
 
     e = &entries[entry_count++];
     strncpy(e->key, key, MAX_KEY_LEN - 1);
@@ -71,7 +71,7 @@ static char *next_token(char **pos) {
 
     if (!*p) {
         *pos = p;
-        return NULL;
+        return nullptr;
     }
 
     char *token_start = p;
@@ -116,7 +116,7 @@ int cmdline_parse(const char *cmdline) {
     char *token;
     int parsed = 0;
 
-    while ((token = next_token(&p)) != NULL) {
+    while ((token = next_token(&p)) != nullptr) {
         char *eq = strchr(token, '=');
         if (eq) {
             *eq = '\0';
@@ -150,7 +150,7 @@ int cmdline_get_flag(const char *key) {
 
 const char *cmdline_get_string(const char *key) {
     struct cmdline_entry *e = find_entry(key);
-    if (!e || !e->present || e->value[0] == '\0') return NULL;
+    if (!e || !e->present || e->value[0] == '\0') return nullptr;
     return e->value;
 }
 
@@ -158,7 +158,7 @@ void cmdline_for_each(cmdline_iter_t iter, void *priv) {
     if (!iter) return;
     for (int i = 0; i < entry_count; i++) {
         if (entries[i].present) {
-            iter(entries[i].key, entries[i].value[0] ? entries[i].value : NULL, priv);
+            iter(entries[i].key, entries[i].value[0] ? entries[i].value : nullptr, priv);
         }
     }
 }

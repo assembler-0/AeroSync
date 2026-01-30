@@ -127,7 +127,7 @@ struct __class_idr {
 	int id;
 };
 
-#define idr_null ((struct __class_idr){ NULL, -1 })
+#define idr_null ((struct __class_idr){ nullptr, -1 })
 #define take_idr_id(id) __get_and_null(id, idr_null)
 
 // DEFINE_CLASS(idr_alloc, struct __class_idr,
@@ -195,11 +195,11 @@ static inline void idr_preload_end(void)
  * @id: Entry ID.
  *
  * @entry and @id do not need to be initialized before the loop, and
- * after normal termination @entry is left with the value NULL.  This
+ * after normal termination @entry is left with the value nullptr.  This
  * is convenient for a "not found" value.
  */
 #define idr_for_each_entry(idr, entry, id)			\
-	for (id = 0; ((entry) = idr_get_next(idr, &(id))) != NULL; id += 1U)
+	for (id = 0; ((entry) = idr_get_next(idr, &(id))) != nullptr; id += 1U)
 
 /**
  * idr_for_each_entry_ul() - Iterate over an IDR's elements of a given type.
@@ -209,12 +209,12 @@ static inline void idr_preload_end(void)
  * @id: Entry ID.
  *
  * @entry and @id do not need to be initialized before the loop, and
- * after normal termination @entry is left with the value NULL.  This
+ * after normal termination @entry is left with the value nullptr.  This
  * is convenient for a "not found" value.
  */
 #define idr_for_each_entry_ul(idr, entry, tmp, id)			\
 	for (tmp = 0, id = 0;						\
-	     ((entry) = tmp <= id ? idr_get_next_ul(idr, &(id)) : NULL) != NULL; \
+	     ((entry) = tmp <= id ? idr_get_next_ul(idr, &(id)) : nullptr) != nullptr; \
 	     tmp = id, ++id)
 
 /**
@@ -238,12 +238,12 @@ static inline void idr_preload_end(void)
  * @id: Entry ID.
  *
  * Continue to iterate over entries, continuing after the current position.
- * After normal termination @entry is left with the value NULL.  This
+ * After normal termination @entry is left with the value nullptr.  This
  * is convenient for a "not found" value.
  */
 #define idr_for_each_entry_continue_ul(idr, entry, tmp, id)		\
 	for (tmp = id;							\
-	     ((entry) = tmp <= id ? idr_get_next_ul(idr, &(id)) : NULL) != NULL; \
+	     ((entry) = tmp <= id ? idr_get_next_ul(idr, &(id)) : nullptr) != nullptr; \
 	     tmp = id, ++id)
 
 /*

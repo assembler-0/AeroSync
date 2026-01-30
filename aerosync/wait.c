@@ -159,7 +159,7 @@ void __wake_up_on_current_cpu(struct wait_queue_head *wq_head, unsigned int mode
  */
 void __wake_up_locked(struct wait_queue_head *wq_head, unsigned int mode, int nr)
 {
-	__wake_up_common(wq_head, mode, nr, 0, NULL);
+	__wake_up_common(wq_head, mode, nr, 0, nullptr);
 }
 EXPORT_SYMBOL(__wake_up_locked);
 
@@ -223,7 +223,7 @@ EXPORT_SYMBOL(__wake_up_locked_sync_key);
  */
 void __wake_up_sync(struct wait_queue_head *wq_head, unsigned int mode)
 {
-	__wake_up_sync_key(wq_head, mode, NULL);
+	__wake_up_sync_key(wq_head, mode, nullptr);
 }
 EXPORT_SYMBOL(__wake_up_sync);	/* For internal use only */
 

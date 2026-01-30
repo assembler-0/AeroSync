@@ -4,10 +4,10 @@
 #include <lib/printk.h>
 #include <aerosync/classes.h>
 
-struct dentry *root_dentry = NULL;
+struct dentry *root_dentry = nullptr;
 
 struct dentry *vfs_path_lookup(const char *path, unsigned int flags) {
-    if (!path || !root_dentry) return NULL;
+    if (!path || !root_dentry) return nullptr;
 
     printk(KERN_DEBUG VFS_CLASS "vfs_path_lookup: \"%s\"\n", path);
 
@@ -24,12 +24,12 @@ struct dentry *vfs_path_lookup(const char *path, unsigned int flags) {
     // In a real implementation, this would walk the path components
     // and use i_op->lookup for each component.
     
-    return NULL;
+    return nullptr;
 }
 
 struct dentry *d_alloc_pseudo(struct super_block *sb, const struct qstr *name) {
     struct dentry *dentry = kzalloc(sizeof(struct dentry));
-    if (!dentry) return NULL;
+    if (!dentry) return nullptr;
 
     dentry->d_name.name = (unsigned char *)kstrdup((const char *)name->name);
     dentry->d_name.len = name->len;

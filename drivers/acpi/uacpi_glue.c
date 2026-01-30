@@ -52,8 +52,8 @@ typedef struct pending_irq_install {
   struct pending_irq_install *next;
 } pending_irq_install_t;
 
-static pending_irq_install_t *s_pending_head = NULL;
-static pending_irq_install_t *s_pending_tail = NULL;
+static pending_irq_install_t *s_pending_head = nullptr;
+static pending_irq_install_t *s_pending_tail = nullptr;
 
 int uacpi_kernel_init_early(void) {
   uacpi_status ret = uacpi_initialize(0);
@@ -484,7 +484,7 @@ typedef struct irq_mapping {
   struct irq_mapping *next;
 } irq_mapping_t;
 
-static irq_mapping_t *irq_map_head = NULL;
+static irq_mapping_t *irq_map_head = nullptr;
 static spinlock_t irq_map_lock = 0;
 
 // Generic trampoline
@@ -533,7 +533,7 @@ void uacpi_notify_ic_ready(void) {
     kfree(p);
     p = next;
   }
-  s_pending_head = s_pending_tail = NULL;
+  s_pending_head = s_pending_tail = nullptr;
 }
 
 uacpi_status uacpi_kernel_install_interrupt_handler(
@@ -547,7 +547,7 @@ uacpi_status uacpi_kernel_install_interrupt_handler(
     node->irq = irq;
     node->handler = handler;
     node->ctx = ctx;
-    node->next = NULL;
+    node->next = nullptr;
     if (s_pending_tail)
       s_pending_tail->next = node;
     else
@@ -621,8 +621,8 @@ typedef struct work_item {
   struct work_item *next;
 } work_item_t;
 
-static work_item_t *work_head = NULL;
-static work_item_t *work_tail = NULL;
+static work_item_t *work_head = nullptr;
+static work_item_t *work_tail = nullptr;
 static spinlock_t work_lock;
 static wait_queue_head_t work_wait_q;
 
@@ -632,14 +632,14 @@ static int acpi_worker_thread(void *data) {
   init_wait(&wait);
 
   while (1) {
-    work_item_t *work = NULL;
+    work_item_t *work = nullptr;
 
     spinlock_lock(&work_lock);
     if (work_head) {
       work = work_head;
       work_head = work->next;
       if (!work_head)
-        work_tail = NULL;
+        work_tail = nullptr;
     }
     spinlock_unlock(&work_lock);
 
@@ -675,7 +675,7 @@ uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type,
 
   work->handler = handler;
   work->ctx = ctx;
-  work->next = NULL;
+  work->next = nullptr;
 
   spinlock_lock(&work_lock);
   if (work_tail) {
@@ -706,7 +706,7 @@ uacpi_status uacpi_kernel_wait_for_work_completion(void) {
   return UACPI_STATUS_OK;
 }
 
-static struct task_struct *worker = NULL;
+static struct task_struct *worker = nullptr;
 
 /*
  * Initialization
@@ -716,7 +716,7 @@ uacpi_status uacpi_kernel_initialize(uacpi_init_level current_init_lvl) {
     spinlock_init(&work_lock);
     init_waitqueue_head(&work_wait_q);
     // Start worker thread
-    worker = kthread_create(acpi_worker_thread, NULL, "acpi_worker");
+    worker = kthread_create(acpi_worker_thread, nullptr, "acpi_worker");
     kthread_run(worker);
   }
   return UACPI_STATUS_OK;

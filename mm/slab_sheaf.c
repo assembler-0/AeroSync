@@ -24,18 +24,18 @@ struct slab_sheaf *kmem_cache_prefill_sheaf(struct kmem_cache *cache, gfp_t gfp,
   int allocated;
 
   if (!cache || count == 0 || count > SHEAF_MAX_OBJECTS)
-    return NULL;
+    return nullptr;
 
   /* Allocate the sheaf structure itself */
   sheaf = (struct slab_sheaf *)kmalloc(sizeof(struct slab_sheaf));
   if (!sheaf)
-    return NULL;
+    return nullptr;
 
   /* Allocate the object pointer array */
   sheaf->objects = (void **)kmalloc(sizeof(void *) * SHEAF_MAX_OBJECTS);
   if (!sheaf->objects) {
     kfree(sheaf);
-    return NULL;
+    return nullptr;
   }
 
   sheaf->cache = cache;
@@ -48,7 +48,7 @@ struct slab_sheaf *kmem_cache_prefill_sheaf(struct kmem_cache *cache, gfp_t gfp,
   if (allocated <= 0) {
       kfree(sheaf->objects);
       kfree(sheaf);
-      return NULL;
+      return nullptr;
   }
   
   sheaf->count = allocated;
@@ -63,7 +63,7 @@ void *kmem_cache_alloc_from_sheaf(struct kmem_cache *cache, gfp_t gfp,
   (void)gfp; /* Unused, for API compatibility */
 
   if (!sheaf || !cache || sheaf->cache != cache || sheaf->count == 0)
-    return NULL;
+    return nullptr;
 
   /* Fast O(1) pop from array */
   return sheaf->objects[--sheaf->count];

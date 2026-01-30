@@ -23,7 +23,7 @@
 #include <lib/printk.h>
 #include <aerosync/classes.h>
 
-static uint32_t crc32_table[256] __aligned(16);
+static alignas(16) uint32_t crc32_table[256];
 
 void crc32_init() {
     printk(CRC_CLASS "Initializing CRC32\n");

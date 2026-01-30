@@ -132,7 +132,7 @@ uacpi_u8 uacpi_load_op_decode_ops[] = {
 
     /*
      * Invoke the handler here to initialize the table. If this fails, it's
-     * expected to keep the item 0 as NULL, which is checked below to return
+     * expected to keep the item 0 as nullptr, which is checked below to return
      * false to the caller of Load.
      */
     UACPI_PARSE_OP_INVOKE_HANDLER,

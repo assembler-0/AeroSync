@@ -62,7 +62,7 @@
 	- [x] Faster SLUB
 	- [x] More sophisticated PMM system (buddy `page_alloc`)
 	- [ ] Streamline the use of `struct folio` rather than `struct page` for high-level mm
-	- [x] KASLR
+	- [ ] KASLR (PIC/PIE)
 	- [x] ASLR
 	- [x] Guard pages where possible
 	- [ ] Proper DMA support for legacy devices
@@ -117,16 +117,15 @@
 	- [ ] rFKX (runtime Fused Kernel eXtension) (FKX modules that can be loaded at any time, not early boot)
 	- [ ] ASRX (AeroSync Runtime eXtension)
 	- [ ] generic interface for *everything* (Linux-inspired)
-	- [ ] UDM (Unified Driver Model) layer
-	- [ ] more capable sysintf for lower level FKX
+	- [x] UDM (Unified Driver Model) layer
+	- [x] more capable sysintf for lower level FKX
 	- [ ] skeleton kernel
 	- [ ] don't be like XNU
 - features (quality of life)
-	- [ ] backtrace (builtin)
-	- [ ] stack trace (builtin)
-	- [ ] linux-compatible spinlock 
+	- [x] backtrace (builtin)
+	- [x] stack trace (builtin)
+	- [x] linux-compatible spinlock 
 	- [ ] kbdg embeded
-	- [ ] arch-based system
 	- [ ] automatic rollback
 	- [ ] should not panic
 	- [ ] true asynchronous printk (that doesnt blow up)

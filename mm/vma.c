@@ -159,7 +159,7 @@ void mm_init(struct mm_struct *mm) {
   mm->map_count = 0;
   mm->mmap_base = 0;
   mm->last_hole = 0;
-  mm->pml_root = NULL;
+  mm->pml_root = nullptr;
   rwsem_init(&mm->mmap_lock);
   atomic_set(&mm->mm_count, 1);
   mm->vmacache_seqnum = 0;
@@ -178,7 +178,7 @@ void mm_init(struct mm_struct *mm) {
 }
 
 struct mm_struct *mm_alloc(void) {
-  struct mm_struct *mm = NULL;
+  struct mm_struct *mm = nullptr;
   int nid = this_node();
 
   mm = kzalloc_node(sizeof(struct mm_struct), nid);
@@ -222,7 +222,7 @@ void mm_free(struct mm_struct *mm) {
 struct mm_struct *mm_create(void) {
   struct mm_struct *mm = mm_alloc();
   if (!mm)
-    return NULL;
+    return nullptr;
 
   int nid = mm->preferred_node;
   if (nid == -1) nid = this_node();
@@ -230,7 +230,7 @@ struct mm_struct *mm_create(void) {
   uint64_t pml_root_phys = vmm_alloc_table_node(nid);
   if (!pml_root_phys) {
     mm_free(mm);
-    return NULL;
+    return nullptr;
   }
 
   /* Initialize PTL for the new PML4 root */
@@ -266,7 +266,7 @@ void mm_put(struct mm_struct *mm) {
 struct mm_struct *mm_copy(struct mm_struct *old_mm) {
   struct mm_struct *new_mm = mm_create();
   if (!new_mm)
-    return NULL;
+    return nullptr;
 
   if (!old_mm)
     return new_mm;
@@ -280,7 +280,7 @@ struct mm_struct *mm_copy(struct mm_struct *old_mm) {
     if (!new_vma) {
       mm_free(new_mm);
       up_write(&old_mm->mmap_lock);
-      return NULL;
+      return nullptr;
     }
 
     /* Copy metadata */
@@ -300,7 +300,7 @@ struct mm_struct *mm_copy(struct mm_struct *old_mm) {
         vma_free(new_vma);
         mm_free(new_mm);
         up_write(&old_mm->mmap_lock);
-        return NULL;
+        return nullptr;
       }
     } else {
       /* Shared or Read-Only mapping: just share the object */
@@ -314,7 +314,7 @@ struct mm_struct *mm_copy(struct mm_struct *old_mm) {
       vma_free(new_vma);
       mm_free(new_mm);
       up_write(&old_mm->mmap_lock);
-      return NULL;
+      return nullptr;
     }
 
     /* Notify owner that a new reference was created */
@@ -327,7 +327,7 @@ struct mm_struct *mm_copy(struct mm_struct *old_mm) {
   if (vmm_copy_page_tables(old_mm, new_mm) < 0) {
     mm_free(new_mm);
     up_write(&old_mm->mmap_lock);
-    return NULL;
+    return nullptr;
   }
 
   vmm_tlb_shootdown(old_mm, 0, vmm_get_max_user_address());
@@ -361,7 +361,7 @@ void mm_destroy(struct mm_struct *mm) {
   /* Free the page tables if it's not the kernel's */
   if (mm->pml_root && (uint64_t) mm->pml_root != g_kernel_pml_root) {
     vmm_free_page_tables(mm);
-    mm->pml_root = NULL;
+    mm->pml_root = nullptr;
   }
 
   up_write(&mm->mmap_lock);
@@ -394,7 +394,7 @@ static inline void vma_verify(struct vm_area_struct *vma) {
 }
 
 struct vm_area_struct *vma_alloc(void) {
-  struct vm_area_struct *vma = NULL;
+  struct vm_area_struct *vma = nullptr;
   struct task_struct *curr = current;
   int nid = curr ? curr->node_id : this_node();
 
@@ -494,7 +494,7 @@ struct vm_area_struct *vma_find(struct mm_struct *mm, uint64_t addr) {
   struct task_struct *curr = current;
 
   if (unlikely(!mm))
-    return NULL;
+    return nullptr;
 
   /*
    * OPTIMIZATION: Check cache first (O(1) lookup).
@@ -510,7 +510,7 @@ struct vm_area_struct *vma_find(struct mm_struct *mm, uint64_t addr) {
        * zeroing can be faster for very small arrays.
        */
       for (int i = 0; i < MM_VMA_CACHE_SIZE; i++)
-        curr->vmacache[i] = NULL;
+        curr->vmacache[i] = nullptr;
       curr->vmacache_seqnum = mm->vmacache_seqnum;
     }
 
@@ -563,11 +563,11 @@ struct vm_area_struct *vma_find_exact(struct mm_struct *mm, uint64_t start, uint
   struct vm_area_struct *vma = vma_find(mm, start);
   if (vma && vma->vm_start == start && vma->vm_end == end)
     return vma;
-  return NULL;
+  return nullptr;
 }
 
 struct vm_area_struct *vma_find_intersection(struct mm_struct *mm, uint64_t start, uint64_t end) {
-  if (!mm) return NULL;
+  if (!mm) return nullptr;
 
   MA_STATE(mas, &mm->mm_mt, start, end - 1);
   return mas_find(&mas, end - 1);
@@ -653,7 +653,7 @@ void vma_remove(struct mm_struct *mm, struct vm_area_struct *vma) {
     up_write(&vma->vm_obj->lock);
   }
 
-  vma->vm_mm = NULL;
+  vma->vm_mm = nullptr;
 }
 
 
@@ -740,15 +740,15 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm, struct vm_area_struct *pr
    * To merge with prev, we need:
    * 1. Same flags and ops.
    * 2. Adjacency.
-   * 3. Compatible objects (both NULL, or same object with contiguous offsets).
+   * 3. Compatible objects (both nullptr, or same object with contiguous offsets).
    */
   if (prev && prev->vm_end == addr &&
-      prev->vm_flags == vm_flags && prev->vm_ops == NULL) {
-    if (prev->vm_obj == obj && (obj == NULL || prev->vm_pgoff + vma_pages(prev) == pgoff)) {
+      prev->vm_flags == vm_flags && prev->vm_ops == nullptr) {
+    if (prev->vm_obj == obj && (obj == nullptr || prev->vm_pgoff + vma_pages(prev) == pgoff)) {
       next = vma_next(prev);
       if (next && next->vm_start == end && next->vm_flags == vm_flags &&
-          next->vm_ops == NULL && next->vm_obj == obj &&
-          (obj == NULL || pgoff + ((end - addr) >> PAGE_SHIFT) == next->vm_pgoff)) {
+          next->vm_ops == nullptr && next->vm_obj == obj &&
+          (obj == nullptr || pgoff + ((end - addr) >> PAGE_SHIFT) == next->vm_pgoff)) {
         /* CASE: BRIDGE [prev][new][next] */
         uint64_t giant_end = next->vm_end;
 
@@ -803,8 +803,8 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm, struct vm_area_struct *pr
   }
 
   if (next && next->vm_start == end && next->vm_flags == vm_flags &&
-      next->vm_ops == NULL && next->vm_obj == obj &&
-      (obj == NULL || pgoff + ((end - addr) >> PAGE_SHIFT) == next->vm_pgoff)) {
+      next->vm_ops == nullptr && next->vm_obj == obj &&
+      (obj == nullptr || pgoff + ((end - addr) >> PAGE_SHIFT) == next->vm_pgoff)) {
     /* CASE: EXTEND NEXT BACKWARDS */
     MA_STATE(mas, &mm->mm_mt, addr, end - 1);
     mas_lock(&mas);
@@ -823,17 +823,17 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm, struct vm_area_struct *pr
     return next;
   }
 
-  return NULL;
+  return nullptr;
 }
 
 struct vm_area_struct *vma_next(struct vm_area_struct *vma) {
-  if (!vma || !vma->vm_mm) return NULL;
+  if (!vma || !vma->vm_mm) return nullptr;
   unsigned long index = vma->vm_end;
   return mt_find(&vma->vm_mm->mm_mt, &index, ULONG_MAX);
 }
 
 struct vm_area_struct *vma_prev(struct vm_area_struct *vma) {
-  if (!vma || !vma->vm_mm || vma->vm_start == 0) return NULL;
+  if (!vma || !vma->vm_mm || vma->vm_start == 0) return nullptr;
   MA_STATE(mas, &vma->vm_mm->mm_mt, vma->vm_start - 1, vma->vm_start - 1);
   return mas_find_rev(&mas, 0);
 }
@@ -858,28 +858,28 @@ static inline uint64_t vm_get_page_prot(uint64_t flags) {
 
 struct vm_area_struct *vma_create(uint64_t start, uint64_t end, uint64_t flags) {
   if (start >= end || (start & (PAGE_SIZE - 1)) || (end & (PAGE_SIZE - 1)))
-    return NULL;
+    return nullptr;
 
   struct vm_area_struct *vma = vma_alloc();
   if (!vma)
-    return NULL;
+    return nullptr;
 
   vma->vm_start = start;
   vma->vm_end = end;
   vma->vm_flags = flags;
   vma->vm_page_prot = vm_get_page_prot(flags);
-  vma->vm_mm = NULL;
+  vma->vm_mm = nullptr;
   vma->preferred_node = -1;
-  vma->vm_ops = NULL;
-  vma->vm_private_data = NULL;
+  vma->vm_ops = nullptr;
+  vma->vm_private_data = nullptr;
   vma->vm_pgoff = 0;
-  vma->vm_obj = NULL;
+  vma->vm_obj = nullptr;
   /*
    * Anonymous VMAs do not get an object until they are actually faulted.
    * This allows trivial merging of adjacent anonymous regions.
    * IO/PFN mappings still get their objects or are handled specially.
    */
-  vma->anon_vma = NULL;
+  vma->anon_vma = nullptr;
 
   INIT_LIST_HEAD(&vma->anon_vma_chain);
   INIT_LIST_HEAD(&vma->vm_shared);
@@ -941,7 +941,7 @@ uint64_t do_mmap(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot,
   }
 
   /* 3. Attempt proactive merge */
-  vma = vma_merge(mm, NULL, addr, addr + len, vm_flags, NULL, pgoff);
+  vma = vma_merge(mm, nullptr, addr, addr + len, vm_flags, nullptr, pgoff);
   if (vma && !file && !shm) {
     goto out;
   }
@@ -1124,7 +1124,7 @@ int vma_map_range(struct mm_struct *mm, uint64_t start, uint64_t end, uint64_t f
   uint64_t mmap_flags = MAP_FIXED | MAP_PRIVATE;
   if (flags & VM_SHARED) mmap_flags = MAP_FIXED | MAP_SHARED;
 
-  uint64_t ret = do_mmap(mm, start, end - start, prot, mmap_flags, NULL, NULL, 0);
+  uint64_t ret = do_mmap(mm, start, end - start, prot, mmap_flags, nullptr, nullptr, 0);
   return (ret > 0xFFFFFFFFFFFFF000ULL) ? (int) ret : 0;
 }
 
@@ -1169,7 +1169,7 @@ int mm_populate_user_range(struct mm_struct *mm, uint64_t start, size_t size, ui
     vmf.flags = FAULT_FLAG_WRITE; /* Populate usually implies writing */
     vmf.pgoff = (addr - vma->vm_start) >> PAGE_SHIFT;
     if (vma->vm_pgoff) vmf.pgoff += vma->vm_pgoff;
-    vmf.folio = NULL;
+    vmf.folio = nullptr;
 
     if (handle_mm_fault(vma, addr, vmf.flags) != 0) {
       up_read(&mm->mmap_lock);
@@ -1342,7 +1342,7 @@ void vma_dump(struct mm_struct *mm) {
 
 int vma_verify_tree(struct mm_struct *mm) {
 #ifdef MM_HARDENING
-  struct vm_area_struct *vma, *prev = NULL;
+  struct vm_area_struct *vma, *prev = nullptr;
 
   for_each_vma(mm, vma) {
     vma_verify(vma);
@@ -1361,7 +1361,7 @@ int vma_verify_tree(struct mm_struct *mm) {
 
 int vma_verify_list(struct mm_struct *mm) {
 #ifdef MM_HARDENING
-  struct vm_area_struct *vma, *prev = NULL;
+  struct vm_area_struct *vma, *prev = nullptr;
 
   for_each_vma(mm, vma) {
     if (prev && prev->vm_start >= vma->vm_start) {

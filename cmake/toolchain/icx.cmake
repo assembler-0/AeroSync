@@ -1,5 +1,5 @@
 # ============================================================================
-# VoidFrame Toolchain for intel C/C++ compiler
+# AeroSync Toolchain for intel C/C++ compiler
 # ============================================================================
 set(CMAKE_SYSTEM_NAME Generic)
 set(CMAKE_SYSTEM_PROCESSOR x86_64)

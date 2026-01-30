@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Lock-less NULL terminated single linked list
+ * Lock-less nullptr terminated single linked list
  *
  * The basic atomic operation of this list is cmpxchg on long.  On
  * architectures that don't have NMI-safe cmpxchg implementation, the
@@ -20,7 +20,7 @@
  * llist_del_first - delete the first entry of lock-less list
  * @head:	the head for your lock-less list
  *
- * If list is empty, return NULL, otherwise, return the first entry
+ * If list is empty, return nullptr, otherwise, return the first entry
  * deleted, this is the newest added one.
  *
  * Only one llist_del_first user can be used simultaneously with
@@ -36,8 +36,8 @@ struct llist_node *llist_del_first(struct llist_head *head)
 
 	entry = smp_load_acquire(&head->first);
 	do {
-		if (entry == NULL)
-			return NULL;
+		if (entry == nullptr)
+			return nullptr;
 		next = READ_ONCE(entry->next);
 	} while (!try_cmpxchg(&head->first, &entry, next));
 
@@ -82,7 +82,7 @@ EXPORT_SYMBOL(llist_del_first_this);
  */
 struct llist_node *llist_reverse_order(struct llist_node *head)
 {
-	struct llist_node *new_head = NULL;
+	struct llist_node *new_head = nullptr;
 
 	while (head) {
 		struct llist_node *tmp = head;

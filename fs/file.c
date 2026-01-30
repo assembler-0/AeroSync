@@ -25,9 +25,9 @@ void files_init(void) {
 
 struct file *fget(unsigned int fd) {
     struct files_struct *files = current->files;
-    struct file *file = NULL;
+    struct file *file = nullptr;
 
-    if (!files) return NULL;
+    if (!files) return nullptr;
 
     spinlock_lock(&files->file_lock);
     if (fd < files->fdtab.max_fds) {
@@ -106,7 +106,7 @@ void put_unused_fd(unsigned int fd) {
 // Helper to allocate and initialize a files_struct (for fork)
 struct files_struct *copy_files(struct files_struct *old_files) {
     struct files_struct *new_files = kzalloc(sizeof(struct files_struct));
-    if (!new_files) return NULL;
+    if (!new_files) return nullptr;
 
     atomic_set(&new_files->count, 1);
     spinlock_init(&new_files->file_lock);

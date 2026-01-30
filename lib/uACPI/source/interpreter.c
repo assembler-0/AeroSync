@@ -4375,7 +4375,7 @@ static uacpi_status store_to_target(
         break;
 
     case UACPI_OBJECT_INTEGER:
-        // NULL target
+        // nullptr target
         if (dst->integer == 0) {
             ret = UACPI_STATUS_OK;
             break;

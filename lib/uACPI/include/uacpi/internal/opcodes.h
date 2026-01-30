@@ -20,7 +20,7 @@ enum uacpi_parse_op {
 
     /*
      * End the execution of the current instruction with a warning if the item
-     * at decode_ops[pc + 1] is NULL.
+     * at decode_ops[pc + 1] is nullptr.
      */
     UACPI_PARSE_OP_SKIP_WITH_WARN_IF_NULL,
 

@@ -44,7 +44,7 @@ void irq_install_handler(uint8_t vector, irq_handler_t handler) {
 }
 EXPORT_SYMBOL(irq_install_handler);
 
-void irq_uninstall_handler(uint8_t vector) { irq_handlers[vector] = NULL; }
+void irq_uninstall_handler(uint8_t vector) { irq_handlers[vector] = nullptr; }
 EXPORT_SYMBOL(irq_uninstall_handler);
 
 void __used __hot irq_common_stub(cpu_regs *regs) {

@@ -71,8 +71,8 @@ static __always_inline bool __list_add_valid(struct list_head *new,
 
 	/*
 	 * With the hardening version, elide checking if next and prev
-	 * are NULL, since the immediate dereference of them below would
-	 * result in a fault if NULL.
+	 * are nullptr, since the immediate dereference of them below would
+	 * result in a fault if nullptr.
 	 *
 	 * With the reduced set of checks, we can afford to inline the
 	 * checks, which also gives the compiler a chance to elide some
@@ -112,7 +112,7 @@ static __always_inline bool __list_del_entry_valid(struct list_head *entry)
 
 	/*
 	 * With the hardening version, elide checking if next and prev
-	 * are NULL, LIST_POISON1 or LIST_POISON2, since the immediate
+	 * are nullptr, LIST_POISON1 or LIST_POISON2, since the immediate
 	 * dereference of them below would result in a fault.
 	 */
 	if (likely(prev->next == entry && next->prev == entry))
@@ -206,7 +206,7 @@ static inline void __list_del(struct list_head * prev, struct list_head * next)
 static inline void __list_del_clearprev(struct list_head *entry)
 {
 	__list_del(entry->prev, entry->next);
-	entry->prev = NULL;
+	entry->prev = nullptr;
 }
 
 static inline void __list_del_entry(struct list_head *entry)
@@ -590,12 +590,12 @@ static inline void list_splice_tail_init(struct list_head *list,
  * @type:	the type of the struct this is embedded in.
  * @member:	the name of the list_head within the struct.
  *
- * Note that if the list is empty, it returns NULL.
+ * Note that if the list is empty, it returns nullptr.
  */
 #define list_first_entry_or_null(ptr, type, member) ({ \
 	struct list_head *head__ = (ptr); \
 	struct list_head *pos__ = READ_ONCE(head__->next); \
-	pos__ != head__ ? list_entry(pos__, type, member) : NULL; \
+	pos__ != head__ ? list_entry(pos__, type, member) : nullptr; \
 })
 
 /**
@@ -604,12 +604,12 @@ static inline void list_splice_tail_init(struct list_head *list,
  * @type:	the type of the struct this is embedded in.
  * @member:	the name of the list_head within the struct.
  *
- * Note that if the list is empty, it returns NULL.
+ * Note that if the list is empty, it returns nullptr.
  */
 #define list_last_entry_or_null(ptr, type, member) ({ \
 	struct list_head *head__ = (ptr); \
 	struct list_head *pos__ = READ_ONCE(head__->prev); \
-	pos__ != head__ ? list_entry(pos__, type, member) : NULL; \
+	pos__ != head__ ? list_entry(pos__, type, member) : nullptr; \
 })
 
 /**
@@ -894,13 +894,13 @@ static inline size_t list_count_nodes(struct list_head *head)
  * You lose the ability to access the tail in O(1).
  */
 
-#define HLIST_HEAD_INIT { .first = NULL }
-#define HLIST_HEAD(name) struct hlist_head name = {  .first = NULL }
-#define INIT_HLIST_HEAD(ptr) ((ptr)->first = NULL)
+#define HLIST_HEAD_INIT { .first = nullptr }
+#define HLIST_HEAD(name) struct hlist_head name = {  .first = nullptr }
+#define INIT_HLIST_HEAD(ptr) ((ptr)->first = nullptr)
 static inline void INIT_HLIST_NODE(struct hlist_node *h)
 {
-	h->next = NULL;
-	h->pprev = NULL;
+	h->next = nullptr;
+	h->pprev = nullptr;
 }
 
 /**
@@ -997,7 +997,7 @@ static inline void hlist_add_head(struct hlist_node *n, struct hlist_head *h)
 /**
  * hlist_add_before - add a new entry before the one specified
  * @n: new entry to be added
- * @next: hlist node to add it before, which must be non-NULL
+ * @next: hlist node to add it before, which must be non-nullptr
  */
 static inline void hlist_add_before(struct hlist_node *n,
 				    struct hlist_node *next)
@@ -1011,7 +1011,7 @@ static inline void hlist_add_before(struct hlist_node *n,
 /**
  * hlist_add_behind - add a new entry after the one specified
  * @n: new entry to be added
- * @prev: hlist node to add it after, which must be non-NULL
+ * @prev: hlist node to add it after, which must be non-nullptr
  */
 static inline void hlist_add_behind(struct hlist_node *n,
 				    struct hlist_node *prev)
@@ -1074,7 +1074,7 @@ static inline void hlist_move_list(struct hlist_head *old,
 	new->first = old->first;
 	if (new->first)
 		new->first->pprev = &new->first;
-	old->first = NULL;
+	old->first = nullptr;
 }
 
 /**
@@ -1094,7 +1094,7 @@ static inline void hlist_splice_init(struct hlist_head *from,
 	last->next = to->first;
 	to->first = from->first;
 	from->first->pprev = &to->first;
-	from->first = NULL;
+	from->first = nullptr;
 }
 
 #define hlist_entry(ptr, type, member) container_of(ptr,type,member)
@@ -1108,7 +1108,7 @@ static inline void hlist_splice_init(struct hlist_head *from,
 
 #define hlist_entry_safe(ptr, type, member) \
 	({ typeof(ptr) ____ptr = (ptr); \
-	   ____ptr ? hlist_entry(____ptr, type, member) : NULL; \
+	   ____ptr ? hlist_entry(____ptr, type, member) : nullptr; \
 	})
 
 /**

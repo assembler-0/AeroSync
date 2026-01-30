@@ -33,9 +33,9 @@ DECLARE_PER_CPU(struct radix_tree_preload, radix_tree_preloads);
  * The internal entry may be a pointer to the next level in the tree, a
  * sibling entry, or an indicator that the entry in this slot has been moved
  * to another location in the tree and the lookup should be restarted.  While
- * NULL fits the 'data pointer' pattern, it means that there is no entry in
+ * nullptr fits the 'data pointer' pattern, it means that there is no entry in
  * the tree for this index (no matter what level of the tree it is found at).
- * This means that storing a NULL entry in the tree is the same as deleting
+ * This means that storing a nullptr entry in the tree is the same as deleting
  * the entry from the tree.
  */
 #define RADIX_TREE_ENTRY_MASK		3UL
@@ -74,7 +74,7 @@ static inline bool radix_tree_is_internal_node(void *ptr)
 
 static inline bool radix_tree_empty(const struct radix_tree_root *root)
 {
-	return root->xa_head == NULL;
+	return root->xa_head == nullptr;
 }
 
 /**
@@ -264,7 +264,7 @@ enum {
  *
  * @iter:	pointer to iterator state
  * @start:	iteration starting index
- * Returns:	NULL
+ * Returns:	nullptr
  */
 static __always_inline void __rcu **
 radix_tree_iter_init(struct radix_tree_iter *iter, unsigned long start)
@@ -279,7 +279,7 @@ radix_tree_iter_init(struct radix_tree_iter *iter, unsigned long start)
 	 */
 	iter->index = 0;
 	iter->next_index = start;
-	return NULL;
+	return nullptr;
 }
 
 /**
@@ -288,7 +288,7 @@ radix_tree_iter_init(struct radix_tree_iter *iter, unsigned long start)
  * @root:	radix tree root
  * @iter:	iterator state
  * @flags:	RADIX_TREE_ITER_* flags and tag index
- * Returns:	pointer to chunk first slot, or NULL if there no more left
+ * Returns:	pointer to chunk first slot, or nullptr if there no more left
  *
  * This function looks up the next chunk in the radix tree starting from
  * @iter->next_index.  It returns a pointer to the chunk's first slot.
@@ -306,7 +306,7 @@ void __rcu **radix_tree_next_chunk(const struct radix_tree_root *,
  *
  * If @index is present in the radix tree, this function returns the slot
  * containing it and updates @iter to describe the entry.  If @index is not
- * present, it returns NULL.
+ * present, it returns nullptr.
  */
 static inline void __rcu **
 radix_tree_iter_lookup(const struct radix_tree_root *root,
@@ -330,7 +330,7 @@ void __rcu **radix_tree_iter_retry(struct radix_tree_iter *iter)
 {
 	iter->next_index = iter->index;
 	iter->tags = 0;
-	return NULL;
+	return nullptr;
 }
 
 static inline unsigned long
@@ -370,12 +370,12 @@ radix_tree_chunk_size(struct radix_tree_iter *iter)
  * @slot:	pointer to current slot
  * @iter:	pointer to iterator state
  * @flags:	RADIX_TREE_ITER_*, should be constant
- * Returns:	pointer to next slot, or NULL if there no more left
+ * Returns:	pointer to next slot, or nullptr if there no more left
  *
  * This function updates @iter->index in the case of a successful lookup.
  * For tagged lookup it also eats @iter->tags.
  *
- * There are several cases where 'slot' can be passed in as NULL to this
+ * There are several cases where 'slot' can be passed in as nullptr to this
  * function.  These cases result from the use of radix_tree_iter_resume() or
  * radix_tree_iter_retry().  In these cases we don't end up dereferencing
  * 'slot' because either:
@@ -389,7 +389,7 @@ static __always_inline void __rcu **radix_tree_next_slot(void __rcu **slot,
 	if (flags & RADIX_TREE_ITER_TAGGED) {
 		iter->tags >>= 1;
 		if (unlikely(!iter->tags))
-			return NULL;
+			return nullptr;
 		if (likely(iter->tags & 1ul)) {
 			iter->index = __radix_tree_iter_add(iter, 1);
 			slot++;
@@ -419,7 +419,7 @@ static __always_inline void __rcu **radix_tree_next_slot(void __rcu **slot,
 			}
 		}
 	}
-	return NULL;
+	return nullptr;
 
  found:
 	return slot;

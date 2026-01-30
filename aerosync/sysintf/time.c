@@ -37,7 +37,7 @@ static struct class time_class = {
 };
 
 static bool time_class_registered = false;
-static const time_source_t *current_time_source = NULL;
+static const time_source_t *current_time_source = nullptr;
 
 struct time_device {
   struct device dev;
@@ -107,13 +107,13 @@ void time_register_source(const time_source_t *source) {
        }
 
        int time_init(void) {
-         const time_source_t *selected = NULL;
+         const time_source_t *selected = nullptr;
          struct time_candidate_list list = {0};
 
          printk(TIME_CLASS "Initializing Time Subsystem...\n");
 
          // 1. Collect all registered sources through UDM
-         class_for_each_dev(&time_class, NULL, &list, time_collect_candidates);
+         class_for_each_dev(&time_class, nullptr, &list, time_collect_candidates);
 
          // 2. Fallback logic: Try initialization in order of priority
          // (simplistic bubble sort) Since count is small (usually 2-3: TSC,

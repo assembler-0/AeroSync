@@ -22,11 +22,11 @@
 
 #include "ide.h"
 
-static struct ide_controller *g_ide_ctrl = NULL;
+static struct ide_controller *g_ide_ctrl = nullptr;
 
 static void ide_irq_handler(cpu_regs *regs) {
   uint8_t irq = regs->interrupt_number;
-  struct ide_channel *chan = NULL;
+  struct ide_channel *chan = nullptr;
 
   if (!g_ide_ctrl) return;
 
@@ -236,7 +236,7 @@ static int ide_init(void) {
   return pci_register_driver(&ide_pci_driver);
 }
 
-const char *dependency_names[] = {"pci", NULL};
+const char *dependency_names[] = {"pci", nullptr};
 
 FKX_MODULE_DEFINE(
   ide,

@@ -118,7 +118,7 @@ struct vm_fault {
  * Represents a contiguous range of virtual memory with consistent permissions.
  * Managed effectively by a Maple Tree.
  */
-struct __aligned(sizeof(long)) vm_area_struct {
+alignas(sizeof(long)) struct vm_area_struct {
   uint64_t vma_magic;      /* Integrity check */
   struct mm_struct *vm_mm; /* The address space we belong to */
 

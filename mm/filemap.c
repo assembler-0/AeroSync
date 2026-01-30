@@ -172,7 +172,7 @@ ssize_t filemap_read(struct file *file, char *buf, size_t count, vfs_loff_t *ppo
     };
 
     /* Force fault to bring page into cache */
-    int ret = obj->ops->fault(obj, NULL, &vmf);
+    int ret = obj->ops->fault(obj, nullptr, &vmf);
     if (ret != 0) return total_read ? (ssize_t) total_read : -EIO;
 
     void *kaddr = folio_address(vmf.folio);
@@ -213,7 +213,7 @@ ssize_t filemap_write(struct file *file, const char *buf, size_t count, vfs_loff
      * handle_mm_fault would normally be called here if we had a VMA,
      * but for direct VFS write we call the object's fault handler directly.
      */
-    int ret = obj->ops->fault(obj, NULL, &vmf);
+    int ret = obj->ops->fault(obj, nullptr, &vmf);
     if (ret != 0) return total_written ? (ssize_t) total_written : -EIO;
 
     struct folio *folio = vmf.folio;

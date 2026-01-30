@@ -47,7 +47,7 @@ static int mm_scrubberd(void *data) {
 }
 
 void mm_scrubber_init(void) {
-  struct task_struct *t = kthread_create(mm_scrubberd, NULL, "mm_scrubberd");
+  struct task_struct *t = kthread_create(mm_scrubberd, nullptr, "mm_scrubberd");
   if (t) {
     kthread_run(t);
   }

@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #pragma once
 
-struct rb_node {
+alignas(sizeof(long)) struct rb_node {
   unsigned long  __rb_parent_color;
   struct rb_node *rb_right;
   struct rb_node *rb_left;
-} __attribute__((aligned(sizeof(long))));
+};
 /* The alignment might seem pointless, but allegedly CRIS needs it */
 
 struct rb_root {
@@ -27,5 +27,5 @@ struct rb_root_cached {
   struct rb_node *rb_leftmost;
 };
 
-#define RB_ROOT (struct rb_root) { NULL, }
-#define RB_ROOT_CACHED (struct rb_root_cached) { {NULL, }, NULL }
+#define RB_ROOT (struct rb_root) { nullptr, }
+#define RB_ROOT_CACHED (struct rb_root_cached) { {nullptr, }, nullptr }

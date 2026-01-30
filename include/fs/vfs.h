@@ -133,7 +133,7 @@ struct dentry {
     struct list_head    d_subdirs;        // List of subdirectories (if this is a directory dentry)
     struct dentry       *d_parent;        // Parent dentry
     struct qstr         d_name;           // Name of this dentry
-    struct inode        *d_inode;         // Inode corresponding to this dentry (or NULL if negative dentry)
+    struct inode        *d_inode;         // Inode corresponding to this dentry (or nullptr if negative dentry)
     spinlock_t          d_lock;           // Protects dentry data
     uint32_t            d_flags;          // Dentry flags
     // ... more fields for mounted state, etc.

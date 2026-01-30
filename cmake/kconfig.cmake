@@ -17,6 +17,22 @@ endif()
 
 set(AEROSYNC_KCONFIG "${CMAKE_SOURCE_DIR}/Kconfig" CACHE FILEPATH "Top-level Kconfig file")
 set(AEROSYNC_CONFIG "${CMAKE_SOURCE_DIR}/.config" CACHE FILEPATH "Kernel configuration file")
+set(AEROSYNC_DEFCONFIG "" CACHE STRING "Initial Kconfig configuration to use")
+
+if(AEROSYNC_DEFCONFIG)
+    set(_defconfig_path "${CMAKE_SOURCE_DIR}/kconfig/configs/${AEROSYNC_DEFCONFIG}")
+    if(EXISTS "${_defconfig_path}")
+        set(_last_defconfig "" CACHE INTERNAL "Last applied Kconfig defconfig")
+
+        if(NOT EXISTS "${AEROSYNC_CONFIG}" OR NOT "${AEROSYNC_DEFCONFIG}" STREQUAL "${_last_defconfig}")
+            message(STATUS "Applying Kconfig defconfig: ${AEROSYNC_DEFCONFIG}")
+            configure_file("${_defconfig_path}" "${AEROSYNC_CONFIG}" COPYONLY)
+            set(_last_defconfig "${AEROSYNC_DEFCONFIG}" CACHE INTERNAL "Last applied Kconfig defconfig" FORCE)
+        endif()
+    else()
+        message(WARNING "Kconfig defconfig '${AEROSYNC_DEFCONFIG}' not found at ${_defconfig_path}")
+    endif()
+endif()
 
 file(GLOB_RECURSE AEROSYNC_KCONFIG_TREE CONFIGURE_DEPENDS
         "${CMAKE_SOURCE_DIR}/**/Kconfig")

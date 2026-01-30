@@ -154,7 +154,7 @@ typedef uacpi_iteration_decision (*uacpi_subtable_iteration_callback)
  *
  *    uacpi_table_find_by_signature(ACPI_MADT_SIGNATURE, &tbl);
  *    uacpi_for_each_subtable(
- *        tbl.hdr, sizeof(struct acpi_madt), parse_madt, NULL
+ *        tbl.hdr, sizeof(struct acpi_madt), parse_madt, nullptr
  *    );
  */
 uacpi_status uacpi_for_each_subtable(

@@ -284,7 +284,7 @@ struct uacpi_resource_spec {
 
     /*
      * Calculate the amount of extra bytes that must be allocated for a specific
-     * native resource given the AML counterpart. This being NULL means no extra
+     * native resource given the AML counterpart. This being nullptr means no extra
      * bytes are needed, aka native resources is always the same size.
      */
     uacpi_size (*extra_size_for_native)(
@@ -293,7 +293,7 @@ struct uacpi_resource_spec {
 
     /*
      * Calculate the number of bytes needed to represent a native resource as
-     * AML. The 'aml_size' field is used if this is NULL.
+     * AML. The 'aml_size' field is used if this is nullptr.
      */
     uacpi_size (*size_for_aml)(
         const struct uacpi_resource_spec*, uacpi_resource*

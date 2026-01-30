@@ -2,7 +2,7 @@
 #pragma once
 
 /*
- * Lock-less NULL terminated single linked list
+ * Lock-less nullptr terminated single linked list
  *
  * Cases where locking is not needed:
  * If there are multiple producers and multiple consumers, llist_add can be
@@ -59,7 +59,7 @@ struct llist_node {
 	struct llist_node *next;
 };
 
-#define LLIST_HEAD_INIT(name)	{ NULL }
+#define LLIST_HEAD_INIT(name)	{ nullptr }
 #define LLIST_HEAD(name)	struct llist_head name = LLIST_HEAD_INIT(name)
 
 /**
@@ -68,7 +68,7 @@ struct llist_node {
  */
 static inline void init_llist_head(struct llist_head *list)
 {
-	list->first = NULL;
+	list->first = nullptr;
 }
 
 /**
@@ -88,7 +88,7 @@ static inline void init_llist_node(struct llist_node *node)
  * llist_on_list - test if a lock-list list node is on a list
  * @node:	the node to test
  *
- * When a node is on a list the ->next pointer will be NULL or
+ * When a node is on a list the ->next pointer will be nullptr or
  * some other node.  It can never point to itself.  We use that
  * in init_llist_node() to record that a node is not on any list,
  * and here to test whether it is on any list.
@@ -108,16 +108,16 @@ static inline bool llist_on_list(const struct llist_node *node)
 	container_of(ptr, type, member)
 
 /**
- * member_address_is_nonnull - check whether the member address is not NULL
+ * member_address_is_nonnull - check whether the member address is not nullptr
  * @ptr:	the object pointer (struct type * that contains the llist_node)
  * @member:	the name of the llist_node within the struct.
  *
  * This macro is conceptually the same as
- *	&ptr->member != NULL
+ *	&ptr->member != nullptr
  * but it works around the fact that compilers can decide that taking a member
- * address is never a NULL pointer.
+ * address is never a nullptr pointer.
  *
- * Real objects that start at a high address and have a member at NULL are
+ * Real objects that start at a high address and have a member at nullptr are
  * unlikely to exist, but such pointers may be returned e.g. by the
  * container_of() macro.
  */
@@ -213,7 +213,7 @@ static inline bool llist_on_list(const struct llist_node *node)
  */
 static inline bool llist_empty(const struct llist_head *head)
 {
-	return READ_ONCE(head->first) == NULL;
+	return READ_ONCE(head->first) == nullptr;
 }
 
 static inline struct llist_node *llist_next(struct llist_node *node)
@@ -248,7 +248,7 @@ static inline bool __llist_add_batch(struct llist_node *new_first,
 {
 	new_last->next = head->first;
 	head->first = new_first;
-	return new_last->next == NULL;
+	return new_last->next == nullptr;
 }
 
 /**
@@ -272,20 +272,20 @@ static inline bool __llist_add(struct llist_node *new, struct llist_head *head)
  * llist_del_all - delete all entries from lock-less list
  * @head:	the head of lock-less list to delete all entries
  *
- * If list is empty, return NULL, otherwise, delete all entries and
+ * If list is empty, return nullptr, otherwise, delete all entries and
  * return the pointer to the first entry.  The order of entries
  * deleted is from the newest to the oldest added one.
  */
 static inline struct llist_node *llist_del_all(struct llist_head *head)
 {
-	return xchg(&head->first, NULL);
+	return xchg(&head->first, nullptr);
 }
 
 static inline struct llist_node *__llist_del_all(struct llist_head *head)
 {
 	struct llist_node *first = head->first;
 
-	head->first = NULL;
+	head->first = nullptr;
 	return first;
 }
 

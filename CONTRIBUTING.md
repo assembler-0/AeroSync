@@ -5,8 +5,9 @@ Firstly, thank you for considering contributing to AeroSync! As usual, to mainta
 
 As you already know, AeroSync is a modern, real hardware-capable kernel, written in mostly C and assembly (x86_64 nasm flavor). It is heavily inspired by the Linux, BSD and XNU (Mach) kernels.
 Therefore, I want this to be a bit more of a serious project (imo), not just a *just-work* implementation. This project is open to the community, but architecturally driven by the maintainers.
-The project's final goal is to be a General-Purpose (GP) kernel for x86_64-compatible CPUs (other architectures and kernel flavors are not planned whatsoever).
-Moreover, I have seen various projects that claim to be a *kernel* or an *os*, but architecturally, they are an **os-in-kernel**-which is the worst possible thing.
+The project's final goal is to be a General-Purpose (GP) kernel for x86_64-compatible CPUs (other architectures and kernel flavors are not planned whatsoever). 
+One more time, this is a kernel, not an os or trying to be an os, I have seen projects that claim to be a *kernel* or an *os*, but architecturally, 
+they are an **os-in-kernel**-which is the worst possible thing.
 
 ## Philosophy
 - Use **proven** designs from major kernels.

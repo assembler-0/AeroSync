@@ -129,7 +129,7 @@ static struct vmap_area *find_vmap_area(unsigned long addr) {
 #endif
 
   rcu_read_unlock();
-  return NULL;
+  return nullptr;
 }
 
 static struct vmap_area *alloc_vmap_area(unsigned long size,
@@ -152,7 +152,7 @@ static struct vmap_area *alloc_vmap_area(unsigned long size,
 
   va = kmem_cache_alloc_node(vmap_area_cachep, target_node);
   if (!va)
-    return NULL;
+    return nullptr;
 
 #ifdef CONFIG_VMALLOC_NUMA_PARTITION
   /* Use node-local address space partition */
@@ -197,11 +197,11 @@ static struct vmap_area *alloc_vmap_area(unsigned long size,
     }
 
     kmem_cache_free(vmap_area_cachep, va);
-    return NULL;
+    return nullptr;
 #else
     spinlock_unlock_irqrestore(&vn->lock, flags);
     kmem_cache_free(vmap_area_cachep, va);
-    return NULL;
+    return nullptr;
 #endif
   }
 
@@ -211,14 +211,14 @@ found:
   if (addr + real_size > node_end) {
     spinlock_unlock_irqrestore(&vn->lock, flags);
     kmem_cache_free(vmap_area_cachep, va);
-    return NULL;
+    return nullptr;
   }
 
   va->va_start = addr;
   va->va_end = addr + real_size;
   va->nid = target_node;
   va->flags = VMAP_AREA_USED;
-  va->vb = NULL;
+  va->vb = nullptr;
   INIT_LIST_HEAD(&va->list);
   INIT_LIST_HEAD(&va->purge_list);
 
@@ -231,7 +231,7 @@ found:
   if (ret) {
     spinlock_unlock_irqrestore(&vn->lock, flags);
     kmem_cache_free(vmap_area_cachep, va);
-    return NULL;
+    return nullptr;
   }
 
   list_add_tail_rcu(&va->list, &vn->list);
@@ -306,7 +306,7 @@ static struct vmap_area *find_vmap_area(unsigned long addr) {
     }
   }
   rcu_read_unlock();
-  return NULL;
+  return nullptr;
 }
 
 static struct vmap_area *alloc_vmap_area(unsigned long size,
@@ -314,7 +314,7 @@ static struct vmap_area *alloc_vmap_area(unsigned long size,
                                          unsigned long vstart,
                                          unsigned long vend, int nid) {
   struct vmap_area *va, *tmp;
-  struct rb_node **p, *parent = NULL;
+  struct rb_node **p, *parent = nullptr;
   unsigned long addr = 0;
   int target_node = (nid == NUMA_NO_NODE) ? this_node() : nid;
 
@@ -325,7 +325,7 @@ static struct vmap_area *alloc_vmap_area(unsigned long size,
 
   va = kmem_cache_alloc_node(vmap_area_cachep, target_node);
   if (!va)
-    return NULL;
+    return nullptr;
 
   RB_CLEAR_NODE(&va->rb_node);
   addr = ALIGN_UP(vstart, align);
@@ -362,14 +362,14 @@ static struct vmap_area *alloc_vmap_area(unsigned long size,
   }
 
   kmem_cache_free(vmap_area_cachep, va);
-  return NULL;
+  return nullptr;
 
 found:
   va->va_start = addr;
   va->va_end = addr + real_size;
   va->nid = target_node;
   va->flags = VMAP_AREA_USED;
-  va->vb = NULL;
+  va->vb = nullptr;
 
   struct vmap_node *target_vn = &vmap_nodes[target_node];
   irq_flags_t flags = spinlock_lock_irqsave(&target_vn->lock);
@@ -405,7 +405,7 @@ static void __vmap_area_remove_locked(struct vmap_node *vn, struct vmap_area *va
 
 static struct vmap_area *alloc_vmap_area_metadata(int nid) {
   struct vmap_pcp *pcp = this_cpu_ptr(vmap_pcp);
-  struct vmap_area *va = NULL;
+  struct vmap_area *va = nullptr;
 
   irq_flags_t flags = spinlock_lock_irqsave(&pcp->lock);
   if (!list_empty(&pcp->free_va)) {
@@ -577,13 +577,13 @@ static struct vmap_block *new_vmap_block(int nid) {
 
   vb = kmem_cache_alloc_node(vmap_block_cachep, target_node);
   if (!vb)
-    return NULL;
+    return nullptr;
 
   va = alloc_vmap_area(VMAP_BLOCK_SIZE_BYTES, VMAP_BLOCK_SIZE_BYTES,
                        VMALLOC_VIRT_BASE, VMALLOC_VIRT_END, target_node);
   if (!va) {
     kmem_cache_free(vmap_block_cachep, vb);
-    return NULL;
+    return nullptr;
   }
 
   va->flags |= VMAP_AREA_BLOCK;
@@ -632,7 +632,7 @@ static void *vb_alloc(size_t size, int nid) {
 
   vb = new_vmap_block(nid);
   if (!vb)
-    return NULL;
+    return nullptr;
   spinlock_lock(&vb->lock);
   bitmap_set(vb->free_map, 0, pages);
   vb->sizes[0] = (uint8_t)pages;
@@ -646,7 +646,7 @@ static void *vb_alloc(size_t size, int nid) {
  * ======================================================================= */
 
 void *vmalloc_node_prot(size_t size, int nid, uint64_t pgprot) {
-  struct vmap_area *va = NULL;
+  struct vmap_area *va = nullptr;
   unsigned long addr;
   size_t nr_pages;
   unsigned long cur_vaddr;
@@ -654,7 +654,7 @@ void *vmalloc_node_prot(size_t size, int nid, uint64_t pgprot) {
 
   size = PAGE_ALIGN_UP(size);
   if (!size)
-    return NULL;
+    return nullptr;
   nr_pages = size >> PAGE_SHIFT;
 
   if (nid == NUMA_NO_NODE)
@@ -672,7 +672,7 @@ void *vmalloc_node_prot(size_t size, int nid, uint64_t pgprot) {
       (size >= VMM_PAGE_SIZE_2M) ? VMM_PAGE_SIZE_2M : PAGE_SIZE;
   va = alloc_vmap_area(size, align, VMALLOC_VIRT_BASE, VMALLOC_VIRT_END, nid);
   if (!va)
-    return NULL;
+    return nullptr;
   addr = va->va_start;
 
 map:
@@ -693,7 +693,7 @@ map:
     struct folio *folio = alloc_pages_node(nid, GFP_KERNEL, 0);
     if (!folio) {
       vfree((void *)addr);
-      return NULL;
+      return nullptr;
     }
     vmm_map_page_no_flush(&init_mm, cur_vaddr, folio_to_phys(folio), pgprot);
     cur_vaddr += PAGE_SIZE;
@@ -810,7 +810,7 @@ void *vmalloc_node_stack(size_t size, int nid) {
   struct vmap_area *va = alloc_vmap_area(
       total_size, PAGE_SIZE, VMALLOC_VIRT_BASE, VMALLOC_VIRT_END, nid);
   if (!va)
-    return NULL;
+    return nullptr;
 
   /*
    * Map only the stack part, leaving the first page (guard page) unmapped.
@@ -826,7 +826,7 @@ void *vmalloc_node_stack(size_t size, int nid) {
     struct folio *folio = alloc_pages_node(nid, GFP_KERNEL, 0);
     if (!folio) {
       vfree((void *)va->va_start);
-      return NULL;
+      return nullptr;
     }
     vmm_map_page_no_flush(&init_mm, cur_vaddr, folio_to_phys(folio), pgprot);
     cur_vaddr += PAGE_SIZE;
@@ -924,7 +924,7 @@ void vmalloc_init(void) {
 
 void kvmap_purged_init(void) {
   struct task_struct *t =
-      kthread_create(kvmap_purged_thread, NULL, "kvmap_purged");
+      kthread_create(kvmap_purged_thread, nullptr, "kvmap_purged");
   if (t)
     kthread_run(t);
   printk(KERN_INFO VMM_CLASS "kvmap_purged started\n");
@@ -938,7 +938,7 @@ void *ioremap_prot(uint64_t phys_addr, size_t size, uint64_t pgprot) {
       alloc_vmap_area(page_aligned_size, PAGE_SIZE, VMALLOC_VIRT_BASE,
                       VMALLOC_VIRT_END, NUMA_NO_NODE);
   if (!va)
-    return NULL;
+    return nullptr;
   va->flags |= VMAP_AREA_STATIC;
 
   /* Ensure hardware mappings are always marked global and non-executable */
@@ -987,7 +987,7 @@ void *vmap(struct page **pages, unsigned int count, unsigned long flags,
   struct vmap_area *va = alloc_vmap_area(size, PAGE_SIZE, VMALLOC_VIRT_BASE,
                                          VMALLOC_VIRT_END, NUMA_NO_NODE);
   if (!va)
-    return NULL;
+    return nullptr;
   for (unsigned int i = 0; i < count; i++)
     vmm_map_page_no_flush(&init_mm, va->va_start + (i << PAGE_SHIFT),
                           page_to_phys(pages[i]), pgprot | PTE_GLOBAL);

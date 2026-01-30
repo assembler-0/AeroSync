@@ -42,7 +42,7 @@ int cmdline_get_flag(const char *key);
 
 /**
  * Query for a string value.
- * returns NULL if key not found or has no value.
+ * returns nullptr if key not found or has no value.
  */
 const char *cmdline_get_string(const char *key);
 

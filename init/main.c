@@ -18,6 +18,7 @@
  * GNU General Public License for more details.
  */
 
+#include <aerosync/ksymtab.h>
 #include <aerosync/classes.h>
 #include <aerosync/cmdline.h>
 #include <aerosync/fkx/fkx.h>
@@ -31,6 +32,8 @@
 #include <aerosync/timer.h>
 #include <aerosync/types.h>
 #include <aerosync/version.h>
+#include <aerosync/rcu.h>
+#include <aerosync/percpu.h>
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/entry.h>
 #include <arch/x86_64/features/features.h>
@@ -60,14 +63,22 @@
 #include <mm/zmm.h>
 #include <uacpi/uacpi.h>
 
-static struct task_struct bsp_task __aligned(16);
+static alignas(16) struct task_struct bsp_task;
 
 static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
   (void)unused;
 
   printk(KERN_INFO KERN_CLASS "finishing system initialization\n");
-
   fkx_init_module_class(FKX_GENERIC_CLASS);
+
+  rcu_spawn_kthreads();
+
+#ifdef CONFIG_RCU_PERCPU_TEST
+  if (cmdline_get_flag("verbose")) {
+    rcu_test();
+    percpu_test();
+  }
+#endif
 
   zmm_init();
   shm_init();
@@ -142,6 +153,11 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
          AEROSYNC_COMPILER_VERSION);
   printk(KERN_CLASS "copyright (C) 2025-2026 assembler-0\n");
 
+  if (get_executable_file_request()->response && 
+      get_executable_file_request()->response->executable_file) {
+      ksymtab_init(get_executable_file_request()->response->executable_file->address);
+  }
+
   if (get_bootloader_info_request()->response &&
       get_bootloader_performance_request()->response) {
     printk(KERN_CLASS
@@ -200,19 +216,22 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   cpu_features_init();
   pmm_init(get_memmap_request()->response, get_hhdm_request()->response->offset,
            get_rsdp_request()->response ? get_rsdp_request()->response->address
-                                        : NULL);
+                                        : nullptr);
   lru_init();
   vmm_init();
   slab_init();
   maple_tree_init();
   vma_cache_init();
   radix_tree_init();
-  rcu_init();
 
   setup_per_cpu_areas();
+  rcu_init();
+
   smp_prepare_boot_cpu();
   pmm_init_cpu();
   vmalloc_init();
+
+  ksymtab_finalize(); // Build optimized symbol index
 
   gdt_init();
   idt_install();
@@ -283,7 +302,6 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     smp_init();
   crc32_init();
   vfs_init();
-
   softirq_init();
 
 #ifdef ASYNC_PRINTK
@@ -292,7 +310,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   // Start kernel_init thread
   struct task_struct *init_task =
-      kthread_create(kernel_init, NULL, "kernel_init");
+      kthread_create(kernel_init, nullptr, "kernel_init");
   if (!init_task)
     panic(KERN_CLASS "Failed to create kernel_init thread");
   kthread_run(init_task);

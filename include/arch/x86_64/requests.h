@@ -5,6 +5,7 @@
 volatile uint64_t *get_limine_base_revision();
 volatile struct limine_bootinfo_request *get_bootinfo_request(void);
 volatile struct limine_executable_cmdline_request *get_cmdline_request(void);
+volatile struct limine_executable_file_request *get_executable_file_request(void);
 volatile struct limine_firmware_type_request *get_fw_request(void);
 volatile struct limine_date_at_boot_request *get_date_at_boot_request(void);
 volatile struct limine_module_request *get_module_request(void);

@@ -13,16 +13,16 @@
 #include <aerosync/sysintf/madt.h>
 #include <lib/printk.h>
 
-static struct acpi_fadt *s_fadt = NULL;
+static struct acpi_fadt *s_fadt = nullptr;
 static uacpi_u32 s_waet_flags = 0;
 static bool s_waet_present = false;
 
-static struct acpi_mcfg_allocation *s_mcfg_entries = NULL;
+static struct acpi_mcfg_allocation *s_mcfg_entries = nullptr;
 static size_t s_mcfg_count = 0;
 
-static struct acpi_spcr *s_spcr = NULL;
-static struct acpi_bgrt *s_bgrt = NULL;
-static struct acpi_hpet *s_hpet = NULL;
+static struct acpi_spcr *s_spcr = nullptr;
+static struct acpi_bgrt *s_bgrt = nullptr;
+static struct acpi_hpet *s_hpet = nullptr;
 
 /* --- Private Helpers --- */
 

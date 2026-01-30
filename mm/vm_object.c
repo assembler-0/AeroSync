@@ -32,7 +32,7 @@
 
 struct vm_object *vm_object_alloc(vm_object_type_t type) {
   struct vm_object *obj = kmalloc(sizeof(struct vm_object));
-  if (!obj) return NULL;
+  if (!obj) return nullptr;
 
   memset(obj, 0, sizeof(struct vm_object));
   obj->type = type;
@@ -80,7 +80,7 @@ void vm_object_free(struct vm_object *obj) {
         zmm_free_handle((zmm_handle_t) ((uintptr_t) folio & ~0x1));
 #endif
       } else {
-        folio->mapping = NULL;
+        folio->mapping = nullptr;
         folio_put(folio);
       }
     }
@@ -128,7 +128,7 @@ int vm_object_add_folio(struct vm_object *obj, uint64_t pgoff, struct folio *fol
 
 struct folio *vm_object_find_folio(struct vm_object *obj, uint64_t pgoff) {
   void *entry = xa_load(&obj->page_tree, pgoff);
-  if (xa_is_err(entry) || !entry) return NULL;
+  if (xa_is_err(entry) || !entry) return nullptr;
   return (struct folio *) entry;
 }
 
@@ -136,10 +136,10 @@ void vm_object_remove_folio(struct vm_object *obj, uint64_t pgoff) {
   struct folio *folio = xa_erase(&obj->page_tree, pgoff);
   if (folio && !xa_is_err(folio)) {
     /* 1. Unmap from all virtual address spaces using reverse mapping */
-    try_to_unmap_folio(folio, NULL);
+    try_to_unmap_folio(folio, nullptr);
 
     /* 2. Dissociate from this object */
-    folio->mapping = NULL;
+    folio->mapping = nullptr;
 
     /* 3. Release the reference held by the object's page tree */
     folio_put(folio);
@@ -152,7 +152,7 @@ int vm_object_add_page(struct vm_object *obj, uint64_t pgoff, struct page *page)
 
 struct page *vm_object_find_page(struct vm_object *obj, uint64_t pgoff) {
   struct folio *f = vm_object_find_folio(obj, pgoff);
-  return f ? &f->page : NULL;
+  return f ? &f->page : nullptr;
 }
 
 void vm_object_remove_page(struct vm_object *obj, uint64_t pgoff) {
@@ -364,7 +364,7 @@ allocate_new_with_shadow:
   ; /* Label requires statement */
 
   /* 3. Prepare new folio (ALLOCATION OUTSIDE LOCK) */
-  folio = NULL;
+  folio = nullptr;
   int nid = vma->preferred_node;
   if (nid == -1 && obj->preferred_node != -1) nid = obj->preferred_node;
   if (nid == -1 && vma->vm_mm) nid = vma->vm_mm->preferred_node;
@@ -534,7 +534,7 @@ static const struct vm_object_operations file_obj_ops = {
 
 struct vm_object *vm_object_file_create(struct file *file, size_t size) {
   struct vm_object *obj = vm_object_alloc(VM_OBJECT_FILE);
-  if (!obj) return NULL;
+  if (!obj) return nullptr;
 
   obj->file = file;
   obj->size = size;
@@ -623,7 +623,7 @@ void vm_object_collapse(struct vm_object *obj) {
         xa_erase(&backing->page_tree, backing_idx);
         if (!((uintptr_t) folio & 0x3)) {
           /* Real folio, not shadow/ZMM */
-          folio->mapping = NULL;
+          folio->mapping = nullptr;
           folio_put(folio);
           atomic_long_dec(&backing->nr_pages);
         }
@@ -634,7 +634,7 @@ void vm_object_collapse(struct vm_object *obj) {
       if (obj_pgoff >= (obj->size >> PAGE_SHIFT)) {
         xa_erase(&backing->page_tree, backing_idx);
         if (!((uintptr_t) folio & 0x3)) {
-          folio->mapping = NULL;
+          folio->mapping = nullptr;
           folio_put(folio);
           atomic_long_dec(&backing->nr_pages);
         }
@@ -662,7 +662,7 @@ void vm_object_collapse(struct vm_object *obj) {
       } else {
         xa_erase(&backing->page_tree, backing_idx);
         if (!((uintptr_t) folio & 0x3)) {
-          folio->mapping = NULL;
+          folio->mapping = nullptr;
           folio_put(folio);
           atomic_long_dec(&backing->nr_pages);
         }
@@ -754,7 +754,7 @@ int vm_object_try_collapse_async(struct vm_object *obj) {
 
 
 static int shadow_obj_fault(struct vm_object *obj, struct vm_area_struct *vma, struct vm_fault *vmf) {
-  struct folio *new_folio = NULL;
+  struct folio *new_folio = nullptr;
   struct folio *folio;
   int ret;
 
@@ -904,7 +904,7 @@ static const struct vm_object_operations shadow_obj_ops = {
 
 struct vm_object *vm_object_shadow_create(struct vm_object *backing, uint64_t offset, size_t size) {
   struct vm_object *obj = vm_object_alloc(VM_OBJECT_ANON);
-  if (!obj) return NULL;
+  if (!obj) return nullptr;
 
   obj->backing_object = backing;
   if (backing) {
@@ -932,7 +932,7 @@ struct vm_object *vm_object_shadow_create(struct vm_object *backing, uint64_t of
 
 struct vm_object *vm_object_anon_create(size_t size) {
   struct vm_object *obj = vm_object_alloc(VM_OBJECT_ANON);
-  if (!obj) return NULL;
+  if (!obj) return nullptr;
 
   obj->size = size;
   obj->ops = &anon_obj_ops;
@@ -941,7 +941,7 @@ struct vm_object *vm_object_anon_create(size_t size) {
 
 struct vm_object *vm_object_device_create(uint64_t phys_addr, size_t size) {
   struct vm_object *obj = vm_object_alloc(VM_OBJECT_DEVICE);
-  if (!obj) return NULL;
+  if (!obj) return nullptr;
 
   obj->phys_addr = phys_addr;
   obj->size = size;

@@ -94,7 +94,7 @@ static uint64_t __calc_delta(uint64_t delta_exec_ns, unsigned long weight) {
  */
 static void __enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se) {
   struct rb_node **link = &cfs_rq->tasks_timeline.rb_node;
-  struct rb_node *parent = NULL;
+  struct rb_node *parent = nullptr;
   struct sched_entity *entry;
 
   while (*link) {
@@ -243,13 +243,13 @@ static struct task_struct *pick_next_task_fair(struct rq *rq) {
   struct rb_node *left = cfs_rq->rb_leftmost;
 
   if (!left)
-    return NULL;
+    return nullptr;
 
   struct sched_entity *se = rb_entry(left, struct sched_entity, run_node);
   struct task_struct *p = container_of(se, struct task_struct, se);
 
   if (!p)
-    return NULL;
+    return nullptr;
 
   /* Remove from tree to mark as running */
   __dequeue_entity(cfs_rq, se);

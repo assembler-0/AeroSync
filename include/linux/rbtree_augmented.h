@@ -63,7 +63,7 @@ rb_add_augmented_cached(struct rb_node *node, struct rb_root_cached *tree,
 			const struct rb_augment_callbacks *augment)
 {
 	struct rb_node **link = &tree->rb_root.rb_node;
-	struct rb_node *parent = NULL;
+	struct rb_node *parent = nullptr;
 	bool leftmost = true;
 
 	while (*link) {
@@ -77,10 +77,10 @@ rb_add_augmented_cached(struct rb_node *node, struct rb_root_cached *tree,
 	}
 
 	rb_link_node(node, parent, link);
-	augment->propagate(parent, NULL); /* suboptimal */
+	augment->propagate(parent, nullptr); /* suboptimal */
 	rb_insert_augmented_cached(node, tree, leftmost, augment);
 
-	return leftmost ? node : NULL;
+	return leftmost ? node : nullptr;
 }
 
 /*
@@ -250,16 +250,16 @@ __rb_erase_augmented(struct rb_node *node, struct rb_root *root,
 		__rb_change_child(node, child, parent, root);
 		if (child) {
 			child->__rb_parent_color = pc;
-			rebalance = NULL;
+			rebalance = nullptr;
 		} else
-			rebalance = __rb_is_black(pc) ? parent : NULL;
+			rebalance = __rb_is_black(pc) ? parent : nullptr;
 		tmp = parent;
 	} else if (!child) {
 		/* Still case 1, but this time the child is node->rb_left */
 		tmp->__rb_parent_color = pc = node->__rb_parent_color;
 		parent = __rb_parent(pc);
 		__rb_change_child(node, tmp, parent, root);
-		rebalance = NULL;
+		rebalance = nullptr;
 		tmp = parent;
 	} else {
 		struct rb_node *successor = child, *child2;
@@ -318,15 +318,15 @@ __rb_erase_augmented(struct rb_node *node, struct rb_root *root,
 
 		if (child2) {
 			rb_set_parent_color(child2, parent, RB_BLACK);
-			rebalance = NULL;
+			rebalance = nullptr;
 		} else {
-			rebalance = rb_is_black(successor) ? parent : NULL;
+			rebalance = rb_is_black(successor) ? parent : nullptr;
 		}
 		successor->__rb_parent_color = pc;
 		tmp = successor;
 	}
 
-	augment->propagate(tmp, NULL);
+	augment->propagate(tmp, nullptr);
 	return rebalance;
 }
 

@@ -27,14 +27,14 @@ bool is_word_boundary(char c) {
 }
 
 bool find(const char *buff, const char *pattern) {
-  if (buff == NULL || pattern == NULL || *pattern == '\0') {
+  if (buff == nullptr || pattern == nullptr || *pattern == '\0') {
     return false;
   }
 
   const size_t pattern_len = strlen(pattern);
   const char *ptr = buff;
 
-  while ((ptr = strstr(ptr, pattern)) != NULL) {
+  while ((ptr = strstr(ptr, pattern)) != nullptr) {
     bool at_start = (ptr == buff) || is_word_boundary(*(ptr - 1));
     bool at_end = is_word_boundary(*(ptr + pattern_len));
 
@@ -69,7 +69,7 @@ char *strstr(const char *haystack, const char *needle) {
     }
   }
 
-  return NULL;
+  return nullptr;
 }
 
 int strncmp(const char *a, const char *b, size_t n) {
@@ -118,7 +118,7 @@ int strnlen(const char *str, const size_t max) {
 }
 
 char *strchr(char *str, int c) {
-  if (!str) return NULL;
+  if (!str) return nullptr;
   return memchr(str, c, strlen(str) + 1);
 }
 
@@ -273,7 +273,7 @@ char *strpbrk(const char *cs, const char *ct) {
         return (char *)sc1;
     }
   }
-  return NULL;
+  return nullptr;
 }
 
 /**
@@ -290,8 +290,8 @@ char *strpbrk(const char *cs, const char *ct) {
 char *strsep(char **s, const char *ct) {
   char *sbegin = *s, *end;
 
-  if (sbegin == NULL)
-    return NULL;
+  if (sbegin == nullptr)
+    return nullptr;
 
   end = strpbrk(sbegin, ct);
   if (end)
@@ -302,7 +302,7 @@ char *strsep(char **s, const char *ct) {
 }
 
 char *strrchr(const char *s, int c) {
-  const char *last_occurrence = NULL;
+  const char *last_occurrence = nullptr;
   do {
     if ((unsigned char)*s == (unsigned char)c) {
       last_occurrence = s;
@@ -447,7 +447,7 @@ uint64_t strtoul(const char *nptr, char **endptr, int base) {
 }
 
 void *memchr(const void *s, int c, size_t n) {
-    if (n == 0) return NULL;
+    if (n == 0) return nullptr;
     void *res;
     __asm__ volatile("cld\n\t"
                      "repne scasb\n\t"

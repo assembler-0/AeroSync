@@ -104,7 +104,7 @@ int vmm_map_pages_list(struct mm_struct *mm, uint64_t virt, const uint64_t *phys
  *
  * @param mm        The address space to unmap from
  * @param virt      Virtual address to unmap
- * @return Folio pointer on success, NULL if not mapped
+ * @return Folio pointer on success, nullptr if not mapped
  */
 struct folio;
 struct folio *vmm_unmap_folio(struct mm_struct *mm, uint64_t virt);

@@ -36,11 +36,11 @@ void signal_init_task(struct task_struct *p) {
   p->blocked = 0;
 
   if (p->flags & PF_KTHREAD) {
-    p->signal = NULL;
+    p->signal = nullptr;
     return;
   }
 
-  if (p->signal == NULL) {
+  if (p->signal == nullptr) {
     p->signal = kmalloc_node(sizeof(struct signal_struct), p->node_id);
     if (!p->signal) {
       panic("Failed to allocate signal_struct");
@@ -230,7 +230,7 @@ void sys_kill(struct syscall_regs *regs) {
   }
 
   /* Find the task with the given PID */
-  struct task_struct *p = NULL;
+  struct task_struct *p = nullptr;
   irq_flags_t flags = spinlock_lock_irqsave(&tasklist_lock);
   list_for_each_entry(p, &task_list, tasks) {
     if (p->pid == pid) {
@@ -251,7 +251,7 @@ void sys_tkill(struct syscall_regs *regs) {
   pid_t tid = (pid_t) regs->rdi;
   int sig = (int) regs->rsi;
 
-  struct task_struct *p = NULL;
+  struct task_struct *p = nullptr;
   irq_flags_t flags = spinlock_lock_irqsave(&tasklist_lock);
   list_for_each_entry(p, &task_list, tasks) {
     if (p->pid == tid) {
@@ -273,7 +273,7 @@ void sys_tgkill(struct syscall_regs *regs) {
   pid_t tid = (pid_t) regs->rsi;
   int sig = (int) regs->rdx;
 
-  struct task_struct *p = NULL;
+  struct task_struct *p = nullptr;
   irq_flags_t flags = spinlock_lock_irqsave(&tasklist_lock);
   list_for_each_entry(p, &task_list, tasks) {
     if (p->pid == tid && p->tgid == tgid) {

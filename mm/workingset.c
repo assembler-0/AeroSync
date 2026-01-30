@@ -46,12 +46,12 @@ struct workingset_stats workingset_stats;
  */
 void *workingset_eviction(struct folio *folio, struct vm_object *obj) {
     if (!folio || !obj)
-        return NULL;
+        return nullptr;
 
     int nid = folio->node;
     struct pglist_data *pgdat = node_data[nid];
     if (!pgdat)
-        return NULL;
+        return nullptr;
 
 #ifdef CONFIG_MM_MGLRU
     /* For MGLRU: use the current max sequence as eviction timestamp */
@@ -176,7 +176,7 @@ void workingset_init(void) {
 void *workingset_eviction(struct folio *folio, struct vm_object *obj) {
     (void)folio;
     (void)obj;
-    return NULL;
+    return nullptr;
 }
 
 void workingset_refault(struct folio *folio, void *shadow) {

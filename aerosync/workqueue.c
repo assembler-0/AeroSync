@@ -45,7 +45,7 @@ static int worker_thread(void *data) {
 
 struct workqueue_struct *create_workqueue(const char *name) {
   struct workqueue_struct *wq = kzalloc(sizeof(struct workqueue_struct));
-  if (!wq) return NULL;
+  if (!wq) return nullptr;
 
   wq->name = name;
   INIT_LIST_HEAD(&wq->worklist);
@@ -55,7 +55,7 @@ struct workqueue_struct *create_workqueue(const char *name) {
   wq->worker = kthread_create(worker_thread, wq, "wq/%s", name);
   if (!wq->worker) {
     kfree(wq);
-    return NULL;
+    return nullptr;
   }
 
   wq->worker->flags |= PF_WQ_WORKER;

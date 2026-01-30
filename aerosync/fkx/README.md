@@ -40,7 +40,7 @@ FKX_MODULE_DEFINE(
     0,                 // flags
     FKX_DRIVER_CLASS,  // Module classes
     my_init,           // module entry (int (*)(void))
-    NULL               // dependencies (null-terminated string array)
+    nullptr               // dependencies (null-terminated string array)
 );
 ```
 

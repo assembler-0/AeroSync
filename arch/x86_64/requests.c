@@ -105,6 +105,13 @@ struct limine_executable_cmdline_request cmdline_request = {
   .id = LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID, .revision = 0
 };
 
+__attribute__((
+  used,
+  section(".limine_requests"))) static volatile
+struct limine_executable_file_request executable_file_request = {
+  .id = LIMINE_EXECUTABLE_FILE_REQUEST_ID, .revision = 0
+};
+
 __attribute__((used, section(".limine_requests"))) static volatile
 struct limine_firmware_type_request fw_request = {
   .id = LIMINE_FIRMWARE_TYPE_REQUEST_ID, .revision = 0
@@ -135,7 +142,7 @@ volatile struct limine_framebuffer_request *get_framebuffer_request(void) {
 #ifdef SIMPLE_FB_SUPPORT
   return &framebuffer_request;
 #else
-  return NULL;
+  return nullptr;
 #endif
 }
 EXPORT_SYMBOL(get_framebuffer_request);
@@ -174,6 +181,11 @@ volatile struct limine_executable_cmdline_request *get_cmdline_request(void) {
   return &cmdline_request;
 }
 EXPORT_SYMBOL(get_cmdline_request);
+
+volatile struct limine_executable_file_request *get_executable_file_request(void) {
+  return &executable_file_request;
+}
+EXPORT_SYMBOL(get_executable_file_request);
 
 volatile struct limine_firmware_type_request *get_fw_request(void) {
   return &fw_request;

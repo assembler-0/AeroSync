@@ -36,9 +36,9 @@ static struct class ic_class = {
 };
 
 static bool ic_class_registered = false;
-static interrupt_controller_interface_t *current_ops = NULL;
+static interrupt_controller_interface_t *current_ops = nullptr;
 static uint32_t timer_frequency_hz = IC_DEFAULT_TICK;
-static uint8_t (*get_id)(void) = NULL;
+static uint8_t (*get_id)(void) = nullptr;
 
 struct ic_device {
   struct device dev;
@@ -107,10 +107,10 @@ static int ic_find_best(struct device *dev, void *data) {
 }
 
 interrupt_controller_t ic_install(void) {
-  const interrupt_controller_interface_t *selected = NULL;
+  const interrupt_controller_interface_t *selected = nullptr;
 
   // 1. Find best controller using class iteration
-  class_for_each_dev(&ic_class, NULL, &selected, ic_find_best);
+  class_for_each_dev(&ic_class, nullptr, &selected, ic_find_best);
 
   if (!selected) {
     panic(
@@ -172,7 +172,7 @@ void ic_shutdown_controller(void) {
     current_ops->shutdown();
   }
 
-  current_ops = NULL;
+  current_ops = nullptr;
 }
 EXPORT_SYMBOL(ic_shutdown_controller);
 
@@ -267,7 +267,7 @@ static int ic_find_get_id(struct device *dev, void *data) {
 }
 
 void ic_register_lapic_get_id_early() {
-  class_for_each_dev(&ic_class, NULL, NULL, ic_find_get_id);
+  class_for_each_dev(&ic_class, nullptr, nullptr, ic_find_get_id);
 
   if (!get_id) {
     get_id = ic_get_id_non_smp;

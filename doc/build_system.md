@@ -31,7 +31,7 @@ To build AeroSync, you will need the following tools:
 
 ## Build Process
 
-### Basic Build Steps
+### Traditional build
 
 1. **Configure the build:**
    ```bash
@@ -54,6 +54,19 @@ To build AeroSync, you will need the following tools:
 3. **Build the kernel:**
    ```bash
    cmake --build build --parallel $(nproc)
+   ```
+### Preset build (recommended)
+
+- `amd64` - release kernel (fastest, less overhead)
+- `amd64-hardened` - release kernel with hardened security features
+
+1. **Configure the build:**
+   ```bash
+   cmake --preset <preset>
+   ```
+2. **Build the preset:**
+   ```bash
+   cmake --build --preset <preset>
    ```
 
 ### Build Artifacts

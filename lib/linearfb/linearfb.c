@@ -31,7 +31,7 @@ extern const uint8_t embedded_console_font[];
 extern const uint32_t embedded_console_font_size;
 
 static int fb_initialized = 0;
-static struct limine_framebuffer *fb = NULL;
+static struct limine_framebuffer *fb = nullptr;
 static linearfb_font_t fb_font = {0};
 static uint32_t font_glyph_count = 0;
 static uint32_t font_glyph_w = 0, font_glyph_h = 0;
@@ -46,9 +46,9 @@ static uint32_t console_fg = 0xFFFFFFFF;
 
 #define CONSOLE_BUF_MAX (128 * 1024)
 static char console_buffer[CONSOLE_BUF_MAX];
-static void *shadow_fb = NULL;
+static void *shadow_fb = nullptr;
 
-static volatile struct limine_framebuffer_request *framebuffer_request = NULL;
+static volatile struct limine_framebuffer_request *framebuffer_request = nullptr;
 
 static int linearfb_init(volatile struct limine_framebuffer_request *fb_req) {
   if (!fb_req || !fb_req->response || fb_req->response->framebuffer_count == 0)
@@ -112,9 +112,9 @@ void linearfb_cleanup(void) {
   fb_initialized = 0;
   if (shadow_fb) {
     vfree(shadow_fb);
-    shadow_fb = NULL;
+    shadow_fb = nullptr;
   }
-  fb = NULL;
+  fb = nullptr;
 }
 
 int linearfb_probe(void) {
@@ -849,5 +849,5 @@ FKX_MODULE_DEFINE(
   0,
   FKX_PRINTK_CLASS,
   linearfb_mod_init,
-  NULL
+  nullptr
 );

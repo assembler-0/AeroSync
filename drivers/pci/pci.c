@@ -28,7 +28,7 @@ static const struct pci_device_id *pci_match_one_device(const struct pci_device_
       (id->subdevice == PCI_ANY_ID || id->subdevice == dev->subsystem_device) &&
       !((id->class ^ dev->class) & id->class_mask))
     return id;
-  return NULL;
+  return nullptr;
 }
 
 static const struct pci_device_id *pci_match_device(struct pci_driver *drv, struct pci_dev *dev) {
@@ -40,7 +40,7 @@ static const struct pci_device_id *pci_match_device(struct pci_driver *drv, stru
       ids++;
     }
   }
-  return NULL;
+  return nullptr;
 }
 
 static int pci_bus_match(struct pci_dev *dev, struct pci_driver *drv) {
@@ -75,7 +75,7 @@ static void subsys_unregister_driver(struct pci_driver *driver) {
     if (dev->driver == driver) {
       if (driver->remove)
         driver->remove(dev);
-      dev->driver = NULL;
+      dev->driver = nullptr;
     }
   }
   list_del(&driver->node);
@@ -228,5 +228,5 @@ FKX_MODULE_DEFINE(
   0,
   FKX_DRIVER_CLASS,
   pci_mod_init,
-  NULL
+  nullptr
 );

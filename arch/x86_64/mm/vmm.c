@@ -199,7 +199,7 @@ static uint64_t *get_next_level(struct mm_struct *mm, uint64_t *current_table, u
       if (likely((entry & PTE_PRESENT) && (entry & PTE_HUGE))) {
         if (vmm_split_huge_page(mm, current_table, index, level, virt, nid) < 0) {
           vmm_unlock_table(current_table, flags);
-          return NULL;
+          return nullptr;
         }
       }
       entry = current_table[index];
@@ -209,7 +209,7 @@ static uint64_t *get_next_level(struct mm_struct *mm, uint64_t *current_table, u
   }
 
   if (!alloc) {
-    return NULL;
+    return nullptr;
   }
 
   vmm_lock_table(current_table, &flags);
@@ -223,7 +223,7 @@ static uint64_t *get_next_level(struct mm_struct *mm, uint64_t *current_table, u
   uint64_t new_table_phys = vmm_alloc_table_node(nid);
   if (!new_table_phys) {
     vmm_unlock_table(current_table, flags);
-    return NULL;
+    return nullptr;
   }
 
   struct page *pg = phys_to_page(new_table_phys);
@@ -251,12 +251,12 @@ static uint64_t *vmm_get_pte_ptr(struct mm_struct *mm, uint64_t virt, bool alloc
         break;
       case 2: index = PD_INDEX(virt);
         break;
-      default: return NULL;
+      default: return nullptr;
     }
 
     int next_out_level = 0;
     uint64_t *next_table = get_next_level(mm, current_table, index, alloc, level, virt, nid, &next_out_level);
-    if (!next_table) return NULL;
+    if (!next_table) return nullptr;
 
     if (!alloc && next_out_level != 0) {
       if (out_level) *out_level = next_out_level;
@@ -433,7 +433,7 @@ void vmm_free_page_tables(struct mm_struct *mm) {
 
 int vmm_is_dirty(struct mm_struct *mm, uint64_t virt) {
   if (!mm) mm = &init_mm;
-  uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, mm->preferred_node, NULL);
+  uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, mm->preferred_node, nullptr);
   if (!pte_p) return 0;
   /*
    * OPTIMIZATION: Lockless read of dirty bit.
@@ -458,7 +458,7 @@ void vmm_clear_dirty(struct mm_struct *mm, uint64_t virt) {
 
 int vmm_is_accessed(struct mm_struct *mm, uint64_t virt) {
   if (!mm) mm = &init_mm;
-  uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, mm->preferred_node, NULL);
+  uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, mm->preferred_node, nullptr);
   if (!pte_p) return 0;
   /*
    * OPTIMIZATION: Lockless read of accessed bit.
@@ -488,7 +488,7 @@ void vmm_clear_accessed(struct mm_struct *mm, uint64_t virt) {
  */
 void vmm_clear_accessed_no_flush(struct mm_struct *mm, uint64_t virt) {
   if (!mm) mm = &init_mm;
-  uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, mm->preferred_node, NULL);
+  uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, mm->preferred_node, nullptr);
   if (!pte_p) return;
   /*
    * OPTIMIZATION: Use atomic AND to clear bit without lock.
@@ -547,7 +547,7 @@ static int vmm_map_huge_page_locked(struct mm_struct *mm, uint64_t virt, uint64_
         break;
       default: return -EINVAL;
     }
-    uint64_t *next_table = get_next_level(mm, current_table, index, true, level, virt, nid, NULL);
+    uint64_t *next_table = get_next_level(mm, current_table, index, true, level, virt, nid, nullptr);
     if (!next_table) return -ENOMEM;
     current_table = next_table;
   }
@@ -962,9 +962,9 @@ uint64_t vmm_unmap_page_no_flush(struct mm_struct *mm, uint64_t virt) {
 
 struct folio *vmm_unmap_folio_no_flush(struct mm_struct *mm, uint64_t virt) {
   uint64_t phys = vmm_unmap_page_no_flush(mm, virt);
-  if (!phys) return NULL;
+  if (!phys) return nullptr;
   struct page *page = phys_to_page(phys);
-  if (!page) return NULL;
+  if (!page) return nullptr;
   return page_folio(page);
 }
 
@@ -1079,7 +1079,7 @@ int vmm_copy_page_tables(struct mm_struct *src_mm, const struct mm_struct *dst_m
 
 int vmm_handle_cow(struct mm_struct *mm, uint64_t virt) {
   if (!mm) mm = &init_mm;
-  uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, mm->preferred_node, NULL);
+  uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, mm->preferred_node, nullptr);
   if (!pte_p) return -ENOENT;
   struct page *table_page = phys_to_page(pmm_virt_to_phys((void *) ((uint64_t) pte_p & PAGE_MASK)));
   irq_flags_t flags = spinlock_lock_irqsave(&table_page->ptl);
@@ -1307,7 +1307,7 @@ void vmm_test(void) {
 
 int vmm_is_numa_hint(struct mm_struct *mm, uint64_t virt) {
   if (!mm) mm = &init_mm;
-  uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, -1, NULL);
+  uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, -1, nullptr);
   if (!pte_p) return 0;
   
   uint64_t entry = *pte_p;
@@ -1317,15 +1317,15 @@ int vmm_is_numa_hint(struct mm_struct *mm, uint64_t virt) {
 
 struct folio *vmm_get_folio(struct mm_struct *mm, uint64_t virt) {
   if (!mm) mm = &init_mm;
-  uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, -1, NULL);
-  if (!pte_p) return NULL;
+  uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, -1, nullptr);
+  if (!pte_p) return nullptr;
   
   uint64_t entry = *pte_p;
-  if (!(entry & (PTE_PRESENT | PTE_NUMA_HINT))) return NULL;
+  if (!(entry & (PTE_PRESENT | PTE_NUMA_HINT))) return nullptr;
   
   uint64_t phys = PTE_GET_ADDR(entry);
   struct page *page = phys_to_page(phys);
-  if (!page) return NULL;
+  if (!page) return nullptr;
   
   struct folio *folio = page_folio(page);
   folio_get(folio);
@@ -1334,7 +1334,7 @@ struct folio *vmm_get_folio(struct mm_struct *mm, uint64_t virt) {
 
 void vmm_set_numa_hint(struct mm_struct *mm, uint64_t virt) {
   if (!mm) mm = &init_mm;
-  uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, -1, NULL);
+  uint64_t *pte_p = vmm_get_pte_ptr(mm, virt, false, -1, nullptr);
   if (!pte_p) return;
   
   struct page *table_page = phys_to_page(pmm_virt_to_phys((void *)((uint64_t)pte_p & PAGE_MASK)));

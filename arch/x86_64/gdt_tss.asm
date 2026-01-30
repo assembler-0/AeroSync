@@ -21,7 +21,7 @@ gdt_flush:
     mov ax, 0x10        ; Kernel data selector
     mov ds, ax
     mov es, ax
-    mov ss, ax          ; CRITICAL: SS must be a valid data selector, NOT NULL!
+    mov ss, ax          ; CRITICAL: SS must be a valid data selector, NOT nullptr!
     popfq               ; Restore original RFLAGS (re-enables IF if it was set)
     ret
 

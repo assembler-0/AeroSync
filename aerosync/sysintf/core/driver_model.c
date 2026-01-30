@@ -96,7 +96,7 @@ int class_for_each_dev(struct class *cls, struct device *start, void *data,
   list_for_each_entry(dev, &cls->devices, class_node) {
     if (start) {
       if (dev == start)
-        start = NULL;
+        start = nullptr;
       continue;
     }
     ret = func(dev, data);
@@ -148,7 +148,7 @@ static int device_attach_driver(struct device *dev) {
     if (ret == 0) {
       goto out;
     }
-    dev->driver = NULL;
+    dev->driver = nullptr;
   }
 
 out:
@@ -208,7 +208,7 @@ void device_unregister(struct device *dev) {
       dev->bus->remove(dev);
     else if (dev->driver->remove)
       dev->driver->remove(dev);
-    dev->driver = NULL;
+    dev->driver = nullptr;
   }
 
   if (dev->bus) {
@@ -257,7 +257,7 @@ int driver_register(struct device_driver *drv) {
       if (drv->bus->match && drv->bus->match(dev, drv)) {
         dev->driver = drv;
         if (device_bind_driver(dev) != 0) {
-          dev->driver = NULL;
+          dev->driver = nullptr;
         }
       }
     }
@@ -280,7 +280,7 @@ void driver_unregister(struct device_driver *drv) {
         drv->bus->remove(dev);
       else if (drv->remove)
         drv->remove(dev);
-      dev->driver = NULL;
+      dev->driver = nullptr;
     }
   }
   list_del(&drv->bus_node);

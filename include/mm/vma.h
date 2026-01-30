@@ -186,18 +186,18 @@ void mm_scrubber_init(void);
 
 #define for_each_vma(mm, vma)                                                  \
   for (unsigned long __idx = 0;                                                \
-       (vma = mt_find(&(mm)->mm_mt, &__idx, ULONG_MAX)) != NULL; )
+       (vma = mt_find(&(mm)->mm_mt, &__idx, ULONG_MAX)) != nullptr; )
 
 #define for_each_vma_safe(mm, vma, tmp)                                        \
   for (unsigned long __idx = 0;                                                \
-       (vma = mt_find(&(mm)->mm_mt, &__idx, ULONG_MAX)) != NULL &&              \
+       (vma = mt_find(&(mm)->mm_mt, &__idx, ULONG_MAX)) != nullptr &&              \
        ({ tmp = vma; 1; }); )
 
 #define for_each_vma_range(mm, vma, start, end)                                \
   for (unsigned long __idx = (start);                                          \
-       (vma = mt_find(&(mm)->mm_mt, &__idx, (end) - 1)) != NULL; )
+       (vma = mt_find(&(mm)->mm_mt, &__idx, (end) - 1)) != nullptr; )
 
 #define for_each_vma_range_safe(mm, vma, tmp, start, end)                      \
   for (unsigned long __idx = (start);                                          \
-       (vma = mt_find(&(mm)->mm_mt, &__idx, (end) - 1)) != NULL &&              \
+       (vma = mt_find(&(mm)->mm_mt, &__idx, (end) - 1)) != nullptr &&              \
        ({ tmp = vma; 1; }); )

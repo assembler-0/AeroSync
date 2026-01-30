@@ -7,22 +7,15 @@
  * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <aerosync/classes.h>
 #include <aerosync/ksymtab.h>
 #include <lib/string.h>
 #include <mm/slub.h>
+#include <mm/vmalloc.h>
 #include <lib/printk.h>
+#include <aerosync/elf.h>
 
 extern const struct ksymbol _ksymtab_start[];
 extern const struct ksymbol _ksymtab_end[];
@@ -32,14 +25,136 @@ struct dyn_ksymbol {
   struct dyn_ksymbol *next;
 };
 
-static struct dyn_ksymbol *g_dyn_symbols = NULL;
+static struct dyn_ksymbol *g_dyn_symbols = nullptr;
+
+// Full kernel ELF symbol table support
+static Elf64_Sym *kernel_symtab = nullptr;
+static size_t kernel_symtab_count = 0;
+static const char *kernel_strtab = nullptr;
+static uintptr_t kernel_slide = 0;
+
+// Optimized Index
+struct ksym_idx_entry {
+    uintptr_t addr;
+    uint32_t name_offset; // Offset into kernel_strtab
+    uint32_t size;
+};
+
+static struct ksym_idx_entry *ksym_index = nullptr;
+static size_t ksym_index_count = 0;
+
+void ksymtab_init(void *kernel_base_addr) {
+  if (!kernel_base_addr) return;
+
+  Elf64_Ehdr *hdr = (Elf64_Ehdr *)kernel_base_addr;
+
+  // Basic ELF verification
+  if (hdr->e_ident[EI_MAG0] != ELFMAG0 || hdr->e_ident[EI_MAG1] != ELFMAG1 ||
+      hdr->e_ident[EI_MAG2] != ELFMAG2 || hdr->e_ident[EI_MAG3] != ELFMAG3) {
+      printk(KERN_WARNING KERN_CLASS "ksymtab: Invalid ELF magic\n");
+      return;
+  }
+
+  Elf64_Shdr *sections = (Elf64_Shdr *)((uint8_t *)kernel_base_addr + hdr->e_shoff);
+
+  for (int i = 0; i < hdr->e_shnum; i++) {
+    if (sections[i].sh_type == SHT_SYMTAB) {
+      kernel_symtab = (Elf64_Sym *)((uint8_t *)kernel_base_addr + sections[i].sh_offset);
+      kernel_symtab_count = sections[i].sh_size / sizeof(Elf64_Sym);
+      
+      if (sections[i].sh_link < hdr->e_shnum) {
+        Elf64_Shdr *strtab_sec = &sections[sections[i].sh_link];
+        kernel_strtab = (const char *)((uint8_t *)kernel_base_addr + strtab_sec->sh_offset);
+      }
+      break; 
+    }
+  }
+
+  if (kernel_symtab && kernel_strtab) {
+    printk(KERN_INFO KERN_CLASS "ksymtab: loaded %lu symbols from kernel ELF (early)\n", kernel_symtab_count);
+    
+    // Calculate KASLR slide
+    // We look for the symbol "ksymtab_init" which corresponds to this function.
+    // Its st_value is the link-time address.
+    // The runtime address is (uintptr_t)&ksymtab_init.
+    
+    for (size_t i = 0; i < kernel_symtab_count; i++) {
+        if (kernel_symtab[i].st_name != 0) {
+            const char *name = kernel_strtab + kernel_symtab[i].st_name;
+            if (strcmp(name, "ksymtab_init") == 0) {
+                kernel_slide = (uintptr_t)&ksymtab_init - kernel_symtab[i].st_value;
+                printk(KERN_INFO KERN_CLASS "ksymtab: detected KASLR slide: %p (Link: %p, Run: %p)\n", 
+                    (void*)kernel_slide, (void*)kernel_symtab[i].st_value, (void*)&ksymtab_init);
+                break;
+            }
+        }
+    }
+  } else {
+    printk(KERN_WARNING KERN_CLASS "ksymtab: failed to find symbol table in kernel ELF\n");
+  }
+}
+
+// ShellSort implementation for ksym_idx_entry
+static void ksym_sort(struct ksym_idx_entry *arr, size_t n) {
+    for (size_t gap = n / 2; gap > 0; gap /= 2) {
+        for (size_t i = gap; i < n; i += 1) {
+            struct ksym_idx_entry temp = arr[i];
+            size_t j;
+            for (j = i; j >= gap && arr[j - gap].addr > temp.addr; j -= gap) {
+                arr[j] = arr[j - gap];
+            }
+            arr[j] = temp;
+        }
+    }
+}
+
+void ksymtab_finalize(void) {
+    if (!kernel_symtab || !kernel_strtab) return;
+    if (ksym_index) return; // Already finalized
+
+    // 1. Count valid function symbols
+    size_t valid_count = 0;
+    for (size_t i = 0; i < kernel_symtab_count; i++) {
+        unsigned char type = ELF64_ST_TYPE(kernel_symtab[i].st_info);
+        if ((type == STT_FUNC || type == STT_OBJECT) && kernel_symtab[i].st_value != 0 && kernel_symtab[i].st_shndx != SHN_UNDEF) {
+            valid_count++;
+        }
+    }
+
+    // 2. Allocate index
+    ksym_index = vmalloc(valid_count * sizeof(struct ksym_idx_entry));
+    if (!ksym_index) {
+        printk(KERN_ERR KERN_CLASS "ksymtab: failed to allocate index\n");
+        return;
+    }
+
+    // 3. Populate index
+    size_t idx = 0;
+    for (size_t i = 0; i < kernel_symtab_count; i++) {
+        unsigned char type = ELF64_ST_TYPE(kernel_symtab[i].st_info);
+        if ((type == STT_FUNC || type == STT_OBJECT) && kernel_symtab[i].st_value != 0 && kernel_symtab[i].st_shndx != SHN_UNDEF) {
+            ksym_index[idx].addr = kernel_symtab[i].st_value + kernel_slide;
+            ksym_index[idx].name_offset = kernel_symtab[i].st_name;
+            ksym_index[idx].size = kernel_symtab[i].st_size;
+            idx++;
+        }
+    }
+    ksym_index_count = idx;
+
+    // 4. Sort index
+    ksym_sort(ksym_index, ksym_index_count);
+
+    printk(KERN_INFO KERN_CLASS "ksymtab: built optimized index with %lu symbols\n", ksym_index_count);
+}
 
 uintptr_t lookup_ksymbol(const char *name) {
-  // 1. Search static kernel symbols
+  // 1. Search static kernel symbols (Exported)
   const struct ksymbol *curr = _ksymtab_start;
   while (curr < _ksymtab_end) {
     if (strcmp(curr->name, name) == 0) {
-      return curr->addr;
+      return curr->addr; // These should already be relocated if they are global vars in .data?
+      // Wait, EXPORT_SYMBOL uses &sym. If code is PIC, this is runtime addr.
+      // If code is absolute but relocated by loader, it's runtime addr.
     }
     curr++;
   }
@@ -56,20 +171,93 @@ uintptr_t lookup_ksymbol(const char *name) {
   return 0;
 }
 
-int register_ksymbol(uintptr_t addr, const char *name) {
-  if (!name) return -1;
+const char *lookup_ksymbol_by_addr(uintptr_t addr, uintptr_t *offset) {
+  // 1. Try optimized index first (Binary Search)
+  if (ksym_index) {
+      long low = 0;
+      long high = ksym_index_count - 1;
+      long best = -1;
 
-  // Check if symbol already exists
-  if (lookup_ksymbol(name)) {
-    printk(KERN_WARNING FKX_CLASS "Symbol %s already registered, skipping\n", name);
-    return -1;
+      while (low <= high) {
+          long mid = low + (high - low) / 2;
+          if (ksym_index[mid].addr <= addr) {
+              best = mid;
+              low = mid + 1; // Try to find a closer one (higher addr that is still <= addr)
+          } else {
+              high = mid - 1;
+          }
+      }
+
+      if (best != -1) {
+          // Check if it's within size or reasonable range
+          uintptr_t sym_addr = ksym_index[best].addr;
+          // Heuristic: If size is 0 (asm symbols often), assume 4KB max. 
+          // If we are too far, maybe it's not this symbol.
+          uintptr_t diff = addr - sym_addr;
+          if (ksym_index[best].size > 0 && diff >= ksym_index[best].size) {
+              // Fallthrough? Or return name + big offset? 
+              // Linux usually returns name + offset even if large.
+          }
+          
+          if (offset) *offset = diff;
+          return kernel_strtab + ksym_index[best].name_offset;
+      }
   }
 
+  // 2. Search dynamic module symbols (Linear)
+  struct dyn_ksymbol *dyn = g_dyn_symbols;
+  const char *best_name = nullptr;
+  uintptr_t best_addr = 0;
+
+  while (dyn) {
+    if (dyn->sym.addr <= addr) {
+      if (!best_name || dyn->sym.addr > best_addr) {
+        best_name = dyn->sym.name;
+        best_addr = dyn->sym.addr;
+      }
+    }
+    dyn = dyn->next;
+  }
+  
+  if (best_name) {
+      if (offset) *offset = addr - best_addr;
+      return best_name;
+  }
+
+  // 3. Fallback: Search full kernel symbol table (Linear) if index not built yet (Panic early)
+  if (!ksym_index && kernel_symtab && kernel_strtab) {
+    for (size_t i = 0; i < kernel_symtab_count; i++) {
+      unsigned char type = ELF64_ST_TYPE(kernel_symtab[i].st_info);
+      if (type != STT_FUNC && type != STT_OBJECT && type != STT_NOTYPE) continue;
+      if (kernel_symtab[i].st_value == 0 || kernel_symtab[i].st_shndx == SHN_UNDEF) continue;
+
+      uintptr_t sym_addr = kernel_symtab[i].st_value + kernel_slide;
+      if (sym_addr <= addr) {
+        if (!best_name || sym_addr > best_addr) {
+           best_name = kernel_strtab + kernel_symtab[i].st_name;
+           best_addr = sym_addr;
+        }
+      }
+    }
+    if (best_name) {
+        if (offset) *offset = addr - best_addr;
+        return best_name;
+    }
+  }
+
+  return nullptr;
+}
+
+int register_ksymbol(uintptr_t addr, const char *name) {
+  if (!name) return -1;
+  // Note: We don't check for duplicates here strictly to save time/memory, 
+  // or we could check the dynamic list.
+  
   struct dyn_ksymbol *new_sym = kmalloc(sizeof(struct dyn_ksymbol));
   if (!new_sym) return -1;
 
   new_sym->sym.addr = addr;
-  new_sym->sym.name = name; // We assume the name string is persistent (e.g., in module's rodata)
+  new_sym->sym.name = name;
   new_sym->next = g_dyn_symbols;
   g_dyn_symbols = new_sym;
 

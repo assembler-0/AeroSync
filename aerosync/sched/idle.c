@@ -116,7 +116,7 @@ static void prio_changed_idle(struct rq *rq, struct task_struct *p,
  * This is the lowest priority class and has no next pointer.
  */
 const struct sched_class idle_sched_class = {
-    .next = NULL, /* Lowest priority - no next class */
+    .next = nullptr, /* Lowest priority - no next class */
 
     .enqueue_task = enqueue_task_idle,
     .dequeue_task = dequeue_task_idle,
@@ -134,6 +134,6 @@ const struct sched_class idle_sched_class = {
     .switched_to = switched_to_idle,
     .prio_changed = prio_changed_idle,
 
-    .get_rr_interval = NULL,
-    .update_curr = NULL,
+    .get_rr_interval = nullptr,
+    .update_curr = nullptr,
 };

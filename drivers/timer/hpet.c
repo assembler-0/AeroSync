@@ -17,7 +17,7 @@
 #include <mm/vmalloc.h>
 
 hpet_info_t hpet_info = {0};
-static void *hpet_mapped_base = NULL;
+static void *hpet_mapped_base = nullptr;
 
 static int hpet_validate(void);
 

@@ -47,7 +47,7 @@ static int setup_arg_pages(struct linux_binprm *bprm) {
     uint64_t stack_top = vmm_get_max_user_address() - PAGE_SIZE; // Leave a guard page
     uint64_t stack_base = stack_top - stack_size;
 
-    if (mm_populate_user_range(bprm->mm, stack_base, stack_size, VM_READ | VM_WRITE | VM_USER, NULL, 0) != 0) {
+    if (mm_populate_user_range(bprm->mm, stack_base, stack_size, VM_READ | VM_WRITE | VM_USER, nullptr, 0) != 0) {
         return -ENOMEM;
     }
 
@@ -62,17 +62,17 @@ static int setup_arg_pages(struct linux_binprm *bprm) {
  */
 static int create_elf_tables(struct linux_binprm *bprm, Elf64_Ehdr *exec) {
     // In a real kernel, we would copy argv strings to the stack and then 
-    // setup the pointers. For now, let's just push argc = 0 and NULL.
+    // setup the pointers. For now, let's just push argc = 0 and nullptr.
     
     uint64_t *stack = (uint64_t *)pmm_phys_to_virt(vmm_virt_to_phys(bprm->mm, bprm->p - 16));
     // Note: This is hacky because we access via HHDM.
     
-    // Push argc, argv[0], NULL
+    // Push argc, argv[0], nullptr
     bprm->p -= 24;
     uint64_t *sp = (uint64_t *)((uint8_t *)stack + (bprm->p % PAGE_SIZE));
     sp[0] = bprm->argc;
     sp[1] = 0; // argv[0]
-    sp[2] = 0; // NULL
+    sp[2] = 0; // nullptr
     
     return 0;
 }

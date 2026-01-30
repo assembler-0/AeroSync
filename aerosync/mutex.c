@@ -27,7 +27,7 @@
 void mutex_init(mutex_t *m) {
   spinlock_init(&m->lock);
   m->count = 1; /* Unlocked */
-  m->owner = NULL;
+  m->owner = nullptr;
   init_waitqueue_head(&m->wait_q);
   INIT_LIST_HEAD(&m->waiters);
   m->pi_enabled = true;
@@ -47,7 +47,7 @@ void mutex_lock(mutex_t *m) {
       flags = spinlock_lock_irqsave(&m->lock);
     }
     m->count = 0;
-    m->owner = NULL;
+    m->owner = nullptr;
     spinlock_unlock_irqrestore(&m->lock, flags);
     return;
   }
@@ -79,7 +79,7 @@ void mutex_lock(mutex_t *m) {
 
   /* Cleanup PI state if we were blocked */
   if (curr->pi_blocked_on == m) {
-    curr->pi_blocked_on = NULL;
+    curr->pi_blocked_on = nullptr;
   }
 
   m->count = 0;
@@ -117,7 +117,7 @@ void mutex_unlock(mutex_t *m) {
   }
 
   m->count = 1;
-  m->owner = NULL;
+  m->owner = nullptr;
 
   /* Wake up one waiter */
   wake_up_nr(&m->wait_q, 1);

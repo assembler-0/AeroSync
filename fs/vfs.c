@@ -72,7 +72,7 @@ static int rootfs_mount(struct file_system_type *fs_type, const char *dev_name, 
     struct super_block *sb = kzalloc(sizeof(struct super_block));
     if (!sb) return -1;
 
-    sb->s_op = NULL; // Add dummy ops if needed
+    sb->s_op = nullptr; // Add dummy ops if needed
     
     struct inode *inode = kzalloc(sizeof(struct inode));
     if (!inode) {
@@ -129,7 +129,7 @@ void vfs_init(void) {
     mutex_init(&fs_type_mutex);
 
     register_filesystem(&rootfs_type);
-    rootfs_mount(&rootfs_type, NULL, "/", 0, NULL);
+    rootfs_mount(&rootfs_type, nullptr, "/", 0, nullptr);
 
     printk(VFS_CLASS "VFS initialization complete.\n");
 }
@@ -137,13 +137,13 @@ EXPORT_SYMBOL(vfs_init);
 
 struct file *vfs_open(const char *path, int flags, int mode) {
     struct dentry *dentry = vfs_path_lookup(path, 0);
-    if (!dentry) return NULL;
+    if (!dentry) return nullptr;
 
     struct inode *inode = dentry->d_inode;
-    if (!inode) return NULL;
+    if (!inode) return nullptr;
 
     struct file *file = kzalloc(sizeof(struct file));
-    if (!file) return NULL;
+    if (!file) return nullptr;
 
     file->f_dentry = dentry;
     file->f_inode = inode;
@@ -156,7 +156,7 @@ struct file *vfs_open(const char *path, int flags, int mode) {
         int ret = file->f_op->open(inode, file);
         if (ret < 0) {
             kfree(file);
-            return NULL;
+            return nullptr;
         }
     }
 
@@ -247,7 +247,7 @@ EXPORT_SYMBOL(register_filesystem);
 // Function to unregister a filesystem type
 int unregister_filesystem(struct file_system_type *fs) {
     if (!fs) {
-        printk(KERN_ERR VFS_CLASS "ERROR: Attempted to unregister a NULL filesystem type.\n");
+        printk(KERN_ERR VFS_CLASS "ERROR: Attempted to unregister a nullptr filesystem type.\n");
         return -1;
     }
     mutex_lock(&fs_type_mutex);

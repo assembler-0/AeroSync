@@ -13,4 +13,108 @@ config MAX_CPUS
     int "Maximum # supported of logical processor(s)"
     default 512
 
+menu "RCU Subsystem"
+
+config TREE_RCU
+    bool "Tree-based RCU (Scalable SMP RCU)"
+    default y if MAX_CPUS > 1
+    help
+      This option selects a hierarchical RCU implementation that is
+      scalable for systems with many CPUs.
+
+config TINY_RCU
+    bool "Tiny RCU (Non-preemptible single-CPU RCU)"
+    default n
+    depends on MAX_CPUS = 1
+    help
+      This option selects a very small RCU implementation for
+      single-CPU systems.
+
+config RCU_FANOUT
+    int "Tree-based RCU leaf-level fanout"
+    depends on TREE_RCU
+    default 16
+    help
+      This option controls the number of CPUs per leaf rcu_node.
+      Smaller values increase tree depth and lock contention for
+      reporting quiescent states, while larger values increase
+      lock contention on the leaf nodes themselves.
+
+config RCU_BOOST
+    bool "Enable RCU priority boosting"
+    depends on TREE_RCU
+    default y
+    help
+      This option enables RCU priority boosting, which allows
+      low-priority RCU read-side critical sections to be
+      preempted and then boosted to a higher priority to avoid
+      holding up grace periods.
+
+config RCU_KTHREAD_PRIO
+    int "RCU kthread priority"
+    depends on TREE_RCU
+    default 1
+    help
+      Set the priority of the RCU kthreads.
+
+config RCU_PERCPU_TEST
+    bool "Enable RCU and Per-CPU dynamic allocation tests"
+    default n
+    help
+      Enables RCU and Per-CPU dynamic allocation smoke tests during boot.
+
+endmenu
+
+menu "Per-CPU Subsystem"
+
+config DYNAMIC_PER_CPU
+    bool "Support for dynamic per-CPU allocation"
+    default y
+    help
+      Enables alloc_percpu() and free_percpu() APIs for allocating
+      per-CPU variables at runtime.
+
+config PER_CPU_CHUNK_SIZE
+    int "Size of each dynamic per-CPU chunk (KB)"
+    depends on DYNAMIC_PER_CPU
+    default 64
+    help
+      Determines the size of each chunk used for dynamic per-CPU
+      allocations. Each CPU will have this much space reserved.
+
+endmenu
+
+menu "Panic Configuration"
+
+config PANIC_STACKTRACE
+    bool "Enable stacktrace on panic"
+    default y
+    help
+      Enables kernel stack unwinding and symbol resolution when a
+      kernel panic occurs.
+
+
+config PANIC_DUMP_REGISTERS
+    bool "Always dump registers on panic"
+    default y
+    help
+      Dump CPU general purpose and control registers on all panics,
+      not just exceptions.
+
+config PANIC_TIMEOUT
+    int "Panic timeout (seconds)"
+    default -1
+    help
+      Number of seconds to wait before rebooting after a panic.
+      Set to -1 to wait indefinitely, or 0 to reboot immediately.
+
+config PANIC_VERBOSE
+    bool "Verbose panic messages"
+    default y
+    help
+      Display extra information like CPU ID, current task name,
+      and kernel version on panic.
+
+endmenu
+
 endmenu

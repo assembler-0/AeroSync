@@ -198,7 +198,7 @@ void *uacpi_kernel_alloc_zeroed(uacpi_size size);
 /*
  * Free a previously allocated memory block.
  *
- * 'mem' might be a NULL pointer. In this case, the call is assumed to be a
+ * 'mem' might be a nullptr pointer. In this case, the call is assumed to be a
  * no-op.
  *
  * An optionally enabled 'size_hint' parameter contains the size of the original

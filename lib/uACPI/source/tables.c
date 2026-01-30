@@ -189,7 +189,7 @@ static uacpi_status initialize_from_rsdp(void)
     uacpi_kernel_unmap(rsdp, sizeof(struct acpi_rsdp));
 
     if (!rxsdt) {
-        uacpi_error("both RSDT & XSDT tables are NULL!\n");
+        uacpi_error("both RSDT & XSDT tables are nullptr!\n");
         return UACPI_STATUS_INVALID_ARGUMENT;
     }
 

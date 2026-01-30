@@ -46,7 +46,7 @@ void do_page_fault(cpu_regs *regs) {
   bool user_mode = (error_code & PF_USER) || (regs->cs & 3);
 
   struct task_struct *curr = current;
-  struct mm_struct *mm = NULL;
+  struct mm_struct *mm = nullptr;
 
   // Prioritize init_mm for kernel-space addresses
   if (cr2 >= vmm_get_max_user_address()) {

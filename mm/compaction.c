@@ -102,7 +102,7 @@ static int migrate_pages(struct compact_control *cc) {
     f_pos = f_pos->next;
 
     /* 1. Unmap from all users */
-    if (try_to_unmap_folio(src_folio, NULL) == 0) {
+    if (try_to_unmap_folio(src_folio, nullptr) == 0) {
       /* 2. Copy data */
       void *s_virt = page_address(&src_folio->page);
       void *d_virt = page_address(dst_page);

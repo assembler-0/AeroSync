@@ -53,10 +53,10 @@ struct fkx_loaded_image {
 };
 
 // Array to hold heads of linked lists for each module class (linked modules)
-static struct fkx_loaded_image *g_module_class_heads[FKX_MAX_CLASS] = {NULL};
+static struct fkx_loaded_image *g_module_class_heads[FKX_MAX_CLASS] = {nullptr};
 
 // List of modules that are mapped but not yet linked
-static struct fkx_loaded_image *g_unlinked_modules = NULL;
+static struct fkx_loaded_image *g_unlinked_modules = nullptr;
 
 static int fkx_relocate_module(struct fkx_loaded_image *img);
 
@@ -150,7 +150,7 @@ int fkx_load_image(void *data, size_t size) {
     return -1;
   }
 
-  struct fkx_module_info *info = NULL;
+  struct fkx_module_info *info = nullptr;
 
   if (info_sec->sh_flags & SHF_ALLOC) {
     info = (struct fkx_module_info *) (base_addr + (info_sec->sh_addr - min_vaddr));
@@ -300,7 +300,7 @@ static struct fkx_loaded_image *find_unlinked_by_name(const char *name) {
     if (strcmp(curr->info->name, name) == 0) return curr;
     curr = curr->next;
   }
-  return NULL;
+  return nullptr;
 }
 
 static struct fkx_loaded_image *find_linked_by_name(const char *name) {
@@ -311,7 +311,7 @@ static struct fkx_loaded_image *find_linked_by_name(const char *name) {
       curr = curr->next;
     }
   }
-  return NULL;
+  return nullptr;
 }
 
 int fkx_finalize_loading(void) {
@@ -329,13 +329,13 @@ int fkx_finalize_loading(void) {
   int linked_in_this_pass;
   do {
     linked_in_this_pass = 0;
-    struct fkx_loaded_image *prev = NULL;
+    struct fkx_loaded_image *prev = nullptr;
     curr = g_unlinked_modules;
 
     while (curr) {
       int deps_satisfied = 1;
       if (curr->info->depends) {
-        for (int i = 0; curr->info->depends[i] != NULL; i++) {
+        for (int i = 0; curr->info->depends[i] != nullptr; i++) {
           const char *dep_name = curr->info->depends[i];
           if (!find_linked_by_name(dep_name)) {
             // Dependency not yet linked. Check if it's even in our unlinked list.

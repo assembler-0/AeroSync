@@ -41,7 +41,7 @@
  * It must be 64-byte aligned for XSAVE.
  */
 struct fpu_state {
-  uint8_t state[XSTATE_MAX_SIZE] __aligned(64);
+  alignas(64) uint8_t state[XSTATE_MAX_SIZE];
 };
 
 /**
@@ -63,7 +63,7 @@ void fpu_init_task(struct fpu_state *fpu);
 /**
  * fpu_alloc - Allocate FPU state structure
  *
- * Returns: Pointer to allocated fpu_state, or NULL on failure
+ * Returns: Pointer to allocated fpu_state, or nullptr on failure
  */
 struct fpu_state *fpu_alloc(void);
 

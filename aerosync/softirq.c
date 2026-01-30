@@ -141,7 +141,7 @@ bool in_softirq(void) {
 }
 
 void softirq_init_ap(void) {
-  struct task_struct *tsk = kthread_create(ksoftirqd_thread, NULL, "ksoftirqd/%d", smp_get_id());
+  struct task_struct *tsk = kthread_create(ksoftirqd_thread, nullptr, "ksoftirqd/%d", smp_get_id());
   if (tsk) {
     this_cpu_write(ksoftirqd_task, tsk);
     /* Set affinity to the current CPU */
@@ -159,7 +159,7 @@ void softirq_init(void) {
   }
 
   // Spawn ksoftirqd for BSP
-  struct task_struct *tsk = kthread_create(ksoftirqd_thread, NULL, "ksoftirqd/%d", smp_get_id());
+  struct task_struct *tsk = kthread_create(ksoftirqd_thread, nullptr, "ksoftirqd/%d", smp_get_id());
   if (tsk) {
     this_cpu_write(ksoftirqd_task, tsk);
     kthread_run(tsk);

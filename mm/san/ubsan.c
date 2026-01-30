@@ -192,7 +192,7 @@ static const char * const type_check_kinds[] = {"load of",
 UBSAN_HANDLER(__ubsan_handle_type_mismatch)(struct TypeMismatchData *data,
                                             uintptr_t ptr) {
   if (!ptr) {
-    printk(KERN_EMERG UBSAN_CLASS "NULL pointer dereference\n");
+    printk(KERN_EMERG UBSAN_CLASS "nullptr pointer dereference\n");
   } else if (data->alignment && (ptr & (data->alignment - 1))) {
     printk(KERN_EMERG UBSAN_CLASS "Misaligned access\n");
     printk(KERN_EMERG UBSAN_CLASS "Address: 0x%lx (Alignment required: %ld)\n",

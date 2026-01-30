@@ -60,7 +60,7 @@ static ringbuf_t klog_ring = {
     .data = klog_ring_data, .size = KLOG_RING_SIZE, .head = 0, .tail = 0};
 
 static int klog_console_level = KLOG_INFO;
-static log_sink_putc_t klog_console_sink = NULL; // defaults to ring buffer only
+static log_sink_putc_t klog_console_sink = nullptr; // defaults to ring buffer only
 static spinlock_t klog_lock = 0;
 static int klog_inited = 1; // Statically initialized, so always ready
 
@@ -68,7 +68,7 @@ static int klog_inited = 1; // Statically initialized, so always ready
 static spinlock_t klog_console_lock = 0;
 // Async logging control
 static volatile int klog_async_enabled = 0;
-static struct task_struct *klogd_task = NULL;
+static struct task_struct *klogd_task = nullptr;
 // Hint from the console driver that sink is asynchronous-capable
 static int klog_console_sink_async_hint = 0;
 // Debug enablement (independent of numeric KLOG_DEBUG value)
@@ -108,7 +108,7 @@ void log_init(const log_sink_putc_t backend) {
   // ringbuf_init would reset head/tail.
   // If ringbuffer was somehow not setup (shouldn't happen with static init), do
   // it.
-  if (klog_ring.data == NULL) {
+  if (klog_ring.data == nullptr) {
     ringbuf_init(&klog_ring, klog_ring_data, KLOG_RING_SIZE);
   }
 
@@ -151,7 +151,7 @@ int log_try_init_async(void) {
   if (klog_async_enabled)
     return 1;
   // If scheduler isn't available or kthread creation fails, return 0.
-  struct task_struct *t = kthread_create(klogd_thread, NULL, "kthread/klogd");
+  struct task_struct *t = kthread_create(klogd_thread, nullptr, "kthread/klogd");
   if (!t)
     return 0;
   kthread_run(t);
@@ -376,7 +376,7 @@ void log_init_async(void) {
     spinlock_unlock_irqrestore(&klog_lock, f);
   }
 
-  struct task_struct *t = kthread_create(klogd_thread, NULL, "kthread/klogd");
+  struct task_struct *t = kthread_create(klogd_thread, nullptr, "kthread/klogd");
   if (t) {
     kthread_run(t);
     klogd_task = t;

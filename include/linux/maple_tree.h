@@ -108,7 +108,7 @@ struct maple_range_64 {
  * storing fewer entries in a tree in return for storing more information in
  * each node.
  *
- * The maple tree supports recording the largest range of NULL entries available
+ * The maple tree supports recording the largest range of nullptr entries available
  * in this node, also called gaps.  This optimises the tree for allocating a
  * range.
  */
@@ -195,7 +195,7 @@ enum store_type {
 #define mt_set_external_lock(mt, lock)					\
 	(mt)->ma_external_lock = &(lock)->dep_map
 
-#define mt_on_stack(mt)			(mt).ma_external_lock = NULL
+#define mt_on_stack(mt)			(mt).ma_external_lock = nullptr
 #else
 #define mt_lock_is_held(mt)		1
 #define mt_write_lock_is_held(mt)	1
@@ -237,7 +237,7 @@ struct maple_tree {
 #define MTREE_INIT(name, __flags) {					\
 	.ma_lock = __SPIN_LOCK_UNLOCKED((name).ma_lock),		\
 	.ma_flags = __flags,						\
-	.ma_root = NULL,						\
+	.ma_root = nullptr,						\
 }
 
 /**
@@ -250,7 +250,7 @@ struct maple_tree {
 #define MTREE_INIT_EXT(name, __flags, __lock) {				\
 	.ma_external_lock = &(__lock).dep_map,				\
 	.ma_flags = (__flags),						\
-	.ma_root = NULL,						\
+	.ma_root = nullptr,						\
 }
 #else
 #define MTREE_INIT_EXT(name, __flags, __lock)	MTREE_INIT(name, __flags)
@@ -347,11 +347,11 @@ void __mt_destroy(struct maple_tree *mt);
  * @mt: Maple Tree.
  *
  * Context: Any context.
- * Return: %true if the tree contains only NULL pointers.
+ * Return: %true if the tree contains only nullptr pointers.
  */
 static inline bool mtree_empty(const struct maple_tree *mt)
 {
-	return mt->ma_root == NULL;
+	return mt->ma_root == nullptr;
 }
 
 /* Advanced API */
@@ -482,12 +482,12 @@ struct ma_wr_state {
 		.tree = mt,						\
 		.index = first,						\
 		.last = end,						\
-		.node = NULL,						\
+		.node = nullptr,						\
 		.status = ma_start,					\
 		.min = 0,						\
 		.max = ULONG_MAX,					\
-		.sheaf = NULL,						\
-		.alloc = NULL,						\
+		.sheaf = nullptr,						\
+		.alloc = nullptr,						\
 		.node_request = 0,					\
 		.mas_flags = 0,						\
 		.store_type = wr_invalid,				\
@@ -496,7 +496,7 @@ struct ma_wr_state {
 #define MA_WR_STATE(name, ma_state, wr_entry)				\
 	struct ma_wr_state name = {					\
 		.mas = ma_state,					\
-		.content = NULL,					\
+		.content = nullptr,					\
 		.entry = wr_entry,					\
 		.vacant_height = 0,					\
 		.sufficient_height = 0					\
@@ -504,8 +504,8 @@ struct ma_wr_state {
 
 #define MA_TOPIARY(name, tree)						\
 	struct ma_topiary name = {					\
-		.head = NULL,						\
-		.tail = NULL,						\
+		.head = nullptr,						\
+		.tail = nullptr,						\
 		.mtree = tree,						\
 	}
 
@@ -551,7 +551,7 @@ static inline void mas_init(struct ma_state *mas, struct maple_tree *tree,
 	mas->index = mas->last = addr;
 	mas->max = ULONG_MAX;
 	mas->status = ma_start;
-	mas->node = NULL;
+	mas->node = nullptr;
 }
 
 static inline bool mas_is_active(struct ma_state *mas)
@@ -577,7 +577,7 @@ static inline bool mas_is_err(struct ma_state *mas)
 static __always_inline void mas_reset(struct ma_state *mas)
 {
 	mas->status = ma_start;
-	mas->node = NULL;
+	mas->node = nullptr;
 }
 
 /**
@@ -592,7 +592,7 @@ static __always_inline void mas_reset(struct ma_state *mas)
  * Note: may return the zero entry.
  */
 #define mas_for_each(__mas, __entry, __max) \
-	while (((__entry) = mas_find((__mas), (__max))) != NULL)
+	while (((__entry) = mas_find((__mas), (__max))) != nullptr)
 
 /**
  * mas_for_each_rev() - Iterate over a range of the maple tree in reverse order.
@@ -606,7 +606,7 @@ static __always_inline void mas_reset(struct ma_state *mas)
  * Note: may return the zero entry.
  */
 #define mas_for_each_rev(__mas, __entry, __min) \
-	while (((__entry) = mas_find_rev((__mas), (__min))) != NULL)
+	while (((__entry) = mas_find_rev((__mas), (__min))) != nullptr)
 
 /**
  * __mas_set_range() - Set up Maple Tree operation state to a sub-range of the
@@ -678,7 +678,7 @@ static inline void mt_init_flags(struct maple_tree *mt, unsigned int flags)
 	mt->ma_flags = flags;
 	if (!mt_external_lock(mt))
 		spinlock_init(&mt->ma_lock);
-	rcu_assign_pointer(mt->ma_root, NULL);
+	rcu_assign_pointer(mt->ma_root, nullptr);
 }
 
 /**
@@ -753,7 +753,7 @@ void *mt_next(struct maple_tree *mt, unsigned long index, unsigned long max);
  * @__index: The index to start the search from. Subsequently used as iterator.
  * @__max: The maximum limit for @index
  *
- * This iterator skips all entries, which resolve to a NULL pointer,
+ * This iterator skips all entries, which resolve to a nullptr pointer,
  * e.g. entries which has been reserved with XA_ZERO_ENTRY.
  */
 #define mt_for_each(__tree, __entry, __index, __max) \

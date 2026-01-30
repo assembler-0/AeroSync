@@ -105,7 +105,7 @@ void workingset_refault(struct folio *folio, void *shadow);
  * @obj: The vm_object owning this page (for storing shadow)
  *
  * Stores a shadow entry in the page cache to track this eviction.
- * Returns the shadow entry to store, or NULL if shadows are disabled.
+ * Returns the shadow entry to store, or nullptr if shadows are disabled.
  */
 void *workingset_eviction(struct folio *folio, struct vm_object *obj);
 

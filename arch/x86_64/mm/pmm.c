@@ -37,7 +37,7 @@
 uint64_t g_hhdm_offset = 0;
 EXPORT_SYMBOL(g_hhdm_offset);
 
-struct page *mem_map = NULL;
+struct page *mem_map = nullptr;
 uint64_t pmm_max_pages = 0;
 
 static bool pmm_initialized = false;
@@ -47,7 +47,7 @@ static pmm_stats_t pmm_stats;
 static struct limine_memmap_entry *
 find_memmap_location(struct limine_memmap_response *memmap,
                      uint64_t required_bytes) {
-  struct limine_memmap_entry *best_region = NULL;
+  struct limine_memmap_entry *best_region = nullptr;
   uint64_t best_size = 0;
 
   for (uint64_t i = 0; i < memmap->entry_count; i++) {

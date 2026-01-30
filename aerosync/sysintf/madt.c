@@ -98,7 +98,7 @@ int madt_init(void) {
   s_lapic_address = madt_hdr->local_interrupt_controller_address;
 
   // Iterate subtables for overrides and IOAPICs
-  uacpi_for_each_subtable(tbl.hdr, sizeof(struct acpi_madt), madt_iter_cb, NULL);
+  uacpi_for_each_subtable(tbl.hdr, sizeof(struct acpi_madt), madt_iter_cb, nullptr);
 
   uacpi_table_unref(&tbl);
 

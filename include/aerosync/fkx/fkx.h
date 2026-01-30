@@ -119,7 +119,7 @@ struct fkx_module_info {
 /**
  * FKX_NO_DEPENDENCIES - Use when module has no dependencies
  */
-#define FKX_NO_DEPENDENCIES NULL
+#define FKX_NO_DEPENDENCIES nullptr
 
 /**
  * Load an FKX module image into memory without calling init

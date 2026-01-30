@@ -25,7 +25,7 @@ Returns number of bytes accepted (may be truncated to ring capacity)*/
 int log_write_str(int level, const char *msg);
 
 /*Read next record as a string. Returns length copied or 0 if none available.
-If out_level != NULL, stores the record level.*/
+If out_level != nullptr, stores the record level.*/
 int log_read(char *out_buf, int out_buf_len, int *out_level);
 
 /*Optional runtime debug control: by default DEBUG may be off even if

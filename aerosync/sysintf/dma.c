@@ -26,7 +26,7 @@
 #include <aerosync/classes.h>
 
 void *dma_alloc_coherent(size_t size, dma_addr_t *dma_handle, gfp_t gfp) {
-  if (!size || !dma_handle) return NULL;
+  if (!size || !dma_handle) return nullptr;
 
   struct folio *folio;
   // Use GFP_DMA32 by default if not specified, to ensure 32-bit compatibility
@@ -40,11 +40,11 @@ void *dma_alloc_coherent(size_t size, dma_addr_t *dma_handle, gfp_t gfp) {
 
   if (order >= MAX_ORDER) {
     printk(KERN_ERR PMM_CLASS "Requested size %zu too large (order %u)\n", size, order);
-    return NULL;
+    return nullptr;
   }
 
   folio = alloc_pages(gfp, order);
-  if (!folio) return NULL;
+  if (!folio) return nullptr;
 
   uint64_t phys = folio_to_phys(folio);
   *dma_handle = (dma_addr_t) phys;

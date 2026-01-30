@@ -24,7 +24,7 @@
 
 #define	rb_entry(ptr, type, member) container_of(ptr, type, member)
 
-#define RB_EMPTY_ROOT(root)  (READ_ONCE((root)->rb_node) == NULL)
+#define RB_EMPTY_ROOT(root)  (READ_ONCE((root)->rb_node) == nullptr)
 
 /* 'empty' nodes are nodes that are known not to be inserted in an rbtree */
 #define RB_EMPTY_NODE(node)  \
@@ -50,7 +50,7 @@ static inline struct rb_node *rb_first(const struct rb_root *root)
 
 	n = root->rb_node;
 	if (!n)
-		return NULL;
+		return nullptr;
 	while (n->rb_left)
 		n = n->rb_left;
 	return n;
@@ -65,7 +65,7 @@ static inline struct rb_node *rb_last(const struct rb_root *root)
 
 	n = root->rb_node;
 	if (!n)
-		return NULL;
+		return nullptr;
 	while (n->rb_right)
 		n = n->rb_right;
 	return n;
@@ -83,14 +83,14 @@ static inline void rb_link_node(struct rb_node *node, struct rb_node *parent,
 				struct rb_node **rb_link)
 {
 	node->__rb_parent_color = (unsigned long)parent;
-	node->rb_left = node->rb_right = NULL;
+	node->rb_left = node->rb_right = nullptr;
 
 	*rb_link = node;
 }
 
 #define rb_entry_safe(ptr, type, member) \
 	({ typeof(ptr) ____ptr = (ptr); \
-	   ____ptr ? rb_entry(____ptr, type, member) : NULL; \
+	   ____ptr ? rb_entry(____ptr, type, member) : nullptr; \
 	})
 
 /**
@@ -132,7 +132,7 @@ static inline void rb_insert_color_cached(struct rb_node *node,
 static inline struct rb_node *
 rb_erase_cached(struct rb_node *node, struct rb_root_cached *root)
 {
-	struct rb_node *leftmost = NULL;
+	struct rb_node *leftmost = nullptr;
 
 	if (root->rb_leftmost == node)
 		leftmost = root->rb_leftmost = rb_next(node);
@@ -173,14 +173,14 @@ static inline void rb_replace_node_cached(struct rb_node *victim,
  * @tree: leftmost cached tree to insert @node into
  * @less: operator defining the (partial) node order
  *
- * Returns @node when it is the new leftmost, or NULL.
+ * Returns @node when it is the new leftmost, or nullptr.
  */
 static __always_inline struct rb_node *
 rb_add_cached(struct rb_node *node, struct rb_root_cached *tree,
 	      bool (*less)(struct rb_node *, const struct rb_node *))
 {
 	struct rb_node **link = &tree->rb_root.rb_node;
-	struct rb_node *parent = NULL;
+	struct rb_node *parent = nullptr;
 	bool leftmost = true;
 
 	while (*link) {
@@ -196,7 +196,7 @@ rb_add_cached(struct rb_node *node, struct rb_root_cached *tree,
 	rb_link_node(node, parent, link);
 	rb_insert_color_cached(node, tree, leftmost);
 
-	return leftmost ? node : NULL;
+	return leftmost ? node : nullptr;
 }
 
 /**
@@ -210,7 +210,7 @@ rb_add(struct rb_node *node, struct rb_root *tree,
        bool (*less)(struct rb_node *, const struct rb_node *))
 {
 	struct rb_node **link = &tree->rb_node;
-	struct rb_node *parent = NULL;
+	struct rb_node *parent = nullptr;
 
 	while (*link) {
 		parent = *link;
@@ -230,7 +230,7 @@ rb_add(struct rb_node *node, struct rb_root *tree,
  * @tree: tree to search / modify
  * @cmp: operator defining the node order
  *
- * Returns the rb_node matching @node, or NULL when no match is found and @node
+ * Returns the rb_node matching @node, or nullptr when no match is found and @node
  * is inserted.
  */
 static __always_inline struct rb_node *
@@ -239,7 +239,7 @@ rb_find_add_cached(struct rb_node *node, struct rb_root_cached *tree,
 {
 	bool leftmost = true;
 	struct rb_node **link = &tree->rb_root.rb_node;
-	struct rb_node *parent = NULL;
+	struct rb_node *parent = nullptr;
 	int c;
 
 	while (*link) {
@@ -258,7 +258,7 @@ rb_find_add_cached(struct rb_node *node, struct rb_root_cached *tree,
 
 	rb_link_node(node, parent, link);
 	rb_insert_color_cached(node, tree, leftmost);
-	return NULL;
+	return nullptr;
 }
 
 /**
@@ -267,7 +267,7 @@ rb_find_add_cached(struct rb_node *node, struct rb_root_cached *tree,
  * @tree: tree to search / modify
  * @cmp: operator defining the node order
  *
- * Returns the rb_node matching @node, or NULL when no match is found and @node
+ * Returns the rb_node matching @node, or nullptr when no match is found and @node
  * is inserted.
  */
 static __always_inline struct rb_node *
@@ -275,7 +275,7 @@ rb_find_add(struct rb_node *node, struct rb_root *tree,
 	    int (*cmp)(struct rb_node *, const struct rb_node *))
 {
 	struct rb_node **link = &tree->rb_node;
-	struct rb_node *parent = NULL;
+	struct rb_node *parent = nullptr;
 	int c;
 
 	while (*link) {
@@ -292,7 +292,7 @@ rb_find_add(struct rb_node *node, struct rb_root *tree,
 
 	rb_link_node(node, parent, link);
 	rb_insert_color(node, tree);
-	return NULL;
+	return nullptr;
 }
 
 /**
@@ -301,7 +301,7 @@ rb_find_add(struct rb_node *node, struct rb_root *tree,
  * @tree: tree to search
  * @cmp: operator defining the node order
  *
- * Returns the rb_node matching @key or NULL.
+ * Returns the rb_node matching @key or nullptr.
  */
 static __always_inline struct rb_node *
 rb_find(const void *key, const struct rb_root *tree,
@@ -320,7 +320,7 @@ rb_find(const void *key, const struct rb_root *tree,
 			return node;
 	}
 
-	return NULL;
+	return nullptr;
 }
 
 /**
@@ -329,14 +329,14 @@ rb_find(const void *key, const struct rb_root *tree,
  * @tree: tree to search
  * @cmp: operator defining node order
  *
- * Returns the leftmost node matching @key, or NULL.
+ * Returns the leftmost node matching @key, or nullptr.
  */
 static __always_inline struct rb_node *
 rb_find_first(const void *key, const struct rb_root *tree,
 	      int (*cmp)(const void *key, const struct rb_node *))
 {
 	struct rb_node *node = tree->rb_node;
-	struct rb_node *match = NULL;
+	struct rb_node *match = nullptr;
 
 	while (node) {
 		int c = cmp(key, node);
@@ -359,7 +359,7 @@ rb_find_first(const void *key, const struct rb_root *tree,
  * @tree: tree to search
  * @cmp: operator defining node order
  *
- * Returns the next node matching @key, or NULL.
+ * Returns the next node matching @key, or nullptr.
  */
 static __always_inline struct rb_node *
 rb_next_match(const void *key, struct rb_node *node,
@@ -367,7 +367,7 @@ rb_next_match(const void *key, struct rb_node *node,
 {
 	node = rb_next(node);
 	if (node && cmp(key, node))
-		node = NULL;
+		node = nullptr;
 	return node;
 }
 

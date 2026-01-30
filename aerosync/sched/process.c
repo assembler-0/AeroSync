@@ -86,6 +86,7 @@ struct task_struct *switch_to(struct task_struct *prev,
 
 // Entry point for new kernel threads
 void __used kthread_entry_stub(int (*threadfn)(void *data), void *data) {
+  cpu_sti(); // Enable interrupts as we are starting a fresh thread
   threadfn(data);
   sys_exit(0);
 }
@@ -101,14 +102,14 @@ struct task_struct *copy_process(uint64_t clone_flags,
 
   p = alloc_task_struct();
   if (!p)
-    return NULL;
+    return nullptr;
 
   memset(p, 0, sizeof(*p));
 
   p->pid = alloc_pid();
   if (p->pid < 0) {
     free_task_struct(p);
-    return NULL;
+    return nullptr;
   }
 
   // Allocate 16KB kernel stack with guard page
@@ -116,7 +117,7 @@ struct task_struct *copy_process(uint64_t clone_flags,
   if (!p->stack) {
     release_pid(p->pid);
     free_task_struct(p);
-    return NULL;
+    return nullptr;
   }
 
   // Initialize basic fields
@@ -133,7 +134,7 @@ struct task_struct *copy_process(uint64_t clone_flags,
 
   /* PI initialization */
   spinlock_init(&p->pi_lock);
-  p->pi_blocked_on = NULL;
+  p->pi_blocked_on = nullptr;
   INIT_LIST_HEAD(&p->pi_waiters);
   INIT_LIST_HEAD(&p->pi_list);
 
@@ -147,7 +148,7 @@ struct task_struct *copy_process(uint64_t clone_flags,
       vfree(p->stack);
       release_pid(p->pid);
       free_task_struct(p);
-      return NULL;
+      return nullptr;
     }
   }
   p->active_mm = p->mm ? p->mm : parent->active_mm;
@@ -164,7 +165,7 @@ struct task_struct *copy_process(uint64_t clone_flags,
       vfree(p->stack);
       release_pid(p->pid);
       free_task_struct(p);
-      return NULL;
+      return nullptr;
     }
   }
 
@@ -209,10 +210,10 @@ struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
   struct task_struct *curr = get_current();
 
   struct task_struct *p = copy_process(CLONE_VM, 0, curr);
-  if (!p) return NULL;
+  if (!p) return nullptr;
 
   p->flags |= PF_KTHREAD;
-  p->mm = NULL; // Kernel threads have no user MM
+  p->mm = nullptr; // Kernel threads have no user MM
 
   /*
    * If parent was idle class, force kthread into fair class
@@ -391,7 +392,7 @@ struct task_struct *process_spawn(int (*entry)(void *), void *data,
                                   const char *name) {
   struct task_struct *curr = get_current();
   struct task_struct *p = copy_process(0, 0, curr);
-  if (!p) return NULL;
+  if (!p) return nullptr;
 
   strncpy(p->comm, name, sizeof(p->comm));
 
@@ -415,7 +416,7 @@ EXPORT_SYMBOL(process_spawn);
 struct task_struct *spawn_user_process_raw(void *data, size_t len, const char *name) {
   struct task_struct *curr = get_current();
   struct task_struct *p = copy_process(0, 0, curr);
-  if (!p) return NULL;
+  if (!p) return nullptr;
 
   strncpy(p->comm, name, sizeof(p->comm));
   p->flags &= ~PF_KTHREAD;
@@ -424,7 +425,7 @@ struct task_struct *spawn_user_process_raw(void *data, size_t len, const char *n
   p->mm = mm_create();
   if (!p->mm) {
     free_task(p);
-    return NULL;
+    return nullptr;
   }
   p->active_mm = p->mm;
 
@@ -432,16 +433,16 @@ struct task_struct *spawn_user_process_raw(void *data, size_t len, const char *n
   uint64_t code_addr = 0x400000; // Standard base for simple ELFs/bins
   if (mm_populate_user_range(p->mm, code_addr, len, VM_READ | VM_WRITE | VM_EXEC | VM_USER, data, len) != 0) {
     free_task(p);
-    return NULL;
+    return nullptr;
   }
 
   /* Map user stack */
   uint64_t stack_top = vmm_get_max_user_address() - PAGE_SIZE; // Dynamic canonical stack top
   uint64_t stack_size = PAGE_SIZE * 16;
   uint64_t stack_base = stack_top - stack_size;
-  if (mm_populate_user_range(p->mm, stack_base, stack_size, VM_READ | VM_WRITE | VM_USER | VM_STACK, NULL, 0) != 0) {
+  if (mm_populate_user_range(p->mm, stack_base, stack_size, VM_READ | VM_WRITE | VM_USER | VM_STACK, nullptr, 0) != 0) {
     free_task(p);
-    return NULL;
+    return nullptr;
   }
 
   /* Setup kernel stack for ret_from_user_thread */

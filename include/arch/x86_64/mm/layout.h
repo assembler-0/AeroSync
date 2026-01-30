@@ -62,8 +62,26 @@
 #define VMALLOC_VIRT_BASE 0xFFFF900000000000ULL
 #define VMALLOC_VIRT_SIZE ((uint64_t)CONFIG_VMALLOC_SIZE_GB * 1024 * 1024 * 1024)
 #define VMALLOC_VIRT_END  (VMALLOC_VIRT_BASE + VMALLOC_VIRT_SIZE)
+/* make sure vmalloc end does not overlap with kernel start (redundant if Kconfig works as intenced) */
+static_assert(VMALLOC_VIRT_END < KERNEL_VIRT_BASE, "VMALLOC_VIRT_END overlaps KERNEL_VIRT_BASE");
 
 /* Helper to check if address is in kernel high memory */
 static inline bool is_kernel_addr(uint64_t addr) {
   return addr >= HHDM_VIRT_BASE;
+}
+
+static inline bool is_slab_addr(uint64_t addr) {
+  return addr >= SLAB_VIRT_BASE && addr < HHDM_VIRT_BASE;
+}
+
+static inline bool is_vmalloc_addr(uint64_t addr) {
+  return addr >= VMALLOC_VIRT_BASE && addr < HHDM_VIRT_BASE;
+}
+
+static inline bool is_pmm_addr(uint64_t addr) {
+  return addr >= HHDM_VIRT_BASE && addr < VMALLOC_VIRT_BASE;
+}
+
+static inline bool is_user_addr(uint64_t addr) {
+  return !is_kernel_addr(addr);
 }

@@ -43,6 +43,7 @@
 #define FKX_CLASS "[sys::sysintf::fkx] "         // FKX Module Loader
 #define SYNC_CLASS "[sys::core::sync] " // Synchronization (Mutex, Semaphores, Spinlocks)
 #define NUMA_CLASS "[sys::core::numa] "
+#define STACKTRACE_CLASS "[sys::core::stacktrace] "
 
 ///@section Crypto
 #define RNG_CLASS "[crypto::rng] " // Random Number Generator

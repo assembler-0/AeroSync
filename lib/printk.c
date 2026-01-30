@@ -31,8 +31,8 @@
 
 static const printk_backend_t *registered_backends[MAX_PRINTK_BACKENDS];
 static int num_registered_backends = 0;
-static const printk_backend_t *active_backend = NULL;
-static const printk_backend_t *last_active_backend = NULL;
+static const printk_backend_t *active_backend = nullptr;
+static const printk_backend_t *last_active_backend = nullptr;
 static bool printk_disabled = false;
 
 void printk_register_backend(const printk_backend_t *backend) {
@@ -44,7 +44,7 @@ void printk_register_backend(const printk_backend_t *backend) {
 EXPORT_SYMBOL(printk_register_backend);
 
 void printk_auto_configure(void *payload, const int reinit) {
-  const printk_backend_t *best = NULL;
+  const printk_backend_t *best = nullptr;
 
   for (int i = 0; i < num_registered_backends; i++) {
     const printk_backend_t *b = registered_backends[i];
@@ -63,11 +63,11 @@ void printk_auto_configure(void *payload, const int reinit) {
 
   if (!best) {
     // Fallback to internal ringbuffer only
-    if (reinit) log_set_console_sink(NULL);
-    else log_init(NULL);
+    if (reinit) log_set_console_sink(nullptr);
+    else log_init(nullptr);
     
     // We can still printk, it will go to ringbuffer
-    active_backend = NULL;
+    active_backend = nullptr;
     printk(KERN_ERR KERN_CLASS "no active printk backend, logging to ringbuffer only\n");
     return;
   }
@@ -88,9 +88,9 @@ void printk_auto_configure(void *payload, const int reinit) {
             best->name, best->priority);
   } else {
     if (reinit) {
-      log_set_console_sink(NULL);
+      log_set_console_sink(nullptr);
     } else {
-      log_init(NULL);
+      log_init(nullptr);
     }
   }
 }
@@ -119,7 +119,7 @@ int printk_set_sink(const char *backend_name, bool cleanup) {
         int needs_init = 1;
         if (b->is_active) needs_init = !b->is_active();
         
-        if (needs_init && b->init(NULL) != 0) {
+        if (needs_init && b->init(nullptr) != 0) {
           printk(KERN_ERR KERN_CLASS "failed to reinit printk backend %s\n", backend_name);
           // Fallback to auto select if preferred backend failed
           const printk_backend_t *fallback = printk_auto_select_backend(backend_name);
@@ -152,8 +152,8 @@ void printk_disable(void) {
   
   printk_disabled = true;
   last_active_backend = active_backend;
-  active_backend = NULL;
-  log_set_console_sink(NULL);
+  active_backend = nullptr;
+  log_set_console_sink(nullptr);
 }
 EXPORT_SYMBOL(printk_disable);
 
@@ -168,12 +168,12 @@ void printk_enable(void) {
   }
   
   // Restore failed or none saved, re-configure
-  printk_auto_configure(NULL, 1);
+  printk_auto_configure(nullptr, 1);
 }
 EXPORT_SYMBOL(printk_enable);
 
 const printk_backend_t *printk_auto_select_backend(const char *not) {
-  const printk_backend_t *best = NULL;
+  const printk_backend_t *best = nullptr;
   for (int i = 0; i < num_registered_backends; i++) {
     const printk_backend_t *b = registered_backends[i];
     if (!b) continue;
@@ -192,9 +192,9 @@ void printk_shutdown(void) {
   if (active_backend && active_backend->cleanup) {
     active_backend->cleanup();
   }
-  active_backend = NULL;
-  last_active_backend = NULL;
-  log_set_console_sink(NULL);
+  active_backend = nullptr;
+  last_active_backend = nullptr;
+  log_set_console_sink(nullptr);
 }
 EXPORT_SYMBOL(printk_shutdown);
 

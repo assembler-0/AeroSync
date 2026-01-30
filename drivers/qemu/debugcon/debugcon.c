@@ -20,7 +20,7 @@ static printk_backend_t debugcon_backend = {
     .putc = debugcon_putc,
     .probe = debugcon_probe,
     .init = generic_backend_init,
-    .cleanup = NULL,
+    .cleanup = nullptr,
     .is_active = debugcon_is_initialized
 };
 

@@ -87,9 +87,9 @@ static int block_match_name(struct device *dev, void *data) {
 
 struct block_device *block_device_find(const char *name) {
   block_init_subsystem();
-  struct find_data fd = {.name = name, .found = NULL};
+  struct find_data fd = {.name = name, .found = nullptr};
 
-  class_for_each_dev(&block_class, NULL, &fd, block_match_name);
+  class_for_each_dev(&block_class, nullptr, &fd, block_match_name);
 
   return fd.found;
 }

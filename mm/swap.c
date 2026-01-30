@@ -65,7 +65,7 @@ int swap_init(void) {
   }
 
   for (int i = 0; i < MAX_SWAPFILES; i++) {
-    swap_info[i] = NULL;
+    swap_info[i] = nullptr;
   }
 
   printk(KERN_INFO "swap: " "Swap subsystem initialized (max %d devices)\n",
@@ -77,7 +77,7 @@ int swap_init(void) {
  * find_free_swap_slot - Find a swap device with free capacity
  */
 static struct swap_info_struct *find_swap_device(void) {
-  struct swap_info_struct *best = NULL;
+  struct swap_info_struct *best = nullptr;
   int best_prio = -1;
 
   for (int i = 0; i < nr_swapfiles; i++) {
@@ -269,11 +269,11 @@ int swap_writepage(struct folio *folio, swp_entry_t entry) {
  * swap_readpage - Read a folio from swap
  * @entry: The swap entry to read from
  *
- * Returns the folio on success, NULL on failure.
+ * Returns the folio on success, nullptr on failure.
  */
 struct folio *swap_readpage(swp_entry_t entry) {
   if (non_swap_entry(entry))
-    return NULL;
+    return nullptr;
 
   /* Check swap cache first */
   struct folio *folio = lookup_swap_cache(entry);
@@ -282,16 +282,16 @@ struct folio *swap_readpage(swp_entry_t entry) {
 
   unsigned int type = swp_type(entry);
   if (type >= MAX_SWAPFILES)
-    return NULL;
+    return nullptr;
 
   struct swap_info_struct *si = swap_info[type];
   if (!si)
-    return NULL;
+    return nullptr;
 
   /* Allocate a new folio */
   folio = alloc_pages(GFP_KERNEL, 0);
   if (!folio)
-    return NULL;
+    return nullptr;
 
   /*
    * TODO: Actual I/O from block device.
@@ -330,7 +330,7 @@ struct folio *lookup_swap_cache(swp_entry_t entry) {
   }
 
   spin_unlock(&swap_cache[hash].lock);
-  return NULL;
+  return nullptr;
 }
 
 /**
@@ -528,7 +528,7 @@ int sys_swapon(const char *path, int flags) {
  * Returns 0 on success, negative on failure.
  */
 int sys_swapoff(const char *path) {
-  struct swap_info_struct *si = NULL;
+  struct swap_info_struct *si = nullptr;
 
   spin_lock(&swap_lock);
   for (int i = 0; i < nr_swapfiles; i++) {
@@ -588,11 +588,11 @@ int swap_writepage(struct folio *folio, swp_entry_t entry) {
 }
 struct folio *swap_readpage(swp_entry_t entry) {
   (void) entry;
-  return NULL;
+  return nullptr;
 }
 struct folio *lookup_swap_cache(swp_entry_t entry) {
   (void) entry;
-  return NULL;
+  return nullptr;
 }
 int add_to_swap_cache(struct folio *folio, swp_entry_t entry) {
   (void) folio;
@@ -603,7 +603,7 @@ void delete_from_swap_cache(struct folio *folio) { (void) folio; }
 struct folio *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask) {
   (void) entry;
   (void) gfp_mask;
-  return NULL;
+  return nullptr;
 }
 int sys_swapon(const char *path, int flags) {
   (void) path;

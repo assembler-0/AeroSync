@@ -16,7 +16,7 @@
  *
  *  1) A node is either red or black
  *  2) The root is black
- *  3) All leaves (NULL) are black
+ *  3) All leaves (nullptr) are black
  *  4) Both children of every red node are black
  *  5) Every simple path from root to leaves contains the same number
  *     of black nodes.
@@ -96,7 +96,7 @@ __rb_insert(struct rb_node *node, struct rb_root *root,
 			 * first node, or we recursed at Case 1 below and
 			 * are no longer violating 4).
 			 */
-			rb_set_parent_color(node, NULL, RB_BLACK);
+			rb_set_parent_color(node, nullptr, RB_BLACK);
 			break;
 		}
 
@@ -226,13 +226,13 @@ static __always_inline void
 ____rb_erase_color(struct rb_node *parent, struct rb_root *root,
 	void (*augment_rotate)(struct rb_node *old, struct rb_node *new))
 {
-	struct rb_node *node = NULL, *sibling, *tmp1, *tmp2;
+	struct rb_node *node = nullptr, *sibling, *tmp1, *tmp2;
 
 	while (true) {
 		/*
 		 * Loop invariants:
-		 * - node is black (or NULL on first iteration)
-		 * - node is not the root (parent is not NULL)
+		 * - node is black (or nullptr on first iteration)
+		 * - node is not the root (parent is not nullptr)
 		 * - All leaf paths going through parent and node have a
 		 *   black node count that is 1 lower than other leaf paths.
 		 */
@@ -460,7 +460,7 @@ struct rb_node *rb_next(const struct rb_node *node)
 	struct rb_node *parent;
 
 	if (RB_EMPTY_NODE(node))
-		return NULL;
+		return nullptr;
 
 	/*
 	 * If we have a right-hand child, go down and then left as far
@@ -491,7 +491,7 @@ struct rb_node *rb_prev(const struct rb_node *node)
 	struct rb_node *parent;
 
 	if (RB_EMPTY_NODE(node))
-		return NULL;
+		return nullptr;
 
 	/*
 	 * If we have a left-hand child, go down and then right as far
@@ -546,7 +546,7 @@ struct rb_node *rb_next_postorder(const struct rb_node *node)
 {
 	const struct rb_node *parent;
 	if (!node)
-		return NULL;
+		return nullptr;
 	parent = rb_parent(node);
 
 	/* If we're sitting on node, we've already seen our children */
@@ -563,7 +563,7 @@ struct rb_node *rb_next_postorder(const struct rb_node *node)
 struct rb_node *rb_first_postorder(const struct rb_root *root)
 {
 	if (!root->rb_node)
-		return NULL;
+		return nullptr;
 
 	return rb_left_deepest_node(root->rb_node);
 }

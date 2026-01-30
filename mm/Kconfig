@@ -255,8 +255,8 @@ endmenu
 menu "Kernel Memory Layout"
 
 config VMALLOC_SIZE_GB
-    int "Vmalloc Region Size (GB)"
-    default 64
+    int "vmalloc Region Size (GB)"
+    default 128
     range 1 512
     help
       Size of the virtual address range reserved for vmalloc and ioremap.

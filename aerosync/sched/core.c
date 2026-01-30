@@ -195,7 +195,7 @@ static struct task_struct *pick_next_task(struct rq *rq) {
   }
 
   /* Failure to pick any task (shouldn't happen if idle class exists) */
-  return NULL;
+  return nullptr;
 }
 
 /*
@@ -452,7 +452,6 @@ void schedule_tail(struct task_struct *prev) {
 
   /* Release the runqueue lock held since schedule() */
   spinlock_unlock(&rq->lock);
-  cpu_sti(); // Matches spinlock_lock_irqsave behavior
 
   /* Restore FPU state for the current task */
   if (current->thread.fpu) {
@@ -594,6 +593,7 @@ void schedule(void) {
     prev_task = switch_to(prev_task, next_task);
 
     schedule_tail(prev_task);
+    restore_irq_flags(flags);
     return;
   }
 
@@ -619,10 +619,10 @@ static inline bool task_can_run_on(struct task_struct *p, int cpu) {
  * find_busiest_group - Find the group with highest load in a domain
  */
 static struct sched_group *find_busiest_group(struct sched_domain *sd, int this_cpu) {
-  struct sched_group *busiest = NULL, *sg = sd->groups;
+  struct sched_group *busiest = nullptr, *sg = sd->groups;
   unsigned long max_load = 0;
 
-  if (!sg) return NULL;
+  if (!sg) return nullptr;
 
   do {
     if (cpumask_test_cpu(this_cpu, &sg->cpumask)) {
@@ -650,7 +650,7 @@ static struct sched_group *find_busiest_group(struct sched_domain *sd, int this_
  * find_busiest_queue - Find the busiest runqueue in a group
  */
 static struct rq *find_busiest_queue(struct sched_group *group, int this_cpu) {
-  struct rq *busiest = NULL;
+  struct rq *busiest = nullptr;
   unsigned long max_load = 0;
   int cpu;
 
@@ -960,7 +960,7 @@ void sched_init_task(struct task_struct *initial_task) {
 
   /* PI initialization */
   spinlock_init(&initial_task->pi_lock);
-  initial_task->pi_blocked_on = NULL;
+  initial_task->pi_blocked_on = nullptr;
   INIT_LIST_HEAD(&initial_task->pi_waiters);
   INIT_LIST_HEAD(&initial_task->pi_list);
 
@@ -1026,7 +1026,7 @@ void sched_init_ap(void) {
 
   /* PI initialization */
   spinlock_init(&idle->pi_lock);
-  idle->pi_blocked_on = NULL;
+  idle->pi_blocked_on = nullptr;
   INIT_LIST_HEAD(&idle->pi_waiters);
   INIT_LIST_HEAD(&idle->pi_list);
 

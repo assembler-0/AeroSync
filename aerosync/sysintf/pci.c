@@ -22,8 +22,8 @@ static struct class pci_hw_class = {
 };
 
 static bool pci_hw_class_registered = false;
-static const pci_ops_t *current_hw_ops = NULL;
-static const pci_subsystem_ops_t *current_subsys_ops = NULL;
+static const pci_ops_t *current_hw_ops = nullptr;
+static const pci_subsystem_ops_t *current_subsys_ops = nullptr;
 
 struct pci_hw_device {
   struct device dev;

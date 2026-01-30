@@ -92,6 +92,6 @@ int acpi_bus_enumerate(void) {
   printk(KERN_INFO ACPI_CLASS "enumerating ACPI namespace...\n");
   uacpi_namespace_for_each_child(uacpi_namespace_root(), acpi_enum_callback,
                                  UACPI_NULL, UACPI_OBJECT_ANY_BIT,
-                                 UACPI_MAX_DEPTH_ANY, NULL);
+                                 UACPI_MAX_DEPTH_ANY, nullptr);
   return 0;
 }

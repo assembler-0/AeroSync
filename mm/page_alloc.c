@@ -187,7 +187,7 @@ static struct page *__rmqueue_fallback(struct zone *zone, unsigned int order,
     }
   }
 
-  return NULL;
+  return nullptr;
 }
 
 static struct page *__rmqueue(struct zone *zone, unsigned int order, int migratetype) {
@@ -237,7 +237,7 @@ int rmqueue_bulk(struct zone *zone, unsigned int order, unsigned int count,
 
   for (i = 0; i < (int) count; ++i) {
     struct page *page = __rmqueue(zone, order, migratetype);
-    if (unlikely(page == NULL))
+    if (unlikely(page == nullptr))
       break;
 
     list_add_tail(&page->list, list);
@@ -376,7 +376,7 @@ static void build_zonelists_node(struct pglist_data *pgdat, struct zonelist *zon
     }
   }
 
-  zonelist->_zones[zone_idx] = NULL;
+  zonelist->_zones[zone_idx] = nullptr;
 }
 
 void build_all_zonelists(void) {
@@ -394,8 +394,8 @@ void build_all_zonelists(void) {
  * Core Allocator
  */
 struct folio *alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order) {
-  struct page *page = NULL;
-  struct pglist_data *pgdat = NULL;
+  struct page *page = nullptr;
+  struct pglist_data *pgdat = nullptr;
   struct zone *z;
   unsigned long flags;
   bool can_reclaim = !(gfp_mask & GFP_ATOMIC);
@@ -414,7 +414,7 @@ retry:
     }
     if (nid == -1) {
       printk(KERN_ERR PMM_CLASS "No valid NUMA nodes available\n");
-      return NULL;
+      return nullptr;
     }
   }
 
@@ -479,7 +479,7 @@ retry:
   struct zonelist *zonelist = &pgdat->node_zonelists[start_zone_idx];
   struct zone **z_ptr = zonelist->_zones;
 
-  while ((z = *z_ptr++) != NULL) {
+  while ((z = *z_ptr++) != nullptr) {
     if (!z->present_pages || order > z->max_free_order) continue;
 
     /* Check watermarks with atomic operations */
@@ -511,7 +511,7 @@ retry:
   }
 
   printk(KERN_ERR PMM_CLASS "failed to allocate order %u from any node (gfp: %x)\n", order, gfp_mask);
-  return NULL;
+  return nullptr;
 
 found:
   check_page_sanity(page, order);
@@ -705,7 +705,7 @@ void put_page(struct page *page) {
         for (size_t i = 1; i < nr; i++) {
           struct page *tail = &folio->page + i;
           ClearPageTail(tail);
-          tail->head = NULL;
+          tail->head = nullptr;
         }
       }
     }
@@ -809,7 +809,7 @@ void free_area_init(void) {
 
     struct pglist_data *pgdat = node_data[n];
     init_waitqueue_head(&pgdat->kswapd_wait);
-    pgdat->kswapd_task = NULL;
+    pgdat->kswapd_task = nullptr;
 
     spinlock_init(&pgdat->lru_lock);
     for (int gen = 0; gen < MAX_NR_GENS; gen++) {

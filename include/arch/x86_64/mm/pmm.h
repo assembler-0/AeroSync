@@ -123,7 +123,7 @@ static inline uint64_t pmm_virt_to_phys(void *virt_addr) {
 
 static inline struct page *phys_to_page(uint64_t phys) {
   uint64_t pfn = PHYS_TO_PFN(phys);
-  if (pfn >= pmm_max_pages) return NULL;
+  if (pfn >= pmm_max_pages) return nullptr;
   return &mem_map[pfn];
 }
 
@@ -136,15 +136,9 @@ static inline struct page *virt_to_page(void *addr) {
 }
 
 /* Simple PMM smoke test */
-
 void pmm_test(void);
 
-
-
 /**
-
  * Report system memory capabilities and potential limitations.
-
  */
-
 void pmm_report_capabilities(void);

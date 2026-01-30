@@ -186,7 +186,7 @@ static int kwritebackd(void *data) {
 }
 
 void vm_writeback_init(void) {
-  struct task_struct *t = kthread_create(kwritebackd, NULL, "kwritebackd");
+  struct task_struct *t = kthread_create(kwritebackd, nullptr, "kwritebackd");
   if (t) {
     kthread_run(t);
   }

@@ -51,7 +51,7 @@ void class_unregister(struct class *cls);
 /**
  * class_for_each_dev - iterate over devices in a class
  * @cls: the class to iterate
- * @start: the device to start after (NULL for beginning)
+ * @start: the device to start after (nullptr for beginning)
  * @data: data to pass to the callback
  * @fn: callback function. If it returns non-zero, iteration stops and returns
  * that value.

@@ -385,7 +385,7 @@ int try_to_unmap_folio(struct folio *folio, struct mmu_gather *tlb) {
 
     // Validate anon_vma before use
     if (!av || atomic_read(&av->refcount) == 0) {
-      folio->mapping = NULL;
+      folio->mapping = nullptr;
       rcu_read_unlock();
       return 0;
     }
@@ -395,7 +395,7 @@ int try_to_unmap_folio(struct folio *folio, struct mmu_gather *tlb) {
     // Re-check after acquiring lock
     if (atomic_read(&av->refcount) == 0) {
       spinlock_unlock_irqrestore(&av->lock, flags);
-      folio->mapping = NULL;
+      folio->mapping = nullptr;
       rcu_read_unlock();
       return 0;
     }
@@ -423,7 +423,7 @@ int try_to_unmap_folio(struct folio *folio, struct mmu_gather *tlb) {
     }
 
     spinlock_unlock_irqrestore(&av->lock, flags);
-    folio->mapping = NULL;
+    folio->mapping = nullptr;
     rcu_read_unlock();
     return 1;
   }
@@ -455,7 +455,7 @@ int try_to_unmap_folio(struct folio *folio, struct mmu_gather *tlb) {
   }
 
   up_read(&obj->lock);
-  folio->mapping = NULL;
+  folio->mapping = nullptr;
   rcu_read_unlock();
   return 1;
 }
@@ -475,7 +475,7 @@ int folio_referenced(struct folio *folio) {
   /* Track range for batched TLB shootdown */
   uint64_t flush_start = ULONG_MAX;
   uint64_t flush_end = 0;
-  struct mm_struct *flush_mm = NULL;
+  struct mm_struct *flush_mm = nullptr;
 
   rcu_read_lock();
 
@@ -1151,7 +1151,7 @@ int anon_vma_prepare(struct vm_area_struct *vma) {
   spinlock_init(&av->lock);
   INIT_LIST_HEAD(&av->head);
   atomic_set(&av->refcount, 1);
-  av->parent = NULL;
+  av->parent = nullptr;
 
   vma->anon_vma = av;
   return anon_vma_chain_link(vma, av);
@@ -1214,7 +1214,7 @@ static int migrate_folio_to_node(struct folio *folio, int nid) {
     if (!new_folio) return -ENOMEM;
     
     /* 1. Unmap all users to freeze the page */
-    if (try_to_unmap_folio(folio, NULL) != 0) {
+    if (try_to_unmap_folio(folio, nullptr) != 0) {
         folio_put(new_folio);
         return -EBUSY;
     }
@@ -1307,7 +1307,7 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
   vmf.flags = flags;
   vmf.pgoff = (address - vma->vm_start) >> PAGE_SHIFT;
   if (vma->vm_pgoff) vmf.pgoff += vma->vm_pgoff;
-  vmf.folio = NULL;
+  vmf.folio = nullptr;
 
   int ret = VM_FAULT_SIGSEGV;
 

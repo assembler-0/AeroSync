@@ -239,7 +239,7 @@ static void sys_close(struct syscall_regs *regs) {
   }
 
   struct file *file = files->fdtab.fd[fd];
-  files->fdtab.fd[fd] = NULL;
+  files->fdtab.fd[fd] = nullptr;
   clear_bit(fd, files->fdtab.open_fds);
   if (fd < files->next_fd) {
     files->next_fd = fd;
@@ -302,7 +302,7 @@ static void sys_mmap(struct syscall_regs *regs) {
     return;
   }
 
-  struct file *file = NULL;
+  struct file *file = nullptr;
   if (!(flags & MAP_ANON)) {
       file = fget(fd);
       if (!file) {
@@ -315,7 +315,7 @@ static void sys_mmap(struct syscall_regs *regs) {
       return;
   }
 
-  uint64_t ret = do_mmap(mm, addr, len, prot, flags, file, NULL, off >> PAGE_SHIFT);
+  uint64_t ret = do_mmap(mm, addr, len, prot, flags, file, nullptr, off >> PAGE_SHIFT);
   REGS_RETURN_VAL(regs, ret);
 }
 

@@ -23,7 +23,7 @@ static struct shm_object *find_shm_locked(const char *name) {
             return shm;
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 struct shm_object *shm_open(const char *name, size_t size, int flags) {
@@ -43,7 +43,7 @@ struct shm_object *shm_open(const char *name, size_t size, int flags) {
     shm = kmalloc(sizeof(struct shm_object));
     if (!shm) {
         spinlock_unlock(&shm_lock);
-        return NULL;
+        return nullptr;
     }
 
     strncpy(shm->name, name, SHM_NAME_MAX);
@@ -54,7 +54,7 @@ struct shm_object *shm_open(const char *name, size_t size, int flags) {
     if (!shm->vmo) {
         kfree(shm);
         spinlock_unlock(&shm_lock);
-        return NULL;
+        return nullptr;
     }
 
     list_add(&shm->list, &shm_list);

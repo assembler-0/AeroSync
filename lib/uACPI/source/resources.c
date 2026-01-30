@@ -2296,7 +2296,7 @@ static uacpi_iteration_decision do_native_resource_to_aml(
 
             if (uacpi_unlikely(src_string == UACPI_NULL)) {
                 uacpi_error(
-                    "source string length is %zu but the pointer is NULL\n",
+                    "source string length is %zu but the pointer is nullptr\n",
                     length
                 );
                 ctx->st = UACPI_STATUS_INVALID_ARGUMENT;
@@ -2345,7 +2345,7 @@ static uacpi_iteration_decision do_native_resource_to_aml(
 
                 if (uacpi_unlikely(vendor_data_length != 0)) {
                     uacpi_error(
-                        "vendor_data_length is %d, but pointer is NULL\n",
+                        "vendor_data_length is %d, but pointer is nullptr\n",
                         vendor_data_length
                     );
                     ctx->st = UACPI_STATUS_INVALID_ARGUMENT;

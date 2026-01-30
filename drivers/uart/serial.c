@@ -169,5 +169,5 @@ FKX_MODULE_DEFINE(
   0,
   FKX_PRINTK_CLASS,
   serial_mod_init,
-  NULL
+  nullptr
 );
