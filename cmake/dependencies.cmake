@@ -1,15 +1,38 @@
 # ============================================================================
-# Tool Dependencies
+# Tool Dependencies & External Packages
 # ============================================================================
-find_program(LLVM_OBJDUMP llvm-objdump)
-# find_program(QEMU_IMG qemu-img)
-# find_program(MKFS_FAT mkfs.fat)
-# find_program(MKFS_EXT2 mkfs.ext2)
-# find_program(MKFS_NTFS mkfs.ntfs)
+include(FetchContent)
+
+# ----------------------------------------------------------------------------
+# Required Tools
+# ----------------------------------------------------------------------------
+
+# Linker (LLD)
+find_program(LLD_EXECUTABLE ld.lld)
+if(NOT LLD_EXECUTABLE)
+    message(WARNING "LLD (ld.lld) not found. Linking might fail or fallback to system ld.")
+endif()
+
+# Assembler (NASM)
+find_program(NASM_EXECUTABLE nasm REQUIRED)
+
+# ISO Creation (Xorriso)
+find_program(XORRISO xorriso REQUIRED)
+
+# Kconfig Dependencies
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+# ----------------------------------------------------------------------------
+# Optional Tools (Emulation / Debugging)
+# ----------------------------------------------------------------------------
 find_program(QEMU_SYSTEM_X86_64 qemu-system-x86_64)
 find_program(BOCHS bochs)
 find_program(VBOXMANAGE VBoxManage)
-#find_program(CARGO_EXECUTABLE cargo REQUIRED)
-#find_program(RUSTC_EXECUTABLE rustc REQUIRED)
-find_program(XORRISO xorriso REQUIRED)
 find_program(VMRUN_EXECUTABLE vmrun)
+find_program(LLVM_OBJDUMP llvm-objdump)
+
+# ----------------------------------------------------------------------------
+# External Libraries (FetchContent)
+# ----------------------------------------------------------------------------
+# Limine is handled in cmake/limine.cmake, but could be moved here.
+# For now, we keep the modular structure.

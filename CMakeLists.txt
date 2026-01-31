@@ -18,50 +18,66 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 # ============================================================================
+
+# ============================================================================
+# Project & Toolchain Setup
+# ============================================================================
+
 cmake_minimum_required(VERSION 3.30)
-set_property(GLOBAL PROPERTY RULE_MESSAGES OFF)
 project(AeroSync
-        VERSION 3.2.5 # <EPOCH>.<FEATURE>.<PATCH> - see include/aerosync/version.h
-        LANGUAGES C ASM_NASM
-        HOMEPAGE_URL "https://github.com/assembler-0/AeroSync"
-        DESCRIPTION "A modern monolithic operating system kernel designed for performance and modularity."
+    VERSION 3.2.5
+    LANGUAGES C CXX ASM_NASM
+    HOMEPAGE_URL "https://github.com/assembler-0/AeroSync"
+    DESCRIPTION "A modern monolithic operating system kernel."
 )
 
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/toolchain")
+
 # ============================================================================
-# fragments
+# Configuration & Dependencies
 # ============================================================================
-list(APPEND CMAKE_MODULE_PATH
-        "${CMAKE_SOURCE_DIR}/cmake"
-)
 
-# configuration includes
-include(cache)                        # unorganized cache variables
-include(ccache)                       # ccache find & enable
-include(dependencies)                 # dependencies
-include(configuration)                # build options
-include(kconfig)                      # Kconfig-cmake integration
-include(version)                      # AeroSync versioning system
-include(platform)                     # platform detection
-include(standard)                     # Language standards
-include(FetchContent)                 # fetcher
+# 1. Base Configuration
+include(configuration)  # Build options (STACK_PROTECTION, etc.)
+include(platform)       # Platform checks
+include(standard)       # C/C++ Standards
+include(version)        # Versioning info
 
-# compile sub-projects
-add_subdirectory(tools/fkx_signer)    # FKX modules signer
+# 2. Dependencies
+include(dependencies)   # External tools (NASM, Xorriso, etc.)
+include(limine)         # Bootloader resources
 
-# sources and frameworks
-include(source)                       # kernel sources
-include(fkx)                          # FKX framework
+# 3. Kconfig Support
+include(kconfig)
 
-# libraries, drivers configuration
-include(lib/linearfb/linearfb.cmake)  # linearfb graphics library
-include(drivers/uart/uart.cmake)      # serial (UART) driver
-include(drivers/apic/ic.cmake)        # interrupt controller drivers
-include(drivers/pci/pci.cmake)        # pci bus drivers
-include(drivers/timer/timer.cmake)    # timer drivers
-include(drivers/block/ide/ide.cmake)  # IDE/ATA block driver
+# ============================================================================
+# Sub-projects (Host Tools)
+# ============================================================================
 
-# build and post-build
-include(aerosync-compile)             # core kernel compilation
-include(limine)                       # limine fetcher
-include(isogen)                       # iso generation
-include(run)                          # runnable targets (menuconfig, run, etc.)
+include(HostTools)
+
+# ============================================================================
+# Kernel Build
+# ============================================================================
+
+# Source Gathering
+include(source)       # Core kernel sources
+include(fkx)          # FKX framework
+
+# Driver & Library Modules
+include(lib/linearfb/linearfb.cmake)
+include(drivers/uart/uart.cmake)
+include(drivers/apic/ic.cmake)
+include(drivers/pci/pci.cmake)
+include(drivers/timer/timer.cmake)
+include(drivers/block/ide/ide.cmake)
+
+# Kernel Target Definition & Compilation Rules
+include(aerosync-compile)
+
+# ============================================================================
+# Post-Build & artifacts
+# ============================================================================
+include(isogen) # ISO Generation
+include(run)    # Run targets (qemu, etc.)

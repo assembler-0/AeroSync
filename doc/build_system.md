@@ -59,6 +59,8 @@ a
 
 - `amd64` - release kernel (fastest, less overhead)
 - `amd64-hardened` - release kernel with hardened security features
+- `amd64-dev` - development kernel with hardened security features (slowest, no optimization and debug symbols)
+- `amd64-dev-hardened` - development kernel (no optimization and debug symbols)
 
 1. **Configure the build:**
    ```bash

@@ -20,11 +20,6 @@ else()
     set(CMAKE_MODULE_LINKER_FLAGS "")
 endif()
 
-if(CMAKE_C_COMPILER MATCHES ${ALLOWED_C_COMPILER})
-else()
-    message(WARNING "Unsupported C compiler: ${CMAKE_C_COMPILER}")
-endif()
-
 message(STATUS "CMake Generator: ${CMAKE_GENERATOR}")
 message(STATUS "CMake Build Type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "CMake Source Directory: ${CMAKE_SOURCE_DIR}")

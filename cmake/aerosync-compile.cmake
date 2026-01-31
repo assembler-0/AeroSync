@@ -12,19 +12,19 @@ target_compile_options(aerosync.krnl PRIVATE
     $<$<COMPILE_LANGUAGE:C>:
         -m64
         -target ${CLANG_TARGET_TRIPLE}
-        -O2
-        -g0
+        -O${OPT_LEVEL}
+        -g${DSYM_LEVEL}
         -fdata-sections
         -ffunction-sections
         -fno-omit-frame-pointer
         -finline-functions
         -foptimize-sibling-calls
-        -nostdlib
-        -ffreestanding
         -mno-implicit-float
         -msoft-float
         -mno-red-zone
         -mserialize
+        -ffreestanding
+        -nostdlib
         -fno-pic
         -fno-pie
         -mcmodel=kernel
