@@ -3,7 +3,7 @@
 ## Introduction
 Firstly, thank you for considering contributing to AeroSync! As usual, to maintain a healthy community, code quality and a good development experience, there are a few guidelines that you should follow.
 
-As you already know, AeroSync is a modern, real hardware-capable kernel, written in mostly C and assembly (x86_64 nasm flavor). It is heavily inspired by the Linux, BSD and XNU (Mach) kernels.
+As you already know, AeroSync is a modern, real hardware-capable kernel, written in mostly C23 and assembly (x86_64 nasm flavor). It is heavily inspired by the Linux, BSD and XNU (Mach) kernels.
 Therefore, I want this to be a bit more of a serious project (imo), not just a *just-work* implementation. This project is open to the community, but architecturally driven by the maintainers.
 The project's final goal is to be a General-Purpose (GP) kernel for x86_64-compatible CPUs (other architectures and kernel flavors are not planned whatsoever). 
 One more time, this is a kernel, not an os or trying to be an os, I have seen projects that claim to be a *kernel* or an *os*, but architecturally, 
@@ -35,8 +35,8 @@ they are an **os-in-kernel**-which is the worst possible thing.
 - is correct
 ### Non-Goals (any changes involving these will be rejected without further discussion)
 - is an os
-- rapid feature accretion
-- random rewrites (e.g., because "Rust/C++/ABC is better than C/assembly")
+- rapid feature additions (without proper testing)
+- random rewrites (e.g., because "Rust/C++/ABC is better than C/assembly (note: even though it really is)")
 - toy kernel
 - constant ABI changes
 - user-first approach
@@ -64,13 +64,13 @@ they are an **os-in-kernel**-which is the worst possible thing.
 - drafts are welcome.
 
 ## Standards (ALL changes must follow these standards)
-- ISO C11 standard (GNU extensions allowed where justified).
+- ISO C23 standard (GNU extensions are disabled by default in cmake/standard.cmake)
 - 2-space indentation.
 - no tabs.
 - CMake build system.
 - LLVM infrastructure only.
 - rc versioning scheme. (see [version.h.in](include/aerosync/version.h.in) for more details).
-- Both C-/C++-style comments are allowed. (// ... and /* ... */)
+- Both C/C++-style comments are allowed. (// ... and /* ... */)
 
 ## Code style
 - naming:
@@ -104,5 +104,6 @@ they are an **os-in-kernel**-which is the worst possible thing.
 - You can use code from other projects as long as they are compliant with the kernel's license
 - no proprietary code allowed (including leaked code from proprietary projects, e.g., Windows NT4.0 source leak)
 - all contributions are under the project's license 
+- 
 ## Credits
 - Contributors will be acknowledged ([CONTRIBUTORS.md](CONTRIBUTORS.md)) accordingly.

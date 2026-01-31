@@ -93,7 +93,7 @@
  * barrier(): Prevents the compiler from reordering instructions across this point.
  *            It does NOT prevent the CPU from reordering.
  */
-#define cbarrier()      asm volatile("" ::: "memory")
+#define cbarrier()      __asm__ volatile("" ::: "memory")
 
 /*
  * READ_ONCE / WRITE_ONCE

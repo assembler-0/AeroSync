@@ -40,9 +40,9 @@ include(ccache)                       # ccache find & enable
 include(dependencies)                 # dependencies
 include(configuration)                # build options
 include(kconfig)                      # Kconfig-cmake integration
+include(version)                      # AeroSync versioning system
 include(platform)                     # platform detection
 include(standard)                     # Language standards
-include(version)                      # AeroSync versioning system
 include(FetchContent)                 # fetcher
 
 # compile sub-projects

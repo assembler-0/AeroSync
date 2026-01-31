@@ -78,18 +78,18 @@ uint64_t rdrand64(void) {
 
 int rdrand16_safe(uint16_t *rand) {
   unsigned char ok;
-  asm volatile ("rdrand %0; setc %1" : "=r" (*rand), "=qm" (ok));
+  __asm__ volatile ("rdrand %0; setc %1" : "=r" (*rand), "=qm" (ok));
   return ok;
 }
 
 int rdrand32_safe(uint32_t *rand) {
   unsigned char ok;
-  asm volatile ("rdrand %0; setc %1" : "=r" (*rand), "=qm" (ok));
+  __asm__ volatile ("rdrand %0; setc %1" : "=r" (*rand), "=qm" (ok));
   return ok;
 }
 
 int rdrand64_safe(uint64_t *rand) {
   unsigned char ok;
-  asm volatile ("rdrand %0; setc %1" : "=r" (*rand), "=qm" (ok));
+  __asm__ volatile ("rdrand %0; setc %1" : "=r" (*rand), "=qm" (ok));
   return ok;
 }

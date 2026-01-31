@@ -7,7 +7,7 @@ AeroSync uses CMake as its build system to create a modern, monolithic 64-bit x8
 ## Prerequisites
 
 To build AeroSync, you will need the following tools:
-
+a
 *   **CMake:** Version 3.30 or newer (or, edit the `CMakeLists.txt` file to use an older version)
 *   **LLVM**: Version 18.0.0 or newer recommended (including clang, lld, and llvm-*)
 > ⚠️ AeroSync ONLY supports LLVM-based compiler (e.g., clang, icx, aocc); GCC is not tested whatsoever (don't ask me why)
@@ -16,9 +16,9 @@ To build AeroSync, you will need the following tools:
 *   **lld:** The LLVM linker
 > ⚠️ LLD is required for LTO builds
 *   **Limine:** The Limine bootloader resources must be available on the host system.
+> CMake will automatically download them if they are not found.
 *   **Python:** The python interpreter, primarly for tools and kernel configuration generation.
 *   **Kconfiglib:** A Python library for parsing Kconfig files.
-> CMake will automatically download them if they are not found.
 
 - **optional:** either used by me and/is not needed for building AeroSync
     - mimalloc: glibc's ptmalloc2 sucks
@@ -75,18 +75,9 @@ The build process generates:
 - `aerosync.hybrid.iso` - A hybrid bootable ISO image in the `build/` directory
 - `bootdir/` - Directory containing the kernel image, kernel extensions, and bootloader components
 
-## Build System Components
-
-### CMake Configuration Files
-
-- `CMakeLists.txt` - Main project configuration
-- `cmake/configuration.cmake` - Build configuration settings
-- `cmake/dependencies.cmake` - External dependencies management
-- `cmake/kconfig.cmake` - Kconfig integration
-- `cmake/limine.cmake` - Limine bootloader integration
-- `cmake/source.cmake` - Source file management
-- `cmake/fkx.cmake` - FKX module system
-- `cmake/vmx.cmake` - VMware VMX configuration
+## CMake components
+I want the build system to be as modular as possible, so everything is a CMake fragment located in the `cmake/` directory.
+Keeping the root CMakeLists.txt file as clean as possible. Currently, its size is only less than 100 lines of code.
 
 ### Compile time options & kernel configuration
 
@@ -124,26 +115,6 @@ The build system creates a hybrid ISO that supports both BIOS and UEFI boot mode
 - `vmw-setup` - Setup VMware VM
 - `vmw-delete-vm` - Delete VMware VM
 
-## Supported Platforms
-
-The kernel has been tested on:
-- VMware Workstation Pro 25H2+
-- QEMU 10.1.2+
-- Bochs 3.0.devel+
-- Oracle VirtualBox 7.2.4r170995+
-- Intel Alder Lake-based computers
-- Intel Raptor Lake-based computers
-- Intel Comet Lake-based computers
-
 ## Configuration System
 
 AeroSync uses Kconfig [(more)](kconfig.md) for kernel configuration, allowing fine-grained control over features and options. The configuration system integrates with CMake to generate appropriate build definitions.
-
-Configuration files are organized hierarchically:
-- `Kconfig` - Root configuration file
-- `arch/Kconfig` - Architecture-specific options
-- `drivers/Kconfig` - Driver options
-- `lib/Kconfig` - Library options
-- `mm/Kconfig` - Memory management options
-- `aerosync/Kconfig` - Core kernel options
-- `aerosync/sched/Kconfig` - Scheduler options

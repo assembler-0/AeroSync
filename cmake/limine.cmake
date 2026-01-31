@@ -5,7 +5,7 @@
 set(DEFAULT_LIMINE_DIR "/usr/share/limine")
 if(EXISTS "${DEFAULT_LIMINE_DIR}")
     set(LIMINE_RESOURCE_DIR "${DEFAULT_LIMINE_DIR}" CACHE STRING "Limine binary directory")
-    message(STATUS "Using system Limine: ${LIMINE_RESOURCE_DIR}")
+    message(STATUS "System Limine found: ${LIMINE_RESOURCE_DIR}")
 else()
     message(STATUS "Limine not found at ${DEFAULT_LIMINE_DIR}. Fetching from GitHub... (https://github.com/limine-bootloader/limine/tree/v10.x-binary)")
 
