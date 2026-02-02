@@ -13,6 +13,22 @@ config MAX_CPUS
     int "Maximum # supported of logical processor(s)"
     default 512
 
+config RDPID_SUPPORT
+    bool "Support RDPID instruction"
+    default y
+    help
+      Enables detection and support for the RDPID instruction, which
+      allows fast retrieval of the logical CPU ID.
+
+config RDPID_CPU_ID
+    bool "Use RDPID for logical CPU ID"
+    depends on RDPID_SUPPORT
+    default y
+    help
+      Use the RDPID instruction to retrieve the logical CPU ID.
+      This is faster than reading from the per-CPU area via GS.
+      Requires RDPID_SUPPORT and hardware support.
+
 menu "RCU Subsystem"
 
 config TREE_RCU
@@ -116,5 +132,7 @@ config PANIC_VERBOSE
       and kernel version on panic.
 
 endmenu
+
+source "aerosync/sysintf/Kconfig"
 
 endmenu

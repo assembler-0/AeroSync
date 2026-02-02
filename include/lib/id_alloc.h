@@ -52,3 +52,9 @@ int ida_alloc_min(struct ida *ida, int min);
  * @id: The ID to free
  */
 void ida_free(struct ida *ida, int id);
+
+/**
+ * ida_destroy - Destroy an ID allocator and free its memory
+ * @ida: The IDA to destroy
+ */
+void ida_destroy(struct ida *ida);

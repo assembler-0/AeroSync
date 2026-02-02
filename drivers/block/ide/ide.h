@@ -10,12 +10,14 @@
 #pragma once
 
 #include <aerosync/types.h>
+#include <aerosync/errno.h>
 #include <arch/x86_64/io.h>
 #include <aerosync/sysintf/block.h>
 #include <aerosync/sysintf/pci.h>
 #include <aerosync/sysintf/dma.h>
 #include <aerosync/mutex.h>
 #include <aerosync/completion.h>
+#include <arch/x86_64/tsc.h>
 
 /* ATA Register Offsets */
 #define ATA_REG_DATA            0x00
@@ -72,62 +74,92 @@
 
 /* PRDT Entry */
 struct ide_prd {
-    uint32_t addr;
-    uint16_t size;
-    uint16_t reserved : 15;
-    uint16_t eot : 1; /* End of table */
-} __attribute__((packed));
+  uint32_t addr;
+  uint16_t size;
+  uint16_t reserved: 15;
+  uint16_t eot: 1; /* End of table */
+}
+    __packed;
 
 struct ide_channel {
-    uint16_t io_base;
-    uint16_t ctrl_base;
-    uint16_t bmide_base;
-    uint8_t irq;
-    bool nien;
+  uint16_t io_base;
+  uint16_t ctrl_base;
+  uint16_t bmide_base;
+  uint8_t irq;
+  bool nien;
 
-    struct ide_device *devices[2]; /* 0: Master, 1: Slave */
-    
-    struct ide_prd *prdt;
-    dma_addr_t prdt_phys;
+  struct ide_device *devices[2]; /* 0: Master, 1: Slave */
 
-    mutex_t lock;
-    struct completion done;
-    int error;
+  struct ide_prd *prdt;
+  dma_addr_t prdt_phys;
+
+  mutex_t lock;
+  struct completion done;
+  int error;
 };
 
 struct ide_device {
-    struct block_device bdev;
-    struct ide_channel *channel;
-    uint8_t drive; /* 0: Master, 1: Slave */
-    bool exists;
-    bool lba48;
-    uint64_t sectors;
-    char model[41];
-    char serial[21];
+  struct block_device bdev;
+  struct ide_channel *channel;
+  uint8_t drive; /* 0: Master, 1: Slave */
+  bool exists;
+  bool atapi;
+  bool lba48;
+  uint64_t sectors;
+  char model[41];
+  char serial[21];
 };
 
+/* ATAPI Commands */
+#define ATAPI_CMD_READ_10       0x28
+#define ATAPI_CMD_READ_CAPACITY 0x25
+#define ATAPI_CMD_EJECT         0x1B
+
 struct ide_controller {
-    struct pci_dev *pdev;
-    struct ide_channel channels[2];
+  struct pci_dev *pdev;
+  struct ide_channel channels[2];
 };
 
 /* Internal API */
 void ide_read_pio(struct ide_device *dev, uint64_t lba, uint32_t count, void *buf);
+
 void ide_write_pio(struct ide_device *dev, uint64_t lba, uint32_t count, const void *buf);
 
+int ide_atapi_read(struct ide_device *dev, uint32_t lba, uint32_t count, void *buf);
+
+int ide_atapi_get_capacity(struct ide_device *ide);
+
 int ide_read_dma(struct ide_device *dev, uint64_t lba, uint32_t count, void *buf);
+
 int ide_write_dma(struct ide_device *dev, uint64_t lba, uint32_t count, const void *buf);
 
-/* Helper to wait for BSY to clear */
-static inline uint8_t ide_wait_bsy(struct ide_channel *chan) {
-    uint8_t status;
-    while ((status = inb(chan->io_base + ATA_REG_STATUS)) & ATA_SR_BSY);
-    return status;
+int ide_atapi_read_dma(struct ide_device *ide, uint32_t lba, uint32_t count, void *buf);
+
+#define IDE_TIMEOUT_NS (5000000000ULL) /* 5 seconds */
+
+/* Helper to wait for BSY to clear with timeout */
+static inline int ide_wait_bsy(struct ide_channel *chan) {
+  uint64_t timeout = get_time_ns() + IDE_TIMEOUT_NS;
+  while (inb(chan->io_base + ATA_REG_STATUS) & ATA_SR_BSY) {
+    if (get_time_ns() > timeout) return -ETIMEDOUT;
+  }
+  return 0;
 }
 
-/* Helper to wait for DRDY to set */
-static inline uint8_t ide_wait_drdy(struct ide_channel *chan) {
-    uint8_t status;
-    while (!((status = inb(chan->io_base + ATA_REG_STATUS)) & ATA_SR_DRDY));
-    return status;
+/* Helper to wait for DRDY to set with timeout */
+static inline int ide_wait_drdy(struct ide_channel *chan) {
+  uint64_t timeout = get_time_ns() + IDE_TIMEOUT_NS;
+  while (!(inb(chan->io_base + ATA_REG_STATUS) & ATA_SR_DRDY)) {
+    if (get_time_ns() > timeout) return -ETIMEDOUT;
+  }
+  return 0;
+}
+
+/* Helper to wait for DRQ to set with timeout */
+static inline int ide_wait_drq(struct ide_channel *chan) {
+  uint64_t timeout = get_time_ns() + IDE_TIMEOUT_NS;
+  while (!(inb(chan->io_base + ATA_REG_STATUS) & ATA_SR_DRQ)) {
+    if (get_time_ns() > timeout) return -ETIMEDOUT;
+  }
+  return 0;
 }

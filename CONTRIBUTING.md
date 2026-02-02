@@ -89,7 +89,9 @@ they are an **os-in-kernel**-which is the worst possible thing.
   - prefer larger contiguous allocations when possible.
   - use the correct allocators.
   - use the correct alignment.
-  - should add bound/null checks where applicable.
+  - should add bound/null checks where applicable.\
+- NULL:
+  - as this project uses the C23 standard, please use nullptr instead of NULL.
 
 ## How to get merged
 - Runs on major emulators. (QEMU, Bochs, VirtualBox, VMware, etc.)

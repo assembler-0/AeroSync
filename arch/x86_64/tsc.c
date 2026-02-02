@@ -78,8 +78,6 @@ void tsc_recalibrate_with_freq(uint64_t new_freq) {
   }
 }
 
-#include <drivers/timer/pit.h> // for pit_calibrate_tsc fallback
-
 uint64_t get_time_ns() {
   if (tsc_freq == 0)
     return 0;

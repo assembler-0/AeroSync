@@ -984,6 +984,7 @@ void *kmalloc_node(size_t size, int node) {
 
   return kmem_cache_alloc_node(kmalloc_caches[idx], node);
 }
+EXPORT_SYMBOL(kmalloc_node);
 
 void *kmalloc(size_t size) { return kmalloc_node(size, -1); }
 
@@ -994,8 +995,10 @@ void *kzalloc_node(size_t size, int node) {
   }
   return ptr;
 }
+EXPORT_SYMBOL(kzalloc_node);
 
 void *kzalloc(size_t size) { return kzalloc_node(size, -1); }
+EXPORT_SYMBOL(kzalloc);
 
 void kfree(void *ptr) {
   struct page *page;

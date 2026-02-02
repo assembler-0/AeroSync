@@ -100,6 +100,7 @@ struct super_block {
     void                *s_fs_info;       // Filesystem private data
     uint32_t            s_magic;          // Filesystem magic number
     uint32_t            s_blocksize;      // Block size in bytes
+    vfs_loff_t          s_maxbytes;       // Maximum file size
     // ... more fields like device, flags, etc.
 };
 
@@ -108,6 +109,7 @@ struct inode {
     struct list_head    i_list;           // All inodes in use list (global)
     struct list_head    i_dentry;         // List of dentries referencing this inode
     spinlock_t          i_lock;           // Protects inode data
+    atomic_t            i_count;          // Reference count
     vfs_ino_t           i_ino;            // Inode number
     vfs_mode_t          i_mode;           // File type and permissions
     vfs_nlink_t         i_nlink;          // Number of hard links
@@ -119,6 +121,7 @@ struct inode {
     struct timespec     i_ctime;          // Last status change time
     struct super_block  *i_sb;            // Pointer to superblock
     struct vm_object    *i_mapping;       // The page cache for this inode
+    dev_t               i_rdev;           // Device number (if special file)
     const struct inode_operations *i_op;  // Inode operations
     const struct file_operations  *i_fop; // Default file operations
     void                *i_fs_info;       // Filesystem private data
@@ -135,6 +138,7 @@ struct dentry {
     struct qstr         d_name;           // Name of this dentry
     struct inode        *d_inode;         // Inode corresponding to this dentry (or nullptr if negative dentry)
     spinlock_t          d_lock;           // Protects dentry data
+    atomic_t            d_count;          // Reference count
     uint32_t            d_flags;          // Dentry flags
     // ... more fields for mounted state, etc.
 };
@@ -198,6 +202,36 @@ struct file_system_type {
   struct list_head fs_list; // List of registered filesystems
 };
 
+struct mount {
+    struct list_head mnt_list;
+    struct dentry *mnt_mountpoint;
+    struct dentry *mnt_root;
+    struct super_block *mnt_sb;
+    struct mount *mnt_parent;
+};
+
+int vfs_mount(const char *dev_name, const char *dir_name, const char *type, unsigned long flags, void *data);
 void vfs_init(void);
 int register_filesystem(struct file_system_type *fs_type);
 int unregister_filesystem(struct file_system_type *fs_type);
+
+struct inode *new_inode(struct super_block *sb);
+void iput(struct inode *inode);
+void iget(struct inode *inode);
+
+void dput(struct dentry *dentry);
+struct dentry *dget(struct dentry *dentry);
+struct dentry *d_alloc_pseudo(struct super_block *sb, const struct qstr *name);
+
+int vfs_mkdir(struct inode *dir, struct dentry *dentry, vfs_mode_t mode);
+int vfs_mknod(struct inode *dir, struct dentry *dentry, vfs_mode_t mode, dev_t dev);
+
+int do_mkdir(const char *path, vfs_mode_t mode);
+int do_mknod(const char *path, vfs_mode_t mode, dev_t dev);
+
+int sys_chdir(const char *path);
+char *sys_getcwd(char *buf, size_t size);
+int sys_mkdir(const char *path, vfs_mode_t mode);
+int sys_mknod(const char *path, vfs_mode_t mode, dev_t dev);
+
+struct timespec current_time(struct inode *inode);

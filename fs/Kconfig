@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+menu "fs"
+
+config VFS
+    bool "Virtual File System (VFS) support"
+    default y
+    help
+      Enable support for the Virtual File System layer.
+
+config DEVFS
+    bool "Device Filesystem (devfs) support"
+    depends on VFS
+    default y
+    help
+      Enable support for devfs, a pseudo-filesystem for device nodes.
+      This provides a mechanism for drivers to register themselves
+      and expose nodes to userspace.
+
+config DEVFS_MOUNT
+    bool "Mount devfs automatically during boot"
+    depends on DEVFS
+    default y
+    help
+      Automatically mount devfs during kernel initialization.
+      Note: This is generally considered a policy decision and
+      should be handled by userspace unless early kernel access
+      to device nodes is required.
+
+config DEVFS_MOUNT_PATH
+    string "Default mount path for devfs"
+    depends on DEVFS_MOUNT
+    default "/runtime/devices"
+    help
+      The path where devfs should be mounted automatically.
+
+config USTARFS
+    bool "USTAR (tar) filesystem support"
+    depends on VFS
+    default y
+    help
+      Enable support for the USTAR filesystem, useful for initrd.
+
+endmenu

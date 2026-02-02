@@ -184,7 +184,7 @@ ssize_t filemap_read(struct file *file, char *buf, size_t count, vfs_loff_t *ppo
     *ppos += n;
     total_read += n;
   }
-  return (ssize_t)total_read;
+  return (ssize_t) total_read;
 }
 
 /**

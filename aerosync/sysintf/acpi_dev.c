@@ -11,24 +11,58 @@
 #include <aerosync/sysintf/class.h>
 #include <aerosync/sysintf/device.h>
 #include <aerosync/classes.h>
+#include <aerosync/sysintf/bus.h>
 #include <lib/printk.h>
 #include <lib/string.h>
-#include <lib/vsprintf.h>
 #include <mm/slub.h>
 #include <uacpi/namespace.h>
 #include <uacpi/utilities.h>
-
-static struct class acpi_class = {
-  .name = "acpi_bus",
-};
-
-static bool acpi_class_registered = false;
 
 struct acpi_device {
   struct device dev;
   uacpi_namespace_node *node;
   char hid[16];
 };
+
+struct acpi_driver {
+  const char *hid;
+  struct device_driver driver;
+  int (*probe)(struct acpi_device *dev);
+};
+
+#define to_acpi_dev(d) container_of(d, struct acpi_device, dev)
+#define to_acpi_driver(dr) container_of(dr, struct acpi_driver, driver)
+
+static int acpi_bus_match(struct device *dev, struct device_driver *drv) {
+  struct acpi_device *adev = to_acpi_dev(dev);
+  struct acpi_driver *adrv = to_acpi_driver(drv);
+
+  if (adev->hid[0] && adrv->hid && strcmp(adev->hid, adrv->hid) == 0)
+    return 1;
+  return 0;
+}
+
+static int acpi_bus_probe(struct device *dev) {
+  struct acpi_device *adev = to_acpi_dev(dev);
+  struct acpi_driver *adrv = to_acpi_driver(dev->driver);
+
+  if (adrv->probe)
+    return adrv->probe(adev);
+  return 0;
+}
+
+struct bus_type acpi_bus_type = {
+  .name = "acpi",
+  .match = acpi_bus_match,
+  .probe = acpi_bus_probe,
+};
+
+static bool acpi_bus_registered = false;
+
+static void acpi_dev_release(struct device *dev) {
+  struct acpi_device *adev = to_acpi_dev(dev);
+  kfree(adev);
+}
 
 static uacpi_iteration_decision
 acpi_enum_callback(void *user, uacpi_namespace_node *node, uacpi_u32 depth) {
@@ -49,32 +83,29 @@ acpi_enum_callback(void *user, uacpi_namespace_node *node, uacpi_u32 depth) {
     }
 
     adev->node = node;
-    adev->dev.class = &acpi_class;
+    device_initialize(&adev->dev);
+    adev->dev.bus = &acpi_bus_type;
+    adev->dev.release = acpi_dev_release;
 
     // Get name from node
     uacpi_object_name name = uacpi_namespace_node_name(node);
-    char name_buf[16];
-    snprintf(name_buf, 16, "acpi_%c%c%c%c", name.text[0], name.text[1],
-             name.text[2], name.text[3]);
-
-    char *final_name = kzalloc(16);
-    if (final_name) {
-      memcpy(final_name, name_buf, 16);
-      adev->dev.name = final_name;
+    const char *acpi_prefix = STRINGIFY(CONFIG_ACPI_NAME_PREFIX);
+    if (acpi_prefix[0] != '\0') {
+        device_set_name(&adev->dev, "%s_%c%c%c%c", acpi_prefix, name.text[0], name.text[1],
+                 name.text[2], name.text[3]);
     } else {
-      adev->dev.name = "acpi_dev";
+        device_set_name(&adev->dev, "%c%c%c%c", name.text[0], name.text[1],
+                 name.text[2], name.text[3]);
     }
 
     if (info->flags & UACPI_NS_NODE_INFO_HAS_HID) {
       strncpy(adev->hid, info->hid.value, 15);
     }
 
-    if (device_register(&adev->dev) != 0) {
-      if (final_name)
-        kfree(final_name);
+    if (device_add(&adev->dev) != 0) {
       kfree(adev);
     } else {
-      printk(KERN_DEBUG ACPI_CLASS "discovered device %s (HID: %s)\n", name_buf,
+      printk(KERN_DEBUG ACPI_CLASS "discovered device %s (HID: %s)\n", adev->dev.name,
              adev->hid[0] ? adev->hid : "None");
     }
   }
@@ -84,9 +115,9 @@ acpi_enum_callback(void *user, uacpi_namespace_node *node, uacpi_u32 depth) {
 }
 
 int acpi_bus_enumerate(void) {
-  if (!acpi_class_registered) {
-    class_register(&acpi_class);
-    acpi_class_registered = true;
+  if (!acpi_bus_registered) {
+    bus_register(&acpi_bus_type);
+    acpi_bus_registered = true;
   }
 
   printk(KERN_INFO ACPI_CLASS "enumerating ACPI namespace...\n");

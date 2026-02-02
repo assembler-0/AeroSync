@@ -40,6 +40,7 @@
 #include <fs/file.h>
 #include <aerosync/signal.h>
 #include <aerosync/errno.h>
+#include <fs/fs_struct.h>
 
 /*
  * Process/Thread Management
@@ -169,6 +170,14 @@ struct task_struct *copy_process(uint64_t clone_flags,
     }
   }
 
+  // Setup fs_struct
+  if (clone_flags & CLONE_FS) {
+    p->fs = parent->fs;
+    if (p->fs) atomic_inc(&p->fs->count);
+  } else {
+    p->fs = copy_fs_struct(parent->fs);
+  }
+
   // Setup FPU
   p->thread.fpu = fpu_alloc();
   if (parent->thread.fpu && parent->thread.fpu_used) {
@@ -191,7 +200,6 @@ struct task_struct *copy_process(uint64_t clone_flags,
   cpumask_copy(&p->cpus_allowed, &parent->cpus_allowed);
 
   // Setup signals
-  extern void signal_init_task(struct task_struct *p);
   signal_init_task(p);
 
   // Link into global lists
@@ -346,6 +354,10 @@ void free_task(struct task_struct *task) {
       }
       kfree(task->files);
     }
+  }
+
+  if (task->fs) {
+    free_fs_struct(task->fs);
   }
 
   if (task->signal) {

@@ -274,6 +274,7 @@ struct task_struct {
   /*
    * Filesystem information
    */
+  struct fs_struct *fs;
   struct files_struct *files;
 
   /*

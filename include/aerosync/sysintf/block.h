@@ -64,6 +64,7 @@ struct block_device {
   struct device dev;
   char name[BLOCK_NAME_MAX];
   uint32_t id;
+  dev_t dev_num; /* Major/Minor */
 
   uint32_t block_size;   // Usually 512 or 4096
   uint64_t sector_count; // Total size in sectors
@@ -73,6 +74,10 @@ struct block_device {
 
   struct list_head node; // Entry in global block device list
   mutex_t lock;          // Device-level exclusion
+
+  /* Partition Support */
+  struct block_device *parent_disk; /* If this is a partition, points to the master disk */
+  uint64_t partition_offset;        /* Offset in sectors from the start of the parent disk */
 };
 
 /* --- Registration API --- */
@@ -87,6 +92,27 @@ int block_device_register(struct block_device *dev);
  * Unregister a block device
  */
 void block_device_unregister(struct block_device *dev);
+
+/**
+ * Assign a standardized name to a block device
+ * @param dev The block device
+ * @param prefix The prefix (e.g., "sd", "hd", "nvme")
+ * @param index The 0-based index of the device
+ * @return 0 on success
+ */
+int block_device_assign_name(struct block_device *dev, const char *prefix, int index);
+
+/**
+ * Assign a standardized ATAPI name to a block device (e.g., "cdrom0")
+ */
+int block_device_assign_atapi_name(struct block_device *dev, int index);
+
+/**
+ * Scan for partitions on a block device and register them
+ * @param dev The disk to scan
+ * @return Number of partitions found, or negative error
+ */
+int block_partition_scan(struct block_device *dev);
 
 /* --- High-level I/O API --- */
 

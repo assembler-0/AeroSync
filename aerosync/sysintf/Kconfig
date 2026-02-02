@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+menu "System Interface (SYSINTF) & Driver Model"
+
+config SYSINTF
+    bool "System Interface Layer"
+    default y
+    help
+      Core system interface layer for AeroSync.
+      Provides the Unified Driver Model (UDM), handling devices,
+      drivers, buses, and classes.
+
+config UDM_BLOCK
+    bool "Block Device Subsystem"
+    depends on SYSINTF
+    default y
+    help
+      Enable support for block devices (disks, partitions).
+
+config UDM_CHAR
+    bool "Character Device Subsystem"
+    depends on SYSINTF
+    default y
+    help
+      Enable support for character devices (terminals, serial, etc.).
+
+config UDM_PCI
+    bool "PCI Bus Support"
+    depends on SYSINTF
+    default y
+    help
+      Enable UDM support for the PCI bus.
+
+config UDM_ACPI
+    bool "ACPI Device Support"
+    depends on SYSINTF
+    default y
+    help
+      Enable UDM support for ACPI-enumerated devices.
+
+config UDM_PLATFORM
+    bool "Platform Bus Support"
+    depends on SYSINTF
+    default y
+    help
+      Enable support for the Platform Bus, used for non-discoverable
+      hardware components.
+
+config UDM_MANAGED_RESOURCES
+    bool "Managed Device Resources (devres)"
+    depends on SYSINTF
+    default y
+    help
+      Enable support for managed resources (devm_* API). This allows
+      drivers to allocate resources that are automatically freed when
+      the driver is detached from the device.
+
+config DEBUG_DRIVER_MODEL
+    bool "Driver Model Debugging"
+    depends on SYSINTF
+    default n
+    help
+      Enable verbose logging for device/driver registration,
+      binding, and lifecycle events.
+
+config SYS_BUS_DEBUG
+    bool "Bus Debugging"
+    depends on SYSINTF
+    default n
+    help
+      Enable specific debugging for bus registration and enumeration.
+
+endmenu

@@ -46,6 +46,7 @@
 #include <arch/x86_64/requests.h>
 #include <arch/x86_64/smp.h>
 #include <compiler.h>
+#include <aerosync/sysintf/device.h>
 #include <crypto/crc32.h>
 #include <drivers/acpi/power.h>
 #include <drivers/qemu/debugcon/debugcon.h>
@@ -204,8 +205,9 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   }
 
   if (get_date_at_boot_request()->response) {
-    printk(KERN_CLASS "unix timestamp: %lld\n",
-           get_date_at_boot_request()->response->timestamp);
+    uint64_t boot_ts = get_date_at_boot_request()->response->timestamp;
+    printk(KERN_CLASS "unix timestamp: %lld\n", boot_ts);
+    timekeeping_init(boot_ts);
   }
 
   // Initialize Physical Memory Manager
@@ -241,6 +243,8 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   sched_init();
   bsp_task.active_mm = &init_mm;
   sched_init_task(&bsp_task);
+
+  vfs_init();
 
 #ifdef INCLUDE_MM_TESTS
   if (cmdline_get_flag("verbose")) {
@@ -298,16 +302,19 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   fkx_init_module_class(FKX_DRIVER_CLASS);
 
+#ifdef CONFIG_LOG_DEVICE_TREE
+  if (cmdline_get_flag("verbose"))
+    dump_device_tree();
+#endif
+
   if (ic_type == INTC_APIC)
     smp_init();
   crc32_init();
-  vfs_init();
   softirq_init();
 
 #ifdef ASYNC_PRINTK
   printk_init_async();
 #endif
-
   // Start kernel_init thread
   struct task_struct *init_task =
       kthread_create(kernel_init, nullptr, "kernel_init");

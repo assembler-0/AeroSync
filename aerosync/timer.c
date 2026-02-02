@@ -2,9 +2,34 @@
 #include <aerosync/sched/sched.h>
 #include <arch/x86_64/percpu.h>
 #include <arch/x86_64/tsc.h>
-#include <drivers/apic/apic.h>
+#include <fs/vfs.h>
 #include <aerosync/panic.h>
 #include <linux/container_of.h>
+
+/* Wall-clock timekeeping state */
+static struct {
+  uint64_t boot_timestamp_ns;
+  spinlock_t lock;
+} timekeeper = {
+  .boot_timestamp_ns = 0,
+  .lock = SPINLOCK_INIT,
+};
+
+void timekeeping_init(uint64_t boot_timestamp_sec) {
+  spinlock_lock(&timekeeper.lock);
+  timekeeper.boot_timestamp_ns = boot_timestamp_sec * NSEC_PER_SEC;
+  spinlock_unlock(&timekeeper.lock);
+}
+
+uint64_t ktime_get_real_ns(void) {
+  return timekeeper.boot_timestamp_ns + get_time_ns();
+}
+
+void ktime_get_real_ts64(struct timespec *ts) {
+  uint64_t ns = ktime_get_real_ns();
+  ts->tv_sec = ns / NSEC_PER_SEC;
+  ts->tv_nsec = ns % NSEC_PER_SEC;
+}
 
 struct timer_cpu_base {
   struct list_head active_timers;

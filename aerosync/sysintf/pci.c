@@ -16,6 +16,7 @@
 #include <aerosync/sysintf/class.h>
 #include <aerosync/sysintf/device.h>
 #include <mm/slub.h>
+#include <linux/container_of.h>
 
 static struct class pci_hw_class = {
     .name = "pci_hardware",
@@ -30,6 +31,11 @@ struct pci_hw_device {
   const pci_ops_t *ops;
 };
 
+static void pci_hw_release(struct device *dev) {
+    struct pci_hw_device *phw = container_of(dev, struct pci_hw_device, dev);
+    kfree(phw);
+}
+
 void pci_register_ops(const pci_ops_t *ops) {
   if (unlikely(!pci_hw_class_registered)) {
     class_register(&pci_hw_class);
@@ -43,6 +49,7 @@ void pci_register_ops(const pci_ops_t *ops) {
   phw->ops = ops;
   phw->dev.class = &pci_hw_class;
   phw->dev.name = ops->name;
+  phw->dev.release = pci_hw_release;
 
   if (device_register(&phw->dev) != 0) {
     kfree(phw);

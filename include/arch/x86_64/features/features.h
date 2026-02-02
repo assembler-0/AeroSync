@@ -30,6 +30,7 @@ typedef struct {
   bool cet_ss;
   bool pke;
   bool fsgsbase;
+  bool rdpid;
 } cpu_features_t;
 
 void cpu_features_init(void);

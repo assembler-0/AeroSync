@@ -33,7 +33,13 @@
 #include <mm/slub.h>
 
 static struct class time_class = {
-    .name = "time_source",
+  .name = "time_source",
+  .dev_prefix = STRINGIFY(CONFIG_TIME_NAME_PREFIX),
+  .naming_scheme = NAMING_NUMERIC,
+};
+
+static struct device_driver time_driver = {
+    .name = "time_core",
 };
 
 static bool time_class_registered = false;
@@ -47,7 +53,7 @@ struct time_device {
 static void time_dev_release(struct device *dev) {
   struct time_device *td = container_of(dev, struct time_device, dev);
   if (td->dev.name && strcmp(td->dev.name, "time_device") != 0) {
-    kfree((void *)td->dev.name);
+    kfree((void *) td->dev.name);
   }
   kfree(td);
 }
@@ -65,21 +71,11 @@ void time_register_source(const time_source_t *source) {
 
   td->source = source;
   td->dev.class = &time_class;
+  td->dev.driver = &time_driver;
   td->dev.release = time_dev_release;
-
-  // Name: time_[name]
-  char *name_buf = kzalloc(32);
-  if (name_buf) {
-    snprintf(name_buf, 32, "time_%s", source->name);
-    td->dev.name = name_buf;
-  } else {
-    td->dev.name = "time_device";
-  }
 
   if (device_register(&td->dev) != 0) {
     printk(KERN_ERR TIME_CLASS "Failed to register time device\n");
-    if (name_buf)
-      kfree(name_buf);
     kfree(td);
     return;
   }
@@ -91,156 +87,157 @@ void time_register_source(const time_source_t *source) {
 
 #define MAX_CANDIDATES 16
 
-       struct time_candidate_list {
-         const time_source_t *candidates[MAX_CANDIDATES];
-         int count;
-       };
+struct time_candidate_list {
+  const time_source_t *candidates[MAX_CANDIDATES];
+  int count;
+};
 
-       static int time_collect_candidates(struct device *dev, void *data) {
-         struct time_candidate_list *list = (struct time_candidate_list *)data;
-         struct time_device *td = container_of(dev, struct time_device, dev);
+static int time_collect_candidates(struct device *dev, void *data) {
+  struct time_candidate_list *list = (struct time_candidate_list *) data;
+  struct time_device *td = container_of(dev, struct time_device, dev);
 
-         if (list->count < MAX_CANDIDATES) {
-           list->candidates[list->count++] = td->source;
-         }
-         return 0;
-       }
+  if (list->count < MAX_CANDIDATES) {
+    list->candidates[list->count++] = td->source;
+  }
+  return 0;
+}
 
-       int time_init(void) {
-         const time_source_t *selected = nullptr;
-         struct time_candidate_list list = {0};
+int time_init(void) {
+  const time_source_t *selected = nullptr;
+  struct time_candidate_list list = {0};
 
-         printk(TIME_CLASS "Initializing Time Subsystem...\n");
+  printk(TIME_CLASS "Initializing Time Subsystem...\n");
 
-         // 1. Collect all registered sources through UDM
-         class_for_each_dev(&time_class, nullptr, &list, time_collect_candidates);
+  // 1. Collect all registered sources through UDM
+  class_for_each_dev(&time_class, nullptr, &list, (class_iter_fn)time_collect_candidates);
 
-         // 2. Fallback logic: Try initialization in order of priority
-         // (simplistic bubble sort) Since count is small (usually 2-3: TSC,
-         // HPET, PIT), this is fine.
-         for (int i = 0; i < list.count - 1; i++) {
-           for (int j = 0; j < list.count - i - 1; j++) {
-             if (list.candidates[j]->priority <
-                 list.candidates[j + 1]->priority) {
-               const time_source_t *temp = list.candidates[j];
-               list.candidates[j] = list.candidates[j + 1];
-               list.candidates[j + 1] = temp;
-             }
-           }
-         }
+  // 2. Fallback logic: Try initialization in order of priority
+  // (simplistic bubble sort) Since count is small (usually 2-3: TSC,
+  // HPET, PIT), this is fine.
+  for (int i = 0; i < list.count - 1; i++) {
+    for (int j = 0; j < list.count - i - 1; j++) {
+      if (list.candidates[j]->priority <
+          list.candidates[j + 1]->priority) {
+        const time_source_t *temp = list.candidates[j];
+        list.candidates[j] = list.candidates[j + 1];
+        list.candidates[j + 1] = temp;
+      }
+    }
+  }
 
-         // 3. Try to init best available
-         for (int i = 0; i < list.count; i++) {
-           const time_source_t *candidate = list.candidates[i];
-           printk(KERN_DEBUG TIME_CLASS
-                  "Attempting to initialize source: %s (prio %d)\n",
-                  candidate->name, candidate->priority);
+  // 3. Try to init best available
+  for (int i = 0; i < list.count; i++) {
+    const time_source_t *candidate = list.candidates[i];
+    printk(KERN_DEBUG TIME_CLASS
+           "Attempting to initialize source: %s (prio %d)\n",
+           candidate->name, candidate->priority);
 
-           if (candidate->init() == 0) {
-             selected = candidate;
-             break;
-           } else {
-             printk(KERN_WARNING TIME_CLASS "Failed to init %s\n",
-                    candidate->name);
-           }
-         }
+    if (candidate->init() == 0) {
+      selected = candidate;
+      break;
+    } else {
+      printk(KERN_WARNING TIME_CLASS "Failed to init %s\n",
+             candidate->name);
+    }
+  }
 
-         if (!selected) {
-           panic(TIME_CLASS "No suitable time source found");
-         }
+  if (!selected) {
+    panic(TIME_CLASS "No suitable time source found");
+  }
 
-         current_time_source = selected;
-         printk(KERN_INFO TIME_CLASS "Selected time source: %s\n",
-                current_time_source->name);
+  current_time_source = selected;
+  printk(KERN_INFO TIME_CLASS "Selected time source: %s\n",
+         current_time_source->name);
 
-         return 0;
-       }
+  return 0;
+}
 
-       const char *time_get_source_name(void) {
-         if (!current_time_source)
-           return "NONE";
-         return current_time_source->name;
-       }
+const char *time_get_source_name(void) {
+  if (!current_time_source)
+    return "NONE";
+  return current_time_source->name;
+}
 
-       void time_wait_ns(uint64_t ns) {
-         if (ns == 0)
-           return;
+void time_wait_ns(uint64_t ns) {
+  if (ns == 0)
+    return;
 
-         // Prefer TSC delay if it has been calibrated, as it's low overhead
-         if (tsc_freq_get() > 0) {
-           tsc_delay(ns);
-           return;
-         }
+  // Prefer TSC delay if it has been calibrated, as it's low overhead
+  if (tsc_freq_get() > 0) {
+    tsc_delay(ns);
+    return;
+  }
 
-         if (!current_time_source) {
-           // Very crude fallback early in boot
-           volatile uint64_t count = ns / 10;
-           while (count--)
-             cpu_relax();
-           return;
-         }
+  if (!current_time_source) {
+    // Very crude fallback early in boot
+    volatile uint64_t count = ns / 10;
+    while (count--)
+      cpu_relax();
+    return;
+  }
 
-         uint64_t freq = current_time_source->get_frequency();
-         uint64_t start_count = current_time_source->read_counter();
+  uint64_t freq = current_time_source->get_frequency();
+  uint64_t start_count = current_time_source->read_counter();
 
-         uint64_t ticks_needed = (ns * freq) / 1000000000ULL;
-         if (ticks_needed == 0 && ns > 0)
-           ticks_needed = 1;
+  uint64_t ticks_needed = (ns * freq) / 1000000000ULL;
+  if (ticks_needed == 0 && ns > 0)
+    ticks_needed = 1;
 
-         while (1) {
-           uint64_t current_count = current_time_source->read_counter();
+  while (1) {
+    uint64_t current_count = current_time_source->read_counter();
 
-           // Standard wrap-around safe difference for up-counters
-           if ((current_count - start_count) >= ticks_needed) {
-             break;
-           }
+    // Standard wrap-around safe difference for up-counters
+    if ((current_count - start_count) >= ticks_needed) {
+      break;
+    }
 
-           cpu_relax();
-         }
-       }
+    cpu_relax();
+  }
+}
 
-       int time_calibrate_tsc_system(void) {
-         if (!current_time_source)
-           return -1;
+int time_calibrate_tsc_system(void) {
+  if (!current_time_source)
+    return -1;
 
-         if (current_time_source->calibrate_tsc) {
-           return current_time_source->calibrate_tsc();
-         }
+  if (current_time_source->calibrate_tsc) {
+    return current_time_source->calibrate_tsc();
+  }
 
-         // Generic calibration using time_wait_ns (or raw counters)
-         printk(KERN_INFO TIME_CLASS
-                "Performing generic TSC calibration using %s...\n",
-                current_time_source->name);
+  // Generic calibration using time_wait_ns (or raw counters)
+  printk(KERN_INFO TIME_CLASS
+         "Performing generic TSC calibration using %s...\n",
+         current_time_source->name);
 
-         uint64_t start_tsc = rdtsc();
+  uint64_t start_tsc = rdtsc();
 
-         // Wait 50ms (or sufficient time)
-         // We can't use time_wait_ns easily if we are defining it.
-         // We need to use specific source wait.
+  // Wait 50ms (or sufficient time)
+  // We can't use time_wait_ns easily if we are defining it.
+  // We need to use specific source wait.
 
-         uint64_t freq = current_time_source->get_frequency();
-         uint64_t start_counter = current_time_source->read_counter();
+  uint64_t freq = current_time_source->get_frequency();
+  uint64_t start_counter = current_time_source->read_counter();
 
-         // Wait for approx 50ms
-         uint64_t target_ticks = freq / 20; // 50ms
+  // Wait for approx 50ms
+  uint64_t target_ticks = freq / 20; // 50ms
 
-         while (1) {
-           uint64_t current_source = current_time_source->read_counter();
-           if ((current_source - start_counter) >= target_ticks)
-             break; // Assumes simple monotonic up-counter
-           cpu_relax();
-         }
+  while (1) {
+    uint64_t current_source = current_time_source->read_counter();
+    if ((current_source - start_counter) >= target_ticks)
+      break; // Assumes simple monotonic up-counter
+    cpu_relax();
+  }
 
-         uint64_t end_tsc = rdtsc();
-         uint64_t tsc_delta = end_tsc - start_tsc;
+  uint64_t end_tsc = rdtsc();
+  uint64_t tsc_delta = end_tsc - start_tsc;
 
-         // freq = delta * 20
-         uint64_t tsc_freq = tsc_delta * 20;
+  // freq = delta * 20
+  uint64_t tsc_freq = tsc_delta * 20;
 
-         tsc_recalibrate_with_freq(tsc_freq);
-         return 0;
-       }
-       EXPORT_SYMBOL(time_register_source);
-       EXPORT_SYMBOL(time_init);
-       EXPORT_SYMBOL(time_wait_ns);
-       EXPORT_SYMBOL(time_calibrate_tsc_system);
+  tsc_recalibrate_with_freq(tsc_freq);
+  return 0;
+}
+
+EXPORT_SYMBOL(time_register_source);
+EXPORT_SYMBOL(time_init);
+EXPORT_SYMBOL(time_wait_ns);
+EXPORT_SYMBOL(time_calibrate_tsc_system);

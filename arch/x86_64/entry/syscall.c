@@ -112,7 +112,9 @@ static void sys_write(struct syscall_regs *regs) {
   const char *buf = (const char *) regs->rsi;
   size_t count = (size_t) regs->rdx;
 
+#ifdef IMPLICIT_FD12_STDOUT_STDERR
   if (fd == 1 || fd == 2) {
+#ifdef IMPLICIT_FD12_STDOUT_STDERR_PRINTK
     // stdout or stderr
     char kbuf[256];
     size_t total = 0;
@@ -134,7 +136,9 @@ static void sys_write(struct syscall_regs *regs) {
     }
     REGS_RETURN_VAL(regs, total);
     return;
+#endif
   }
+#endif
 
   struct file *file = fget(fd);
   if (!file) {
@@ -304,18 +308,19 @@ static void sys_mmap(struct syscall_regs *regs) {
 
   struct file *file = nullptr;
   if (!(flags & MAP_ANON)) {
-      file = fget(fd);
-      if (!file) {
-          REGS_RETURN_VAL(regs, -EBADF);
-          return;
-      }
-      /* TODO: Get vm_object from file/inode */
-      fput(file);
-      REGS_RETURN_VAL(regs, -ENODEV); // Not yet fully supported for files
+    file = fget(fd);
+    if (!file) {
+      REGS_RETURN_VAL(regs, -EBADF);
       return;
+    }
   }
 
   uint64_t ret = do_mmap(mm, addr, len, prot, flags, file, nullptr, off >> PAGE_SHIFT);
+
+  if (file) {
+    fput(file);
+  }
+
   REGS_RETURN_VAL(regs, ret);
 }
 
@@ -365,6 +370,31 @@ static void sys_mremap(struct syscall_regs *regs) {
   REGS_RETURN_VAL(regs, -ENOSYS);
 }
 
+static void sys_mkdir_handler(struct syscall_regs *regs) {
+  const char *path = (const char *) regs->rdi;
+  vfs_mode_t mode = (vfs_mode_t) regs->rsi;
+  REGS_RETURN_VAL(regs, sys_mkdir(path, mode));
+}
+
+static void sys_mknod_handler(struct syscall_regs *regs) {
+  const char *path = (const char *) regs->rdi;
+  vfs_mode_t mode = (vfs_mode_t) regs->rsi;
+  dev_t dev = (dev_t) regs->rdx;
+  REGS_RETURN_VAL(regs, sys_mknod(path, mode, dev));
+}
+
+static void sys_chdir_handler(struct syscall_regs *regs) {
+  const char *path = (const char *) regs->rdi;
+  REGS_RETURN_VAL(regs, sys_chdir(path));
+}
+
+static void sys_getcwd_handler(struct syscall_regs *regs) {
+  char *buf = (char *) regs->rdi;
+  size_t size = (size_t) regs->rsi;
+  char *ret = sys_getcwd(buf, size);
+  REGS_RETURN_VAL(regs, (uint64_t)ret);
+}
+
 static sys_call_ptr_t syscall_table[] = {
   [0] = sys_read,
   [1] = sys_write,
@@ -383,6 +413,10 @@ static sys_call_ptr_t syscall_table[] = {
   [57] = sys_fork_handler,
   [60] = sys_exit_handler,
   [62] = sys_kill,
+  [79] = sys_getcwd_handler,
+  [80] = sys_chdir_handler,
+  [83] = sys_mkdir_handler,
+  [133] = sys_mknod_handler,
   [200] = sys_tkill,
   [234] = sys_tgkill,
 };

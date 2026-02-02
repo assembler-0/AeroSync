@@ -97,6 +97,7 @@
 
 ///@section Storage Drivers
 #define BLOCK_CLASS "[sys::driver::storage] "
+#define CHAR_CLASS "[sys::driver::char] "
 #define ATA_CLASS "[sys::driver::storage::ata] "      // IDE/PATA support
 #define AHCI_CLASS "[sys::driver::storage::ahci] "    // SATA support
 #define NVME_CLASS "[sys::driver::storage::nvme] "    // NVMe SSD support

@@ -21,6 +21,10 @@
 #include <aerosync/fkx/fkx.h>
 #include <drivers/uart/serial.h>
 #include <arch/x86_64/io.h>
+#include <aerosync/sysintf/char.h>
+#include <fs/devfs.h>
+#include <aerosync/sysintf/device.h>
+#include <aerosync/sysintf/tty.h>
 
 // Serial port register offsets
 #define SERIAL_DATA_REG     0
@@ -53,13 +57,39 @@
 static uint16_t serial_port = COM1;
 static int serial_initialized = 0;
 
+/* Character Device Implementation */
+static int serial_char_open(struct char_device *cdev) {
+  (void) cdev;
+  return 0;
+}
+
+static ssize_t serial_char_write(struct char_device *cdev, const void *buf, size_t count, vfs_loff_t *ppos) {
+  (void) cdev;
+  (void) ppos;
+  const char *data = buf;
+  for (size_t i = 0; i < count; i++) {
+    serial_write_char(data[i]);
+  }
+  return count;
+}
+
+static struct char_operations serial_char_ops = {
+  .open = serial_char_open,
+  .write = serial_char_write,
+};
+
 int serial_init_standard(void *unused) {
   (void) unused;
+
   if (serial_init() != 0)
     if (serial_init_port(COM2) != 0 || serial_init_port(COM3) != 0 ||
         serial_init_port(COM4) != 0)
       return -1;
   serial_initialized = 1;
+
+  /* Register using unified TTY interface */
+  tty_register_device(&serial_char_ops, nullptr);
+
   return 0;
 }
 

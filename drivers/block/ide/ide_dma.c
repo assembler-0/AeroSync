@@ -7,7 +7,7 @@
  * @copyright (C) 2025-2026 assembler-0
  */
 
-#include "ide.h"
+#include <drivers/block/ide/ide.h>
 #include <arch/x86_64/io.h>
 #include <aerosync/sysintf/dma.h>
 #include <aerosync/errno.h>
@@ -80,4 +80,81 @@ int ide_read_dma(struct ide_device *ide, uint64_t lba, uint32_t count, void *buf
 
 int ide_write_dma(struct ide_device *ide, uint64_t lba, uint32_t count, const void *buf) {
   return ide_do_dma(ide, lba, (uint32_t) count, (void *) buf, true);
+}
+
+int ide_atapi_read_dma(struct ide_device *ide, uint32_t lba, uint32_t count, void *buf) {
+    struct ide_channel *chan = ide->channel;
+    if (!chan->bmide_base) return -ENOSYS;
+
+    mutex_lock(&chan->lock);
+
+    size_t byte_count = count * 2048;
+    dma_addr_t phys = dma_map_single(buf, byte_count, DMA_FROM_DEVICE);
+
+    /* Setup PRDT */
+    chan->prdt[0].addr = (uint32_t) phys;
+    chan->prdt[0].size = (uint16_t) byte_count;
+    chan->prdt[0].eot = 1;
+
+    outl(chan->bmide_base + BMIDE_REG_PRDT, (uint32_t) chan->prdt_phys);
+    outb(chan->bmide_base + BMIDE_REG_STATUS, inb(chan->bmide_base + BMIDE_REG_STATUS) | 0x06);
+    outb(chan->bmide_base + BMIDE_REG_COMMAND, BMIDE_CMD_READ);
+
+    /* Prepare the drive for ATAPI DMA */
+    ide_wait_bsy(chan);
+    outb(chan->io_base + ATA_REG_DRIVE, ide->drive << 4);
+    ide_wait_bsy(chan);
+
+    /* Features: bit 0 = DMA, bit 1 = Overlap (not used) */
+    outb(chan->io_base + ATA_REG_FEATURES, 0x01);
+    
+    /* Byte count limit (ignored by most drives in DMA mode but set for safety) */
+    outb(chan->io_base + ATA_REG_LBA_MID, 0x00);
+    outb(chan->io_base + ATA_REG_LBA_HIGH, 0x08);
+
+    /* Send PACKET command */
+    outb(chan->io_base + ATA_REG_COMMAND, ATA_CMD_PACKET);
+    ide_wait_bsy(chan);
+
+    /* Wait for DRQ to send packet */
+    uint8_t status;
+    while (!((status = inb(chan->io_base + ATA_REG_STATUS)) & ATA_SR_DRQ)) {
+        if (status & ATA_SR_ERR) {
+            dma_unmap_single(phys, byte_count, DMA_FROM_DEVICE);
+            mutex_unlock(&chan->lock);
+            return -EIO;
+        }
+    }
+
+    /* Send the 12-byte SCSI Packet */
+    uint8_t packet[12] = {0};
+    packet[0] = ATAPI_CMD_READ_10;
+    packet[2] = (lba >> 24) & 0xFF;
+    packet[3] = (lba >> 16) & 0xFF;
+    packet[4] = (lba >> 8) & 0xFF;
+    packet[5] = lba & 0xFF;
+    packet[7] = (count >> 8) & 0xFF;
+    packet[8] = count & 0xFF;
+
+    outsw(chan->io_base + ATA_REG_DATA, (uint16_t *)packet, 6);
+
+    /* Start DMA */
+    reinit_completion(&chan->done);
+    outb(chan->bmide_base + BMIDE_REG_COMMAND, BMIDE_CMD_READ | BMIDE_CMD_START);
+
+    /* Wait for completion */
+    wait_for_completion(&chan->done);
+
+    /* Stop DMA */
+    outb(chan->bmide_base + BMIDE_REG_COMMAND, BMIDE_CMD_READ);
+
+    uint8_t bm_status = inb(chan->bmide_base + BMIDE_REG_STATUS);
+    int ret = 0;
+    if (bm_status & BMIDE_STATUS_ERROR) ret = -EIO;
+    if (chan->error) ret = -EIO;
+
+    dma_unmap_single(phys, byte_count, DMA_FROM_DEVICE);
+    mutex_unlock(&chan->lock);
+    
+    return ret;
 }

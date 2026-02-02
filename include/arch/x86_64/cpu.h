@@ -91,9 +91,19 @@ void cpuid(uint32_t leaf, uint32_t *eax, uint32_t *ebx, uint32_t *ecx,
 void cpuid_count(uint32_t leaf, uint32_t subleaf, uint32_t *eax, uint32_t *ebx,
                  uint32_t *ecx, uint32_t *edx);
 
+
+#ifdef CONFIG_RDPID_SUPPORT
+static inline uint32_t rdpid(void) {
+  uint64_t id;
+  __asm__ volatile("rdpid %0" : "=r"(id));
+  return id;
+}
+#endif
+
 #define MSR_FS_BASE 0xC0000100
 #define MSR_GS_BASE 0xC0000101
 #define MSR_KERNEL_GS_BASE 0xC0000102
+#define MSR_IA32_TSC_AUX 0xC0000103
 
 // MSR access
 uint64_t rdmsr(uint32_t msr);

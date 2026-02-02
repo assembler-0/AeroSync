@@ -33,6 +33,12 @@
 
 static struct class ic_class = {
     .name = "interrupt_controller",
+    .dev_prefix = STRINGIFY(CONFIG_IC_NAME_PREFIX),
+    .naming_scheme = NAMING_NUMERIC,
+};
+
+static struct device_driver ic_driver = {
+    .name = "ic_core",
 };
 
 static bool ic_class_registered = false;
@@ -67,21 +73,11 @@ void ic_register_controller(
 
   ic->ops = controller;
   ic->dev.class = &ic_class;
+  ic->dev.driver = &ic_driver;
   ic->dev.release = ic_dev_release;
-
-  // Naming: ic_[type]_[prio]
-  char *name_buf = kzalloc(32);
-  if (name_buf) {
-    snprintf(name_buf, 32, "ic_%d_%d", controller->type, controller->priority);
-    ic->dev.name = name_buf;
-  } else {
-    ic->dev.name = "ic_device";
-  }
 
   if (device_register(&ic->dev) != 0) {
     printk(KERN_ERR IC_CLASS "Failed to register IC device\n");
-    if (name_buf)
-      kfree(name_buf);
     kfree(ic);
     return;
   }
@@ -110,7 +106,8 @@ interrupt_controller_t ic_install(void) {
   const interrupt_controller_interface_t *selected = nullptr;
 
   // 1. Find best controller using class iteration
-  class_for_each_dev(&ic_class, nullptr, &selected, ic_find_best);
+  class_for_each_dev(&ic_class, nullptr, &selected,
+    (class_iter_fn)ic_find_best);
 
   if (!selected) {
     panic(
@@ -267,7 +264,8 @@ static int ic_find_get_id(struct device *dev, void *data) {
 }
 
 void ic_register_lapic_get_id_early() {
-  class_for_each_dev(&ic_class, nullptr, nullptr, ic_find_get_id);
+  class_for_each_dev(&ic_class, nullptr, nullptr,
+    (class_iter_fn)ic_find_get_id);
 
   if (!get_id) {
     get_id = ic_get_id_non_smp;

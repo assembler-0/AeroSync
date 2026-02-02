@@ -16,8 +16,7 @@ void smp_prepare_boot_cpu(void);
 
 // Get number of CPUs found
 uint64_t smp_get_cpu_count(void);
-
-uint64_t smp_get_id(void);
+uint32_t smp_get_id(void);
 
 int smp_is_active();
 
