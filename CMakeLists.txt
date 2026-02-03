@@ -39,10 +39,10 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/toolchain")
 # ============================================================================
 
 # 1. Base Configuration
-include(configuration)  # Build options (STACK_PROTECTION, etc.)
+include(configuration)  # Build options
+include(version)        # Versioning info
 include(platform)       # Platform checks
 include(standard)       # C/C++ Standards
-include(version)        # Versioning info
 
 # 2. Dependencies
 include(dependencies)   # External tools (NASM, Xorriso, etc.)
@@ -66,7 +66,7 @@ include(source)       # Core kernel sources
 include(fkx)          # FKX framework
 
 # Driver & Library Modules
-include(lib/linearfb/linearfb.cmake)
+include(drivers/graphics/drm/linearfb/linearfb.cmake)
 include(drivers/uart/uart.cmake)
 include(drivers/apic/ic.cmake)
 include(drivers/pci/pci.cmake)

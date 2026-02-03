@@ -21,6 +21,7 @@
 #include <lib/string.h>
 #include <aerosync/fkx/fkx.h>
 #include <mm/slub.h>
+#include <arch/x86_64/features/features.h>
 
 bool is_word_boundary(char c) {
   return c == ' ' || c == '\t' || c == '\n' || c == '\0';
@@ -50,7 +51,7 @@ bool find(const char *buff, const char *pattern) {
 
 char *strstr(const char *haystack, const char *needle) {
   if (*needle == '\0') {
-    return (char *)haystack;
+    return (char *) haystack;
   }
 
   for (const char *h_ptr = haystack; *h_ptr != '\0'; h_ptr++) {
@@ -64,7 +65,7 @@ char *strstr(const char *haystack, const char *needle) {
       }
 
       if (*n_ptr == '\0') {
-        return (char *)h_ptr;
+        return (char *) h_ptr;
       }
     }
   }
@@ -75,7 +76,7 @@ char *strstr(const char *haystack, const char *needle) {
 int strncmp(const char *a, const char *b, size_t n) {
   for (size_t i = 0; i < n; ++i) {
     if (a[i] != b[i])
-      return (unsigned char)a[i] - (unsigned char)b[i];
+      return (unsigned char) a[i] - (unsigned char) b[i];
     if (a[i] == '\0')
       return 0;
   }
@@ -87,19 +88,19 @@ int strcmp(const char *a, const char *b) {
     a++;
     b++;
   }
-  return (unsigned char)*a - (unsigned char)*b;
+  return (unsigned char) *a - (unsigned char) *b;
 }
 
 int strlen(const char *str) {
   if (!str) return 0;
-  size_t n = (size_t)-1;
+  size_t n = (size_t) -1;
   const char *p = str;
   __asm__ volatile("cld\n\t"
-                   "repne scasb"
-                   : "+D"(p), "+c"(n)
-                   : "a"((unsigned char)0)
-                   : "memory");
-  return (int)((size_t)-2 - n);
+    "repne scasb"
+    : "+D"(p), "+c"(n)
+    : "a"((unsigned char) 0)
+    : "memory");
+  return (int) ((size_t) -2 - n);
 }
 
 int strnlen(const char *str, const size_t max) {
@@ -107,14 +108,14 @@ int strnlen(const char *str, const size_t max) {
   size_t n = max;
   const char *p = str;
   __asm__ volatile("cld\n\t"
-                   "repne scasb\n\t"
-                   "jnz 1f\n\t"
-                   "inc %%rcx\n\t"
-                   "1:"
-                   : "+D"(p), "+c"(n)
-                   : "a"((unsigned char)0)
-                   : "memory");
-  return (int)(max - n);
+    "repne scasb\n\t"
+    "jnz 1f\n\t"
+    "inc %%rcx\n\t"
+    "1:"
+    : "+D"(p), "+c"(n)
+    : "a"((unsigned char) 0)
+    : "memory");
+  return (int) (max - n);
 }
 
 char *strchr(char *str, int c) {
@@ -135,9 +136,9 @@ void strcpy(char *dest, const char *src) {
   if (!dest || !src)
     return;
   // Optimize for 64-bit aligned copies when possible
-  if (((uintptr_t)dest & 7) == 0 && ((uintptr_t)src & 7) == 0) {
-    uint64_t *d64 = (uint64_t *)dest;
-    const uint64_t *s64 = (const uint64_t *)src;
+  if (((uintptr_t) dest & 7) == 0 && ((uintptr_t) src & 7) == 0) {
+    uint64_t *d64 = (uint64_t *) dest;
+    const uint64_t *s64 = (const uint64_t *) src;
 
     uint64_t val;
     while ((val = *s64++) != 0) {
@@ -151,19 +152,17 @@ void strcpy(char *dest, const char *src) {
           (val & 0x000000000000FF00ULL) == 0 ||
           (val & 0x00000000000000FFULL) == 0) {
         // Found null terminator, fall back to byte copy
-        char *d = (char *)d64;
-        const char *s = (const char *)(s64 - 1);
-        while ((*d++ = *s++))
-          ;
+        char *d = (char *) d64;
+        const char *s = (const char *) (s64 - 1);
+        while ((*d++ = *s++));
         return;
       }
       *d64++ = val;
     }
-    *(char *)d64 = '\0';
+    *(char *) d64 = '\0';
   } else {
     // Original byte-by-byte copy for unaligned data
-    while ((*dest++ = *src++))
-      ;
+    while ((*dest++ = *src++));
   }
 }
 
@@ -270,7 +269,7 @@ char *strpbrk(const char *cs, const char *ct) {
   for (sc1 = cs; *sc1 != '\0'; ++sc1) {
     for (sc2 = ct; *sc2 != '\0'; ++sc2) {
       if (*sc1 == *sc2)
-        return (char *)sc1;
+        return (char *) sc1;
     }
   }
   return nullptr;
@@ -304,162 +303,354 @@ char *strsep(char **s, const char *ct) {
 char *strrchr(const char *s, int c) {
   const char *last_occurrence = nullptr;
   do {
-    if ((unsigned char)*s == (unsigned char)c) {
+    if ((unsigned char) *s == (unsigned char) c) {
       last_occurrence = s;
     }
   } while (*s++);
-  return (char *)last_occurrence;
+  return (char *) last_occurrence;
 }
 
 void *memset(void *s, int c, size_t n) {
-  __asm__ volatile("cld\n\t"
-                   "rep stosb"
-                   : "+D"(s), "+c"(n)
-                   : "a"((unsigned char)c)
-                   : "memory");
+  if (n == 0) return s;
+
+  cpu_features_t *features = get_cpu_features();
+  if (features->fsrm || (features->erms && n >= 64)) {
+    __asm__ volatile("cld\n\t"
+      "rep stosb"
+      : "+D"(s), "+c"(n)
+      : "a"((unsigned char) c)
+      : "memory");
+    return s;
+  }
+
+  unsigned char *mem = (unsigned char *) s;
+  unsigned char x = (unsigned char) c;
+
+  if (n < 32) {
+    while (n--) *mem++ = x;
+    return s;
+  }
+
+  while ((uintptr_t) mem & 7) {
+    *mem++ = x;
+    n--;
+  }
+
+  uint64_t pattern = x;
+  pattern |= pattern << 8;
+  pattern |= pattern << 16;
+  pattern |= pattern << 32;
+
+  size_t num_words = n / 8;
+  uint64_t *p64 = (uint64_t *) mem;
+
+  while (num_words >= 4) {
+    p64[0] = pattern;
+    p64[1] = pattern;
+    p64[2] = pattern;
+    p64[3] = pattern;
+    p64 += 4;
+    num_words -= 4;
+  }
+  while (num_words--) {
+    *p64++ = pattern;
+  }
+
+  mem = (unsigned char *) p64;
+  n &= 7;
+  while (n--) {
+    *mem++ = x;
+  }
+
   return s;
 }
 
 void *memcpy(void *d, const void *s, size_t n) {
-  __asm__ volatile("cld\n\t"
-                   "rep movsb"
-                   : "+D"(d), "+S"(s), "+c"(n)
-                   :
-                   : "memory");
+  if (n == 0) return d;
+
+  cpu_features_t *features = get_cpu_features();
+  if (features->fsrm || (features->erms && n >= 64)) {
+    __asm__ volatile("cld\n\t"
+      "rep movsb"
+      : "+D"(d), "+S"(s), "+c"(n)
+      :
+      : "memory");
+    return d;
+  }
+
+  unsigned char *dst = (unsigned char *) d;
+  const unsigned char *src = (const unsigned char *) s;
+
+  if (n < 32) {
+    if (n >= 16) {
+      *(uint64_t *) dst = *(const uint64_t *) src;
+      *(uint64_t *) (dst + 8) = *(const uint64_t *) (src + 8);
+      *(uint64_t *) (dst + n - 16) = *(const uint64_t *) (src + n - 16);
+      *(uint64_t *) (dst + n - 8) = *(const uint64_t *) (src + n - 8);
+      return d;
+    }
+    if (n >= 8) {
+      *(uint64_t *) dst = *(const uint64_t *) src;
+      *(uint64_t *) (dst + n - 8) = *(const uint64_t *) (src + n - 8);
+      return d;
+    }
+    if (n >= 4) {
+      *(uint32_t *) dst = *(const uint32_t *) src;
+      *(uint32_t *) (dst + n - 4) = *(const uint32_t *) (src + n - 4);
+      return d;
+    }
+    while (n--) *dst++ = *src++;
+    return d;
+  }
+
+  while ((uintptr_t) dst & 7) {
+    *dst++ = *src++;
+    n--;
+  }
+
+  size_t num_words = n / 8;
+  uint64_t *d64 = (uint64_t *) dst;
+  const uint64_t *s64 = (const uint64_t *) src;
+
+  while (num_words >= 4) {
+    d64[0] = s64[0];
+    d64[1] = s64[1];
+    d64[2] = s64[2];
+    d64[3] = s64[3];
+    d64 += 4;
+    s64 += 4;
+    num_words -= 4;
+  }
+  while (num_words--) {
+    *d64++ = *s64++;
+  }
+
+  dst = (unsigned char *) d64;
+  src = (const unsigned char *) s64;
+  n &= 7;
+  while (n--) {
+    *dst++ = *src++;
+  }
+
   return d;
 }
 
 void *memmove(void *dest, const void *src, size_t n) {
-  if (n == 0) return dest;
+  if (n == 0 || dest == src) return dest;
+
   if (dest < src) {
     return memcpy(dest, src, n);
   }
 
-  void *orig_dest = dest;
-  void *d_end = (char *)dest + n - 1;
-  const void *s_end = (const char *)src + n - 1;
+  cpu_features_t *features = get_cpu_features();
+  if (features->fsrm || (features->erms && n >= 64)) {
+    void *d_end = (char *) dest + n - 1;
+    const void *s_end = (const char *) src + n - 1;
+    __asm__ volatile("std\n\t"
+      "rep movsb\n\t"
+      "cld"
+      : "+D"(d_end), "+S"(s_end), "+c"(n)
+      :
+      : "memory");
+    return dest;
+  }
 
-  __asm__ volatile("std\n\t"
-                   "rep movsb\n\t"
-                   "cld"
-                   : "+D"(d_end), "+S"(s_end), "+c"(n)
-                   :
-                   : "memory");
-  return orig_dest;
+  unsigned char *d = (unsigned char *) dest + n;
+  const unsigned char *s = (const unsigned char *) src + n;
+
+  if (n < 32) {
+    while (n--) *--d = *--s;
+    return dest;
+  }
+
+  while ((uintptr_t) d & 7) {
+    *--d = *--s;
+    n--;
+  }
+
+  size_t num_words = n / 8;
+  uint64_t *d64 = (uint64_t *) d;
+  const uint64_t *s64 = (const uint64_t *) s;
+
+  while (num_words >= 4) {
+    d64 -= 4;
+    s64 -= 4;
+    d64[3] = s64[3];
+    d64[2] = s64[2];
+    d64[1] = s64[1];
+    d64[0] = s64[0];
+    num_words -= 4;
+  }
+  while (num_words--) {
+    *--d64 = *--s64;
+  }
+
+  d = (unsigned char *) d64;
+  s = (const unsigned char *) s64;
+  n &= 7;
+  while (n--) {
+    *--d = *--s;
+  }
+
+  return dest;
 }
 
 int memcmp(const void *s1, const void *s2, size_t n) {
   if (n == 0) return 0;
-  int res;
-  __asm__ volatile("cld\n\t"
-                   "repz cmpsb\n\t"
-                   "je 1f\n\t"
-                   "sbbl %0, %0\n\t"
-                   "orl $1, %0\n\t"
-                   "jmp 2f\n\t"
-                   "1: xorl %0, %0\n\t"
-                   "2:"
-                   : "=a"(res), "+S"(s1), "+D"(s2), "+c"(n)
-                   :
-                   : "memory");
-  return res;
+
+  const unsigned char *p1 = (const unsigned char *) s1;
+  const unsigned char *p2 = (const unsigned char *) s2;
+
+  if (n >= 8) {
+    while ((uintptr_t) p1 & 7) {
+      if (*p1 != *p2) return (int) *p1 - (int) *p2;
+      p1++;
+      p2++;
+      n--;
+    }
+
+    const uint64_t *q1 = (const uint64_t *) p1;
+    const uint64_t *q2 = (const uint64_t *) p2;
+
+    while (n >= 8) {
+      if (*q1 != *q2) break;
+      q1++;
+      q2++;
+      n -= 8;
+    }
+
+    p1 = (const unsigned char *) q1;
+    p2 = (const unsigned char *) q2;
+  }
+
+  while (n--) {
+    if (*p1 != *p2) return (int) *p1 - (int) *p2;
+    p1++;
+    p2++;
+  }
+
+  return 0;
 }
 
 void *memset32(void *s, uint32_t val, size_t n) {
-  __asm__ volatile("cld\n\t"
-                   "rep stosl"
-                   : "+D"(s), "+c"(n)
-                   : "a"(val)
-                   : "memory");
+  if (n == 0) return s;
+
+  uint32_t *p32 = (uint32_t *) s;
+
+  while (n > 0 && ((uintptr_t) p32 & 7)) {
+    *p32++ = val;
+    n--;
+  }
+
+  uint64_t val64 = ((uint64_t) val << 32) | val;
+  uint64_t *p64 = (uint64_t *) p32;
+  size_t n64 = n / 2;
+
+  while (n64 >= 4) {
+    p64[0] = val64;
+    p64[1] = val64;
+    p64[2] = val64;
+    p64[3] = val64;
+    p64 += 4;
+    n64 -= 4;
+  }
+  while (n64--) {
+    *p64++ = val64;
+  }
+
+  if (n & 1) {
+    *(uint32_t *) p64 = val;
+  }
+
   return s;
 }
 
 static inline char to_lower(char c) {
-    if (c >= 'A' && c <= 'Z') return c + ('a' - 'A');
-    return c;
+  if (c >= 'A' && c <= 'Z') return c + ('a' - 'A');
+  return c;
 }
 
 int strcasecmp(const char *s1, const char *s2) {
-    while (*s1 && (to_lower(*s1) == to_lower(*s2))) {
-        s1++;
-        s2++;
-    }
-    return (unsigned char)to_lower(*s1) - (unsigned char)to_lower(*s2);
+  while (*s1 && (to_lower(*s1) == to_lower(*s2))) {
+    s1++;
+    s2++;
+  }
+  return (unsigned char) to_lower(*s1) - (unsigned char) to_lower(*s2);
 }
 
 int strncasecmp(const char *s1, const char *s2, size_t n) {
-    if (n == 0) return 0;
-    while (n-- > 0 && *s1 && (to_lower(*s1) == to_lower(*s2))) {
-        if (n == 0 || !*s1) break;
-        s1++;
-        s2++;
-    }
-    return (unsigned char)to_lower(*s1) - (unsigned char)to_lower(*s2);
+  if (n == 0) return 0;
+  while (n-- > 0 && *s1 && (to_lower(*s1) == to_lower(*s2))) {
+    if (n == 0 || !*s1) break;
+    s1++;
+    s2++;
+  }
+  return (unsigned char) to_lower(*s1) - (unsigned char) to_lower(*s2);
 }
 
 size_t strlcpy(char *dst, const char *src, size_t size) {
-    size_t len = strlen(src);
-    if (size > 0) {
-        size_t copy_len = (len >= size) ? size - 1 : len;
-        memcpy(dst, src, copy_len);
-        dst[copy_len] = '\0';
-    }
-    return len;
+  size_t len = strlen(src);
+  if (size > 0) {
+    size_t copy_len = (len >= size) ? size - 1 : len;
+    memcpy(dst, src, copy_len);
+    dst[copy_len] = '\0';
+  }
+  return len;
 }
 
 uint64_t strtoul(const char *nptr, char **endptr, int base) {
-    const char *s = nptr;
-    uint64_t acc = 0;
-    int c;
+  const char *s = nptr;
+  uint64_t acc = 0;
+  int c;
 
-    while (is_word_boundary(*s)) s++;
+  while (is_word_boundary(*s)) s++;
 
-    if (base == 0) {
-        if (*s == '0') {
-            s++;
-            if (*s == 'x' || *s == 'X') {
-                s++;
-                base = 16;
-            } else {
-                base = 8;
-            }
-        } else {
-            base = 10;
-        }
-    } else if (base == 16) {
-        if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) s += 2;
-    }
-
-    for (;;) {
-        c = (unsigned char)*s;
-        if (c >= '0' && c <= '9') c -= '0';
-        else if (c >= 'A' && c <= 'Z') c -= 'A' - 10;
-        else if (c >= 'a' && c <= 'z') c -= 'a' - 10;
-        else break;
-
-        if (c >= base) break;
-        acc = acc * base + c;
+  if (base == 0) {
+    if (*s == '0') {
+      s++;
+      if (*s == 'x' || *s == 'X') {
         s++;
+        base = 16;
+      } else {
+        base = 8;
+      }
+    } else {
+      base = 10;
     }
+  } else if (base == 16) {
+    if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) s += 2;
+  }
 
-    if (endptr) *endptr = (char *)s;
-    return acc;
+  for (;;) {
+    c = (unsigned char) *s;
+    if (c >= '0' && c <= '9') c -= '0';
+    else if (c >= 'A' && c <= 'Z') c -= 'A' - 10;
+    else if (c >= 'a' && c <= 'z') c -= 'a' - 10;
+    else break;
+
+    if (c >= base) break;
+    acc = acc * base + c;
+    s++;
+  }
+
+  if (endptr) *endptr = (char *) s;
+  return acc;
 }
 
 void *memchr(const void *s, int c, size_t n) {
-    if (n == 0) return nullptr;
-    void *res;
-    __asm__ volatile("cld\n\t"
-                     "repne scasb\n\t"
-                     "jnz 1f\n\t"
-                     "lea -1(%%rdi), %0\n\t"
-                     "jmp 2f\n\t"
-                     "1: xor %0, %0\n\t"
-                     "2:"
-                     : "=r"(res), "+D"(s), "+c"(n)
-                     : "a"((unsigned char)c)
-                     : "memory");
-    return res;
+  if (n == 0) return nullptr;
+  void *res;
+  __asm__ volatile("cld\n\t"
+    "repne scasb\n\t"
+    "jnz 1f\n\t"
+    "lea -1(%%rdi), %0\n\t"
+    "jmp 2f\n\t"
+    "1: xor %0, %0\n\t"
+    "2:"
+    : "=r"(res), "+D"(s), "+c"(n)
+    : "a"((unsigned char) c)
+    : "memory");
+  return res;
 }
 
 EXPORT_SYMBOL(memset);
@@ -467,6 +658,7 @@ EXPORT_SYMBOL(memset32);
 EXPORT_SYMBOL(memcpy);
 EXPORT_SYMBOL(memmove);
 EXPORT_SYMBOL(memcmp);
+EXPORT_SYMBOL(memchr);
 EXPORT_SYMBOL(strlen);
 EXPORT_SYMBOL(strcpy);
 EXPORT_SYMBOL(strcmp);

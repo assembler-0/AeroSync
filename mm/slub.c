@@ -21,6 +21,7 @@
 #include <aerosync/classes.h>
 #include <aerosync/fkx/fkx.h>
 #include <aerosync/panic.h>
+#include <aerosync/timer.h>
 #include <aerosync/sched/sched.h>
 #include <arch/x86_64/mm/layout.h>
 #include <arch/x86_64/mm/pmm.h>
@@ -37,7 +38,7 @@
 #include <mm/ssp.h>
 
 static LIST_HEAD(slab_caches);
-static spinlock_t slab_lock = 0;
+static DEFINE_SPINLOCK(slab_lock);
 static uint64_t slab_secret = 0;
 
 static kmem_cache_t *kmalloc_caches[15];

@@ -31,6 +31,7 @@
 #include <aerosync/sysintf/ic.h>
 #include <aerosync/wait.h>
 #include <aerosync/sysintf/panic.h>
+#include <aerosync/export.h>
 #include <lib/printk.h>
 #include <limine/limine.h>
 #include <mm/slub.h>
@@ -143,10 +144,7 @@ static void smp_ap_entry(struct limine_mp_info *info) {
   cpu_sti();
 
   // Scheduler Loop
-  while (1) {
-    check_preempt();
-    cpu_hlt();
-  }
+  idle_loop();
 }
 
 void smp_parse_topology(void) {
@@ -340,8 +338,10 @@ void smp_prepare_boot_cpu(void) {
 }
 
 uint64_t smp_get_cpu_count(void) { return cpu_count; }
+EXPORT_SYMBOL(smp_get_cpu_count);
 
 int smp_is_active() { return smp_initialized; }
+EXPORT_SYMBOL(smp_is_active);
 
 uint32_t smp_get_id(void) {
 #ifdef CONFIG_RDPID_CPU_ID
@@ -353,6 +353,7 @@ uint32_t smp_get_id(void) {
   // We assume GS is set up early enough (in setup_per_cpu_areas for BSP)
   return (uint32_t)this_cpu_read(cpu_number);
 }
+EXPORT_SYMBOL(smp_get_id);
 
 int lapic_to_cpu(uint8_t lapic_id) {
   for (int i = 0; i < smp_get_cpu_count(); i++) {

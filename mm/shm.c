@@ -8,7 +8,7 @@
 
 /* Global registry of shared memory objects */
 static LIST_HEAD(shm_list);
-static spinlock_t shm_lock = 0;
+static DEFINE_SPINLOCK(shm_lock);
 
 int shm_init(void) {
     spinlock_init(&shm_lock);

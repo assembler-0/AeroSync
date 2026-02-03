@@ -73,3 +73,4 @@ void call_rcu(struct rcu_head *head, void (*func)(struct rcu_head *head));
 void synchronize_rcu(void);
 void rcu_barrier(void);
 void rcu_qs(void);
+void synchronize_rcu_expedited(void);

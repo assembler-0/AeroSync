@@ -90,6 +90,8 @@ int vma_map_range(struct mm_struct *mm, uint64_t start, uint64_t end,
 int vma_unmap_range(struct mm_struct *mm, uint64_t start, uint64_t end);
 int vma_protect(struct mm_struct *mm, uint64_t start, uint64_t end,
                 uint64_t new_flags);
+
+/* FIXME: fix this broken function, likely in handle_mm_fault -> anon_obj_fault */
 int mm_populate_user_range(struct mm_struct *mm, uint64_t start, size_t size, uint64_t flags, const uint8_t *data, size_t data_len);
 
 /* Page fault dispatch */

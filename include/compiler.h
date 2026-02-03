@@ -32,6 +32,7 @@
 #define __nonnull(x)    __attribute__((nonnull(x)))
 #define __finline        __attribute__((always_inline))
 #define __optimize(x)   __attribute__((optimize(x)))
+#define __deprecated    __attribute__((deprecated))
 
 /* ========================
  * MEMORY / LAYOUT ATTRIBUTES

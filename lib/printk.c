@@ -21,6 +21,7 @@
 #include <arch/x86_64/io.h>
 #include <lib/log.h>
 #include <aerosync/classes.h>
+#include <aerosync/timer.h>
 #include <aerosync/types.h>
 #include <lib/printk.h>
 #include <lib/vsprintf.h>

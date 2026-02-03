@@ -21,7 +21,7 @@ struct dentry *root_dentry = nullptr;
  * struct mount - Represents an instance of a mounted filesystem
  */
 static LIST_HEAD(mount_list);
-static spinlock_t mount_lock = SPINLOCK_INIT;
+static DEFINE_SPINLOCK(mount_lock);
 
 static struct dentry *follow_mount(struct dentry *dentry) {
   struct mount *mnt;

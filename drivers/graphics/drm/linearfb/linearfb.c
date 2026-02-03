@@ -44,7 +44,7 @@ static uint32_t font_pitch = 0;
 // --- Console state ---
 static uint32_t console_col = 0, console_row = 0;
 static uint32_t console_cols = 0, console_rows = 0;
-static volatile int fb_lock = 0;
+static DEFINE_SPINLOCK(fb_lock);
 static uint32_t console_bg = 0x00000000;
 static uint32_t console_fg = 0xFFFFFFFF;
 

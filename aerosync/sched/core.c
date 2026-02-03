@@ -593,11 +593,19 @@ void schedule(void) {
     prev_task = switch_to(prev_task, next_task);
 
     schedule_tail(prev_task);
+
     restore_irq_flags(flags);
     return;
   }
 
   spinlock_unlock_irqrestore(&rq->lock, flags);
+}
+
+void idle_loop(void) {
+  while (1) {
+    check_preempt();
+    cpu_hlt();
+  }
 }
 
 /*
@@ -858,7 +866,7 @@ void __hot scheduler_tick(void) {
   struct rq *rq = this_rq();
   struct task_struct *curr = rq->curr;
 
-  spinlock_lock((volatile int *) &rq->lock);
+  spinlock_lock(&rq->lock);
 
   rq->clock++;
   rq->clock_task = get_time_ns(); // Update task clock
@@ -867,7 +875,7 @@ void __hot scheduler_tick(void) {
     curr->sched_class->task_tick(rq, curr, 1 /* queued status? */);
   }
 
-  spinlock_unlock((volatile int *) &rq->lock);
+  spinlock_unlock(&rq->lock);
 
 #ifdef CONFIG_SCHED_AUTO_BALANCE
   int cpu = smp_get_id();

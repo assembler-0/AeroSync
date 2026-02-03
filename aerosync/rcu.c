@@ -8,6 +8,7 @@
  */
 
 #include <aerosync/rcu.h>
+#include <aerosync/srcu.h>
 #include <aerosync/sched/sched.h>
 #include <aerosync/sched/process.h>
 #include <aerosync/spinlock.h>
@@ -354,6 +355,13 @@ void synchronize_rcu(void) {
   wait_event(rcu_state.gp_wait, rcu_state.completed_seq >= wait_gp);
 }
 
+void synchronize_rcu_expedited(void) {
+  /* For now, just an alias for synchronize_rcu, but technically 
+   * it should avoid the waitqueue and use IPIs for faster QS reporting.
+   */
+  synchronize_rcu();
+}
+
 struct rcu_test_data {
   struct rcu_head rcu;
   int done;
@@ -386,8 +394,18 @@ void rcu_test(void) {
   } else {
     printk(KERN_ERR TEST_CLASS "RCU smoke test FAILED (callback not called)\n");
   }
+
+  /* SRCU Test */
+  struct srcu_struct ss;
+  init_srcu_struct(&ss);
+  printk(KERN_INFO TEST_CLASS "Starting SRCU smoke test...\n");
+  int idx = srcu_read_lock(&ss);
+  srcu_read_unlock(&ss, idx);
+  synchronize_srcu(&ss);
+  printk(KERN_INFO TEST_CLASS "SRCU smoke test passed!\n");
 }
 
 EXPORT_SYMBOL(call_rcu);
 EXPORT_SYMBOL(synchronize_rcu);
+EXPORT_SYMBOL(synchronize_rcu_expedited);
 EXPORT_SYMBOL(rcu_qs);

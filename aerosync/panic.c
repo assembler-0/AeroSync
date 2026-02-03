@@ -20,7 +20,7 @@
 #include <lib/log.h>
 #include <lib/vsprintf.h>
 
-static spinlock_t panic_lock = 0;
+static DEFINE_SPINLOCK(panic_lock);
 
 static void dump_registers(cpu_regs *regs) {
   printk(KERN_EMERG PANIC_CLASS "Registers:\n");
@@ -57,6 +57,7 @@ static void panic_header(const char *reason) {
   printk(KERN_EMERG PANIC_CLASS "System State:\n");
   printk(KERN_EMERG PANIC_CLASS "  Kernel Version : %s\n", AEROSYNC_VERSION);
   printk(KERN_EMERG PANIC_CLASS "  CPU Core ID    : %d\n", cpu_id);
+  printk(KERN_EMERG PANIC_CLASS "  Lock on CPU    : %d\n", spinlock_get_cpu(&panic_lock));
   if (curr) {
     printk(KERN_EMERG PANIC_CLASS "  Current Task   : %s (pid: %d)\n", curr->comm, curr->pid);
   } else {

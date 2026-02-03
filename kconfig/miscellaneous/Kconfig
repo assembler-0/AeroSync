@@ -20,6 +20,13 @@ config ACPI_SLEEP_BUTTON
     help
       Enables support for sleep button through uACPI
 
+config INCLUDE_DEPRECATED_CODE
+    bool "Include deprecated code"
+    default n
+    help
+      Include deprecated code for compilation,
+      may result in various warnings
+
 config IMPLICIT_FD12_STDOUT_STDERR
     bool "Enable implicit paths for FD1/2 on write()"
     default n
@@ -29,7 +36,7 @@ config IMPLICIT_FD12_STDOUT_STDERR
 
 choice
     prompt "FD1/2 actions"
-    default IMPLICIT_FD12_STDOUT_STDERR
+    default IMPLICIT_FD12_STDOUT_STDERR_PRINTK
     depends on IMPLICIT_FD12_STDOUT_STDERR
     help
       Select the behaviour of write() to FD1/2

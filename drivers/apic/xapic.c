@@ -54,7 +54,7 @@
 
 // --- Globals ---
 volatile uint32_t *xapic_lapic_base = nullptr;
-static spinlock_t xapic_ipi_lock;
+static DEFINE_SPINLOCK(xapic_ipi_lock);
 
 // --- MMIO Helper Functions ---
 

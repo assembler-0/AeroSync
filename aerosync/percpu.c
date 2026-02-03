@@ -25,7 +25,7 @@ unsigned long __per_cpu_offset[MAX_CPUS];
 static bool g_percpu_ready = false;
 
 /* Dynamic per-cpu allocation state */
-static spinlock_t pcpu_lock = 0;
+static DEFINE_SPINLOCK(pcpu_lock);
 static unsigned long *pcpu_bitmap;
 static uint16_t *pcpu_unit_counts; /* Track number of units per allocation */
 static int pcpu_nr_bits;

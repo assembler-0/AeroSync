@@ -465,12 +465,12 @@ uacpi_cpu_flags uacpi_kernel_lock_spinlock(uacpi_handle h) {
   // If spinlock.h doesn't have irqsave, we do it manually.
   irq_flags_t flags = save_irq_flags();
   cpu_cli();
-  spinlock_lock((spinlock_t *)h);
+  spinlock_lock(h);
   return (uacpi_cpu_flags)flags;
 }
 
 void uacpi_kernel_unlock_spinlock(uacpi_handle h, uacpi_cpu_flags flags) {
-  spinlock_unlock((spinlock_t *)h);
+  spinlock_unlock(h);
   restore_irq_flags((irq_flags_t)flags);
 }
 
@@ -485,7 +485,7 @@ typedef struct irq_mapping {
 } irq_mapping_t;
 
 static irq_mapping_t *irq_map_head = nullptr;
-static spinlock_t irq_map_lock = 0;
+static DEFINE_SPINLOCK(irq_map_lock);
 
 // Generic trampoline
 static void acpi_irq_trampoline(cpu_regs *regs) {
@@ -623,7 +623,7 @@ typedef struct work_item {
 
 static work_item_t *work_head = nullptr;
 static work_item_t *work_tail = nullptr;
-static spinlock_t work_lock;
+static DEFINE_SPINLOCK(work_lock);
 static wait_queue_head_t work_wait_q;
 
 static int acpi_worker_thread(void *data) {

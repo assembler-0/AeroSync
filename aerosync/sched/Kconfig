@@ -56,4 +56,13 @@ config SCHED_LB_PERIOD_MS
     help
       Interval between periodic load balancing attempts.
 
+config UNSAFE_USER_TASK_SPAWN
+    bool "Enable spawn_user_process_raw()"
+    depends on INCLUDE_DEPRECATED_CODE
+    default n
+    help
+      Export the spawn_user_process_raw() API for use
+      A deprecated, internal-only unsafe function that spawns
+      a user process from a buffer
+
 endmenu

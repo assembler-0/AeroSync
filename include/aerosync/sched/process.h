@@ -26,10 +26,13 @@ void move_task_to_rq(struct task_struct *task, int dest_cpu);
 
 void spawn_user_test_process(void);
 
+#ifdef CONFIG_UNSAFE_USER_TASK_SPAWN
 /**
- * @warning USE THIS FUNCTION FOR INTERNAL PURPOSES ONLY, WILL BE REMOVED FOR SECURITY CONCERNS
+ * @warning USE THIS FUNCTION FOR INTERNAL PURPOSES ONLY
  */
-struct task_struct *spawn_user_process_raw(void *data, size_t len, const char *name);
+struct task_struct * __deprecated spawn_user_process_raw(void *data, size_t len, const char *name);
+#endif
+
 int do_execve_from_buffer(void *data, size_t len, const char *name);
 
 pid_t sys_fork(void);

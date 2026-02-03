@@ -31,32 +31,6 @@ a
 
 ## Build Process
 
-### Traditional build
-
-1. **Configure the build:**
-   ```bash
-   cmake -B build
-   ```
-
-2. **Configure kernel options (optional):**
-   ```bash
-   cmake --build build --target menuconfig
-   ```
-   Or:
-   ```bash
-   python -m *config <SRC_DIR>
-   ```
-   Or:
-   ```bash
-   ccmake <SRC_DIR> # Cache variables ONLY!
-   ```
-
-3. **Build the kernel:**
-   ```bash
-   cmake --build build --parallel $(nproc)
-   ```
-### Preset build (recommended)
-
 - `amd64` - release kernel (fastest, less overhead)
 - `amd64-hardened` - release kernel with hardened security features
 - `amd64-dev` - development kernel with hardened security features (slowest, no optimization and debug symbols)

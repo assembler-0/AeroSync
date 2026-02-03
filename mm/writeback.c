@@ -21,7 +21,7 @@
 
 /* Global Dirty Page Tracking */
 static LIST_HEAD(dirty_objects);
-static spinlock_t dirty_lock = 0;
+static DEFINE_SPINLOCK(dirty_lock);
 static DECLARE_WAIT_QUEUE_HEAD(writeback_wait);
 
 /* Accounting */

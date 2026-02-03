@@ -22,7 +22,7 @@ void ida_init(struct ida *ida, int max_id) {
     }
     ida->max_id = max_id;
     ida->last_id = 0;
-    ida->lock = 0;
+    spinlock_init(&ida->lock);
 }
 EXPORT_SYMBOL(ida_init);
 

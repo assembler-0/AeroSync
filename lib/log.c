@@ -61,11 +61,10 @@ static ringbuf_t klog_ring = {
 
 static int klog_console_level = KLOG_INFO;
 static log_sink_putc_t klog_console_sink = nullptr; // defaults to ring buffer only
-static spinlock_t klog_lock = 0;
-static int klog_inited = 1; // Statically initialized, so always ready
+static DEFINE_SPINLOCK(klog_lock);
 
 // Serialize immediate console output across CPUs to prevent mangled lines
-static spinlock_t klog_console_lock = 0;
+static DEFINE_SPINLOCK(klog_console_lock);
 // Async logging control
 static volatile int klog_async_enabled = 0;
 static struct task_struct *klogd_task = nullptr;

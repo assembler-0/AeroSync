@@ -1,6 +1,5 @@
 #pragma once
 
-#include <aerosync/spinlock.h>
 #include <limine/limine.h>
 #include <aerosync/atomic.h>
 #include <linux/list.h>
@@ -42,6 +41,7 @@ struct call_single_data {
 
 #define CSD_FLAG_WAIT 0x01
 
+#include <aerosync/spinlock.h>
 /* Per-CPU queue of pending calls */
 struct smp_call_queue {
     struct list_head list;
@@ -63,5 +63,4 @@ void smp_call_function_many(const struct cpumask *mask, smp_call_func_t func, vo
  * Execute a function on a specific CPU and wait for completion.
  */
 void smp_call_function_single(int cpu, smp_call_func_t func, void *info, bool wait);
-
 void smp_call_ipi_handler(void);

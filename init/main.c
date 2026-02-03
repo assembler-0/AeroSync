@@ -47,6 +47,7 @@
 #include <arch/x86_64/smp.h>
 #include <compiler.h>
 #include <aerosync/sysintf/device.h>
+#include <arch/x86_64/tsc.h>
 #include <crypto/crc32.h>
 #include <drivers/acpi/power.h>
 #include <drivers/qemu/debugcon/debugcon.h>
@@ -100,8 +101,7 @@ static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
   printk(KERN_CLASS "AeroSync initialization complete.\n");
 
   while (1) {
-    check_preempt();
-    cpu_hlt();
+    idle_loop();
   }
 }
 
@@ -154,7 +154,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
          AEROSYNC_COMPILER_VERSION);
   printk(KERN_CLASS "copyright (C) 2025-2026 assembler-0\n");
 
-  if (get_executable_file_request()->response && 
+  if (get_executable_file_request()->response &&
       get_executable_file_request()->response->executable_file) {
       ksymtab_init(get_executable_file_request()->response->executable_file->address);
   }
@@ -233,7 +233,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   pmm_init_cpu();
   vmalloc_init();
 
-  ksymtab_finalize(); // Build optimized symbol index
+  ksymtab_finalize();
 
   gdt_init();
   idt_install();
@@ -268,7 +268,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   uacpi_kernel_init_early();
 
   acpi_tables_init();
-  
+
   interrupt_controller_t ic_type = ic_install();
   uacpi_notify_ic_ready();
 
@@ -324,11 +324,8 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   cpu_sti();
 
-  // BSP becomes the idle thread
-  while (true) {
-    check_preempt();
-    cpu_hlt();
-  }
+  // enter scheduler idle loop
+  idle_loop();
 
   __unreachable();
 }

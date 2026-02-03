@@ -500,6 +500,7 @@ void sched_init_ap(void);
 void scheduler_tick(void);
 void check_preempt(void);
 void schedule_tail(struct task_struct *prev);
+void idle_loop(void);
 
 void set_task_nice(struct task_struct *p, int nice);
 

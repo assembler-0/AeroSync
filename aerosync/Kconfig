@@ -29,6 +29,32 @@ config RDPID_CPU_ID
       This is faster than reading from the per-CPU area via GS.
       Requires RDPID_SUPPORT and hardware support.
 
+menu "Synchronization Primitives"
+
+config TICKET_SPINLOCKS
+    bool "Ticket Spinlocks"
+    default y
+    help
+      Use fair ticket-based spinlocks instead of simple test-and-set locks.
+      This ensures FIFO order and prevents CPU starvation under contention.
+
+config MCS_SPINLOCKS
+    bool "MCS Spinlocks"
+    default y
+    help
+      Enable support for MCS (Mellor-Crummey and Scott) locks.
+      MCS locks are highly scalable and perform well under high contention
+      by having each CPU spin on its own local variable.
+
+config DEBUG_SPINLOCK
+    bool "Spinlock debugging"
+    default n
+    help
+      Enable extra checks and debugging information for spinlocks,
+      including owner tracking and deadlock detection.
+
+endmenu
+
 menu "RCU Subsystem"
 
 config TREE_RCU
@@ -72,6 +98,13 @@ config RCU_KTHREAD_PRIO
     default 1
     help
       Set the priority of the RCU kthreads.
+
+config SRCU
+    bool "Sleepable Read-Copy-Update (SRCU)"
+    default y
+    help
+      This option enables Sleepable RCU, which allows readers to sleep
+      within their read-side critical sections.
 
 config RCU_PERCPU_TEST
     bool "Enable RCU and Per-CPU dynamic allocation tests"

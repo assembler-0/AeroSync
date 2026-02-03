@@ -25,6 +25,7 @@
 #include <aerosync/classes.h>
 #include <aerosync/errno.h>
 #include <aerosync/panic.h>
+#include <aerosync/timer.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <linux/container_of.h>
@@ -128,7 +129,7 @@ static unsigned char bootstrap_vma_in_use[BOOTSTRAP_VMA_COUNT];
 
 static struct mm_struct bootstrap_mms[BOOTSTRAP_MM_COUNT];
 static unsigned char bootstrap_mm_in_use[BOOTSTRAP_MM_COUNT];
-static spinlock_t bootstrap_mm_lock = 0;
+static DEFINE_SPINLOCK(bootstrap_mm_lock);
 
 static inline bool is_bootstrap_vma(struct vm_area_struct *vma) {
   return (vma >= bootstrap_vmas && vma < bootstrap_vmas + BOOTSTRAP_VMA_COUNT);
@@ -1189,7 +1190,6 @@ int mm_populate_user_range(struct mm_struct *mm, uint64_t start, size_t size, ui
   up_read(&mm->mmap_lock);
   return 0;
 }
-
 
 /* ========================================================================
  * Free Region Finding

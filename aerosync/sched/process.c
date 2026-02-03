@@ -425,7 +425,10 @@ struct task_struct *process_spawn(int (*entry)(void *), void *data,
 
 EXPORT_SYMBOL(process_spawn);
 
-struct task_struct *spawn_user_process_raw(void *data, size_t len, const char *name) {
+#ifdef CONFIG_UNSAFE_USER_TASK_SPAWN
+struct task_struct * __deprecated spawn_user_process_raw(void *data, size_t len, const char *name) {
+  unmet_function_deprecation(spawn_user_process_raw);
+
   struct task_struct *curr = get_current();
   struct task_struct *p = copy_process(0, 0, curr);
   if (!p) return nullptr;
@@ -491,3 +494,4 @@ struct task_struct *spawn_user_process_raw(void *data, size_t len, const char *n
 }
 
 EXPORT_SYMBOL(spawn_user_process_raw);
+#endif
