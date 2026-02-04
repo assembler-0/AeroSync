@@ -46,6 +46,7 @@
 #include <stdarg.h>
 #include <aerosync/fkx/fkx.h>
 #include <mm/slub.h>
+#include <aerosync/ctype.h>
 
 
 // 'ntoa' conversion buffer size, this must be big enough to hold one converted
@@ -548,7 +549,157 @@ char *kvasprintf(const char *fmt, va_list args) {
   return buf;
 }
 
+/**
+ * vsscanf - Unformat a buffer into a list of arguments
+ * @buf:	input buffer
+ * @fmt:	format of buffer
+ * @args:	arguments
+ */
+int vsscanf(const char *buf, const char *fmt, va_list args) {
+  const char *str = buf;
+  char *next;
+  char digit;
+  int num = 0;
+  uint8_t base;
+  uint8_t field_width;
+  int is_long = 0;
+
+  while (*fmt && *str) {
+    /* skip any white space in format */
+    if (isspace(*fmt)) {
+      while (isspace(*fmt))
+        fmt++;
+      while (isspace(*str))
+        str++;
+    }
+
+    /* check for format specifier */
+    if (*fmt != '%' || *++fmt == '%') {
+      if (*fmt != *str)
+        break;
+      fmt++;
+      str++;
+      continue;
+    }
+
+    field_width = 0xff;
+    if (isdigit(*fmt)) {
+      field_width = (uint8_t) _atoi(&fmt);
+    }
+
+    /* get the conversion qualifier */
+    is_long = 0;
+    if (*fmt == 'l') {
+      is_long = 1;
+      fmt++;
+      if (*fmt == 'l') {
+        is_long = 2;
+        fmt++;
+      }
+    } else if (*fmt == 'h') {
+      is_long = -1;
+      fmt++;
+    }
+
+    /* get the base */
+    base = 10;
+    if (*fmt == 'x' || *fmt == 'X') {
+      base = 16;
+    } else if (*fmt == 'o') {
+      base = 8;
+    } else if (*fmt == 'b') {
+      base = 2;
+    }
+
+    switch (*fmt++) {
+      case 'c': {
+        char *s = (char *) va_arg(args, char*);
+        if (field_width == 0xff)
+          field_width = 1;
+        while (field_width-- && *str)
+          *s++ = *str++;
+        num++;
+      }
+        continue;
+      case 's': {
+        char *s = (char *) va_arg(args, char*);
+        if (field_width == 0xff)
+          field_width = 0xff;
+        while (isspace(*str))
+          str++;
+        while (field_width-- && *str && !isspace(*str))
+          *s++ = *str++;
+        *s = '\0';
+        num++;
+      }
+        continue;
+      case 'n': {
+        int *i = (int *) va_arg(args, int*);
+        *i = (int) (str - buf);
+      }
+        continue;
+      case 'o':
+      case 'x':
+      case 'X':
+      case 'd':
+      case 'i':
+      case 'u':
+        break;
+      default:
+        return num;
+    }
+
+    /* it's a number of some sort */
+    while (isspace(*str))
+      str++;
+
+    if (!*str || !isxdigit(*str))
+      break;
+
+    switch (is_long) {
+      case 2: {
+        unsigned long long *p = (unsigned long long *) va_arg(args, unsigned long long*);
+        *p = simple_strtoull(str, &next, base);
+        str = next;
+      }
+        break;
+      case 1: {
+        unsigned long *p = (unsigned long *) va_arg(args, unsigned long*);
+        *p = simple_strtoul(str, &next, base);
+        str = next;
+      }
+        break;
+      default: {
+        unsigned int *p = (unsigned int *) va_arg(args, unsigned int*);
+        *p = (unsigned int) simple_strtoul(str, &next, base);
+        str = next;
+      }
+        break;
+    }
+    num++;
+  }
+  return num;
+}
+
+/**
+ * sscanf - Unformat a buffer into a list of arguments
+ * @buf:	input buffer
+ * @fmt:	format of buffer
+ * @...:	arguments
+ */
+int sscanf(const char *buf, const char *fmt, ...) {
+  va_list args;
+  int r;
+
+  va_start(args, fmt);
+  r = vsscanf(buf, fmt, args);
+  va_end(args);
+  return r;
+}
+
 EXPORT_SYMBOL(vsprintf);
 EXPORT_SYMBOL(kvasprintf);
 EXPORT_SYMBOL(snprintf);
 EXPORT_SYMBOL(vsnprintf);
+EXPORT_SYMBOL(vsscanf);
+EXPORT_SYMBOL(sscanf);

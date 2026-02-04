@@ -27,14 +27,17 @@ a
     - bochs: when I can't use by real computer
     - VMware & VirtualBox: extra fancy
     - ninja: faster than make (theoretically)
-    - Arch Linux: I use it
+    - Arch Linux
 
 ## Build Process
 
-- `amd64` - release kernel (fastest, less overhead)
-- `amd64-hardened` - release kernel with hardened security features
-- `amd64-dev` - development kernel with hardened security features (slowest, no optimization and debug symbols)
-- `amd64-dev-hardened` - development kernel (no optimization and debug symbols)
+### Presets (recommened) 
+
+#### Available presets (cmake --list-presets): 
+- `amd64` - release kernel (fastest, less overhead, w/o debug symbols)
+- `amd64-hardened` - release kernel with hardened security features (moderate performance, w/o debug symbols)
+- `amd64-dev` - development kernel (no optimization, w/debug symbols)
+- `amd64-dev-hardened` - development kernel with hardened security features (slowest, no optimization, w/debug symbols)
 
 1. **Configure the build:**
    ```bash
@@ -45,16 +48,29 @@ a
    cmake --build --preset <preset>
    ```
 
+### Manual configuration
+
+1. **Kconfig setup: (optional)**
+    ```bash
+   cp kconfig/configs/<your desired config> .config
+   ```
+
+2. **Configure the build:**
+   ```bash
+   cmake -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain/AeroSyncClang.cmake # -DAEROSYNC_DEFONCONFIG="config here if skip step 1."
+   ```
+
+3. **Build:**
+   ```bash
+   cmake --build build --parallel $(nproc)
+   ```
+
 ### Build Artifacts
 
 The build process generates:
 - `aerosync.hybrid.iso` - A hybrid bootable ISO image in the `build/` directory
 - `bootdir/` - Directory containing the kernel image, kernel extensions, and bootloader components
-
-## CMake components
-I want the build system to be as modular as possible, so everything is a CMake fragment located in the `cmake/` directory.
-Keeping the root CMakeLists.txt file as clean as possible. Currently, its size is only less than 100 lines of code.
-
+- 
 ### Compile time options & kernel configuration
 
 There are two ways to configure the kernel:
