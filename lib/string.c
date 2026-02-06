@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+/// SPDX-License-Identifier: GPL-2.0-only
 /**
  * AeroSync monolithic kernel
  *
@@ -7,30 +7,27 @@
  * @copyright (C) 2025-2026 assembler-0
  *
  * This file is part of the AeroSync kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
 #include <lib/string.h>
-#include <aerosync/fkx/fkx.h>
+#include <aerosync/export.h>
 #include <mm/slub.h>
 #include <arch/x86_64/features/features.h>
 #include <aerosync/ctype.h>
 #include <aerosync/errno.h>
 #include <aerosync/stdarg.h>
 
-#ifndef INT_MAX
-#define INT_MAX 2147483647
-#endif
-
-#ifdef CONFIG_STRING_CHECK
-#define STRING_CHECK(cond) if (!(cond)) return
-#define STRING_CHECK_RET(cond, ret) if (!(cond)) return (ret)
-#else
-#define STRING_CHECK(cond)
-#define STRING_CHECK_RET(cond, ret)
-#endif
-
-bool is_word_boundary(char c) {
-  return isspace(c) || c == '\0';
+bool is_word_boundary(const char c) {
+  return (c == '\0' || c == ' ' || c == '\t' || c == '\n' || c == '\r');
 }
 
 bool find(const char *buff, const char *pattern) {

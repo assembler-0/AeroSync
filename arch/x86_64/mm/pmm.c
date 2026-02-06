@@ -258,6 +258,8 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
 
   pmm_initialized = true;
 
+  build_all_zonelists();
+
   // Allocate and zero out global zero-page singleton
   empty_zero_page = pmm_alloc_page();
   if (empty_zero_page) {
@@ -290,8 +292,6 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
   printk(KERN_DEBUG PMM_CLASS "Initialized. Max PFN: %llu\n", pmm_max_pages);
 
   pmm_report_capabilities();
-
-  build_all_zonelists();
 
   return 0;
 }

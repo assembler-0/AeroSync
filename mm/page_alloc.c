@@ -391,6 +391,35 @@ void build_all_zonelists(void) {
 }
 
 /*
+ * Watermark check helper
+ */
+static bool zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
+                             int classzone_idx, unsigned int alloc_flags) {
+  long free_pages = (long)__atomic_load_n(&z->nr_free_pages, __ATOMIC_ACQUIRE);
+  long min = (long)mark;
+
+#ifdef CONFIG_MM_PMM_WATERMARK_BOOST
+  min += z->watermark_boost;
+#endif
+
+  /*
+   * If the allocation is for a high-order block, we must ensure
+   * that enough free memory exists in areas of that order or higher.
+   * This is a simple check; professional kernels use more complex
+   * fragmentation-aware checks.
+   */
+  if (free_pages <= min + (1UL << order))
+    return false;
+
+  for (unsigned int o = order; o < MAX_ORDER; o++) {
+    if (z->free_area[o].nr_free > 0)
+      return true;
+  }
+
+  return false;
+}
+
+/*
  * Core Allocator
  */
 struct folio *alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order) {
@@ -398,9 +427,14 @@ struct folio *alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order) {
   struct pglist_data *pgdat = nullptr;
   struct zone *z;
   unsigned long flags;
-  bool can_reclaim = !(gfp_mask & GFP_ATOMIC);
+  bool can_reclaim = gfpflags_allow_blocking(gfp_mask);
   int reclaim_retries = 3;
   int migratetype = gfp_to_migratetype(gfp_mask);
+
+#ifdef CONFIG_MM_PMM_FAIR_ALLOC
+  static atomic_t zone_rotator = ATOMIC_INIT(0);
+  int rotation = atomic_inc_return(&zone_rotator);
+#endif
 
 retry:
   if (nid < 0 || nid >= MAX_NUMNODES || !node_data[nid]) {
@@ -426,19 +460,13 @@ retry:
 
   /*
    * PCP Fastpath (Orders 0-3, Local Node)
-   * Only if we are requesting from the local node and not a specific remote node.
-   * If nid != this_node(), we skip PCP to avoid locking remote zones without zone lock?
-   * PCP is per-zone, per-cpu. We can only access THIS cpu's PCP for the zone.
-   * So if the zone is on another node, we CAN access it, but we are accessing
-   * the PCP structure for THIS cpu on that remote zone. This is valid.
    */
   if (order < PCP_ORDERS && percpu_ready()) {
-    /*
-     * We try the highest allowed zone in the local node first for PCP.
-     * Usually ZONE_NORMAL.
-     */
-    z = &pgdat->node_zones[start_zone_idx];
-    if (z->present_pages) {
+    /* Try the allowed zones in the node for PCP */
+    for (int i = start_zone_idx; i >= 0; i--) {
+      z = &pgdat->node_zones[i];
+      if (!z->present_pages) continue;
+
       irq_flags_t irq_flags = save_irq_flags();
       int cpu = (int) smp_get_id();
       struct per_cpu_pages *pcp = &z->pageset[cpu];
@@ -466,6 +494,9 @@ retry:
         SetPageHead(&folio->page);
         atomic_set(&folio->_refcount, 1);
 
+#ifdef CONFIG_MM_PMM_STATS
+        atomic_long_inc(&z->alloc_success);
+#endif
         restore_irq_flags(irq_flags);
         return folio;
       }
@@ -474,41 +505,77 @@ retry:
   }
 
   /*
-   * Zonelist Traversal (The "Magnum" Path)
+   * Zonelist Traversal
    */
   struct zonelist *zonelist = &pgdat->node_zonelists[start_zone_idx];
   struct zone **z_ptr = zonelist->_zones;
+  int z_count = 0;
+  while (zonelist->_zones[z_count]) z_count++;
 
-  while ((z = *z_ptr++) != nullptr) {
-    if (!z->present_pages || order > z->max_free_order) continue;
+#ifdef CONFIG_MM_PMM_FAIR_ALLOC
+  /* Simple fair rotation: start from a different zone in the list */
+  if (z_count > 1) {
+    z_ptr = &zonelist->_zones[rotation % z_count];
+  }
+#endif
 
-    /* Check watermarks with atomic operations */
-    if (__atomic_load_n(&z->nr_free_pages, __ATOMIC_ACQUIRE) < z->watermark[WMARK_LOW]) {
-      wakeup_kswapd(z);
+  int zones_tried = 0;
+  while (zones_tried < z_count) {
+    z = *z_ptr++;
+    zones_tried++;
+
+    if (!z) {
+        /* Wrap around to the beginning of the zonelist */
+        z_ptr = zonelist->_zones;
+        z = *z_ptr++;
     }
 
-    if (__atomic_load_n(&z->nr_free_pages, __ATOMIC_ACQUIRE) < z->watermark[WMARK_MIN] &&
-        !can_reclaim && !(gfp_mask & ___GFP_HIGH)) {
-      continue;
+    if (!z || !z->present_pages || order > z->max_free_order) continue;
+
+    /* Check watermarks */
+    if (!zone_watermark_ok(z, order, z->watermark[WMARK_LOW], start_zone_idx, 0)) {
+      wakeup_kswapd(z);
+      if (!can_reclaim && !zone_watermark_ok(z, order, z->watermark[WMARK_MIN], start_zone_idx, 0))
+        continue;
     }
 
     flags = spinlock_lock_irqsave(&z->lock);
     page = __rmqueue(z, order, migratetype);
     spinlock_unlock_irqrestore(&z->lock, flags);
 
-    if (page) goto found;
+    if (page) {
+#ifdef CONFIG_MM_PMM_STATS
+      atomic_long_inc(&z->alloc_success);
+#endif
+      goto found;
+    } else if (order > 0) {
+#ifdef CONFIG_MM_PMM_WATERMARK_BOOST
+      /* Allocation failed due to fragmentation, boost watermarks */
+      z->watermark_boost += (1UL << order);
+      if (z->watermark_boost > z->present_pages / 4)
+          z->watermark_boost = z->present_pages / 4;
+#endif
+    }
   }
 
   /*
-   * Direct Reclaim / Demand Allocation
+   * Direct Reclaim
    */
   if (can_reclaim && reclaim_retries > 0) {
     size_t reclaimed = try_to_free_pages(pgdat, 32, gfp_mask);
     if (reclaimed > 0) {
+#ifdef CONFIG_MM_PMM_STATS
+      // We don't have easy access to the specific zone here, but could track per-node
+#endif
       reclaim_retries--;
       goto retry;
     }
   }
+
+#ifdef CONFIG_MM_PMM_STATS
+  // Track failure for the primary zone
+  atomic_long_inc(&pgdat->node_zones[start_zone_idx].alloc_fail);
+#endif
 
   printk(KERN_ERR PMM_CLASS "failed to allocate order %u from any node (gfp: %x)\n", order, gfp_mask);
   return nullptr;

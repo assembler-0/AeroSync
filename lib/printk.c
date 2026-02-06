@@ -230,6 +230,26 @@ int vprintk(const char *fmt, va_list args) {
 
   return count;
 }
+EXPORT_SYMBOL(vprintk);
+
+int vprintkln(const char *fmt, va_list args) {
+  if (!fmt)
+    return -1;
+
+  int level = KLOG_INFO; // Default log level
+  // Parse optional level prefix (e.g. "$3$")
+  const char *real_fmt = parse_level_prefix(fmt, &level);
+
+  char local_buf[256];
+  int count = vsnprintf(local_buf, sizeof(local_buf), real_fmt, args);
+  strcat(local_buf, "\n");
+
+  // Write to log subsystem
+  log_write_str(level, local_buf);
+
+  return count;
+}
+EXPORT_SYMBOL(vprintkln);
 
 int printk(const char *fmt, ...) {
   va_list args;
@@ -239,6 +259,15 @@ int printk(const char *fmt, ...) {
   return ret;
 }
 EXPORT_SYMBOL(printk);
+
+int printkln(const char *fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  int ret = vprintkln(fmt, args);
+  va_end(args);
+  return ret;
+}
+EXPORT_SYMBOL(printkln);
 
 int ___ratelimit(ratelimit_state_t *rs, const char *func) {
   if (!rs) return 1;

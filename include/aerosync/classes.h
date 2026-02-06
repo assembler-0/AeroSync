@@ -34,7 +34,7 @@
 
 ///@section Core Kernel
 #define KERN_CLASS "[sys::core] "         // Generic kernel core messages
-#define PANIC_CLASS "[SYS::core::panic] "       // Kernel panics (Fatal errors)
+#define PANIC_CLASS "[sys::core::panic] "       // Kernel panics (Fatal errors)
 #define FAULT_CLASS "[sys::core::panic::fault] "
 #define SYSCALL_CLASS "[sys::core::syscall] "      // System call entry/exit tracing
 #define ATOMIC_CLASS "[sys::core::atomic] "     // Atomic operations
@@ -44,6 +44,7 @@
 #define SYNC_CLASS "[sys::core::sync] " // Synchronization (Mutex, Semaphores, Spinlocks)
 #define NUMA_CLASS "[sys::core::numa] "
 #define STACKTRACE_CLASS "[sys::core::stacktrace] "
+#define LMM_CLASS "[sys::core::lmm] "
 
 ///@section Crypto
 #define RNG_CLASS "[crypto::rng] " // Random Number Generator

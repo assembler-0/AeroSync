@@ -397,6 +397,38 @@ config MAX_NUMNODES
     help
       Maximum number of physical NUMA nodes supported by the memory manager.
 
+config MM_PMM_ADVANCED
+    bool "Advanced PMM Features"
+    default y
+    help
+      Enables advanced Physical Memory Manager features like watermark boosting
+      and fair zone allocation, inspired by modern enterprise kernels.
+
+config MM_PMM_WATERMARK_BOOST
+    bool "Watermark Boosting"
+    default y
+    depends on MM_PMM_ADVANCED
+    help
+      Proactively increase watermarks when fragmentation is detected. This
+      triggers kswapd earlier to prevent allocation failures for large
+      contiguous blocks.
+
+config MM_PMM_FAIR_ALLOC
+    bool "Fair Zone Allocation Policy"
+    default y
+    depends on MM_PMM_ADVANCED
+    help
+      Ensures that allocations are spread fairly across all available zones
+      in a node, preventing premature depletion of specific zones (like
+      ZONE_NORMAL) when others have plenty of memory.
+
+config MM_PMM_STATS
+    bool "Extended PMM Statistics"
+    default n
+    help
+      Maintains detailed statistics about page allocations, fallbacks, and
+      reclaim efficiency. Useful for profiling but adds minor overhead.
+
 endmenu
 
 endmenu

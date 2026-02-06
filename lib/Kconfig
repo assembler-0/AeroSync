@@ -20,13 +20,6 @@ config CONFIG_LIBC_STRING_FULL
       Include the complete set of C standard string functions (strtok,
       strcspn, etc.) in the kernel.
 
-config CONFIG_STRING_CHECK
-    bool "Enable string safety checks"
-    default n
-    help
-      Enable bounds checking and null pointer validation in string functions.
-      This may have a performance impact.
-
 config CONFIG_KSTRTO_ERRORS
     bool "Enable detailed kstrto* error reporting"
     default y
@@ -58,5 +51,14 @@ config CONFIG_STRING_CRYPTO
     default y
     help
       Include constant-time comparison and crypto-safe string functions.
+
+config CMDLINE_PARSER
+    bool "Enable and compile builtin cmdline parser"
+    default n
+    help
+      Include and use the builtin cmdline parser.
+      note: the parser is unstable and might fail.
+      if this is disabled, the kernel will use a more reliable-
+      yet simple string sequence finder, features will be limited
 
 endmenu

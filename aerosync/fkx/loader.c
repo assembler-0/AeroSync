@@ -27,14 +27,54 @@
 #include <aerosync/classes.h>
 #include <aerosync/ksymtab.h>
 #include <crypto/hmac.h>
+#include <aerosync/limine_modules.h>
 #include "fkx_key.h"
 
 struct fkx_signature_footer {
-    uint8_t signature[64];
-    uint32_t magic; // 'SIG!'
+  uint8_t signature[64];
+  uint32_t magic; // 'SIG!'
 };
 
 #define SIG_MAGIC 0x21474953 // 'SIG!'
+
+int lmm_fkx_prober(const struct limine_file *file, lmm_type_t *out_type) {
+  /* 1. Basic size and ELF verification */
+  if (file->size < sizeof(Elf64_Ehdr) + sizeof(struct fkx_signature_footer)) {
+    return 0;
+  }
+
+  if (!elf_verify(file->address, file->size)) {
+    return 0;
+  }
+
+  /* 2. Verify FKX Signature Magic at the end of the file */
+  struct fkx_signature_footer *footer = (struct fkx_signature_footer *)
+      ((uint8_t *)file->address + file->size - sizeof(struct fkx_signature_footer));
+
+  if (footer->magic != SIG_MAGIC) {
+    return 0;
+  }
+
+  /* 3. Check for the .fkx_info section which contains the module metadata */
+  if (elf_get_section(file->address, ".fkx_info") != nullptr) {
+    *out_type = LMM_TYPE_FKX;
+    return 100; /* Definite match */
+  }
+
+  /* If it has the signature but no info section, it's suspicious or malformed */
+  return 0;
+}
+
+void __init
+lmm_load_fkx_callback(struct lmm_entry *entry, void *data) {
+  (void)data;
+  const struct limine_file *m = entry->file;
+  printk(KERN_DEBUG FKX_CLASS "  %s @ %p (%lu bytes)\n", m->path,
+         m->address, m->size);
+  if (fkx_load_image(m->address, m->size) == 0) {
+    printk(FKX_CLASS "Successfully loaded module: %s\n", m->path);
+  }
+}
 
 // Structure to represent a loaded module image
 struct fkx_loaded_image {

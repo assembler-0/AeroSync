@@ -2,7 +2,6 @@
 #pragma once
 
 #include <aerosync/types.h>
-#include <aerosync/errno.h>
 #include <aerosync/stdarg.h>
 
 /* String Manipulation */
@@ -84,12 +83,6 @@ int atoi(const char *s);
 #ifdef CONFIG_STRING_FLOAT
 double strtod(const char *nptr, char **endptr);
 float strtof(const char *nptr, char **endptr);
-#endif
-
-/* Formatted input */
-#ifdef CONFIG_STRING_SCANF
-int vsscanf(const char *buf, const char *fmt, va_list args);
-int sscanf(const char *buf, const char *fmt, ...);
 #endif
 
 /* Pattern matching */

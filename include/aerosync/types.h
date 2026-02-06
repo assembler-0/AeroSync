@@ -1,7 +1,7 @@
 #pragma once
 
+/* i know this is not the best way, but hey, it works  */
 #include <stdarg.h>
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -9,6 +9,8 @@ typedef int pid_t;
 typedef uint32_t dev_t;
 typedef long ssize_t;
 typedef long ptrdiff_t;
+typedef char* cstring;
+typedef uintptr_t usize;
 
 #define ULONG_MAX (~0UL)
 #define UINT_MAX  (~0U)

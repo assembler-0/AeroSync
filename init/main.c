@@ -106,25 +106,19 @@ static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
 }
 
 static int __init __noinline __sysv_abi
-system_load_extensions(const volatile struct limine_module_request *request) {
-  if (request->response) {
-    printk(KERN_DEBUG FKX_CLASS "Found %lu modules, \n",
-           request->response->module_count);
-    for (size_t i = 0; i < request->response->module_count; i++) {
-      const struct limine_file *m = request->response->modules[i];
-      printk(KERN_DEBUG FKX_CLASS "  [%zu] %s @ %p (%lu bytes)\n", i, m->path,
-             m->address, m->size);
-      if (fkx_load_image(m->address, m->size) == 0) {
-        printk(FKX_CLASS "Successfully loaded module: %s\n", m->path);
-      }
-    }
+system_load_extensions(void) {
+  if (lmm_get_count() > 0) {
+    printk(KERN_DEBUG FKX_CLASS "Processing modules via LMM...\n");
+    
+    lmm_for_each_module(LMM_TYPE_FKX, lmm_load_fkx_callback, nullptr);
+
     if (fkx_finalize_loading() != 0) {
       printk(KERN_ERR FKX_CLASS "Failed to finalize module loading\n");
       return -ENOSYS;
     }
   } else {
     printk(KERN_NOTICE FKX_CLASS
-           "no FKX module found/loaded"
+           "no modules found via LMM"
            ", you probably do not want this"
            ", this build of AeroSync does not have "
            "any built-in hardware drivers"
@@ -138,7 +132,7 @@ system_load_extensions(const volatile struct limine_module_request *request) {
  * @brief AeroSync kernel main entry point
  * @note NO RETURN!
  */
-void __init __noreturn __noinline __sysv_abi start_kernel(void) {
+ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   panic_register_handler(get_builtin_panic_ops());
   panic_handler_install();
 
@@ -195,10 +189,16 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     /* Register known options and parse the executable command-line provided by
      * the bootloader (via Limine). Using static storage in the cmdline parser
      * ensures we don't allocate during early boot. */
-    cmdline_register_option("verbose", CMDLINE_TYPE_FLAG);
+    if (
+        cmdline_register_option("verbose", CMDLINE_TYPE_FLAG) < 0 ||
+        cmdline_register_option("mtest", CMDLINE_TYPE_FLAG) < 0 ||
+        cmdline_register_option("dumpdevtree", CMDLINE_TYPE_FLAG) < 0
+    ) {
+      printkln(KERN_ERR "failed to register cmdline flags");
+    }
     cmdline_parse(get_cmdline_request()->response->cmdline);
+    printkln(KERN_CLASS "cmdline: %s", get_cmdline_request()->response->cmdline);
     if (cmdline_get_flag("verbose")) {
-      /* Enable verbose/debug log output which some subsystems consult. */
       log_enable_debug();
       printk(KERN_CLASS "cmdline: verbose enabled\n");
     }
@@ -247,7 +247,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   vfs_init();
 
 #ifdef INCLUDE_MM_TESTS
-  if (cmdline_get_flag("verbose")) {
+  if (cmdline_get_flag("mtest")) {
     pmm_test();
     vmm_test();
     slab_test();
@@ -257,7 +257,12 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   }
 #endif
 
-  system_load_extensions(get_module_request());
+#ifdef CONFIG_LIMINE_MODULE_MANAGER
+  lmm_register_prober(lmm_fkx_prober);
+  lmm_init(get_module_request()->response);
+#endif
+
+  system_load_extensions();
 
   fkx_init_module_class(FKX_PRINTK_CLASS);
   printk_init_late();
@@ -303,7 +308,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   fkx_init_module_class(FKX_DRIVER_CLASS);
 
 #ifdef CONFIG_LOG_DEVICE_TREE
-  if (cmdline_get_flag("verbose"))
+  if (cmdline_get_flag("dumpdevtree"))
     dump_device_tree();
 #endif
 

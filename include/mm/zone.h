@@ -70,12 +70,20 @@ alignas(64) struct zone {
 
   /* Watermarks */
   unsigned long watermark[3]; /* MIN, LOW, HIGH */
+#ifdef CONFIG_MM_PMM_WATERMARK_BOOST
+  unsigned long watermark_boost;
+#endif
   unsigned long nr_free_pages;
   unsigned int max_free_order; /* Highest order with at least one free block */
 
   const char *name;
 
   /* Stats */
+#ifdef CONFIG_MM_PMM_STATS
+  atomic_long_t alloc_success;
+  atomic_long_t alloc_fail;
+  atomic_long_t reclaim_success;
+#endif
   atomic_long_t vm_stat[32]; // NR_FREE_PAGES, etc.
 
   struct pglist_data *zone_pgdat;

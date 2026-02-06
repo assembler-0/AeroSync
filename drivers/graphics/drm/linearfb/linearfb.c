@@ -2,7 +2,7 @@
 /**
  * linearfb - Linear Framebuffer library
  *
- * @file lib/linearfb/linearfb.c
+ * @file drivers/graphics/drm/linearfb/linearfb.c
  * @brief simple linear framebuffer graphics and console library
  * @copyright (C) 2025-2026 assembler-0
  *
@@ -30,6 +30,7 @@
 #include <aerosync/sysintf/char.h>
 #include <mm/slub.h>
 #include <aerosync/sysintf/fb.h>
+#include <arch/x86_64/requests.h>
 
 extern const uint8_t embedded_console_font[];
 extern const uint32_t embedded_console_font_size;
@@ -872,7 +873,6 @@ const printk_backend_t *linearfb_get_backend(void) {
 }
 
 int linearfb_mod_init(void) {
-  extern volatile struct limine_framebuffer_request *get_framebuffer_request(void);
   framebuffer_request = get_framebuffer_request();
   printk_register_backend(linearfb_get_backend());
   return 0;

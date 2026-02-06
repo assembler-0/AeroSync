@@ -1000,7 +1000,11 @@ void wakeup_kswapd(struct zone *zone) {
 static int kswapd_should_run(struct pglist_data *pgdat) {
   for (int i = 0; i < MAX_NR_ZONES; i++) {
     struct zone *z = &pgdat->node_zones[i];
-    if (z->present_pages > 0 && z->nr_free_pages < z->watermark[WMARK_HIGH])
+    unsigned long mark = z->watermark[WMARK_HIGH];
+#ifdef CONFIG_MM_PMM_WATERMARK_BOOST
+    mark += z->watermark_boost;
+#endif
+    if (z->present_pages > 0 && z->nr_free_pages < mark)
       return 1;
   }
   return 0;
@@ -1040,7 +1044,18 @@ static int kswapd_thread(void *data) {
     while (sc.priority >= 0) {
       shrink_node(pgdat, &sc);
 
-      if (sc.nr_reclaimed >= sc.nr_to_reclaim) break;
+      if (sc.nr_reclaimed >= sc.nr_to_reclaim) {
+#ifdef CONFIG_MM_PMM_WATERMARK_BOOST
+        /* Once satisfied, gradually decay the boost */
+        for (int i = 0; i < MAX_NR_ZONES; i++) {
+            struct zone *z = &pgdat->node_zones[i];
+            if (z->watermark_boost > 0) {
+                z->watermark_boost >>= 1; // Simple decay
+            }
+        }
+#endif
+        break;
+      }
 
       /* If not enough reclaimed, increase pressure */
       sc.priority--;
