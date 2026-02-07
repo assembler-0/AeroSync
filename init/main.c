@@ -77,7 +77,7 @@ static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
   rcu_spawn_kthreads();
 
 #ifdef CONFIG_RCU_PERCPU_TEST
-  if (cmdline_get_flag("verbose")) {
+  if (cmdline_get_flag("rcutest")) {
     rcu_test();
     percpu_test();
   }
@@ -195,6 +195,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
     if ( /* TODO: remove this hardcoding */
       cmdline_register_option("verbose", CMDLINE_TYPE_FLAG) < 0 ||
       cmdline_register_option("mtest", CMDLINE_TYPE_FLAG) < 0 ||
+      cmdline_register_option("rcutest", CMDLINE_TYPE_FLAG) < 0 ||
       cmdline_register_option("dumpdevtree", CMDLINE_TYPE_FLAG) < 0
     ) {
       printkln(KERN_ERR "failed to register cmdline flags");

@@ -21,8 +21,8 @@
 #define ISR_CLASS "[sys::irq::isr] "   // Interrupt Service Routines
 #define IRQ_CLASS "[sys::irq] "   // Hardware Interrupt Requests
 #define APIC_CLASS "[sys::ic::apic] " // IOAPIC / LAPIC configuration
-#define PIC_CLASS "[sys::ic::PIC] "   // Legacy PIC configuration
-#define PIT_CLASS "[sys::timer::PIT] "   // Programmable Interval Timer
+#define PIC_CLASS "[sys::ic::pic] "   // Legacy PIC configuration
+#define PIT_CLASS "[sys::timer::pit] "   // Programmable Interval Timer
 #define IC_CLASS "[sys::sysintf::ic] "     // Interrupt Controller (APIC/PIC switching)
 #define SMP_CLASS "[sys::cpu::smp] " // Symmetric Multi-Processing (Multicore startup)
 #define TSC_CLASS "[sys::timer::tsc] " // Time Stamp Counter / CPU timing

@@ -2,8 +2,8 @@
 # Kernel Linking
 # ============================================================================
 add_executable(aerosync.krnl
-        ${AEROSYNC_SOURCES}
-        ${FKX_PUB_HEADER}
+    ${AEROSYNC_SOURCES}
+    ${FKX_PUB_HEADER}
 )
 
 add_dependencies(aerosync.krnl fkx_key_header)
@@ -28,7 +28,6 @@ target_compile_options(aerosync.krnl PRIVATE
         -fno-pic
         -fno-pie
         -mcmodel=kernel
-        -fblocks
         -fvisibility=hidden
     >
     $<$<COMPILE_LANGUAGE:ASM_NASM>:
@@ -81,23 +80,23 @@ set(AEROSYNC_LINKER_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/arch/x86_64/aerosync.ld"
 
 # Configure the linker to use ld.lld with proper arguments
 set_target_properties(aerosync.krnl PROPERTIES
-        LINK_DEPENDS "${AEROSYNC_LINKER_SCRIPT}"
+    LINK_DEPENDS "${AEROSYNC_LINKER_SCRIPT}"
 )
 
 # Set linker flags for this specific target
 target_link_options(aerosync.krnl PRIVATE
-        -fuse-ld=lld
-        -T ${AEROSYNC_LINKER_SCRIPT}
-        -nostdlib
-        -static
-        -Wl,-melf_x86_64
+    -fuse-ld=lld
+    -T ${AEROSYNC_LINKER_SCRIPT}
+    -nostdlib
+    -static
+    -Wl,-melf_x86_64
 )
 
 if (LTO)
     target_link_options(aerosync.krnl PRIVATE
-            $<$<COMPILE_LANGUAGE:C>:
+        $<$<COMPILE_LANGUAGE:C>:
             -flto
             -Wl,--gc-sections
-            >
+        >
     )
 endif()
