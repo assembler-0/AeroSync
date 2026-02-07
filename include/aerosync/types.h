@@ -11,6 +11,7 @@ typedef long ssize_t;
 typedef long ptrdiff_t;
 typedef char* cstring;
 typedef uintptr_t usize;
+typedef long time_t;
 
 #define ULONG_MAX (~0UL)
 #define UINT_MAX  (~0U)

@@ -5,6 +5,17 @@
  * @file mm/filemap.c
  * @brief Page Cache / File Mapping implementation
  * @copyright (C) 2025-2026 assembler-0
+ *
+ * This file is part of the AeroSync kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
 #include <mm/vm_object.h>
@@ -17,6 +28,63 @@
 #include <arch/x86_64/mm/pmm.h>
 #include <lib/uaccess.h>
 #include <aerosync/fkx/fkx.h>
+
+/**
+ * do_page_cache_readahead - Proactively read neighboring pages into cache.
+ */
+static void do_page_cache_readahead(struct vm_object *obj, uint64_t pgoff) {
+#ifdef CONFIG_MM_READAHEAD
+  uint32_t count = 1 << obj->cluster_shift;
+  if (count > CONFIG_MM_READAHEAD_PAGES) count = CONFIG_MM_READAHEAD_PAGES;
+
+  for (uint32_t i = 1; i < count; i++) {
+    uint64_t next_off = pgoff + i;
+
+    /* Check if already in cache */
+    down_read(&obj->lock);
+    struct folio *exists = vm_object_find_folio(obj, next_off);
+    up_read(&obj->lock);
+    if (exists) continue;
+
+    /* Check EOF */
+    if (obj->size && (next_off << PAGE_SHIFT) >= obj->size) break;
+
+    struct folio *folio = alloc_pages(GFP_KERNEL, 0);
+    if (!folio) break;
+
+    /* Read asynchronously if possible, for now synchronous */
+    if (obj->ops && obj->ops->read_folio) {
+      if (obj->ops->read_folio(obj, folio) < 0) {
+        folio_put(folio);
+        break;
+      }
+    } else {
+      memset(folio_address(folio), 0, PAGE_SIZE);
+    }
+
+    down_write(&obj->lock);
+    /* Double check race */
+    if (vm_object_find_folio(obj, next_off)) {
+      up_write(&obj->lock);
+      folio_put(folio);
+      continue;
+    }
+
+    if (vm_object_add_folio(obj, next_off, folio) < 0) {
+      up_write(&obj->lock);
+      folio_put(folio);
+      break;
+    }
+    up_write(&obj->lock);
+
+    /* RMAP linkage for readahead pages */
+    folio_add_file_rmap(folio, obj, next_off);
+  }
+#else
+  (void) obj;
+  (void) pgoff;
+#endif
+}
 
 /**
  * filemap_fault - The default fault handler for file-backed objects.
@@ -32,18 +100,21 @@ int filemap_fault(struct vm_object *obj, struct vm_area_struct *vma, struct vm_f
   if (folio) {
     folio_get(folio);
     vmf->folio = folio;
-    vmf->prot = vma->vm_page_prot;
+    vmf->prot = vma ? vma->vm_page_prot : vm_get_page_prot(VM_READ);
     up_read(&obj->lock);
     return 0;
   }
 
   up_read(&obj->lock);
 
-  /* 2. Cache miss: Allocate a new folio */
+  /* 2. Cache miss: Trigger readahead for subsequent pages */
+  do_page_cache_readahead(obj, vmf->pgoff);
+
+  /* 3. Allocate a new folio for the current fault */
   folio = alloc_pages(GFP_KERNEL, 0);
   if (!folio) return VM_FAULT_OOM;
 
-  /* 3. Read data from filesystem into the folio */
+  /* 4. Read data from filesystem into the folio */
   if (obj->ops && obj->ops->read_folio) {
     ret = obj->ops->read_folio(obj, folio);
     if (ret < 0) {
@@ -55,7 +126,7 @@ int filemap_fault(struct vm_object *obj, struct vm_area_struct *vma, struct vm_f
     memset(folio_address(folio), 0, PAGE_SIZE);
   }
 
-  /* 4. Insert into page cache */
+  /* 5. Insert into page cache */
   down_write(&obj->lock);
 
   /* Re-check race */
@@ -65,7 +136,7 @@ int filemap_fault(struct vm_object *obj, struct vm_area_struct *vma, struct vm_f
     folio_put(folio);
     folio_get(existing);
     vmf->folio = existing;
-    vmf->prot = vma->vm_page_prot;
+    vmf->prot = vma ? vma->vm_page_prot : vm_get_page_prot(VM_READ);
     return 0;
   }
 
@@ -77,7 +148,7 @@ int filemap_fault(struct vm_object *obj, struct vm_area_struct *vma, struct vm_f
 
   folio_get(folio);
   vmf->folio = folio;
-  vmf->prot = vma->vm_page_prot;
+  vmf->prot = vma ? vma->vm_page_prot : vm_get_page_prot(VM_READ);
   up_write(&obj->lock);
 
   /* File-backed RMAP linkage */

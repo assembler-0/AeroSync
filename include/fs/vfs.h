@@ -20,9 +20,6 @@ typedef uint64_t vfs_loff_t;     // Large file offset type
 typedef uint32_t uid_t;          // User ID
 typedef uint32_t gid_t;          // Group ID
 
-// time_t and timespec might be defined elsewhere, but for now define here
-typedef long time_t;
-
 struct timespec {
     time_t tv_sec;  // Seconds
     long tv_nsec;   // Nanoseconds
@@ -76,6 +73,10 @@ struct timespec {
 #define O_FSYNC    020000 // Write with file integrity sync (implies O_DSYNC)
 #define O_ASYNC    0200000 // Asynchronous I/O
 #define O_CLOEXEC  02000000 // Set close-on-exec
+
+#define FMODE_READ   0x1
+#define FMODE_WRITE  0x2
+#define FMODE_KERNEL 0x1000
 
 // VFS object operations forward declarations
 struct file_operations;
@@ -152,11 +153,19 @@ struct file {
     const struct file_operations *f_op;   // File operations (can be inherited from inode)
     vfs_loff_t          f_pos;            // Current file offset
     uint32_t            f_flags;          // Open flags (O_RDONLY, O_WRONLY, etc.)
+    uint32_t            f_mode;           // Internal mode (FMODE_READ, etc.)
     void                *private_data;    // Filesystem private data for this open file
     // ... more fields like reference count, etc.
 };
 
 struct vm_area_struct;
+struct wait_queue_head;
+struct poll_table_struct;
+
+typedef struct poll_table_struct {
+    void (*_qproc)(struct file *, struct wait_queue_head *, struct poll_table_struct *);
+} poll_table;
+
 // struct file_operations: Operations for an open file
 struct file_operations {
     fn(vfs_off_t, llseek, struct file *file, vfs_off_t offset, int whence);
@@ -165,6 +174,8 @@ struct file_operations {
     fn(int, mmap, struct file *file, struct vm_area_struct *vma);
     fn(int, open, struct inode *inode, struct file *file);
     fn(int, release, struct inode *inode, struct file *file);
+    fn(int, ioctl, struct file *file, unsigned int cmd, unsigned long arg);
+    fn(uint32_t, poll, struct file *file, poll_table *pt);
     // Add more operations as needed, e.g., ioctl, mmap, poll, etc.
 };
 
@@ -210,10 +221,44 @@ struct mount {
     struct mount *mnt_parent;
 };
 
+struct stat {
+    dev_t         st_dev;      /* ID of device containing file */
+    vfs_ino_t     st_ino;      /* Inode number */
+    vfs_mode_t    st_mode;     /* File type and mode */
+    vfs_nlink_t   st_nlink;    /* Number of hard links */
+    uid_t         st_uid;      /* User ID of owner */
+    gid_t         st_gid;      /* Group ID of owner */
+    dev_t         st_rdev;     /* Device ID (if special file) */
+    vfs_loff_t    st_size;     /* Total size, in bytes */
+    struct timespec st_atim;   /* Time of last access */
+    struct timespec st_mtim;   /* Time of last modification */
+    struct timespec st_ctim;   /* Time of last status change */
+    uint64_t      st_blksize;  /* Block size for filesystem I/O */
+    uint64_t      st_blocks;   /* Number of 512B blocks allocated */
+};
+
+struct pollfd {
+    int fd;
+    short events;
+    short revents;
+};
+
+#define POLLIN      0x0001
+#define POLLPRI     0x0002
+#define POLLOUT     0x0004
+#define POLLERR     0x0008
+#define POLLHUP     0x0010
+#define POLLNVAL    0x0020
+
 int vfs_mount(const char *dev_name, const char *dir_name, const char *type, unsigned long flags, void *data);
 void vfs_init(void);
 int register_filesystem(struct file_system_type *fs_type);
 int unregister_filesystem(struct file_system_type *fs_type);
+
+int vfs_stat(const char *path, struct stat *statbuf);
+int vfs_fstat(struct file *file, struct stat *statbuf);
+int vfs_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
+uint32_t vfs_poll(struct file *file, poll_table *pt);
 
 struct inode *new_inode(struct super_block *sb);
 void iput(struct inode *inode);

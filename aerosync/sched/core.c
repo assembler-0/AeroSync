@@ -27,6 +27,7 @@
 #include <drivers/apic/apic.h>
 #include <aerosync/classes.h>
 #include <aerosync/panic.h>
+#include <aerosync/export.h>
 #include <aerosync/sched/cpumask.h>
 #include <aerosync/sched/process.h>
 #include <aerosync/sched/sched.h>
@@ -40,6 +41,7 @@
 #include <mm/vma.h>
 #include <aerosync/timer.h>
 #include <vsprintf.h>
+#include <aerosync/resdomain.h>
 #include <arch/x86_64/gdt/gdt.h>
 
 static int idle_balance(struct rq *this_rq);
@@ -155,6 +157,41 @@ void move_task_to_rq(struct task_struct *task, int dest_cpu) {
   double_rq_unlock(src_rq, dest_rq);
   restore_irq_flags(flags);
 }
+
+/*
+ * sched_move_task - Moves a task from its current scheduling group to a new one.
+ * Used when a task is attached to a different ResDomain.
+ */
+void sched_move_task(struct task_struct *p) {
+  struct rq *rq = per_cpu_ptr(runqueues, p->cpu);
+  irq_flags_t flags = spinlock_lock_irqsave(&rq->lock);
+
+  bool queued = (p->se.on_rq != 0);
+  if (queued) {
+    deactivate_task(rq, p, DEQUEUE_SAVE);
+  }
+
+  /* 
+   * This is where we update the hierarchy linkage.
+   * For now, we ensure the se.cfs_rq points to the root rq if no 
+   * group scheduling is active, or the domain's rq if it is.
+   */
+  if (p->rd && p->rd->cfs_rq) {
+      p->se.cfs_rq = p->rd->cfs_rq[p->cpu];
+      p->se.parent = p->rd->se ? p->rd->se[p->cpu] : nullptr;
+  } else {
+      p->se.cfs_rq = &rq->cfs;
+      p->se.parent = nullptr;
+  }
+
+  if (queued) {
+    activate_task(rq, p, ENQUEUE_RESTORE);
+  }
+
+  spinlock_unlock_irqrestore(&rq->lock, flags);
+}
+
+EXPORT_SYMBOL(sched_move_task);
 
 static void switch_mm(struct mm_struct *prev, struct mm_struct *next,
                       struct task_struct *tsk) {

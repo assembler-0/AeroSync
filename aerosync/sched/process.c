@@ -18,6 +18,7 @@
  * GNU General Public License for more details.
  */
 
+#include <aerosync/elf.h>
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/entry.h>
 #include <arch/x86_64/fpu.h>
@@ -41,6 +42,8 @@
 #include <aerosync/signal.h>
 #include <aerosync/errno.h>
 #include <fs/fs_struct.h>
+
+#include <aerosync/resdomain.h>
 
 /*
  * Process/Thread Management
@@ -177,6 +180,9 @@ struct task_struct *copy_process(uint64_t clone_flags,
   } else {
     p->fs = copy_fs_struct(parent->fs);
   }
+
+  // Setup Resource Domain
+  resdomain_task_init(p, parent);
 
   // Setup FPU
   p->thread.fpu = fpu_alloc();
@@ -360,6 +366,10 @@ void free_task(struct task_struct *task) {
     free_fs_struct(task->fs);
   }
 
+  if (task->rd) {
+    resdomain_put(task->rd);
+  }
+
   if (task->signal) {
     if (--task->signal->count == 0) {
       kfree(task->signal);
@@ -418,12 +428,27 @@ struct task_struct *process_spawn(int (*entry)(void *), void *data,
   *(--sp) = 0; // r15
 
   p->thread.rsp = (uint64_t) sp;
-
   wake_up_new_task(p);
+
   return p;
 }
-
 EXPORT_SYMBOL(process_spawn);
+
+int do_execve(const char *filename, char **argv, char **envp) {
+  struct file *file = vfs_open(filename, O_RDONLY, 0);
+  if (!file) return -ENOENT;
+
+  int retval = do_execve_file(file, filename, argv, envp);
+  vfs_close(file);
+
+  return retval;
+}
+EXPORT_SYMBOL(do_execve);
+
+int run_init_process(const char *init_filename) {
+  return do_execve(init_filename, nullptr, nullptr);
+}
+EXPORT_SYMBOL(run_init_process);
 
 #ifdef CONFIG_UNSAFE_USER_TASK_SPAWN
 struct task_struct * __deprecated spawn_user_process_raw(void *data, size_t len, const char *name) {

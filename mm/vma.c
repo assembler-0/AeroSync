@@ -843,7 +843,7 @@ struct vm_area_struct *vma_prev(struct vm_area_struct *vma) {
  * VMA Creation and Initialization
  * ======================================================================== */
 
-static inline uint64_t vm_get_page_prot(uint64_t flags) {
+uint64_t vm_get_page_prot(uint64_t flags) {
   uint64_t prot = PTE_PRESENT;
   if (flags & VM_WRITE) prot |= PTE_RW;
   if (flags & VM_USER) prot |= PTE_USER;
@@ -1142,6 +1142,53 @@ int vma_protect(struct mm_struct *mm, uint64_t start, uint64_t end, uint64_t new
   if (new_flags & VM_WRITE) prot |= PROT_WRITE;
   if (new_flags & VM_EXEC) prot |= PROT_EXEC;
   return do_mprotect(mm, start, end - start, prot);
+}
+
+uint64_t do_mremap(struct mm_struct *mm, uint64_t old_addr, size_t old_len, size_t new_len, int flags,
+                   uint64_t new_addr_hint) {
+  (void) flags;
+  (void) new_addr_hint;
+
+  if (!mm || (old_addr & (PAGE_SIZE - 1)) || old_len == 0 || new_len == 0)
+    return -EINVAL;
+
+  old_len = (old_len + PAGE_SIZE - 1) & PAGE_MASK;
+  new_len = (new_len + PAGE_SIZE - 1) & PAGE_MASK;
+
+  if (new_len == old_len) return old_addr;
+
+  down_write(&mm->mmap_lock);
+
+  struct vm_area_struct *vma = vma_find(mm, old_addr);
+  if (!vma || vma->vm_start != old_addr || vma_size(vma) != old_len) {
+    up_write(&mm->mmap_lock);
+    return -EFAULT;
+  }
+
+  /* Simplified: only support extending in-place for now */
+  if (new_len > old_len) {
+    /* Check if next region is free */
+    uint64_t end = old_addr + new_len;
+    struct vm_area_struct *next = vma_next(vma);
+    if (next && next->vm_start < end) {
+      /* Cannot extend in-place */
+      up_write(&mm->mmap_lock);
+      return -ENOMEM;
+    }
+
+    vma->vm_end = end;
+    if (vma->vm_obj) vma->vm_obj->size = new_len;
+  } else {
+    /* Shrinking */
+    int ret = do_munmap(mm, old_addr + new_len, old_len - new_len);
+    if (ret < 0) {
+      up_write(&mm->mmap_lock);
+      return ret;
+    }
+  }
+
+  up_write(&mm->mmap_lock);
+  return old_addr;
 }
 
 int mm_populate_user_range(struct mm_struct *mm, uint64_t start, size_t size, uint64_t flags, const uint8_t *data,

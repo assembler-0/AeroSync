@@ -117,6 +117,8 @@ struct sched_avg {
   unsigned long util_avg;
 };
 
+struct cfs_rq;
+
 /**
  * struct sched_entity - CFS scheduling entity
  *
@@ -134,6 +136,11 @@ struct sched_entity {
 
   struct load_weight load; /* For CPU bandwidth distribution */
   struct sched_avg avg;    /* PELT statistics */
+
+  /* Hierarchical scheduling support */
+  struct sched_entity *parent; /* Parent group entity */
+  struct cfs_rq *cfs_rq;       /* rq on which this entity is scheduled */
+  struct cfs_rq *my_q;         /* for group entities: the rq we own */
 };
 
 /**
@@ -276,6 +283,11 @@ struct task_struct {
    */
   struct fs_struct *fs;
   struct files_struct *files;
+
+  /*
+   * Resource management
+   */
+  struct resdomain *rd;
 
   /*
    * Task name and debugging
@@ -499,6 +511,7 @@ void sched_init_task(struct task_struct *initial_task);
 void sched_init_ap(void);
 void scheduler_tick(void);
 void check_preempt(void);
+void sched_move_task(struct task_struct *p);
 void schedule_tail(struct task_struct *prev);
 void idle_loop(void);
 

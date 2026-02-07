@@ -78,6 +78,7 @@
                     - security/
                     - trace/
                     - ...
+            - res/ - ResDomain
             - processes/ - procfs
                 - *pids*
         - resources/ - system resources (basically everything)

@@ -240,6 +240,21 @@ config DIRTY_THRESHOLD_THROTTLE
     help
       Number of dirty pages at which processes are throttled during writes.
 
+config MM_READAHEAD
+    bool "Page Cache Readahead"
+    default y
+    help
+      Enable proactive readahead of file data into the page cache.
+      Significantly improves sequential read performance.
+
+config MM_READAHEAD_PAGES
+    int "Readahead Window Size (Pages)"
+    depends on MM_READAHEAD
+    default 16
+    range 1 128
+    help
+      Number of pages to read ahead on sequential access. 16 pages = 64KB.
+
 endmenu
 
 menu "ZMM Tuning"

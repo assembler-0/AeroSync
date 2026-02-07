@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aerosync/types.h>
+#include <aerosync/sched/sched.h>
 
 struct syscall_regs;
 
@@ -88,6 +89,12 @@ struct sigpending {
 
 /* Function prototypes */
 struct task_struct;
+
+static inline int signal_pending(struct task_struct *p) {
+    /* Basic check: any pending signals not blocked */
+    return (p->pending & ~p->blocked) != 0;
+}
+
 void signal_init_task(struct task_struct *p);
 int send_signal(int sig, struct task_struct *p);
 void handle_signal(struct task_struct *p, int sig, sigset_t *oldset);

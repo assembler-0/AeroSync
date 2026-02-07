@@ -33,7 +33,12 @@ void spawn_user_test_process(void);
 struct task_struct * __deprecated spawn_user_process_raw(void *data, size_t len, const char *name);
 #endif
 
+struct file;
+
 int do_execve_from_buffer(void *data, size_t len, const char *name);
+int do_execve_file(struct file *file, const char *name, char **argv, char **envp);
+int do_execve(const char *filename, char **argv, char **envp);
+int run_init_process(const char *init_filename);
 
 pid_t sys_fork(void);
 pid_t do_fork(uint64_t clone_flags, uint64_t stack_start, struct syscall_regs *regs);

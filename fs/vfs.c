@@ -30,6 +30,7 @@
 #include <mm/slub.h>
 #include <aerosync/errno.h>
 #include <aerosync/sysintf/char.h>
+#include <aerosync/sysintf/block.h>
 #include <fs/devfs.h>
 #include <fs/fs_struct.h>
 #include <aerosync/timer.h>
@@ -387,6 +388,85 @@ vfs_loff_t vfs_llseek(struct file *file, vfs_loff_t offset, int whence) {
 
 EXPORT_SYMBOL(vfs_llseek);
 
+int vfs_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
+  if (!file) return -EBADF;
+
+  if (file->f_op && file->f_op->ioctl) {
+    return file->f_op->ioctl(file, cmd, arg);
+  }
+
+  return -ENOTTY;
+}
+
+EXPORT_SYMBOL(vfs_ioctl);
+
+uint32_t vfs_poll(struct file *file, poll_table *pt) {
+  if (!file) return POLLNVAL;
+  if (file->f_op && file->f_op->poll) {
+    return file->f_op->poll(file, pt);
+  }
+  
+  /* Default: always readable/writable if no poll op */
+  return POLLIN | POLLOUT;
+}
+
+EXPORT_SYMBOL(vfs_poll);
+
+int vfs_stat(const char *path, struct stat *statbuf) {
+  struct dentry *dentry = vfs_path_lookup(path, 0);
+  if (!dentry) return -ENOENT;
+
+  struct inode *inode = dentry->d_inode;
+  if (!inode) {
+    dput(dentry);
+    return -ENOENT;
+  }
+
+  memset(statbuf, 0, sizeof(struct stat));
+  statbuf->st_dev = 0; // TODO: sb->s_dev
+  statbuf->st_ino = inode->i_ino;
+  statbuf->st_mode = inode->i_mode;
+  statbuf->st_nlink = inode->i_nlink;
+  statbuf->st_uid = inode->i_uid;
+  statbuf->st_gid = inode->i_gid;
+  statbuf->st_rdev = inode->i_rdev;
+  statbuf->st_size = inode->i_size;
+  statbuf->st_atim = inode->i_atime;
+  statbuf->st_mtim = inode->i_mtime;
+  statbuf->st_ctim = inode->i_ctime;
+  statbuf->st_blksize = 4096;
+  statbuf->st_blocks = (inode->i_size + 511) / 512;
+
+  dput(dentry);
+  return 0;
+}
+
+EXPORT_SYMBOL(vfs_stat);
+
+int vfs_fstat(struct file *file, struct stat *statbuf) {
+  if (!file || !file->f_inode) return -EBADF;
+  struct inode *inode = file->f_inode;
+
+  memset(statbuf, 0, sizeof(struct stat));
+  statbuf->st_dev = 0;
+  statbuf->st_ino = inode->i_ino;
+  statbuf->st_mode = inode->i_mode;
+  statbuf->st_nlink = inode->i_nlink;
+  statbuf->st_uid = inode->i_uid;
+  statbuf->st_gid = inode->i_gid;
+  statbuf->st_rdev = inode->i_rdev;
+  statbuf->st_size = inode->i_size;
+  statbuf->st_atim = inode->i_atime;
+  statbuf->st_mtim = inode->i_mtime;
+  statbuf->st_ctim = inode->i_ctime;
+  statbuf->st_blksize = 4096;
+  statbuf->st_blocks = (inode->i_size + 511) / 512;
+
+  return 0;
+}
+
+EXPORT_SYMBOL(vfs_fstat);
+
 // Function to register a new filesystem type
 int register_filesystem(struct file_system_type *fs) {
   if (!fs || !fs->name || !fs->mount || !fs->kill_sb) {
@@ -454,6 +534,81 @@ static ssize_t chrdev_write(struct file *file, const char *buf, size_t count, vf
   return cdev->ops->write(cdev, buf, count, ppos);
 }
 
+static int blkdev_open(struct inode *inode, struct file *file) {
+  struct block_device *bdev = blkdev_lookup(inode->i_rdev);
+  if (!bdev) return -ENODEV;
+
+  file->private_data = bdev;
+  return 0;
+}
+
+static int blkdev_release(struct inode *inode, struct file *file) {
+  struct block_device *bdev = file->private_data;
+  if (bdev) {
+    put_device(&bdev->dev);
+  }
+  return 0;
+}
+
+static ssize_t blkdev_read(struct file *file, char *buf, size_t count, vfs_loff_t *ppos) {
+  struct block_device *bdev = file->private_data;
+  if (!bdev) return -EINVAL;
+
+  uint64_t start_sector = (*ppos) / bdev->block_size;
+  uint32_t sector_count = (count + bdev->block_size - 1) / bdev->block_size;
+
+  /* Basic bounce buffer for now (aligned I/O) */
+  void *kbuf = kmalloc(sector_count * bdev->block_size);
+  if (!kbuf) return -ENOMEM;
+
+  int ret = block_read(bdev, kbuf, start_sector, sector_count);
+  if (ret == 0) {
+    size_t to_copy = (count < sector_count * bdev->block_size) ? count : sector_count * bdev->block_size;
+    copy_to_user(buf, kbuf, to_copy);
+    *ppos += to_copy;
+    ret = to_copy;
+  } else {
+    ret = -EIO;
+  }
+
+  kfree(kbuf);
+  return ret;
+}
+
+static ssize_t blkdev_write(struct file *file, const char *buf, size_t count, vfs_loff_t *ppos) {
+  struct block_device *bdev = file->private_data;
+  if (!bdev) return -EINVAL;
+
+  uint64_t start_sector = (*ppos) / bdev->block_size;
+  uint32_t sector_count = (count + bdev->block_size - 1) / bdev->block_size;
+
+  void *kbuf = kmalloc(sector_count * bdev->block_size);
+  if (!kbuf) return -ENOMEM;
+
+  if (copy_from_user(kbuf, buf, count) != 0) {
+    kfree(kbuf);
+    return -EFAULT;
+  }
+
+  int ret = block_write(bdev, kbuf, start_sector, sector_count);
+  if (ret == 0) {
+    *ppos += count;
+    ret = count;
+  } else {
+    ret = -EIO;
+  }
+
+  kfree(kbuf);
+  return ret;
+}
+
+static struct file_operations def_blk_fops = {
+  .open = blkdev_open,
+  .release = blkdev_release,
+  .read = blkdev_read,
+  .write = blkdev_write,
+};
+
 static struct file_operations def_chr_fops = {
   .open = chrdev_open,
   .release = chrdev_release,
@@ -467,7 +622,7 @@ void init_special_inode(struct inode *inode, vfs_mode_t mode, dev_t rdev) {
     inode->i_fop = &def_chr_fops;
     inode->i_rdev = rdev;
   } else if (S_ISBLK(mode)) {
-    // inode->i_fop = &def_blk_fops;
+    inode->i_fop = &def_blk_fops;
     inode->i_rdev = rdev;
   } else if (S_ISFIFO(mode) || S_ISSOCK(mode)) {
     inode->i_fop = nullptr; // TODO

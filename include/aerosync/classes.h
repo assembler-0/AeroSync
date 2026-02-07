@@ -135,6 +135,8 @@
 #define INITRD_CLASS "[sys::fs::initrd] "
 #define NEWC_CLASS "[sys::fs::newc] "
 #define CPIO_CLASS "[sys::fs::cpio] "
+#define PROCFS_CLASS "[sys::fs::proc] "
+#define RESFS_CLASS "[sys::fs::res] "
 
 /* =========================================================================
  *  NETWORKING STACK

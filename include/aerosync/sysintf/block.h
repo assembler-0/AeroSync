@@ -131,6 +131,11 @@ int block_flush(struct block_device *dev);
 struct block_device *block_device_find(const char *name);
 
 /**
+ * Lookup a device by device number (dev_t)
+ */
+struct block_device *blkdev_lookup(dev_t dev);
+
+/**
  * Helper to get device size in bytes
  */
 static inline uint64_t block_device_size_bytes(struct block_device *dev) {

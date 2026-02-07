@@ -28,6 +28,7 @@ target_compile_options(aerosync.krnl PRIVATE
         -fno-pic
         -fno-pie
         -mcmodel=kernel
+        -fblocks
         -fvisibility=hidden
     >
     $<$<COMPILE_LANGUAGE:ASM_NASM>:

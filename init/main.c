@@ -63,12 +63,13 @@
 #include <mm/vma.h>
 #include <mm/vmalloc.h>
 #include <mm/zmm.h>
+#include <aerosync/resdomain.h>
 #include <uacpi/uacpi.h>
 
 static alignas(16) struct task_struct bsp_task;
 
 static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
-  (void)unused;
+  (void) unused;
 
   printk(KERN_INFO KERN_CLASS "finishing system initialization\n");
   fkx_init_module_class(FKX_GENERIC_CLASS);
@@ -94,11 +95,13 @@ static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
   mm_scrubber_init();
 #endif
 
-  // TODO: Implement run_init_process() which calls do_execve()
-  // For now, since we have no init binary on disk, we just stay in kernel
-  printk(KERN_NOTICE KERN_CLASS "no init binary found. System idle.\n");
+  printk(KERN_DEBUG KERN_CLASS "attempting to run init process: %s\n", STRINGIFY(CONFIG_INIT_PATH));
+  if (run_init_process(STRINGIFY(CONFIG_INIT_PATH)) < 0) {
+    printk(KERN_ERR KERN_CLASS "failed to execute %s.\n", STRINGIFY(CONFIG_INIT_PATH));
+    printkln(KERN_ERR KERN_CLASS "attempted to kill init.");
+  }
 
-  printk(KERN_CLASS "AeroSync initialization complete.\n");
+  printkln(KERN_CLASS "AeroSync global initialization done.");
 
   while (1) {
     idle_loop();
@@ -109,7 +112,7 @@ static int __init __noinline __sysv_abi
 system_load_extensions(void) {
   if (lmm_get_count() > 0) {
     printk(KERN_DEBUG FKX_CLASS "Processing modules via LMM...\n");
-    
+
     lmm_for_each_module(LMM_TYPE_FKX, lmm_load_fkx_callback, nullptr);
 
     if (fkx_finalize_loading() != 0) {
@@ -118,11 +121,11 @@ system_load_extensions(void) {
     }
   } else {
     printk(KERN_NOTICE FKX_CLASS
-           "no modules found via LMM"
-           ", you probably do not want this"
-           ", this build of AeroSync does not have "
-           "any built-in hardware drivers"
-           ", expect exponential lack of hardware support.\n");
+      "no modules found via LMM"
+      ", you probably do not want this"
+      ", this build of AeroSync does not have "
+      "any built-in hardware drivers"
+      ", expect exponential lack of hardware support.\n");
     return -ENOSYS;
   }
   return 0;
@@ -132,7 +135,7 @@ system_load_extensions(void) {
  * @brief AeroSync kernel main entry point
  * @note NO RETURN!
  */
- void __init __noreturn __noinline __sysv_abi start_kernel(void) {
+void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   panic_register_handler(get_builtin_panic_ops());
   panic_handler_install();
 
@@ -150,7 +153,7 @@ system_load_extensions(void) {
 
   if (get_executable_file_request()->response &&
       get_executable_file_request()->response->executable_file) {
-      ksymtab_init(get_executable_file_request()->response->executable_file->address);
+    ksymtab_init(get_executable_file_request()->response->executable_file->address);
   }
 
   if (get_bootloader_info_request()->response &&
@@ -158,29 +161,29 @@ system_load_extensions(void) {
     printk(KERN_CLASS
            "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
            get_bootloader_info_request()->response->name
-               ? get_bootloader_info_request()->response->name
-               : "(null)",
+             ? get_bootloader_info_request()->response->name
+             : "(null)",
            get_bootloader_info_request()->response->version
-               ? get_bootloader_info_request()->response->version
-               : "(null-version)",
+             ? get_bootloader_info_request()->response->version
+             : "(null-version)",
            get_bootloader_performance_request()->response->exec_usec,
            get_bootloader_performance_request()->response->init_usec);
   }
 
   if (get_fw_request()->response) {
     printk(
-        FW_CLASS "firmware type: %s\n",
-        get_fw_request()->response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI64
-            ? "UEFI (64-bit)"
+      FW_CLASS "firmware type: %s\n",
+      get_fw_request()->response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI64
+        ? "UEFI (64-bit)"
         : get_fw_request()->response->firmware_type ==
-                LIMINE_FIRMWARE_TYPE_EFI32
+          LIMINE_FIRMWARE_TYPE_EFI32
             ? "UEFI (32-bit)"
-        : get_fw_request()->response->firmware_type ==
-                LIMINE_FIRMWARE_TYPE_X86BIOS
-            ? "BIOS (x86)"
-        : get_fw_request()->response->firmware_type == LIMINE_FIRMWARE_TYPE_SBI
-            ? "SBI"
-            : "(unknown)");
+            : get_fw_request()->response->firmware_type ==
+              LIMINE_FIRMWARE_TYPE_X86BIOS
+                ? "BIOS (x86)"
+                : get_fw_request()->response->firmware_type == LIMINE_FIRMWARE_TYPE_SBI
+                    ? "SBI"
+                    : "(unknown)");
   }
 
   printk(KERN_CLASS "system pagination level: %d\n", vmm_get_paging_levels());
@@ -190,9 +193,9 @@ system_load_extensions(void) {
      * the bootloader (via Limine). Using static storage in the cmdline parser
      * ensures we don't allocate during early boot. */
     if ( /* TODO: remove this hardcoding */
-        cmdline_register_option("verbose", CMDLINE_TYPE_FLAG) < 0 ||
-        cmdline_register_option("mtest", CMDLINE_TYPE_FLAG) < 0 ||
-        cmdline_register_option("dumpdevtree", CMDLINE_TYPE_FLAG) < 0
+      cmdline_register_option("verbose", CMDLINE_TYPE_FLAG) < 0 ||
+      cmdline_register_option("mtest", CMDLINE_TYPE_FLAG) < 0 ||
+      cmdline_register_option("dumpdevtree", CMDLINE_TYPE_FLAG) < 0
     ) {
       printkln(KERN_ERR "failed to register cmdline flags");
     }
@@ -217,8 +220,9 @@ system_load_extensions(void) {
 
   cpu_features_init();
   pmm_init(get_memmap_request()->response, get_hhdm_request()->response->offset,
-           get_rsdp_request()->response ? get_rsdp_request()->response->address
-                                        : nullptr);
+           get_rsdp_request()->response
+             ? get_rsdp_request()->response->address
+             : nullptr);
   lru_init();
   vmm_init();
   slab_init();
@@ -243,6 +247,8 @@ system_load_extensions(void) {
   sched_init();
   bsp_task.active_mm = &init_mm;
   sched_init_task(&bsp_task);
+
+  resdomain_init();
 
   vfs_init();
 

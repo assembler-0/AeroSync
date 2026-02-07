@@ -1,3 +1,23 @@
+/// SPDX-License-Identifier: GPL-2.0-only
+/**
+ * AeroSync monolithic kernel
+ *
+ * @file fs/file.c
+ * @brief File management
+ * @copyright (C) 2025-2026 assembler-0
+ *
+ * This file is part of the AeroSync kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #include <fs/vfs.h>
 #include <fs/file.h>
 #include <mm/slub.h>
@@ -5,6 +25,7 @@
 #include <aerosync/spinlock.h>
 #include <lib/bitmap.h>
 #include <aerosync/panic.h>
+#include <aerosync/export.h>
 
 struct files_struct init_files = {
   .count = ATOMIC_INIT(1),
@@ -101,6 +122,26 @@ void put_unused_fd(unsigned int fd) {
   }
   spinlock_unlock(&files->file_lock);
 }
+
+ssize_t vfs_write(struct file *file, const char *buf, size_t count, vfs_loff_t *pos);
+
+ssize_t kernel_read(struct file *file, void *buf, size_t count, vfs_loff_t *pos) {
+    uint32_t old_mode = file->f_mode;
+    file->f_mode |= 0x1000; // Internal flag for kernel buffer
+    ssize_t ret = vfs_read(file, buf, count, pos);
+    file->f_mode = old_mode;
+    return ret;
+}
+EXPORT_SYMBOL(kernel_read);
+
+ssize_t kernel_write(struct file *file, const void *buf, size_t count, vfs_loff_t *pos) {
+    uint32_t old_mode = file->f_mode;
+    file->f_mode |= 0x1000; // Internal flag for kernel buffer
+    ssize_t ret = vfs_write(file, buf, count, pos);
+    file->f_mode = old_mode;
+    return ret;
+}
+EXPORT_SYMBOL(kernel_write);
 
 // Helper to allocate and initialize a files_struct (for fork)
 struct files_struct *copy_files(struct files_struct *old_files) {

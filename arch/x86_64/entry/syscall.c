@@ -272,6 +272,46 @@ static void sys_lseek(struct syscall_regs *regs) {
   REGS_RETURN_VAL(regs, ret);
 }
 
+static void sys_execve(struct syscall_regs *regs) {
+  const char *filename_user = (const char *) regs->rdi;
+  char **argv_user = (char **) regs->rsi;
+  char **envp_user = (char **) regs->rdx;
+
+  char *filename = kmalloc(4096);
+  if (!filename) {
+    REGS_RETURN_VAL(regs, -ENOMEM);
+    return;
+  }
+
+  if (copy_from_user(filename, filename_user, 4096) != 0) {
+    kfree(filename);
+    REGS_RETURN_VAL(regs, -EFAULT);
+    return;
+  }
+
+  int ret = do_execve(filename, argv_user, envp_user);
+  kfree(filename);
+
+  REGS_RETURN_VAL(regs, ret);
+}
+
+static void sys_ioctl(struct syscall_regs *regs) {
+  int fd = (int) regs->rdi;
+  unsigned int cmd = (unsigned int) regs->rsi;
+  unsigned long arg = (unsigned long) regs->rdx;
+
+  struct file *file = fget(fd);
+  if (!file) {
+    REGS_RETURN_VAL(regs, -EBADF);
+    return;
+  }
+
+  int ret = vfs_ioctl(file, cmd, arg);
+  fput(file);
+
+  REGS_RETURN_VAL(regs, ret);
+}
+
 static void sys_exit_handler(struct syscall_regs *regs) {
   int status = (int) regs->rdi;
   printk(KERN_DEBUG SYSCALL_CLASS "User process %d exited with status %d\n", current->pid, status);
@@ -366,8 +406,122 @@ static void sys_mremap(struct syscall_regs *regs) {
     return;
   }
 
-  /* TODO: Implement do_mremap logic in vma.c */
-  REGS_RETURN_VAL(regs, -ENOSYS);
+  uint64_t ret = do_mremap(mm, old_addr, old_len, new_len, flags, new_addr_hint);
+  REGS_RETURN_VAL(regs, ret);
+}
+
+static void sys_stat(struct syscall_regs *regs) {
+  const char *path_user = (const char *) regs->rdi;
+  struct stat *statbuf_user = (struct stat *) regs->rsi;
+
+  char *path = kmalloc(4096);
+  if (!path) {
+    REGS_RETURN_VAL(regs, -ENOMEM);
+    return;
+  }
+
+  if (copy_from_user(path, path_user, 4096) != 0) {
+    kfree(path);
+    REGS_RETURN_VAL(regs, -EFAULT);
+    return;
+  }
+
+  struct stat st;
+  int ret = vfs_stat(path, &st);
+  kfree(path);
+
+  if (ret == 0) {
+    if (copy_to_user(statbuf_user, &st, sizeof(struct stat)) != 0) {
+      REGS_RETURN_VAL(regs, -EFAULT);
+      return;
+    }
+  }
+
+  REGS_RETURN_VAL(regs, ret);
+}
+
+static void sys_fstat(struct syscall_regs *regs) {
+  int fd = (int) regs->rdi;
+  struct stat *statbuf_user = (struct stat *) regs->rsi;
+
+  struct file *file = fget(fd);
+  if (!file) {
+    REGS_RETURN_VAL(regs, -EBADF);
+    return;
+  }
+
+  struct stat st;
+  int ret = vfs_fstat(file, &st);
+  fput(file);
+
+  if (ret == 0) {
+    if (copy_to_user(statbuf_user, &st, sizeof(struct stat)) != 0) {
+      REGS_RETURN_VAL(regs, -EFAULT);
+      return;
+    }
+  }
+
+  REGS_RETURN_VAL(regs, ret);
+}
+
+static void sys_poll(struct syscall_regs *regs) {
+  struct pollfd *fds_user = (struct pollfd *) regs->rdi;
+  unsigned int nfds = (unsigned int) regs->rsi;
+  int timeout_ms = (int) regs->rdx;
+
+  if (nfds > 1024) {
+    REGS_RETURN_VAL(regs, -EINVAL);
+    return;
+  }
+
+  struct pollfd *fds = kmalloc(nfds * sizeof(struct pollfd));
+  if (!fds) {
+    REGS_RETURN_VAL(regs, -ENOMEM);
+    return;
+  }
+
+  if (copy_from_user(fds, fds_user, nfds * sizeof(struct pollfd)) != 0) {
+    kfree(fds);
+    REGS_RETURN_VAL(regs, -EFAULT);
+    return;
+  }
+
+  uint64_t timeout_ns = (uint64_t)-1;
+  if (timeout_ms >= 0) {
+      timeout_ns = (uint64_t)timeout_ms * 1000000ULL;
+  }
+
+  extern int do_poll(struct pollfd *fds, unsigned int nfds, uint64_t timeout_ns);
+  int count = do_poll(fds, nfds, timeout_ns);
+
+  if (count >= 0) {
+    if (copy_to_user(fds_user, fds, nfds * sizeof(struct pollfd)) != 0) {
+      kfree(fds);
+      REGS_RETURN_VAL(regs, -EFAULT);
+      return;
+    }
+  }
+
+  kfree(fds);
+  REGS_RETURN_VAL(regs, count);
+}
+
+static void sys_pipe(struct syscall_regs *regs) {
+  int *pipefd_user = (int *) regs->rdi;
+  int pipefd[2];
+
+  extern int do_pipe(int pipefd[2]);
+  int ret = do_pipe(pipefd);
+
+  if (ret == 0) {
+    if (copy_to_user(pipefd_user, pipefd, sizeof(pipefd)) != 0) {
+      /* In a real kernel, we would close the FDs on failure */
+      REGS_RETURN_VAL(regs, -EFAULT);
+      return;
+    }
+  }
+
+  REGS_RETURN_VAL(regs, ret);
 }
 
 static void sys_mkdir_handler(struct syscall_regs *regs) {
@@ -400,6 +554,9 @@ static sys_call_ptr_t syscall_table[] = {
   [1] = sys_write,
   [2] = sys_open,
   [3] = sys_close,
+  [4] = sys_stat,
+  [5] = sys_fstat,
+  [7] = sys_poll,
   [8] = sys_lseek,
   [9] = sys_mmap,
   [10] = sys_mprotect,
@@ -407,10 +564,13 @@ static sys_call_ptr_t syscall_table[] = {
   [13] = sys_rt_sigaction,
   [14] = sys_rt_sigprocmask,
   [15] = sys_rt_sigreturn,
+  [16] = sys_ioctl,
+  [22] = sys_pipe,
   [25] = sys_mremap,
   [39] = sys_getpid_handler,
   [56] = sys_clone_handler,
   [57] = sys_fork_handler,
+  [59] = sys_execve,
   [60] = sys_exit_handler,
   [62] = sys_kill,
   [79] = sys_getcwd_handler,

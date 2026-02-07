@@ -8,14 +8,37 @@ config VFS
     help
       Enable support for the Virtual File System layer.
 
+config VFS_UBC
+    bool "Unified Buffer Cache (UBC)"
+    depends on VFS
+    default y
+    help
+      Enable the Unified Buffer Cache. This ensures that the VFS and
+      Memory Management layers share the same physical pages for file
+      data. All buffered I/O goes through the Page Cache.
+
+config VFS_DCACHE_SIZE
+    int "Dentry Cache Size"
+    depends on VFS
+    default 4096
+    help
+      The maximum number of directory entries to cache in memory.
+      Higher values speed up path lookup but consume more slab memory.
+
 config DEVFS
     bool "Device Filesystem (devfs) support"
     depends on VFS
     default y
     help
       Enable support for devfs, a pseudo-filesystem for device nodes.
-      This provides a mechanism for drivers to register themselves
-      and expose nodes to userspace.
+
+config DEVFS_USE_PSEUDO_FS
+    bool "Use Pseudo-FS framework for devfs"
+    depends on DEVFS
+    default y
+    help
+      Use the generic pseudo-filesystem library (APS) as the backend for
+      devfs. This improves consistency and reduces boilerplate.
 
 config DEVFS_MOUNT
     bool "Mount devfs automatically during boot"

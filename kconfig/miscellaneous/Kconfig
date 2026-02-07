@@ -48,4 +48,10 @@ config IMPLICIT_FD12_STDOUT_STDERR_PRINTK
 
 endchoice
 
+config INIT_PATH
+    string "Path to init process"
+    default "/resources/binaries/init"
+    help
+      The absolute path to the first userspace process (init).
+
 endmenu

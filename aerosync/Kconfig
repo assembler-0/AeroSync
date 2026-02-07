@@ -236,4 +236,43 @@ config LMM_SORT_BY_PRIORITY
 
 endmenu
 
+menu "Resource Management"
+
+config RESDOMAINS
+    bool "Hierarchical Resource Domains (ResDomains)"
+    default y
+    help
+      Enables grouping of processes into hierarchical domains for
+      resource accounting and control (similar to cgroup v2).
+
+config RESDOMAIN_CPU
+    bool "CPU Controller"
+    depends on RESDOMAINS
+    default y
+    help
+      Provides CPU bandwidth and weight control for domains.
+
+config RESDOMAIN_MEM
+    bool "Memory Controller"
+    depends on RESDOMAINS
+    default y
+    help
+      Provides memory limits and accounting for domains.
+
+config RESFS_MOUNT
+    bool "Mount resfs automatically during boot"
+    depends on RESDOMAINS
+    default y
+    help
+      Automatically mount the resource filesystem (resfs) during boot.
+
+config RESFS_MOUNT_PATH
+    string "Default mount path for resfs"
+    depends on RESFS_MOUNT
+    default "/runtime/res"
+    help
+      The path where resfs should be mounted automatically.
+
+endmenu
+
 endmenu

@@ -261,6 +261,44 @@ struct block_device *block_device_find(const char *name) {
 }
 EXPORT_SYMBOL(block_device_find);
 
+struct block_device *blkdev_lookup(dev_t dev) {
+  block_init_subsystem();
+  struct block_device *bdev;
+  struct block_device *found = nullptr;
+
+  /* Search in generic block class and its subclasses */
+  mutex_lock(&block_class.lock);
+  list_for_each_entry(bdev, &block_class.devices, dev.class_node) {
+      if (bdev->dev_num == dev) {
+          found = bdev;
+          get_device(&bdev->dev);
+          break;
+      }
+  }
+  mutex_unlock(&block_class.lock);
+
+  if (found) return found;
+
+  /* Search subclasses if needed (IDE, SATA, NVME) */
+  struct class *subclasses[] = {&ide_class, &sata_class, &nvme_class, &cdrom_class, nullptr};
+  for (int i = 0; subclasses[i]; i++) {
+      struct class *cls = subclasses[i];
+      mutex_lock(&cls->lock);
+      list_for_each_entry(bdev, &cls->devices, dev.class_node) {
+          if (bdev->dev_num == dev) {
+              found = bdev;
+              get_device(&bdev->dev);
+              break;
+          }
+      }
+      mutex_unlock(&cls->lock);
+      if (found) break;
+  }
+
+  return found;
+}
+EXPORT_SYMBOL(blkdev_lookup);
+
 /* --- Dispatchers --- */
 
 int block_read(struct block_device *dev, void *buffer, uint64_t start_sector,
