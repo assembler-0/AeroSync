@@ -99,6 +99,22 @@ static void serial_cleanup(void) {
   }
 }
 
+static int serial_suspend(void) {
+  if (serial_initialized) {
+    outb(serial_port + SERIAL_IER_REG, 0x00);
+    outb(serial_port + SERIAL_MCR_REG, 0x00);
+  }
+  return 0;
+}
+
+static int serial_resume(void) {
+  if (serial_initialized) {
+    outb(serial_port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2);
+    outb(serial_port + SERIAL_IER_REG, 0x00);
+  }
+  return 0;
+}
+
 int serial_is_initialized(void) {
   return serial_initialized;
 }
@@ -110,7 +126,9 @@ static printk_backend_t serial_backend = {
   .probe = serial_probe,
   .init = serial_init_standard,
   .cleanup = serial_cleanup,
-  .is_active = serial_is_initialized
+  .is_active = serial_is_initialized,
+  .suspend = serial_suspend,
+  .resume = serial_resume,
 };
 
 const printk_backend_t *serial_get_backend(void) {

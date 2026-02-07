@@ -226,6 +226,13 @@ static int anon_obj_fault(struct vm_object *obj, struct vm_area_struct *vma, str
   if (entry && !xa_is_err(entry)) {
     int entry_type = xa_entry_type(entry);
 
+    /* Sanity check: reject obviously invalid entries */
+    if ((uintptr_t)entry == 0xadadadadadadadad || 
+        (uintptr_t)entry == 0xadadadadadadadac) {
+      up_read(&obj->lock);
+      return VM_FAULT_SIGBUS;
+    }
+
     switch (entry_type) {
       case ENTRY_TYPE_ZMM: {
 #ifdef CONFIG_MM_ZMM

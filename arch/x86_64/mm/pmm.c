@@ -279,6 +279,13 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
         z->watermark[WMARK_MIN] = z->present_pages / 100;
         z->watermark[WMARK_LOW] = z->present_pages * 3 / 100;
         z->watermark[WMARK_HIGH] = z->present_pages * 5 / 100;
+        z->watermark[WMARK_PROMO] = z->present_pages * 7 / 100;
+
+#ifdef CONFIG_MM_PMM_HIGHATOMIC
+        z->nr_reserved_highatomic = (CONFIG_MM_PMM_HIGHATOMIC_RESERVE_KB * 1024) / PAGE_SIZE;
+        if (z->nr_reserved_highatomic > z->present_pages / 20)
+          z->nr_reserved_highatomic = z->present_pages / 20;
+#endif
 
         printk(KERN_DEBUG PMM_CLASS "node %d Zone %s: %lu pages\n",
                n, z->name, z->present_pages);
@@ -445,12 +452,33 @@ void pmm_init_cpu(void) {
     for (int i = 0; i < MAX_NR_ZONES; i++) {
       struct zone *z = &pgdat->node_zones[i];
       struct per_cpu_pages *pcp = &z->pageset[cpu];
+      
       for (int o = 0; o < PCP_ORDERS; o++) {
-        INIT_LIST_HEAD(&pcp->lists[o]);
+#ifdef CONFIG_MM_PMM_PCP_HOT_COLD
+        INIT_LIST_HEAD(&pcp->lists[o][PCP_LIST_HOT]);
+        INIT_LIST_HEAD(&pcp->lists[o][PCP_LIST_COLD]);
+#else
+        INIT_LIST_HEAD(&pcp->lists[o][0]);
+#endif
       }
+      
       pcp->count = 0;
       pcp->high = 64;
       pcp->batch = 16;
+      
+#ifdef CONFIG_MM_PMM_PCP_DYNAMIC
+      pcp->high_min = 32;
+      pcp->high_max = 256;
+      pcp->batch_min = 8;
+      pcp->batch_max = 64;
+#endif
+
+#ifdef CONFIG_MM_PMM_STATS
+      atomic_long_set(&pcp->alloc_count, 0);
+      atomic_long_set(&pcp->free_count, 0);
+      atomic_long_set(&pcp->refill_count, 0);
+      atomic_long_set(&pcp->drain_count, 0);
+#endif
     }
   }
 }

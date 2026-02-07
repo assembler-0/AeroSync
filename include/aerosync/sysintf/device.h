@@ -30,6 +30,8 @@ struct device_driver {
   int (*probe)(struct device *dev);
   void (*remove)(struct device *dev);
   void (*shutdown)(struct device *dev);
+  int (*suspend)(struct device *dev);
+  int (*resume)(struct device *dev);
 
   const struct attribute_group **groups; /* Default attributes */
 

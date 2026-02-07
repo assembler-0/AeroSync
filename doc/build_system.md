@@ -31,7 +31,7 @@ a
 
 ## Build Process
 
-### Presets (recommened) 
+### Presets (recommended) 
 
 #### Available presets (cmake --list-presets): 
 - `amd64` - release kernel (fastest, less overhead, w/o debug symbols)
@@ -48,7 +48,9 @@ a
    cmake --build --preset <preset>
    ```
 
-### Manual configuration
+> note: if there is already a .config in the project's root, it will use the current config rather than the config correspond to the preset
+
+### Manual configuration (not recommended)
 
 1. **Kconfig setup: (optional)**
     ```bash

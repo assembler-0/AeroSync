@@ -72,6 +72,7 @@
 #define FOLIO_CLASS "[sys::mm::folio] " // Linux struct folio
 #define WRITEBACK_CLASS "[sys::mm::writeback] "
 #define THP_CLASS "[sys::mm::thp] "
+#define DMA_CLASS "[sys::mm::pmm::dma] "
 
 ///@section Heaps & Allocators
 #define SLAB_CLASS "[sys::mm::slab] " // Slab allocator specific

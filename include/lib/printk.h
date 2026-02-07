@@ -11,6 +11,8 @@ typedef struct printk_backend {
   fn(int, init, void *payload);
   fn(void, cleanup, void);
   fn(int, is_active, void);
+  fn(int, suspend, void);
+  fn(int, resume, void);
 } printk_backend_t;
 
 static int generic_backend_init(void *payload) { (void)payload; return 0; }

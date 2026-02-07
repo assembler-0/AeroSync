@@ -189,7 +189,7 @@ system_load_extensions(void) {
     /* Register known options and parse the executable command-line provided by
      * the bootloader (via Limine). Using static storage in the cmdline parser
      * ensures we don't allocate during early boot. */
-    if (
+    if ( /* TODO: remove this hardcoding */
         cmdline_register_option("verbose", CMDLINE_TYPE_FLAG) < 0 ||
         cmdline_register_option("mtest", CMDLINE_TYPE_FLAG) < 0 ||
         cmdline_register_option("dumpdevtree", CMDLINE_TYPE_FLAG) < 0
@@ -294,7 +294,7 @@ system_load_extensions(void) {
              time_get_source_name());
     }
   } else {
-    printk(KERN_CLASS "TSC already calibrated via CPUID (%lu Hz).\n",
+    printk(KERN_CLASS "TSC already calibrated via C2PUID (%lu Hz).\n",
            tsc_freq_get());
   }
 
@@ -320,6 +320,7 @@ system_load_extensions(void) {
 #ifdef ASYNC_PRINTK
   printk_init_async();
 #endif
+
   // Start kernel_init thread
   struct task_struct *init_task =
       kthread_create(kernel_init, nullptr, "kernel_init");

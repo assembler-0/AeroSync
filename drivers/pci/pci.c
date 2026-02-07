@@ -75,6 +75,29 @@ static void pci_device_remove(struct device *dev) {
     pci_drv->remove(pci_dev);
 }
 
+static void pci_device_shutdown(struct device *dev) {
+  struct pci_dev *pci_dev = to_pci_dev(dev);
+  uint16_t cmd = pci_read_config16(pci_dev, PCI_COMMAND);
+  cmd &= ~(PCI_COMMAND_IO | PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER);
+  pci_write_config16(pci_dev, PCI_COMMAND, cmd);
+}
+
+static int pci_device_suspend(struct device *dev) {
+  struct pci_dev *pci_dev = to_pci_dev(dev);
+  uint16_t cmd = pci_read_config16(pci_dev, PCI_COMMAND);
+  cmd &= ~(PCI_COMMAND_IO | PCI_COMMAND_MEMORY);
+  pci_write_config16(pci_dev, PCI_COMMAND, cmd);
+  return 0;
+}
+
+static int pci_device_resume(struct device *dev) {
+  struct pci_dev *pci_dev = to_pci_dev(dev);
+  uint16_t cmd = pci_read_config16(pci_dev, PCI_COMMAND);
+  cmd |= (PCI_COMMAND_IO | PCI_COMMAND_MEMORY);
+  pci_write_config16(pci_dev, PCI_COMMAND, cmd);
+  return 0;
+}
+
 struct bus_type pci_bus_type = {
   .name = "pci",
   .match = pci_bus_match,

@@ -255,6 +255,51 @@ static int ide_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
   return 0;
 }
 
+static void ide_remove(struct pci_dev *pdev) {
+  (void)pdev;
+  if (!g_ide_ctrl) return;
+
+  for (int i = 0; i < 2; i++) {
+    struct ide_channel *chan = &g_ide_ctrl->channels[i];
+    ic_disable_irq(chan->irq);
+    irq_uninstall_handler(chan->irq);
+    if (chan->prdt) dma_free_coherent(PAGE_SIZE, chan->prdt, chan->prdt_phys);
+  }
+}
+
+static int ide_suspend(struct device *dev) {
+  (void)dev;
+  if (!g_ide_ctrl) return 0;
+
+  for (int i = 0; i < 2; i++) {
+    struct ide_channel *chan = &g_ide_ctrl->channels[i];
+    outb(chan->ctrl_base + ATA_REG_CONTROL, 0x02);
+  }
+  return 0;
+}
+
+static int ide_resume(struct device *dev) {
+  (void)dev;
+  if (!g_ide_ctrl) return 0;
+
+  for (int i = 0; i < 2; i++) {
+    struct ide_channel *chan = &g_ide_ctrl->channels[i];
+    outb(chan->ctrl_base + ATA_REG_CONTROL, 0x00);
+  }
+  return 0;
+}
+
+static void ide_shutdown(struct device *dev) {
+  (void)dev;
+  if (!g_ide_ctrl) return;
+
+  for (int i = 0; i < 2; i++) {
+    struct ide_channel *chan = &g_ide_ctrl->channels[i];
+    outb(chan->ctrl_base + ATA_REG_CONTROL, 0x02);
+    ic_disable_irq(chan->irq);
+  }
+}
+
 static struct pci_device_id ide_pci_ids[] = {
   {
     .vendor = PCI_ANY_ID, .device = PCI_ANY_ID,
@@ -267,9 +312,13 @@ static struct pci_device_id ide_pci_ids[] = {
 static struct pci_driver ide_pci_driver = {
   .driver = {
     .name = "ide",
+    .shutdown = ide_shutdown,
+    .suspend = ide_suspend,
+    .resume = ide_resume,
   },
   .id_table = ide_pci_ids,
   .probe = ide_probe,
+  .remove = ide_remove,
 };
 
 static int ide_init(void) {
