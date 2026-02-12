@@ -6,6 +6,7 @@
 #include <linux/rcupdate.h>
 #include <linux/maple_tree.h>
 #include <aerosync/spinlock.h>
+#include <aerosync/errno.h>
 
 /*
  * AeroSync High Performance Hybrid vmalloc Subsystem
@@ -60,22 +61,22 @@ struct vmap_block;
 
 /* Size bin mapping: bin N handles allocations of (1 << N) pages */
 static inline int vmalloc_size_to_bin(unsigned long pages) {
-    if (pages == 0) return -1;
-    if (pages > (1UL << (VMALLOC_PCP_BINS - 1))) return -1;
+  if (pages == 0) return -EINVAL;
+  if (pages > (1UL << (VMALLOC_PCP_BINS - 1))) return -EINVAL;
 
-    /* Find the smallest bin that fits this allocation */
-    int bin = 0;
-    unsigned long bin_size = 1;
-    while (bin_size < pages && bin < VMALLOC_PCP_BINS - 1) {
-        bin++;
-        bin_size <<= 1;
-    }
-    return bin;
+  /* Find the smallest bin that fits this allocation */
+  int bin = 0;
+  unsigned long bin_size = 1;
+  while (bin_size < pages && bin < VMALLOC_PCP_BINS - 1) {
+    bin++;
+    bin_size <<= 1;
+  }
+  return bin;
 }
 
 static inline unsigned long vmalloc_bin_to_pages(int bin) {
-    if (bin < 0 || bin >= VMALLOC_PCP_BINS) return 0;
-    return 1UL << bin;
+  if (bin < 0 || bin >= VMALLOC_PCP_BINS) return 0;
+  return 1UL << bin;
 }
 
 /* ========================================================================
@@ -101,29 +102,29 @@ static inline unsigned long vmalloc_bin_to_pages(int bin) {
  * Legacy RB-tree support retained for fallback.
  */
 struct vmap_area {
-    unsigned long va_start;
-    unsigned long va_end;
-    unsigned long flags;
-    int nid;
+  unsigned long va_start;
+  unsigned long va_end;
+  unsigned long flags;
+  int nid;
 
 #ifdef CONFIG_VMALLOC_MAPLE_TREE
-    /* Maple tree doesn't need embedded nodes - uses external indexing */
+  /* Maple tree doesn't need embedded nodes - uses external indexing */
 #else
-    /* Gap tracking for augmented RB-tree (legacy) */
-    unsigned long rb_max_gap;
-    struct rb_node rb_node;
+  /* Gap tracking for augmented RB-tree (legacy) */
+  unsigned long rb_max_gap;
+  struct rb_node rb_node;
 #endif
 
-    struct list_head list; /* Node/Global list */
+  struct list_head list; /* Node/Global list */
 
-    union {
-        struct {
-            struct list_head purge_list;
-            struct rcu_head rcu;
-        };
-
-        struct vmap_block *vb; /* If managed by vmap_block */
+  union {
+    struct {
+      struct list_head purge_list;
+      struct rcu_head rcu;
     };
+
+    struct vmap_block *vb; /* If managed by vmap_block */
+  };
 };
 
 /* vmap_area flags */
@@ -147,16 +148,16 @@ struct vmap_area {
 #define VMAP_BLOCK_SIZE  (VMAP_BBMAP_BITS << PAGE_SHIFT)
 
 struct vmap_block {
-    spinlock_t lock;
-    struct vmap_area *va;
-    unsigned long free_map[VMAP_BBMAP_BITS / 64]; /* Bitmap of free slots */
-    unsigned long dirty_map[VMAP_BBMAP_BITS / 64]; /* Bitmap of slots needing purge */
-    uint8_t sizes[VMAP_BBMAP_BITS]; /* Sizes of sub-allocations */
-    struct list_head list; /* Node in vmap_block_queue */
-    int cpu;
-    int nid;
-    int free_count; /* Fast check for available space */
-    struct rcu_head rcu;
+  spinlock_t lock;
+  struct vmap_area *va;
+  unsigned long free_map[VMAP_BBMAP_BITS / 64]; /* Bitmap of free slots */
+  unsigned long dirty_map[VMAP_BBMAP_BITS / 64]; /* Bitmap of slots needing purge */
+  uint8_t sizes[VMAP_BBMAP_BITS]; /* Sizes of sub-allocations */
+  struct list_head list; /* Node in vmap_block_queue */
+  int cpu;
+  int nid;
+  int free_count; /* Fast check for available space */
+  struct rcu_head rcu;
 };
 
 #ifdef CONFIG_VMALLOC_BLOCK_CLASSES
@@ -165,9 +166,9 @@ struct vmap_block {
  * Reduces internal fragmentation.
  */
 struct vmap_block_class {
-    int min_pages;   /* Minimum allocation this class handles */
-    int max_pages;   /* Maximum allocation this class handles */
-    int block_pages; /* Block size for this class */
+  int min_pages; /* Minimum allocation this class handles */
+  int max_pages; /* Maximum allocation this class handles */
+  int block_pages; /* Block size for this class */
 };
 
 #define VMAP_BLOCK_CLASSES 3
@@ -181,22 +182,22 @@ extern const struct vmap_block_class vmap_block_classes[VMAP_BLOCK_CLASSES];
  */
 alignas(64) struct vmap_node {
 #ifdef CONFIG_VMALLOC_MAPLE_TREE
-    struct maple_tree va_mt;  /* Maple tree for address management */
+  struct maple_tree va_mt; /* Maple tree for address management */
 #else
-    struct rb_root root;      /* Legacy RB-tree */
+  struct rb_root root; /* Legacy RB-tree */
 #endif
-    spinlock_t lock;
-    struct list_head list;
-    struct list_head purge_list;
-    atomic_long_t nr_purged;
+  spinlock_t lock;
+  struct list_head list;
+  struct list_head purge_list;
+  atomic_long_t nr_purged;
 
 #ifdef CONFIG_VMALLOC_NUMA_PARTITION
-    unsigned long va_start;   /* Start of this node's VA region */
-    unsigned long va_end;     /* End of this node's VA region */
+  unsigned long va_start; /* Start of this node's VA region */
+  unsigned long va_end; /* End of this node's VA region */
 #endif
 
-    uint64_t last_flush_time; /* For lazy flush timeout */
-    int nid;
+  uint64_t last_flush_time; /* For lazy flush timeout */
+  int nid;
 };
 
 /*
@@ -204,21 +205,21 @@ alignas(64) struct vmap_node {
  * Multiple size bins for better hit rate, batch refill for efficiency.
  */
 alignas(64) struct vmap_pcp {
-    spinlock_t lock;
+  spinlock_t lock;
 
-    /* Size-class bins: bin[i] holds ranges of (1 << i) pages */
-    struct list_head bins[VMALLOC_PCP_BINS];
-    int bin_count[VMALLOC_PCP_BINS];
+  /* Size-class bins: bin[i] holds ranges of (1 << i) pages */
+  struct list_head bins[VMALLOC_PCP_BINS];
+  int bin_count[VMALLOC_PCP_BINS];
 
-    /* Metadata cache for fast allocation */
-    struct list_head free_va;
-    int nr_va;
+  /* Metadata cache for fast allocation */
+  struct list_head free_va;
+  int nr_va;
 
-    /* Statistics (debug) */
+  /* Statistics (debug) */
 #ifdef CONFIG_MM_HARDENING
-    unsigned long hits;
-    unsigned long misses;
-    unsigned long refills;
+  unsigned long hits;
+  unsigned long misses;
+  unsigned long refills;
 #endif
 };
 
@@ -226,10 +227,10 @@ alignas(64) struct vmap_pcp {
  * vmap_block_queue: Per-CPU queue of vmap_blocks with free space.
  */
 struct vmap_block_queue {
-    spinlock_t lock;
-    struct list_head free;
+  spinlock_t lock;
+  struct list_head free;
 #ifdef CONFIG_VMALLOC_BLOCK_CLASSES
-    struct list_head class_free[VMAP_BLOCK_CLASSES];
+  struct list_head class_free[VMAP_BLOCK_CLASSES];
 #endif
 };
 
@@ -238,36 +239,54 @@ struct vmap_block_queue {
  */
 
 void *vmalloc(size_t size);
+
 void *vzalloc(size_t size);
+
 void *vmalloc_node(size_t size, int nid);
+
 void *vmalloc_node_prot(size_t size, int nid, uint64_t pgprot);
+
 void *vmalloc_node_stack(size_t size, int nid);
+
 static inline void *vmalloc_stack(size_t size) { return vmalloc_node_stack(size, -1); }
+
 void *vmalloc_exec(size_t size);
+
 void *vmalloc_32(size_t size);
+
 void vfree(void *addr);
+
+/* placeholder */
 void vfree_atomic(void *addr);
 
 /* IO / Device Mapping */
 void *ioremap(uint64_t phys_addr, size_t size);
+
 void *ioremap_wc(uint64_t phys_addr, size_t size);
+
 void *ioremap_wt(uint64_t phys_addr, size_t size);
+
 void *ioremap_wb(uint64_t phys_addr, size_t size);
+
 void *ioremap_prot(uint64_t phys_addr, size_t size, uint64_t pgprot);
+
 void iounmap(void *addr);
 
 #define ioremap_uc(pa, s) ioremap(pa, s)
 
 /* Advanced vmap API */
 void *vmap(struct page **pages, unsigned int count, unsigned long flags, uint64_t pgprot);
+
 void vunmap(void *addr);
 
 /* Subsystem Initialization */
 void vmalloc_init(void);
+
 void kvmap_purged_init(void);
 
 /* Diagnostics */
 void vmalloc_test(void);
+
 void vmalloc_dump(void);
 
 /* Internal APIs for testing */

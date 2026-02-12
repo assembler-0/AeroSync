@@ -26,6 +26,7 @@
 #include <lib/bitmap.h>
 #include <aerosync/panic.h>
 #include <aerosync/export.h>
+#include <aerosync/errno.h>
 
 struct files_struct init_files = {
   .count = ATOMIC_INIT(1),
@@ -71,12 +72,12 @@ void fput(struct file *file) {
 
 int fd_install(unsigned int fd, struct file *file) {
   struct files_struct *files = current->files;
-  if (!files) return -1;
+  if (!files) return -EBADF;
 
   spinlock_lock(&files->file_lock);
   if (fd >= files->fdtab.max_fds) {
     spinlock_unlock(&files->file_lock);
-    return -1;
+    return -EMFILE;
   }
   files->fdtab.fd[fd] = file;
   // Initial refcount is already set when file is created (vfs_open)
@@ -84,9 +85,108 @@ int fd_install(unsigned int fd, struct file *file) {
   return 0;
 }
 
+int sys_dup2(int oldfd, int newfd) {
+  struct files_struct *files = current->files;
+  if (!files) return -ENOSYS;
+
+  if (oldfd == newfd) return newfd;
+
+  struct file *file = fget(oldfd);
+  if (!file) return -EBADF;
+
+  spinlock_lock(&files->file_lock);
+  if (newfd < 0 || newfd >= (int) files->fdtab.max_fds) {
+    spinlock_unlock(&files->file_lock);
+    fput(file);
+    return -EBADF;
+  }
+
+  struct file *to_close = files->fdtab.fd[newfd];
+  files->fdtab.fd[newfd] = file;
+  set_bit(newfd, files->fdtab.open_fds);
+  clear_bit(newfd, files->fdtab.close_on_exec);
+  spinlock_unlock(&files->file_lock);
+
+  if (to_close) fput(to_close);
+
+  return newfd;
+}
+
+EXPORT_SYMBOL(sys_dup2);
+
+int sys_dup(int oldfd) {
+  struct file *file = fget(oldfd);
+  if (!file) return -EBADF;
+
+  int newfd = get_unused_fd_flags(0);
+  if (newfd < 0) {
+    fput(file);
+    return -EMFILE;
+  }
+
+  fd_install(newfd, file);
+  return newfd;
+}
+
+EXPORT_SYMBOL(sys_dup);
+
+int sys_fcntl(int fd, unsigned int cmd, unsigned long arg) {
+  struct files_struct *files = current->files;
+  if (!files || fd < 0 || fd >= (int) files->fdtab.max_fds) {
+    return -EBADF;
+  }
+
+  int ret = -EINVAL;
+  spinlock_lock(&files->file_lock);
+
+  if (!test_bit(fd, files->fdtab.open_fds)) {
+    spinlock_unlock(&files->file_lock);
+    return -EBADF;
+  }
+
+  switch (cmd) {
+    case 0: /* F_DUPFD */
+    {
+      struct file *file = files->fdtab.fd[fd];
+      int start_fd = (int)arg;
+      if (start_fd < 0 || start_fd >= (int)files->fdtab.max_fds) {
+        ret = -EINVAL;
+        break;
+      }
+      
+      int newfd = find_next_zero_bit(files->fdtab.open_fds, files->fdtab.max_fds, start_fd);
+      if (newfd >= (int) files->fdtab.max_fds) {
+        ret = -EMFILE;
+        break;
+      }
+      
+      set_bit(newfd, files->fdtab.open_fds);
+      files->fdtab.fd[newfd] = file;
+      if (file) atomic_inc(&file->f_count);
+      ret = newfd;
+      break;
+    }
+    case 1: /* F_GETFD */
+      ret = test_bit(fd, files->fdtab.close_on_exec) ? 1 : 0;
+      break;
+    case 2: /* F_SETFD */
+      if (arg & 1) set_bit(fd, files->fdtab.close_on_exec);
+      else clear_bit(fd, files->fdtab.close_on_exec);
+      ret = 0;
+      break;
+    default:
+      ret = -EINVAL;
+  }
+
+  spinlock_unlock(&files->file_lock);
+  return ret;
+}
+
+EXPORT_SYMBOL(sys_fcntl);
+
 int get_unused_fd_flags(unsigned int flags) {
   struct files_struct *files = current->files;
-  if (!files) return -1;
+  if (!files) return -EBADF;
 
   spinlock_lock(&files->file_lock);
   int fd = find_next_zero_bit(files->fdtab.open_fds, files->fdtab.max_fds, files->next_fd);
@@ -94,7 +194,7 @@ int get_unused_fd_flags(unsigned int flags) {
   if (fd >= files->fdtab.max_fds) {
     // Here we would normally expand the fd table
     spinlock_unlock(&files->file_lock);
-    return -1;
+    return -EMFILE;
   }
 
   set_bit(fd, files->fdtab.open_fds);
@@ -122,8 +222,6 @@ void put_unused_fd(unsigned int fd) {
   }
   spinlock_unlock(&files->file_lock);
 }
-
-ssize_t vfs_write(struct file *file, const char *buf, size_t count, vfs_loff_t *pos);
 
 ssize_t kernel_read(struct file *file, void *buf, size_t count, vfs_loff_t *pos) {
     uint32_t old_mode = file->f_mode;

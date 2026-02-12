@@ -31,6 +31,9 @@ char *strtok_r(char *s, const char *ct, char **last);
 int strcasecmp(const char *s1, const char *s2);
 int strncasecmp(const char *s1, const char *s2, size_t n);
 
+char *skip_spaces(const char *str);
+char *strim(char *s);
+
 /* Memory functions */
 void *memcpy(void *d, const void *src, size_t n);
 void *memmove(void *dest, const void *src, size_t n);
@@ -96,3 +99,18 @@ void itoa(uint64_t n, char *buffer);
 void htoa(uint64_t n, char *buffer);
 bool find(const char* buff, const char* pattern);
 bool is_word_boundary(char c);
+
+/* Error handling */
+int errno_to_str(char *restrict buff, const int err);
+
+/* lib/cmdline.c */
+int get_option(char **str, int *pint);
+char *get_options(const char *str, int nints, int *ints);
+unsigned long long memparse(const char *ptr, char **retptr);
+bool parse_option_str(const char *str, const char *option);
+char *next_arg(char *args, char **param, char **val);
+
+/* arch/x86_64/lib/cmdline.c */
+int cmdline_find_option_bool(const char *cmdline, const char *option);
+int cmdline_find_option(const char *cmdline, const char *option, char *buffer,
+      int bufsize);

@@ -44,6 +44,9 @@ static lmm_type_t lmm_probe_file(const struct limine_file *file) {
     } else if (strcmp(dot, ".asrx") == 0) {
       best_type = LMM_TYPE_ASRX;
       best_score = 10;
+    } else if (strcmp(dot, ".cpio") == 0) {
+      best_type = LMM_TYPE_INITRD;
+      best_score = 10;
     }
   }
 #endif
@@ -126,6 +129,16 @@ struct lmm_entry *lmm_find_module(const char *name) {
     else filename = entry->file->path;
 
     if (strcmp(filename, name) == 0) {
+      return entry;
+    }
+  }
+  return nullptr;
+}
+
+struct lmm_entry *lmm_find_module_by_type(lmm_type_t type) {
+  struct lmm_entry *entry;
+  list_for_each_entry(entry, &g_lmm_entries, list) {
+    if (entry->type == type) {
       return entry;
     }
   }

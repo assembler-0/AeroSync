@@ -519,7 +519,11 @@ static int _vsnprintf(out_fct_type out, char *buffer, const size_t maxlen, const
 }
 
 int vsnprintf(char *buf, size_t size, const char *fmt, va_list args) {
+#ifdef VSNPRINTF_C_BUILTIN
+  return __builtin_vsnprintf(buf, size, fmt, args);
+#else
   return _vsnprintf(_out_buffer, buf, size, fmt, args);
+#endif
 }
 
 int vsprintf(char *buf, const char *fmt, va_list args) {

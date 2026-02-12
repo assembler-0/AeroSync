@@ -4,12 +4,14 @@
 #include <aerosync/spinlock.h>
 #include <aerosync/atomic.h>
 #include <linux/list.h>
+#include <aerosync/wait.h>
 
 // Forward declarations for VFS structures
 struct super_block;
 struct inode;
 struct dentry;
 struct file;
+struct resdomain;
 
 // VFS specific types
 typedef uint64_t vfs_ino_t;      // Inode number type
@@ -78,6 +80,9 @@ struct timespec {
 #define FMODE_WRITE  0x2
 #define FMODE_KERNEL 0x1000
 
+#define LOOKUP_PARENT 0x0001
+#define LOOKUP_FOLLOW 0x0002
+
 // VFS object operations forward declarations
 struct file_operations;
 struct inode_operations;
@@ -100,6 +105,8 @@ struct super_block {
     const struct super_operations *s_op;  // Superblock operations
     void                *s_fs_info;       // Filesystem private data
     uint32_t            s_magic;          // Filesystem magic number
+    struct resdomain    *s_resdomain;      // Associated resource domain
+    dev_t               s_dev;            // Device identifier
     uint32_t            s_blocksize;      // Block size in bytes
     vfs_loff_t          s_maxbytes;       // Maximum file size
     // ... more fields like device, flags, etc.
@@ -126,6 +133,7 @@ struct inode {
     const struct inode_operations *i_op;  // Inode operations
     const struct file_operations  *i_fop; // Default file operations
     void                *i_fs_info;       // Filesystem private data
+    struct wait_queue_head i_wait;        // Waiters for I/O on this inode
     // ... more fields for devices, etc.
 };
 
@@ -135,6 +143,7 @@ struct dentry {
     struct list_head    d_lru;            // LRU list for dentry cache (if implementing LRU)
     struct list_head    d_child;          // List of children in parent dentry
     struct list_head    d_subdirs;        // List of subdirectories (if this is a directory dentry)
+    struct list_head    i_list;           // Node for inode->i_dentry list
     struct dentry       *d_parent;        // Parent dentry
     struct qstr         d_name;           // Name of this dentry
     struct inode        *d_inode;         // Inode corresponding to this dentry (or nullptr if negative dentry)
@@ -166,17 +175,25 @@ typedef struct poll_table_struct {
     void (*_qproc)(struct file *, struct wait_queue_head *, struct poll_table_struct *);
 } poll_table;
 
+struct dir_context;
+typedef int (*filldir_t)(struct dir_context *, const char *, int, vfs_loff_t, vfs_ino_t, unsigned int);
+
+struct dir_context {
+    filldir_t actor;
+    vfs_loff_t pos;
+};
+
 // struct file_operations: Operations for an open file
 struct file_operations {
     fn(vfs_off_t, llseek, struct file *file, vfs_off_t offset, int whence);
     fn(ssize_t, read, struct file *file, char *buf, size_t count, vfs_loff_t *ppos);
     fn(ssize_t, write, struct file *file, const char *buf, size_t count, vfs_loff_t *ppos);
+    fn(int, iterate, struct file *file, struct dir_context *ctx);
     fn(int, mmap, struct file *file, struct vm_area_struct *vma);
     fn(int, open, struct inode *inode, struct file *file);
     fn(int, release, struct inode *inode, struct file *file);
     fn(int, ioctl, struct file *file, unsigned int cmd, unsigned long arg);
     fn(uint32_t, poll, struct file *file, poll_table *pt);
-    // Add more operations as needed, e.g., ioctl, mmap, poll, etc.
 };
 
 // struct inode_operations: Operations for an inode
@@ -191,7 +208,10 @@ struct inode_operations {
                          struct inode *new_dir, struct dentry *new_dentry);
     fn(int, setattr, struct dentry *dentry, vfs_mode_t mode, vfs_loff_t size);
     fn(int, getattr, struct dentry *dentry, struct inode *inode);
-    // Add more operations as needed, e.g., symlink, readlink, follow_link, permission
+    fn(int, symlink, struct inode *dir, struct dentry *dentry, const char *oldname);
+    fn(ssize_t, readlink, struct dentry *dentry, char *buf, size_t bufsiz);
+    fn(const char *, follow_link, struct dentry *dentry, void **cookie);
+    fn(void, put_link, struct dentry *dentry, void *cookie);
 };
 
 // struct super_operations: Operations for a superblock
@@ -255,6 +275,9 @@ void vfs_init(void);
 int register_filesystem(struct file_system_type *fs_type);
 int unregister_filesystem(struct file_system_type *fs_type);
 
+int vfs_mmap(struct file *file, struct vm_area_struct *vma);
+int generic_file_mmap(struct file *file, struct vm_area_struct *vma);
+
 int vfs_stat(const char *path, struct stat *statbuf);
 int vfs_fstat(struct file *file, struct stat *statbuf);
 int vfs_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
@@ -268,15 +291,68 @@ void dput(struct dentry *dentry);
 struct dentry *dget(struct dentry *dentry);
 struct dentry *d_alloc_pseudo(struct super_block *sb, const struct qstr *name);
 
+ssize_t simple_read_from_buffer(void *to, size_t count, vfs_loff_t *ppos, const void *from, size_t available);
+struct dentry *simple_lookup(struct inode *dir, struct dentry *dentry, uint32_t flags);
+int simple_rmdir(struct inode *dir, struct dentry *dentry);
+
 int vfs_mkdir(struct inode *dir, struct dentry *dentry, vfs_mode_t mode);
 int vfs_mknod(struct inode *dir, struct dentry *dentry, vfs_mode_t mode, dev_t dev);
+int vfs_create(struct inode *dir, struct dentry *dentry, vfs_mode_t mode);
+int vfs_unlink(struct inode *dir, struct dentry *dentry);
+int vfs_rmdir(struct inode *dir, struct dentry *dentry);
+int vfs_rename(struct inode *old_dir, struct dentry *old_dentry,
+               struct inode *new_dir, struct dentry *new_dentry);
+int vfs_symlink(struct inode *dir, struct dentry *dentry, const char *oldname);
+int vfs_readlink(struct dentry *dentry, char *buf, size_t bufsiz);
+
+void init_special_inode(struct inode *inode, vfs_mode_t mode, dev_t rdev);
 
 int do_mkdir(const char *path, vfs_mode_t mode);
 int do_mknod(const char *path, vfs_mode_t mode, dev_t dev);
+int do_unlink(const char *path);
+int do_rmdir(const char *path);
+int do_rename(const char *oldpath, const char *newpath);
+int do_symlink(const char *oldpath, const char *newpath);
+ssize_t do_readlink(const char *path, char *buf, size_t bufsiz);
+
+struct linux_dirent64 {
+    uint64_t        d_ino;    /* 64-bit inode number */
+    int64_t         d_off;    /* 64-bit offset to next structure */
+    unsigned short  d_reclen; /* Size of this dirent */
+    unsigned char   d_type;   /* File type */
+    char            d_name[]; /* Filename (null-terminated) */
+};
+
+#define DT_UNKNOWN 0
+#define DT_FIFO    1
+#define DT_CHR     2
+#define DT_DIR     4
+#define DT_BLK     6
+#define DT_REG     8
+#define DT_LNK     10
+#define DT_SOCK    12
 
 int sys_chdir(const char *path);
 char *sys_getcwd(char *buf, size_t size);
+int sys_getdents64(unsigned int fd, struct linux_dirent64 *dirent, unsigned int count);
 int sys_mkdir(const char *path, vfs_mode_t mode);
 int sys_mknod(const char *path, vfs_mode_t mode, dev_t dev);
+int sys_unlink(const char *path);
+int sys_rmdir(const char *path);
+int sys_rename(const char *oldpath, const char *newpath);
+int sys_symlink(const char *oldpath, const char *newpath);
+ssize_t sys_readlink(const char *path, char *buf, size_t bufsiz);
+int sys_chmod(const char *path, vfs_mode_t mode);
+int sys_chown(const char *path, uid_t owner, gid_t group);
+int sys_truncate(const char *path, vfs_loff_t length);
+int sys_ftruncate(int fd, vfs_loff_t length);
+int sys_mount(const char *dev_name, const char *dir_name, const char *type, unsigned long flags, void *data);
+
+#define VFS_EVENT_CREATE 0x01
+#define VFS_EVENT_DELETE 0x02
+#define VFS_EVENT_MODIFY 0x04
+#define VFS_EVENT_ATTRIB 0x08
+
+void vfs_notify_change(struct dentry *dentry, uint32_t event);
 
 struct timespec current_time(struct inode *inode);

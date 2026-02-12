@@ -253,7 +253,7 @@ static int pci_mod_init(void) {
 
   // 3. Create root bus 0 and scan
   struct pci_bus *root_bus = kzalloc(sizeof(struct pci_bus));
-  if (!root_bus) return -1;
+  if (!root_bus) return -ENOMEM;
 
   root_bus->number = 0;
   root_bus->segment = 0;

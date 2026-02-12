@@ -247,7 +247,11 @@ ssize_t filemap_read(struct file *file, char *buf, size_t count, vfs_loff_t *ppo
     if (ret != 0) return total_read ? (ssize_t) total_read : -EIO;
 
     void *kaddr = folio_address(vmf.folio);
-    copy_to_user(buf, kaddr + offset, n);
+    if (file->f_mode & FMODE_KERNEL) {
+      memcpy(buf, kaddr + offset, n);
+    } else {
+      copy_to_user(buf, kaddr + offset, n);
+    }
     folio_put(vmf.folio);
 
     buf += n;
@@ -290,10 +294,14 @@ ssize_t filemap_write(struct file *file, const char *buf, size_t count, vfs_loff
     struct folio *folio = vmf.folio;
     void *kaddr = folio_address(folio);
 
-    /* Copy from user into the cache */
-    if (copy_from_user(kaddr + offset, buf, n) != 0) {
-      folio_put(folio);
-      return total_written ? (ssize_t) total_written : -EFAULT;
+    /* Copy from user or kernel into the cache */
+    if (file->f_mode & FMODE_KERNEL) {
+      memcpy(kaddr + offset, buf, n);
+    } else {
+      if (copy_from_user(kaddr + offset, buf, n) != 0) {
+        folio_put(folio);
+        return total_written ? (ssize_t) total_written : -EFAULT;
+      }
     }
 
     /* Mark dirty and prepare for writeback */

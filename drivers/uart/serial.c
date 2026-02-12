@@ -18,6 +18,7 @@
  * GNU General Public License for more details.
  */
 
+#include <aerosync/errno.h>
 #include <aerosync/fkx/fkx.h>
 #include <drivers/uart/serial.h>
 #include <arch/x86_64/io.h>
@@ -84,7 +85,7 @@ int serial_init_standard(void *unused) {
   if (serial_init() != 0)
     if (serial_init_port(COM2) != 0 || serial_init_port(COM3) != 0 ||
         serial_init_port(COM4) != 0)
-      return -1;
+      return -ENODEV;
   serial_initialized = 1;
 
   /* Register using unified TTY interface */

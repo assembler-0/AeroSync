@@ -173,12 +173,12 @@ void sched_move_task(struct task_struct *p) {
 
   /* 
    * This is where we update the hierarchy linkage.
-   * For now, we ensure the se.cfs_rq points to the root rq if no 
-   * group scheduling is active, or the domain's rq if it is.
+   * We use the CPU controller state from the ResDomain.
    */
-  if (p->rd && p->rd->cfs_rq) {
-      p->se.cfs_rq = p->rd->cfs_rq[p->cpu];
-      p->se.parent = p->rd->se ? p->rd->se[p->cpu] : nullptr;
+  struct cpu_rd_state *cs = p->rd ? (struct cpu_rd_state *)p->rd->subsys[RD_SUBSYS_CPU] : nullptr;
+  if (cs && cs->cfs_rq) {
+      p->se.cfs_rq = cs->cfs_rq[p->cpu];
+      p->se.parent = cs->se ? cs->se[p->cpu] : nullptr;
   } else {
       p->se.cfs_rq = &rq->cfs;
       p->se.parent = nullptr;

@@ -22,6 +22,11 @@ find_program(XORRISO xorriso REQUIRED)
 # Kconfig Dependencies
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
+if (STRIP)
+    find_program(LLVM_STRIP llvm-strip REQUIRED)
+endif()
+
+
 # ----------------------------------------------------------------------------
 # Optional Tools (Emulation / Debugging)
 # ----------------------------------------------------------------------------

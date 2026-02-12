@@ -66,7 +66,7 @@ static inline void hpet_write64(uint32_t offset, uint64_t value) {
 
 static int hpet_source_init(void) {
   if (hpet_init() != 0)
-    return -1;
+    return -ENODEV;
   return 0;
 }
 
@@ -94,14 +94,14 @@ const time_source_t *hpet_get_time_source(void) { return &hpet_time_source; }
 
 static int hpet_validate(void) {
   if (!hpet_available()) {
-    return -1;
+    return -ENODEV;
   }
 
   uint64_t capabilities = hpet_read64(HPET_GENERAL_CAPABILITIES_ID);
   if (capabilities == 0 || capabilities == 0xFFFFFFFF) {
     printk(KERN_ERR HPET_CLASS "Invalid HPET capabilities: 0x%lx\n",
            capabilities);
-    return -1;
+    return -EINVAL;
   }
 
   uint8_t detected_counter_size =
@@ -125,7 +125,7 @@ int hpet_init(void) {
   const struct acpi_hpet *hpet = acpi_get_hpet();
   if (!hpet) {
     printk(KERN_WARNING HPET_CLASS "HPET table not found in ACPI inventory\n");
-    return -1;
+    return -ENODEV;
   }
 
   hpet_info.base_address = hpet->address.address;
@@ -175,7 +175,7 @@ int hpet_init(void) {
 
   if (hpet_validate() != 0) {
     printk(KERN_ERR HPET_CLASS "HPET validation failed\n");
-    return -1;
+    return -EINVAL;
   }
 
   printk(HPET_CLASS "HPET driver initialized successfully\n");
@@ -261,7 +261,7 @@ void hpet_stop_timer(uint32_t timer_num) {
 int hpet_calibrate_tsc(void) {
   if (!hpet_available()) {
     printk(KERN_WARNING HPET_CLASS "HPET not available for TSC calibration\n");
-    return -1;
+    return -ENODEV;
   }
 
   printk(HPET_CLASS "Starting TSC recalibration using HPET...\n");
@@ -319,5 +319,5 @@ int hpet_calibrate_tsc(void) {
     return 0;
   }
 
-  return -1;
+  return -EINVAL;
 }

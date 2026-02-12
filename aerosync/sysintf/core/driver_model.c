@@ -91,7 +91,7 @@ int class_register(struct class *cls) {
 
   mutex_init(&cls->lock);
   INIT_LIST_HEAD(&cls->devices);
-  
+
   /* Initialize ID allocator if any naming mechanism is provided */
   if (cls->dev_name || cls->dev_prefix || cls->naming_scheme != NAMING_NONE) {
     ida_init(&cls->ida, 1024); // Support up to 1024 devices per class
@@ -196,7 +196,7 @@ static int device_attach_driver(struct device *dev) {
     /* 2. Try to bind */
     dev->driver = drv;
     ret = device_bind_driver(dev);
-    if (ret == 0) {
+    if (likely(ret == 0)) {
       goto out;
     }
     dev->driver = nullptr;
@@ -281,43 +281,43 @@ EXPORT_SYMBOL(device_set_name);
 #include <fs/devfs.h>
 
 static void generate_device_name(struct device *dev) {
-    if (!dev->class || dev->name) return;
+  if (!dev->class || dev->name) return;
 
-    int id = dev->id;
-    if (id < 0) {
-        id = ida_alloc(&dev->class->ida);
-        if (id < 0) return;
-        dev->id = id;
-        dev->class_id_allocated = true;
-    }
+  int id = dev->id;
+  if (id < 0) {
+    id = ida_alloc(&dev->class->ida);
+    if (id < 0) return;
+    dev->id = id;
+    dev->class_id_allocated = true;
+  }
 
-    const char *prefix = dev->class->dev_prefix;
-    if (!prefix) prefix = dev->class->name;
+  const char *prefix = dev->class->dev_prefix;
+  if (!prefix) prefix = dev->class->name;
 
-    char name[64];
-    if (dev->class->naming_scheme == NAMING_ALPHABETIC) {
-        int len = strlen(prefix);
-        strncpy(name, prefix, 60);
-        if (id < 26) {
-            name[len] = 'a' + id;
-            name[len+1] = '\0';
-        } else {
-            int first = (id / 26) - 1;
-            int second = id % 26;
-            name[len] = 'a' + first;
-            name[len+1] = 'a' + second;
-            name[len+2] = '\0';
-        }
-    } else if (dev->class->naming_scheme == NAMING_NUMERIC) {
-        snprintf(name, sizeof(name), "%s%d", prefix, id);
-    } else if (dev->class->dev_name) {
-        /* Fallback to legacy printf-style template if provided */
-        snprintf(name, sizeof(name), dev->class->dev_name, id);
+  char name[64];
+  if (dev->class->naming_scheme == NAMING_ALPHABETIC) {
+    int len = strlen(prefix);
+    strncpy(name, prefix, 60);
+    if (id < 26) {
+      name[len] = 'a' + id;
+      name[len + 1] = '\0';
     } else {
-        return;
+      int first = (id / 26) - 1;
+      int second = id % 26;
+      name[len] = 'a' + first;
+      name[len + 1] = 'a' + second;
+      name[len + 2] = '\0';
     }
+  } else if (dev->class->naming_scheme == NAMING_NUMERIC) {
+    snprintf(name, sizeof(name), "%s%d", prefix, id);
+  } else if (dev->class->dev_name) {
+    /* Fallback to legacy printf-style template if provided */
+    snprintf(name, sizeof(name), dev->class->dev_name, id);
+  } else {
+    return;
+  }
 
-    device_set_name(dev, "%s", name);
+  device_set_name(dev, "%s", name);
 }
 
 int device_add(struct device *dev) {
@@ -328,7 +328,7 @@ int device_add(struct device *dev) {
   /* Class Registration & Naming */
   if (dev->class) {
     mutex_lock(&dev->class->lock);
-    
+
     generate_device_name(dev);
 
     list_add_tail(&dev->class_node, &dev->class->devices);
@@ -352,36 +352,36 @@ int device_add(struct device *dev) {
   }
   mutex_unlock(&device_model_lock);
 
-    /* Automatic devfs exposure */
-    if (dev->class && (dev->class->flags & CLASS_FLAG_AUTO_DEVFS) && dev->name) {
-        dev_t rdev = 0;
-        vfs_mode_t mode = 0;
-  
-        switch (dev->class->category) {
-            case DEV_CAT_CHAR:
-            case DEV_CAT_TTY:
-            case DEV_CAT_FB: {
-                struct char_device *cdev = container_of(dev, struct char_device, dev);
-                rdev = cdev->dev_num;
-                mode = S_IFCHR | 0666;
-                break;
-            }
-                      case DEV_CAT_BLOCK: {
-                          struct block_device *bdev = container_of(dev, struct block_device, dev);
-                          rdev = bdev->dev_num; 
-                          mode = S_IFBLK | 0660;
-                          break;
-                      }
-            
-            default:
-                break;
-        }
-  
-        if (mode != 0) {
-            devfs_register_device(dev->name, mode, rdev);
-        }
+  /* Automatic devfs exposure */
+  if (dev->class && (dev->class->flags & CLASS_FLAG_AUTO_DEVFS) && dev->name) {
+    dev_t rdev = 0;
+    vfs_mode_t mode = 0;
+
+    switch (dev->class->category) {
+      case DEV_CAT_CHAR:
+      case DEV_CAT_TTY:
+      case DEV_CAT_FB: {
+        struct char_device *cdev = container_of(dev, struct char_device, dev);
+        rdev = cdev->dev_num;
+        mode = S_IFCHR | 0666;
+        break;
+      }
+      case DEV_CAT_BLOCK: {
+        struct block_device *bdev = container_of(dev, struct block_device, dev);
+        rdev = bdev->dev_num;
+        mode = S_IFBLK | 0660;
+        break;
+      }
+
+      default:
+        break;
     }
-    /* Create default attributes */
+
+    if (mode != 0) {
+      devfs_register_device(dev->name, mode, rdev, nullptr, nullptr);
+    }
+  }
+  /* Create default attributes */
   if (dev->groups) {
     for (int i = 0; dev->groups[i]; i++) {
       const struct attribute_group *grp = dev->groups[i];
@@ -654,25 +654,28 @@ void *devres_alloc(dr_release_t release, size_t size, const char *name) {
   dr->name = name;
   dr->size = size;
 
-  return (void *)(dr + 1);
+  return (void *) (dr + 1);
 }
+
 EXPORT_SYMBOL(devres_alloc);
 
 void devres_free(void *res) {
   if (res) {
-    struct devres *dr = (struct devres *)res - 1;
+    struct devres *dr = (struct devres *) res - 1;
     kfree(dr);
   }
 }
+
 EXPORT_SYMBOL(devres_free);
 
 void devres_add(struct device *dev, void *res) {
-  struct devres *dr = (struct devres *)res - 1;
+  struct devres *dr = (struct devres *) res - 1;
 
   mutex_lock(&dev->devres_lock);
   list_add_tail(&dr->entry, &dev->devres_head);
   mutex_unlock(&dev->devres_lock);
 }
+
 EXPORT_SYMBOL(devres_add);
 
 void devres_release_all(struct device *dev) {
@@ -684,7 +687,7 @@ void devres_release_all(struct device *dev) {
     mutex_unlock(&dev->devres_lock);
 
     if (dr->release) {
-      dr->release(dev, (void *)(dr + 1));
+      dr->release(dev, (void *) (dr + 1));
     }
     kfree(dr);
 
@@ -692,6 +695,7 @@ void devres_release_all(struct device *dev) {
   }
   mutex_unlock(&dev->devres_lock);
 }
+
 EXPORT_SYMBOL(devres_release_all);
 
 static void devm_kzalloc_release(struct device *dev, void *res) {
@@ -708,11 +712,12 @@ void *devm_kzalloc(struct device *dev, size_t size) {
   }
   return ptr;
 }
+
 EXPORT_SYMBOL(devm_kzalloc);
 
 static void devm_ioremap_release(struct device *dev, void *res) {
   (void) dev;
-  iounmap(*(void **)res);
+  iounmap(*(void **) res);
 }
 
 void *devm_ioremap(struct device *dev, uint64_t phys_addr, size_t size) {
@@ -729,6 +734,7 @@ void *devm_ioremap(struct device *dev, uint64_t phys_addr, size_t size) {
   devres_add(dev, ptr);
   return *ptr;
 }
+
 EXPORT_SYMBOL(devm_ioremap);
 
 struct devm_irq_res {
@@ -750,9 +756,10 @@ int devm_request_irq(struct device *dev, uint8_t vector, void (*handler)(void *r
     return -ENOMEM;
 
   dr->vector = vector;
-  irq_install_handler(vector, (irq_handler_t)handler);
+  irq_install_handler(vector, (irq_handler_t) handler);
 
   devres_add(dev, dr);
   return 0;
 }
+
 EXPORT_SYMBOL(devm_request_irq);

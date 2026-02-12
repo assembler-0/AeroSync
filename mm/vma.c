@@ -25,6 +25,7 @@
 #include <aerosync/classes.h>
 #include <aerosync/errno.h>
 #include <aerosync/panic.h>
+#include <aerosync/resdomain.h>
 #include <aerosync/timer.h>
 #include <lib/printk.h>
 #include <lib/string.h>
@@ -919,6 +920,12 @@ uint64_t do_mmap(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot,
 
   len = (len + PAGE_SIZE - 1) & PAGE_MASK;
 
+#ifdef CONFIG_RESDOMAIN_MEM
+  if (current->rd && resdomain_charge_mem(current->rd, len, false) < 0) {
+    return -ENOMEM;
+  }
+#endif
+
   down_write(&mm->mmap_lock);
 
   /* 2. Find Address */
@@ -1045,6 +1052,13 @@ int do_munmap(struct mm_struct *mm, uint64_t addr, size_t len) {
     }
 
     vma_remove(mm, vma);
+
+#ifdef CONFIG_RESDOMAIN_MEM
+    if (current->rd) {
+      resdomain_uncharge_mem(current->rd, vma_size(vma));
+    }
+#endif
+
     if (vma->vm_ops && vma->vm_ops->close) vma->vm_ops->close(vma);
     vma_free(vma);
   }
@@ -1178,6 +1192,12 @@ uint64_t do_mremap(struct mm_struct *mm, uint64_t old_addr, size_t old_len, size
 
     vma->vm_end = end;
     if (vma->vm_obj) vma->vm_obj->size = new_len;
+
+#ifdef CONFIG_RESDOMAIN_MEM
+    if (current->rd) {
+      resdomain_charge_mem(current->rd, new_len - old_len, false);
+    }
+#endif
   } else {
     /* Shrinking */
     int ret = do_munmap(mm, old_addr + new_len, old_len - new_len);

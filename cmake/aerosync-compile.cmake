@@ -71,7 +71,7 @@ endif()
 if(SANITIZER)
     target_compile_options(aerosync.krnl PRIVATE
         $<$<COMPILE_LANGUAGE:C>:
-            -fsanitize=undefined,bounds,null,return,vla-bound
+            -fsanitize=bounds,null,return,vla-bound,object-size
         >
     )
 endif()
@@ -98,5 +98,12 @@ if (LTO)
             -flto
             -Wl,--gc-sections
         >
+    )
+endif()
+
+if (STRIP)
+    add_custom_command(TARGET aerosync.krnl POST_BUILD
+        COMMAND ${LLVM_STRIP} --strip-all $<TARGET_FILE:aerosync.krnl>
+        COMMENT "Stripping kernel image"
     )
 endif()

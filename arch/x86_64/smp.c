@@ -28,6 +28,7 @@
 #include <arch/x86_64/percpu.h>
 #include <arch/x86_64/smp.h>
 #include <aerosync/classes.h>
+#include <aerosync/errno.h>
 #include <aerosync/sysintf/ic.h>
 #include <aerosync/wait.h>
 #include <aerosync/sysintf/panic.h>
@@ -37,6 +38,8 @@
 #include <mm/slub.h>
 #include <aerosync/timer.h>
 #include <linux/container_of.h>
+#include <aerosync/errno.h>
+#include <arch/x86_64/requests.h>
 
 // SMP Request
 __attribute__((
@@ -270,6 +273,12 @@ void smp_call_function(smp_call_func_t func, void *info, bool wait) {
 
 void smp_init(void) {
 #ifdef SYMMETRIC_MP
+  if (cmdline_find_option_bool(current_cmdline, "nosmp")) {
+    printk(KERN_WARNING SMP_CLASS "nosmp found in cmdline, single-core mode\n");
+    cpu_count = 1;
+    return;
+  }
+
   if (cpu_count == 0) {
     smp_parse_topology();
   }
@@ -324,7 +333,7 @@ void smp_init(void) {
 
   printk(SMP_CLASS "%d APs online.\n", cpus_online);
 #else
-  printk(KERN_WARNING SMP_CLASS "SYMMETRIC_MP is not enabled, single core mode only\n");
+  printk(KERN_NOTICE SMP_CLASS "SYMMETRIC_MP is not enabled, single core mode only\n");
   cpu_count = 1;
 #endif
 }
@@ -361,7 +370,7 @@ int lapic_to_cpu(uint8_t lapic_id) {
       return i;
     }
   }
-  return -1;
+  return -ENODEV;
 }
 
 uint8_t lapic_get_id_for_cpu(int cpu) {

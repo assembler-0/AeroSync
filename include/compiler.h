@@ -33,6 +33,9 @@
 #define __finline        __attribute__((always_inline))
 #define __optimize(x)   __attribute__((optimize(x)))
 #define __deprecated    __attribute__((deprecated))
+/* include/linux/compiler_attributes.h:368 */
+#define __must_check    __attribute__((__warn_unused_result__))
+#define __no_sanitize   __attribute__((no_sanitize("undefined", "address", "integer", "null", "bounds", "vla-bound", "object-size")))
 
 /* ========================
  * MEMORY / LAYOUT ATTRIBUTES
@@ -75,6 +78,7 @@
  * ======================== */
 
 #define __fallthrough   __attribute__((fallthrough))
+#define fallthrough
 #define __unreachable() __builtin_unreachable()
 #define __trap()        __builtin_trap()
 #define __likely(x)     __builtin_expect(!!(x), 1)

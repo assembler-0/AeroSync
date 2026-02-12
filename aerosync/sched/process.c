@@ -18,7 +18,6 @@
  * GNU General Public License for more details.
  */
 
-#include <aerosync/elf.h>
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/entry.h>
 #include <arch/x86_64/fpu.h>
@@ -26,8 +25,6 @@
 #include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/mm/vmm.h>
 #include <arch/x86_64/percpu.h>
-#include <arch/x86_64/smp.h>
-#include <arch/x86_64/gdt/gdt.h>
 #include <aerosync/fkx/fkx.h>
 #include <aerosync/sched/cpumask.h>
 #include <aerosync/sched/process.h>
@@ -42,7 +39,7 @@
 #include <aerosync/signal.h>
 #include <aerosync/errno.h>
 #include <fs/fs_struct.h>
-
+#include <linux/container_of.h>
 #include <aerosync/resdomain.h>
 
 /*
@@ -103,6 +100,9 @@ struct task_struct *copy_process(uint64_t clone_flags,
                                  uint64_t stack_start,
                                  struct task_struct *parent) {
   struct task_struct *p;
+
+  if (parent && resdomain_can_fork(parent->rd) < 0)
+    return nullptr;
 
   p = alloc_task_struct();
   if (!p)
@@ -367,7 +367,7 @@ void free_task(struct task_struct *task) {
   }
 
   if (task->rd) {
-    resdomain_put(task->rd);
+    resdomain_task_exit(task);
   }
 
   if (task->signal) {
@@ -388,6 +388,21 @@ struct task_struct *alloc_task_struct(void) {
 void free_task_struct(struct task_struct *task) {
   if (task) kfree(task);
 }
+
+struct task_struct *find_task_by_pid(pid_t pid) {
+  struct task_struct *task;
+  spinlock_lock(&tasklist_lock);
+  list_for_each_entry(task, &task_list, tasks) {
+    if (task->pid == pid) {
+      spinlock_unlock(&tasklist_lock);
+      return task;
+    }
+  }
+  spinlock_unlock(&tasklist_lock);
+  return nullptr;
+}
+
+EXPORT_SYMBOL(find_task_by_pid);
 
 void wake_up_new_task(struct task_struct *p) {
   struct rq *rq;
@@ -432,6 +447,7 @@ struct task_struct *process_spawn(int (*entry)(void *), void *data,
 
   return p;
 }
+
 EXPORT_SYMBOL(process_spawn);
 
 int do_execve(const char *filename, char **argv, char **envp) {
@@ -443,11 +459,13 @@ int do_execve(const char *filename, char **argv, char **envp) {
 
   return retval;
 }
+
 EXPORT_SYMBOL(do_execve);
 
 int run_init_process(const char *init_filename) {
   return do_execve(init_filename, nullptr, nullptr);
 }
+
 EXPORT_SYMBOL(run_init_process);
 
 #ifdef CONFIG_UNSAFE_USER_TASK_SPAWN

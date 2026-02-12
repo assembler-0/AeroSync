@@ -79,7 +79,7 @@ they are an **os-in-kernel**-which is the worst possible thing.
     - typedef struct names: snake_case_t or snake_case
   - variables: snake_case
   - functions: snake_case
-  - macros: SCREAMINg_SNAKE_CASE or snake_case
+  - macros: SCREAMING_SNAKE_CASE or snake_case
 - use of allocators:
   - kmalloc & kmem_cache: for cache pools and object allocations smaller than 128KiB.
   - vmalloc: for virtually contiguous allocations.
@@ -90,8 +90,12 @@ they are an **os-in-kernel**-which is the worst possible thing.
   - use the correct allocators.
   - use the correct alignment.
   - should add bound/null checks where applicable.\
-- NULL:
+- pointers:
   - as this project uses the C23 standard, please use nullptr instead of NULL.
+- logging:
+  - please use printk(ln)(KERN_* *_CLASS "fmt", ...)
+- returns values:
+  - there is no restriction on return vaules BUT please use errno for negative errors.
 
 ## How to get merged
 - Runs on major emulators. (QEMU, Bochs, VirtualBox, VMware, etc.)

@@ -52,13 +52,10 @@ config CONFIG_STRING_CRYPTO
     help
       Include constant-time comparison and crypto-safe string functions.
 
-config CMDLINE_PARSER
-    bool "Enable and compile builtin cmdline parser"
+config VSNPRINTF_C_BUILTIN
+    bool "Use __builtin_vsnprintf"
     default n
     help
-      Include and use the builtin cmdline parser.
-      note: the parser is unstable and might fail.
-      if this is disabled, the kernel will use a more reliable-
-      yet simple string sequence finder, features will be limited
+      Uses compiler built-in __builtin_vsnprintf for vsnprintf()
 
 endmenu

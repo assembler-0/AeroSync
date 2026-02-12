@@ -20,7 +20,6 @@
 
 #include <aerosync/ksymtab.h>
 #include <aerosync/classes.h>
-#include <aerosync/cmdline.h>
 #include <aerosync/fkx/fkx.h>
 #include <aerosync/panic.h>
 #include <aerosync/sched/process.h>
@@ -64,6 +63,7 @@
 #include <mm/vmalloc.h>
 #include <mm/zmm.h>
 #include <aerosync/resdomain.h>
+#include <fs/initramfs.h>
 #include <uacpi/uacpi.h>
 
 static alignas(16) struct task_struct bsp_task;
@@ -96,8 +96,9 @@ static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
 #endif
 
   printk(KERN_DEBUG KERN_CLASS "attempting to run init process: %s\n", STRINGIFY(CONFIG_INIT_PATH));
-  if (run_init_process(STRINGIFY(CONFIG_INIT_PATH)) < 0) {
-    printk(KERN_ERR KERN_CLASS "failed to execute %s.\n", STRINGIFY(CONFIG_INIT_PATH));
+  const int ret = run_init_process(STRINGIFY(CONFIG_INIT_PATH));
+  if (ret < 0) {
+    printk(KERN_ERR KERN_CLASS "failed to execute %s. (%d)\n", STRINGIFY(CONFIG_INIT_PATH), ret);
     printkln(KERN_ERR KERN_CLASS "attempted to kill init.");
   }
 
@@ -133,9 +134,8 @@ system_load_extensions(void) {
 
 /**
  * @brief AeroSync kernel main entry point
- * @note NO RETURN!
  */
-void __init __noreturn __noinline __sysv_abi start_kernel(void) {
+void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
   panic_register_handler(get_builtin_panic_ops());
   panic_handler_install();
 
@@ -146,6 +146,15 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   printk_register_backend(debugcon_get_backend());
   printk_init_early();
   tsc_calibrate_early();
+
+  if (get_cmdline_request()->response) {
+    if (cmdline_find_option_bool(current_cmdline, "quiet")) {
+      printk_disable(); /* 'quiet' will automatically override 'verbose' */
+    }
+    if (cmdline_find_option_bool(current_cmdline, "verbose")) {
+      log_enable_debug();
+    }
+  }
 
   printk(KERN_CLASS "AeroSync (R) %s - %s\n", AEROSYNC_VERSION,
          AEROSYNC_COMPILER_VERSION);
@@ -189,23 +198,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   printk(KERN_CLASS "system pagination level: %d\n", vmm_get_paging_levels());
 
   if (get_cmdline_request()->response) {
-    /* Register known options and parse the executable command-line provided by
-     * the bootloader (via Limine). Using static storage in the cmdline parser
-     * ensures we don't allocate during early boot. */
-    if ( /* TODO: remove this hardcoding */
-      cmdline_register_option("verbose", CMDLINE_TYPE_FLAG) < 0 ||
-      cmdline_register_option("mtest", CMDLINE_TYPE_FLAG) < 0 ||
-      cmdline_register_option("rcutest", CMDLINE_TYPE_FLAG) < 0 ||
-      cmdline_register_option("dumpdevtree", CMDLINE_TYPE_FLAG) < 0
-    ) {
-      printkln(KERN_ERR "failed to register cmdline flags");
-    }
-    cmdline_parse(get_cmdline_request()->response->cmdline);
-    printkln(KERN_CLASS "cmdline: %s", get_cmdline_request()->response->cmdline);
-    if (cmdline_get_flag("verbose")) {
-      log_enable_debug();
-      printk(KERN_CLASS "cmdline: verbose enabled\n");
-    }
+    printkln(KERN_CLASS "cmdline: %s", current_cmdline);
   }
 
   if (get_date_at_boot_request()->response) {
@@ -249,12 +242,17 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   bsp_task.active_mm = &init_mm;
   sched_init_task(&bsp_task);
 
-  resdomain_init();
+#ifdef CONFIG_LIMINE_MODULE_MANAGER
+  lmm_register_prober(initramfs_cpio_prober);
+  lmm_register_prober(lmm_fkx_prober);
+  lmm_init(get_module_request()->response);
+#endif
 
   vfs_init();
+  resdomain_init();
 
 #ifdef INCLUDE_MM_TESTS
-  if (cmdline_get_flag("mtest")) {
+  if (cmdline_find_option_bool(current_cmdline, "mtest")) {
     pmm_test();
     vmm_test();
     slab_test();
@@ -264,11 +262,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   }
 #endif
 
-#ifdef CONFIG_LIMINE_MODULE_MANAGER
-  lmm_register_prober(lmm_fkx_prober);
-  lmm_init(get_module_request()->response);
-#endif
-
+  /* load all FKX images */
   system_load_extensions();
 
   fkx_init_module_class(FKX_PRINTK_CLASS);
@@ -286,24 +280,10 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   // --- Time Subsystem Initialization ---
   fkx_init_module_class(FKX_TIMER_CLASS);
-  // Initialize unified time subsystem (Selects Best Source and Inits it)
-  if (time_init() != 0) {
-    printk(KERN_WARNING KERN_CLASS "Time subsystem initialization failed\n");
-  }
+  time_init();
 
-  // Recalibrate TSC using the best available time source if not already
-  // calibrated accurately
-  if (tsc_freq_get() < 1000000) {
-    if (time_calibrate_tsc_system() != 0) {
-      printk(KERN_WARNING KERN_CLASS "TSC System Calibration failed.\n");
-    } else {
-      printk(KERN_CLASS "TSC calibrated successfully via %s.\n",
-             time_get_source_name());
-    }
-  } else {
-    printk(KERN_CLASS "TSC already calibrated via C2PUID (%lu Hz).\n",
-           tsc_freq_get());
-  }
+  // Recalibrate TSC
+  time_calibrate_tsc_system();
 
   timer_init_subsystem();
 
@@ -315,7 +295,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   fkx_init_module_class(FKX_DRIVER_CLASS);
 
 #ifdef CONFIG_LOG_DEVICE_TREE
-  if (cmdline_get_flag("dumpdevtree"))
+  if (cmdline_find_option_bool(current_cmdline, "dumpdevtree"))
     dump_device_tree();
 #endif
 
@@ -328,7 +308,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
   printk_init_async();
 #endif
 
-  // Start kernel_init thread
+  // Start kernel_init thread (do the rest of the kernel init)
   struct task_struct *init_task =
       kthread_create(kernel_init, nullptr, "kernel_init");
   if (!init_task)
@@ -337,7 +317,7 @@ void __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   cpu_sti();
 
-  // enter scheduler idle loop
+  // enter scheduler idle loop (should not reach here)
   idle_loop();
 
   __unreachable();

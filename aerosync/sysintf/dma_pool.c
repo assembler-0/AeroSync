@@ -219,7 +219,7 @@ void dma_pool_free(struct dma_pool *pool, void *vaddr, dma_addr_t dma) {
     if (vaddr >= page->vaddr && vaddr < page->vaddr + PAGE_SIZE) {
 #ifdef CONFIG_DMA_POOL_DEBUG
       /* Check for double-free */
-      char *check = (char *)vaddr;
+      unsigned char *check = (unsigned char *)vaddr;
       bool is_freed = true;
       for (size_t i = 0; i < pool->size; i++) {
         if (check[i] != POOL_POISON_FREED) {

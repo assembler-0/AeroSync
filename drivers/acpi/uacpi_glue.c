@@ -60,7 +60,7 @@ int uacpi_kernel_init_early(void) {
   if (uacpi_unlikely_error(ret)) {
     printk(KERN_ERR ACPI_CLASS "uACPI initialization failed: %s\n",
            uacpi_status_to_string(ret));
-    return -1;
+    return -ENODEV;
   }
   printk(KERN_INFO ACPI_CLASS "uACPI initialized\n");
 
@@ -68,7 +68,7 @@ int uacpi_kernel_init_early(void) {
   if (uacpi_unlikely_error(ret)) {
     printk(KERN_ERR ACPI_CLASS "uACPI namespace load failed: %s\n",
            uacpi_status_to_string(ret));
-    return -1;
+    return -ENODEV;
   }
   printk(KERN_INFO ACPI_CLASS "uACPI namespace loaded\n");
   return 0;
@@ -79,7 +79,7 @@ int uacpi_kernel_init_late(void) {
   if (uacpi_unlikely_error(ret)) {
     printk(KERN_ERR ACPI_CLASS "uACPI namespace init failed: %s\n",
            uacpi_status_to_string(ret));
-    return -1;
+    return -ENODEV;
   }
   printk(ACPI_CLASS "uACPI namespace initialized\n");
   return 0;

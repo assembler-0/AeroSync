@@ -86,7 +86,7 @@ static struct char_operations fb_char_ops = {
 
 static int linearfb_init(volatile struct limine_framebuffer_request *fb_req) {
   if (!fb_req || !fb_req->response || fb_req->response->framebuffer_count == 0)
-    return -1;
+    return -EINVAL;
   fb = fb_req->response->framebuffers[0];
 
   // Remap framebuffer to Write-Combining (WC) for performance
@@ -841,7 +841,7 @@ void linearfb_console_puts(const char *s) {
 }
 
 int linearfb_load_font(const linearfb_font_t *font, const uint32_t count) {
-  if (!font) return -1;
+  if (!font) return -EINVAL;
   irq_flags_t flags = spinlock_lock_irqsave(&fb_lock);
   fb_font = *font;
   font_glyph_w = font->width;

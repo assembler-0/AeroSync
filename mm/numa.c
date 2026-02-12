@@ -12,10 +12,12 @@
 #include <lib/printk.h>
 #include <uacpi/acpi.h> // We only use the header definitions
 #include <aerosync/classes.h>
+#include <aerosync/errno.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <lib/string.h>
 
 #include <aerosync/sched/cpumask.h>
+#include <aerosync/errno.h>
 
 struct pglist_data *node_data[MAX_NUMNODES] = {nullptr};
 static struct pglist_data static_node_data[MAX_NUMNODES];
@@ -105,7 +107,7 @@ int numa_find_best_node(int preferred_node) {
   for (int i = 0; i < MAX_NUMNODES; i++) {
     if (node_data[i]) return i;
   }
-  return -1;
+  return -ENODEV;
 }
 
 static void parse_srat(struct acpi_srat *srat) {

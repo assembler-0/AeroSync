@@ -37,6 +37,22 @@ const char *lookup_ksymbol_by_addr(uintptr_t addr, uintptr_t *offset);
 int register_ksymbol(uintptr_t addr, const char *name);
 
 /**
+ * Unregister a symbol from the global kernel symbol table
+ *
+ * @param addr Address of the symbol
+ * @return 0 on success, error code otherwise
+ */
+int unregister_ksymbol(uintptr_t addr);
+
+/**
+ * Unregister all symbols within a given address range
+ *
+ * @param start_addr Start of the address range
+ * @param end_addr End of the address range
+ */
+void unregister_ksymbols_in_range(uintptr_t start_addr, uintptr_t end_addr);
+
+/**
  * Initialize kernel symbol table from ELF image
  *
  * @param kernel_base_addr Address of the loaded kernel ELF file

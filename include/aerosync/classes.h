@@ -130,6 +130,7 @@
 #define ISO_CLASS "[sys::fs::iso] "   // ISO9660 (CD-ROM)
 #define DEVFS_CLASS "[sys::fs::dev] " // /dev filesystem
 #define TMPFS_CLASS "[sys::fs::tmp] "
+#define SYSFS_CLASS "[sys::fs::sysfs] "
 #define NTFS_CLASS "[sys::fs::ntfs] "
 #define USTAR_CLASS "[sys::fs::ustar] "
 #define INITRD_CLASS "[sys::fs::initrd] "

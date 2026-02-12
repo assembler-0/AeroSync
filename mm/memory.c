@@ -631,7 +631,7 @@ int folio_reclaim(struct folio *folio, struct mmu_gather *tlb) {
 #endif
 
     /* If no ZMM and no Swap, we cannot reclaim anonymous pages */
-    return -1;
+    return -ENOMEM;
   }
 
   /* File-backed pages can always be reclaimed (if not dirty) */
@@ -647,7 +647,7 @@ int folio_reclaim(struct folio *folio, struct mmu_gather *tlb) {
     return 0;
   }
 
-  return -1;
+  return -EBUSY;
 }
 
 #ifdef CONFIG_MM_LRU

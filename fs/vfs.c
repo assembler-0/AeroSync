@@ -29,11 +29,16 @@
 #include <aerosync/classes.h>
 #include <mm/slub.h>
 #include <aerosync/errno.h>
+#include <aerosync/resdomain.h>
 #include <aerosync/sysintf/char.h>
 #include <aerosync/sysintf/block.h>
 #include <fs/devfs.h>
+#include <fs/sysfs.h>
+#include <fs/procfs.h>
 #include <fs/fs_struct.h>
+#include <fs/initramfs.h>
 #include <aerosync/timer.h>
+#include <arch/x86_64/requests.h>
 #include <mm/vm_object.h>
 #include <lib/uaccess.h>
 
@@ -46,6 +51,11 @@ LIST_HEAD(dentries); // List of all active dentries (dentry cache)
 static struct mutex sb_mutex;
 static struct mutex inode_mutex;
 static struct mutex dentry_mutex;
+
+#ifndef INITRD_NAME_MAX_SIZE
+#define INITRD_NAME_MAX_SIZE 128
+#endif
+static char initramfs_path[INITRD_NAME_MAX_SIZE];
 
 LIST_HEAD(mount_list);
 static struct mutex mount_mutex;
@@ -78,26 +88,46 @@ void vfs_init(void) {
 
   extern void tmpfs_init(void);
   tmpfs_init();
+  resfs_init();
+  sysfs_init();
+  procfs_init();
 
   // Mount tmpfs as the base rootfs
-  vfs_mount(nullptr, "/", "tmpfs", 0, nullptr);
+  int mount_ret = vfs_mount(nullptr, "/", "tmpfs", 0, nullptr);
+  if (mount_ret < 0) {
+    // Failed to mount root
+  }
 
   /* Initialize current task's filesystem context */
   if (current) {
-    current->fs = kzalloc(sizeof(struct fs_struct));
+    current->fs = copy_fs_struct(nullptr);
     if (current->fs) {
-      atomic_set(&current->fs->count, 1);
-      spinlock_init(&current->fs->lock);
       current->fs->root = dget(root_dentry);
       current->fs->pwd = dget(root_dentry);
     }
   }
+
+  /* Unpack initramfs if enabled and found */
+  cmdline_find_option(
+    current_cmdline,
+    "initrd",
+    initramfs_path,
+    sizeof(initramfs_path) /* INITRD_NAME_MAX_SIZE */
+  );
+
+  initramfs_init(initramfs_path);
+
 #ifdef CONFIG_DEVFS
   devfs_init();
 
 #ifdef CONFIG_DEVFS_MOUNT
-  printk(VFS_CLASS "Automounting devfs at %s\n", STRINGIFY(CONFIG_DEVFS_MOUNT_PATH));
   vfs_mount(nullptr, STRINGIFY(CONFIG_DEVFS_MOUNT_PATH), "devfs", 0, nullptr);
+#endif
+#endif
+
+#ifdef CONFIG_SYSFS
+#ifdef CONFIG_SYSFS_MOUNT
+  vfs_mount(nullptr, STRINGIFY(CONFIG_SYSFS_MOUNT_PATH), "sysfs", 0, nullptr);
 #endif
 #endif
 
@@ -118,9 +148,29 @@ int vfs_mount(const char *dev_name, const char *dir_name, const char *type, unsi
       if (root_dentry) {
         mountpoint = vfs_path_lookup(dir_name, 0);
         if (!mountpoint) {
-          mutex_unlock(&fs_type_mutex);
-          return -ENOENT;
+          /* Auto-create parent directories if they don't exist */
+          if (strcmp(dir_name, "/") != 0) {
+            char *p_copy = kstrdup(dir_name);
+            if (p_copy) {
+              char *slash = strrchr(p_copy, '/');
+              if (slash && slash != p_copy) {
+                *slash = '\0';
+                do_mkdir(p_copy, 0755);
+              }
+              kfree(p_copy);
+            }
+            mountpoint = vfs_path_lookup(dir_name, 0);
+          }
+
+          if (!mountpoint) {
+            mutex_unlock(&fs_type_mutex);
+            return -ENOENT;
+          }
         }
+      } else if (strcmp(dir_name, "/") != 0) {
+        /* Cannot mount anywhere else if root is not yet mounted */
+        mutex_unlock(&fs_type_mutex);
+        return -ENOENT;
       }
 
       ret = fs->mount(fs, dev_name, dir_name, flags, data);
@@ -132,6 +182,15 @@ int vfs_mount(const char *dev_name, const char *dir_name, const char *type, unsi
         mnt->mnt_sb = sb;
         mnt->mnt_root = dget(sb->s_root);
         mnt->mnt_mountpoint = mountpoint; // lookup returned a ref
+
+        if (strcmp(dir_name, "/") == 0 && !root_dentry) {
+          root_dentry = dget(sb->s_root);
+        }
+
+        /* Ensure the mount point points to the new root if it was a root mount */
+        if (mountpoint == nullptr && strcmp(dir_name, "/") == 0) {
+          mnt->mnt_mountpoint = dget(sb->s_root);
+        }
 
         mutex_lock(&mount_mutex);
         list_add_tail(&mnt->mnt_list, &mount_list);
@@ -238,6 +297,59 @@ char *sys_getcwd(char *buf_user, size_t size) {
 
 EXPORT_SYMBOL(sys_getcwd);
 
+struct getdents_callback {
+  struct dir_context ctx;
+  struct linux_dirent64 *dirent;
+  int count;
+  int error;
+};
+
+static int filldir64(struct dir_context *ctx, const char *name, int namlen,
+                     vfs_loff_t offset, vfs_ino_t ino, unsigned int d_type) {
+  struct getdents_callback *buf = container_of(ctx, struct getdents_callback, ctx);
+  int reclen = (sizeof(struct linux_dirent64) + namlen + 1 + 7) & ~7;
+
+  if (reclen > buf->count) return -EINVAL;
+
+  struct linux_dirent64 *de = buf->dirent;
+  de->d_ino = ino;
+  de->d_off = offset;
+  de->d_reclen = (unsigned short) reclen;
+  de->d_type = (unsigned char) d_type;
+  memcpy(de->d_name, name, namlen);
+  de->d_name[namlen] = '\0';
+
+  buf->dirent = (void *) ((uintptr_t) buf->dirent + reclen);
+  buf->count -= reclen;
+  return 0;
+}
+
+int sys_getdents64(unsigned int fd, struct linux_dirent64 *dirent, unsigned int count) {
+  struct file *file = fget(fd);
+  if (!file) return -EBADF;
+
+  if (!file->f_op || !file->f_op->iterate) {
+    fput(file);
+    return -ENOTDIR;
+  }
+
+  struct getdents_callback buf = {
+    .ctx.actor = filldir64,
+    .ctx.pos = file->f_pos,
+    .dirent = dirent,
+    .count = (int) count,
+  };
+
+  int ret = file->f_op->iterate(file, &buf.ctx);
+  file->f_pos = buf.ctx.pos;
+  fput(file);
+
+  if (ret < 0) return ret;
+  return (int) count - buf.count;
+}
+
+EXPORT_SYMBOL(sys_getdents64);
+
 int sys_mkdir(const char *path_user, vfs_mode_t mode) {
   char *path = kmalloc(4096);
   if (!path) return -ENOMEM;
@@ -270,15 +382,319 @@ int sys_mknod(const char *path_user, vfs_mode_t mode, dev_t dev) {
 
 EXPORT_SYMBOL(sys_mknod);
 
-struct file *vfs_open(const char *path, int flags, int mode) {
-  struct dentry *dentry = vfs_path_lookup(path, 0);
-  if (!dentry) return nullptr;
+int sys_unlink(const char *path_user) {
+  char *path = kmalloc(4096);
+  if (!path) return -ENOMEM;
+
+  if (copy_from_user(path, path_user, 4096) != 0) {
+    kfree(path);
+    return -EFAULT;
+  }
+
+  int ret = do_unlink(path);
+  kfree(path);
+  return ret;
+}
+
+EXPORT_SYMBOL(sys_unlink);
+
+int sys_rmdir(const char *path_user) {
+  char *path = kmalloc(4096);
+  if (!path) return -ENOMEM;
+
+  if (copy_from_user(path, path_user, 4096) != 0) {
+    kfree(path);
+    return -EFAULT;
+  }
+
+  int ret = do_rmdir(path);
+  kfree(path);
+  return ret;
+}
+
+EXPORT_SYMBOL(sys_rmdir);
+
+int sys_rename(const char *oldpath_user, const char *newpath_user) {
+  char *oldpath = kmalloc(4096);
+  char *newpath = kmalloc(4096);
+  if (!oldpath || !newpath) {
+    if (oldpath) kfree(oldpath);
+    if (newpath) kfree(newpath);
+    return -ENOMEM;
+  }
+
+  if (copy_from_user(oldpath, oldpath_user, 4096) != 0 ||
+      copy_from_user(newpath, newpath_user, 4096) != 0) {
+    kfree(oldpath);
+    kfree(newpath);
+    return -EFAULT;
+  }
+
+  int ret = do_rename(oldpath, newpath);
+  kfree(oldpath);
+  kfree(newpath);
+  return ret;
+}
+
+EXPORT_SYMBOL(sys_rename);
+
+int sys_symlink(const char *oldpath_user, const char *newpath_user) {
+  char *oldpath = kmalloc(4096);
+  char *newpath = kmalloc(4096);
+  if (!oldpath || !newpath) {
+    if (oldpath) kfree(oldpath);
+    if (newpath) kfree(newpath);
+    return -ENOMEM;
+  }
+
+  if (copy_from_user(oldpath, oldpath_user, 4096) != 0 ||
+      copy_from_user(newpath, newpath_user, 4096) != 0) {
+    kfree(oldpath);
+    kfree(newpath);
+    return -EFAULT;
+  }
+
+  int ret = do_symlink(oldpath, newpath);
+  kfree(oldpath);
+  kfree(newpath);
+  return ret;
+}
+
+EXPORT_SYMBOL(sys_symlink);
+
+ssize_t sys_readlink(const char *path_user, char *buf_user, size_t bufsiz) {
+  char *path = kmalloc(4096);
+  if (!path) return -ENOMEM;
+
+  if (copy_from_user(path, path_user, 4096) != 0) {
+    kfree(path);
+    return -EFAULT;
+  }
+
+  char *kbuf = kmalloc(bufsiz);
+  if (!kbuf) {
+    kfree(path);
+    return -ENOMEM;
+  }
+
+  ssize_t ret = do_readlink(path, kbuf, bufsiz);
+  if (ret >= 0) {
+    if (copy_to_user(buf_user, kbuf, ret) != 0) {
+      ret = -EFAULT;
+    }
+  }
+
+  kfree(kbuf);
+  kfree(path);
+  return ret;
+}
+
+EXPORT_SYMBOL(sys_readlink);
+
+int sys_chmod(const char *path_user, vfs_mode_t mode) {
+  char *path = kmalloc(4096);
+  if (!path) return -ENOMEM;
+
+  if (copy_from_user(path, path_user, 4096) != 0) {
+    kfree(path);
+    return -EFAULT;
+  }
+
+  struct dentry *dentry = vfs_path_lookup(path, LOOKUP_FOLLOW);
+  kfree(path);
+  if (!dentry) return -ENOENT;
 
   struct inode *inode = dentry->d_inode;
-  if (!inode) return nullptr;
+  int ret = -EPERM;
+
+  if (inode->i_op && inode->i_op->setattr) {
+    ret = inode->i_op->setattr(dentry, mode, -1);
+  } else {
+    /* Generic implementation if no setattr */
+    inode->i_mode = (inode->i_mode & S_IFMT) | (mode & ~S_IFMT);
+    ret = 0;
+  }
+
+  if (ret == 0) vfs_notify_change(dentry, VFS_EVENT_ATTRIB);
+
+  dput(dentry);
+  return ret;
+}
+
+EXPORT_SYMBOL(sys_chmod);
+
+int sys_chown(const char *path_user, uid_t owner, gid_t group) {
+  char *path = kmalloc(4096);
+  if (!path) return -ENOMEM;
+
+  if (copy_from_user(path, path_user, 4096) != 0) {
+    kfree(path);
+    return -EFAULT;
+  }
+
+  struct dentry *dentry = vfs_path_lookup(path, LOOKUP_FOLLOW);
+  kfree(path);
+  if (!dentry) return -ENOENT;
+
+  struct inode *inode = dentry->d_inode;
+
+  /* For now, just set them directly if no specialized op */
+  if (owner != (uid_t) -1) inode->i_uid = owner;
+  if (group != (gid_t) -1) inode->i_gid = group;
+
+  vfs_notify_change(dentry, VFS_EVENT_ATTRIB);
+  dput(dentry);
+  return 0;
+}
+
+EXPORT_SYMBOL(sys_chown);
+
+int sys_truncate(const char *path_user, vfs_loff_t length) {
+  char *path = kmalloc(4096);
+  if (!path) return -ENOMEM;
+
+  if (copy_from_user(path, path_user, 4096) != 0) {
+    kfree(path);
+    return -EFAULT;
+  }
+
+  struct dentry *dentry = vfs_path_lookup(path, LOOKUP_FOLLOW);
+  kfree(path);
+  if (!dentry) return -ENOENT;
+
+  struct inode *inode = dentry->d_inode;
+  int ret = -EPERM;
+
+  if (inode->i_op && inode->i_op->setattr) {
+    ret = inode->i_op->setattr(dentry, -1, length);
+  } else {
+    inode->i_size = length;
+    ret = 0;
+  }
+
+  if (ret == 0) vfs_notify_change(dentry, VFS_EVENT_MODIFY);
+
+  dput(dentry);
+  return ret;
+}
+
+EXPORT_SYMBOL(sys_truncate);
+
+int sys_ftruncate(int fd, vfs_loff_t length) {
+  struct file *file = fget(fd);
+  if (!file) return -EBADF;
+
+  struct inode *inode = file->f_inode;
+  int ret = -EPERM;
+
+  if (inode->i_op && inode->i_op->setattr) {
+    ret = inode->i_op->setattr(file->f_dentry, -1, length);
+  } else {
+    inode->i_size = length;
+    ret = 0;
+  }
+
+  if (ret == 0) vfs_notify_change(file->f_dentry, VFS_EVENT_MODIFY);
+
+  fput(file);
+  return ret;
+}
+
+EXPORT_SYMBOL(sys_ftruncate);
+
+int sys_mount(const char *dev_name_user, const char *dir_name_user, const char *type_user,
+              unsigned long flags, void *data_user) {
+  char *dev_name = nullptr;
+  char *dir_name = nullptr;
+  char *type = nullptr;
+
+  if (dev_name_user) {
+    dev_name = kmalloc(4096);
+    if (copy_from_user(dev_name, dev_name_user, 4096) != 0) goto out_fault;
+  }
+
+  dir_name = kmalloc(4096);
+  if (copy_from_user(dir_name, dir_name_user, 4096) != 0) goto out_fault;
+
+  type = kmalloc(64);
+  if (copy_from_user(type, type_user, 64) != 0) goto out_fault;
+
+  int ret = vfs_mount(dev_name, dir_name, type, flags, data_user);
+  // data is usually opaque or kernel-internal for now
+
+  if (dev_name) kfree(dev_name);
+  kfree(dir_name);
+  kfree(type);
+  return ret;
+
+out_fault:
+  if (dev_name) kfree(dev_name);
+  if (dir_name) kfree(dir_name);
+  if (type) kfree(type);
+  return -EFAULT;
+}
+
+EXPORT_SYMBOL(sys_mount);
+
+struct file *vfs_open(const char *path, int flags, int mode) {
+  struct dentry *dentry = vfs_path_lookup(path, 0);
+
+  if (!dentry || !dentry->d_inode) {
+    if (!(flags & O_CREAT)) {
+      if (dentry) dput(dentry);
+      return nullptr;
+    }
+
+    struct dentry *parent = nullptr;
+
+    if (dentry && dentry->d_parent) {
+      /* Reuse the negative dentry found by lookup */
+      parent = dget(dentry->d_parent);
+    } else {
+      /* Fallback to manual parent lookup and dentry allocation */
+      if (dentry) dput(dentry);
+      parent = vfs_path_lookup(path, LOOKUP_PARENT);
+      if (!parent || !parent->d_inode) {
+        if (parent) dput(parent);
+        return nullptr;
+      }
+
+      const char *last_slash = strrchr(path, '/');
+      const char *filename = last_slash ? last_slash + 1 : path;
+      struct qstr qname = {.name = (const unsigned char *) filename, .len = (uint32_t) strlen(filename)};
+      dentry = d_alloc_pseudo(parent->d_inode->i_sb, &qname);
+      if (!dentry) {
+        dput(parent);
+        return nullptr;
+      }
+      dentry->d_parent = parent;
+    }
+
+    int ret = vfs_create(parent->d_inode, dentry, mode);
+    dput(parent);
+
+    if (ret < 0) {
+      dput(dentry);
+      return nullptr;
+    }
+  } else {
+    if ((flags & O_CREAT) && (flags & O_EXCL)) {
+      dput(dentry);
+      return nullptr; /* -EEXIST */
+    }
+  }
+
+  struct inode *inode = dentry->d_inode;
+  if (!inode) {
+    dput(dentry);
+    return nullptr;
+  }
 
   struct file *file = kzalloc(sizeof(struct file));
-  if (!file) return nullptr;
+  if (!file) {
+    dput(dentry);
+    return nullptr;
+  }
 
   file->f_dentry = dentry;
   file->f_inode = inode;
@@ -305,7 +721,7 @@ extern ssize_t filemap_read(struct file *file, char *buf, size_t count, vfs_loff
 extern ssize_t filemap_write(struct file *file, const char *buf, size_t count, vfs_loff_t *ppos);
 
 ssize_t vfs_read(struct file *file, char *buf, size_t count, vfs_loff_t *pos) {
-  if (!file) return -1;
+  if (!file) return -EBADF;
   ssize_t ret = -1;
 
   if (file->f_op && file->f_op->read)
@@ -331,7 +747,7 @@ int vfs_mmap(struct file *file, struct vm_area_struct *vma) {
 EXPORT_SYMBOL(vfs_mmap);
 
 ssize_t vfs_write(struct file *file, const char *buf, size_t count, vfs_loff_t *pos) {
-  if (!file) return -1;
+  if (!file) return -EINVAL;
   ssize_t ret = -1;
 
   if (file->f_op && file->f_op->write)
@@ -341,6 +757,7 @@ ssize_t vfs_write(struct file *file, const char *buf, size_t count, vfs_loff_t *
 
   if (ret > 0 && file->f_inode) {
     file->f_inode->i_mtime = file->f_inode->i_ctime = current_time(file->f_inode);
+    vfs_notify_change(file->f_dentry, VFS_EVENT_MODIFY);
   }
 
   return ret;
@@ -349,7 +766,7 @@ ssize_t vfs_write(struct file *file, const char *buf, size_t count, vfs_loff_t *
 EXPORT_SYMBOL(vfs_write);
 
 int vfs_close(struct file *file) {
-  if (!file) return -1;
+  if (!file) return -EINVAL;
   if (file->f_op && file->f_op->release) {
     file->f_op->release(file->f_inode, file);
   }
@@ -360,7 +777,7 @@ int vfs_close(struct file *file) {
 EXPORT_SYMBOL(vfs_close);
 
 vfs_loff_t vfs_llseek(struct file *file, vfs_loff_t offset, int whence) {
-  if (!file) return -1;
+  if (!file) return -EINVAL;
   if (file->f_op && file->f_op->llseek) {
     return file->f_op->llseek(file, offset, whence);
   }
@@ -378,10 +795,10 @@ vfs_loff_t vfs_llseek(struct file *file, vfs_loff_t offset, int whence) {
       new_pos = file->f_inode->i_size + offset;
       break;
     default:
-      return -1;
+      return -EINVAL;
   }
 
-  if (new_pos < 0) return -1;
+  if (new_pos < 0) return -EINVAL;
   file->f_pos = new_pos;
   return new_pos;
 }
@@ -405,7 +822,7 @@ uint32_t vfs_poll(struct file *file, poll_table *pt) {
   if (file->f_op && file->f_op->poll) {
     return file->f_op->poll(file, pt);
   }
-  
+
   /* Default: always readable/writable if no poll op */
   return POLLIN | POLLOUT;
 }
@@ -423,7 +840,7 @@ int vfs_stat(const char *path, struct stat *statbuf) {
   }
 
   memset(statbuf, 0, sizeof(struct stat));
-  statbuf->st_dev = 0; // TODO: sb->s_dev
+  statbuf->st_dev = inode->i_sb ? inode->i_sb->s_dev : 0;
   statbuf->st_ino = inode->i_ino;
   statbuf->st_mode = inode->i_mode;
   statbuf->st_nlink = inode->i_nlink;
@@ -448,7 +865,7 @@ int vfs_fstat(struct file *file, struct stat *statbuf) {
   struct inode *inode = file->f_inode;
 
   memset(statbuf, 0, sizeof(struct stat));
-  statbuf->st_dev = 0;
+  statbuf->st_dev = inode->i_sb ? inode->i_sb->s_dev : 0;
   statbuf->st_ino = inode->i_ino;
   statbuf->st_mode = inode->i_mode;
   statbuf->st_nlink = inode->i_nlink;
@@ -471,7 +888,7 @@ EXPORT_SYMBOL(vfs_fstat);
 int register_filesystem(struct file_system_type *fs) {
   if (!fs || !fs->name || !fs->mount || !fs->kill_sb) {
     printk(KERN_ERR VFS_CLASS "Attempted to register an invalid filesystem type.\n");
-    return -1;
+    return -EINVAL;
   }
   mutex_lock(&fs_type_mutex);
   list_add_tail(&fs->fs_list, &file_systems);
@@ -486,7 +903,7 @@ EXPORT_SYMBOL(register_filesystem);
 int unregister_filesystem(struct file_system_type *fs) {
   if (!fs) {
     printk(KERN_ERR VFS_CLASS "Attempted to unregister a nullptr filesystem type.\n");
-    return -1;
+    return -EINVAL;
   }
   mutex_lock(&fs_type_mutex);
   list_del(&fs->fs_list);
@@ -616,6 +1033,14 @@ static struct file_operations def_chr_fops = {
   .write = chrdev_write,
 };
 
+static struct file_operations def_fifo_fops = {
+  .open = nullptr, // TODO: pipe_open
+};
+
+static struct file_operations def_sock_fops = {
+  .open = nullptr, // TODO: socket_open
+};
+
 void init_special_inode(struct inode *inode, vfs_mode_t mode, dev_t rdev) {
   inode->i_mode = mode;
   if (S_ISCHR(mode)) {
@@ -624,12 +1049,28 @@ void init_special_inode(struct inode *inode, vfs_mode_t mode, dev_t rdev) {
   } else if (S_ISBLK(mode)) {
     inode->i_fop = &def_blk_fops;
     inode->i_rdev = rdev;
-  } else if (S_ISFIFO(mode) || S_ISSOCK(mode)) {
-    inode->i_fop = nullptr; // TODO
+  } else if (S_ISFIFO(mode)) {
+    inode->i_fop = &def_fifo_fops;
+  } else if (S_ISSOCK(mode)) {
+    inode->i_fop = &def_sock_fops;
   }
 }
 
 EXPORT_SYMBOL(init_special_inode);
+
+void vfs_notify_change(struct dentry *dentry, uint32_t event) {
+  /* This is a hook for future VFS event subscribers (e.g. inotify) */
+  (void) dentry;
+  (void) event;
+
+#ifdef CONFIG_VFS_DEBUG_EVENTS
+  if (dentry && dentry->d_name.name) {
+    printk(VFS_CLASS "Event 0x%x on %s\n", event, dentry->d_name.name);
+  }
+#endif
+}
+
+EXPORT_SYMBOL(vfs_notify_change);
 
 struct timespec current_time(struct inode *inode) {
   struct timespec now;
@@ -648,6 +1089,7 @@ struct inode *new_inode(struct super_block *sb) {
   spinlock_init(&inode->i_lock);
   INIT_LIST_HEAD(&inode->i_list);
   INIT_LIST_HEAD(&inode->i_dentry);
+  init_waitqueue_head(&inode->i_wait);
   atomic_set(&inode->i_count, 1);
 
   mutex_lock(&inode_mutex);
@@ -702,7 +1144,16 @@ void dput(struct dentry *dentry) {
   if (!dentry) return;
 
   if (atomic_dec_and_test(&dentry->d_count)) {
-    /* Simplified dentry reclamation */
+    /* Remove from parent's subdirectory list */
+    if (!list_empty(&dentry->d_child)) {
+      list_del(&dentry->d_child);
+    }
+
+    /* Remove from inode's dentry list */
+    if (!list_empty(&dentry->i_list)) {
+      list_del(&dentry->i_list);
+    }
+
     if (dentry->d_inode) {
       iput(dentry->d_inode);
     }
@@ -712,3 +1163,31 @@ void dput(struct dentry *dentry) {
 }
 
 EXPORT_SYMBOL(dput);
+
+ssize_t simple_read_from_buffer(void *to, size_t count, vfs_loff_t *ppos, const void *from, size_t available) {
+  vfs_loff_t pos = *ppos;
+  if (pos < 0) return -EINVAL;
+  if (pos >= available || !count) return 0;
+  if (count > available - pos) count = available - pos;
+  if (copy_to_user(to, from + pos, count)) return -EFAULT;
+  *ppos = pos + count;
+  return count;
+}
+
+EXPORT_SYMBOL(simple_read_from_buffer);
+
+struct dentry *simple_lookup(struct inode *dir, struct dentry *dentry, uint32_t flags) {
+  (void) dir;
+  (void) flags;
+  return dentry;
+}
+
+EXPORT_SYMBOL(simple_lookup);
+
+int simple_rmdir(struct inode *dir, struct dentry *dentry) {
+  (void) dir;
+  (void) dentry;
+  return 0;
+}
+
+EXPORT_SYMBOL(simple_rmdir);

@@ -87,6 +87,8 @@ struct vm_object {
   /* Statistics */
   atomic_long_t nr_pages;           /* Number of pages in page_tree */
   atomic_long_t nr_swap;            /* Number of pages swapped out */
+  
+  struct resdomain *rd;             /* Resource domain charging context */
 };
 
 #define VM_OBJECT_DIRTY         0x01

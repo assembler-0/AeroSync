@@ -5,10 +5,24 @@
 get_property(FKX_MODULE_LIST GLOBAL PROPERTY FKX_MODULES)
 set(LIMINE_MODULES "")
 set(FKX_MODULE_FILES "")
+set(FKX_COPY_COMMANDS "")
 foreach(MOD ${FKX_MODULE_LIST})
     string(APPEND LIMINE_MODULES "    module_path: boot():/module/${MOD}.module.fkx\n")
     list(APPEND FKX_MODULE_FILES $<TARGET_FILE:${MOD}>)
+    list(APPEND FKX_COPY_COMMANDS COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${MOD}> ${CMAKE_CURRENT_BINARY_DIR}/bootdir/module/$<TARGET_FILE_NAME:${MOD}>)
 endforeach()
+
+# Handle optional initrd
+set(INITRD_COPY_COMMAND "")
+set(INITRD_DEPENDENCY "")
+set(AEROSYNC_INITRD_CMDLINE "")
+if(AEROSYNC_INITRD)
+    get_filename_component(INITRD_NAME ${AEROSYNC_INITRD} NAME)
+    string(APPEND LIMINE_MODULES "    module_path: boot():/module/${INITRD_NAME}\n")
+    set(INITRD_COPY_COMMAND COMMAND ${CMAKE_COMMAND} -E copy ${AEROSYNC_INITRD} ${CMAKE_CURRENT_BINARY_DIR}/bootdir/module/${INITRD_NAME})
+    set(INITRD_DEPENDENCY ${AEROSYNC_INITRD})
+    set(AEROSYNC_INITRD_CMDLINE "initrd=${INITRD_NAME}")
+endif()
 
 configure_file(
         ${CMAKE_SOURCE_DIR}/tools/limine.conf.in
@@ -31,7 +45,11 @@ add_custom_command(
         # Copy Limine config
         COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/limine.conf
         ${CMAKE_CURRENT_BINARY_DIR}/bootdir/limine.conf
-        DEPENDS aerosync.krnl ${CMAKE_BINARY_DIR}/limine.conf ${FKX_MODULE_FILES}
+        # Copy FKX modules
+        ${FKX_COPY_COMMANDS}
+        # Copy initrd if provided
+        ${INITRD_COPY_COMMAND}
+        DEPENDS aerosync.krnl ${CMAKE_BINARY_DIR}/limine.conf ${FKX_MODULE_FILES} ${INITRD_DEPENDENCY}
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         COMMENT "Setting up boot directory with Limine"
         VERBATIM

@@ -1,18 +1,19 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 
+#include <aerosync/classes.h>
+#include <aerosync/export.h>
+#include <aerosync/fkx/fkx.h>
+#include <aerosync/panic.h>
+#include <aerosync/percpu.h>
+#include <aerosync/sched/cpumask.h>
+#include <aerosync/spinlock.h>
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/percpu.h>
 #include <arch/x86_64/smp.h>
-#include <aerosync/percpu.h>
-#include <aerosync/classes.h>
-#include <aerosync/fkx/fkx.h>
-#include <aerosync/panic.h>
-#include <aerosync/spinlock.h>
-#include <aerosync/export.h>
+#include <lib/bitmap.h>
 #include <lib/printk.h>
 #include <lib/string.h>
-#include <lib/bitmap.h>
 #include <mm/slub.h>
 
 #ifndef CONFIG_PER_CPU_CHUNK_SIZE
@@ -40,7 +41,7 @@ void setup_per_cpu_areas(void) {
   unsigned long count;
   void *ptr;
 
-  static_size = (unsigned long) _percpu_end - (unsigned long) _percpu_start;
+  static_size = (unsigned long)_percpu_end - (unsigned long)_percpu_start;
 
   if (PCPU_CHUNK_SIZE < static_size) {
     panic("PCPU_CHUNK_SIZE (%d) is smaller than static percpu section (%ld)!\n",
@@ -55,8 +56,8 @@ void setup_per_cpu_areas(void) {
   if (count == 0)
     count = 1;
 
-  printk(KERN_INFO PERCPU_CLASS
-         "Setting up per-cpu data for %lu CPUs, chunk size: %d bytes (static: %lu)\n",
+  printk(KERN_INFO PERCPU_CLASS "Setting up per-cpu data for %lu CPUs, chunk "
+                                "size: %d bytes (static: %lu)\n",
          count, PCPU_CHUNK_SIZE, static_size);
 
   size_t pages = (PCPU_CHUNK_SIZE / PAGE_SIZE);
@@ -76,11 +77,12 @@ void setup_per_cpu_areas(void) {
     memset(ptr, 0, PCPU_CHUNK_SIZE);
     memcpy(ptr, _percpu_start, static_size);
 
-    __per_cpu_offset[i] = (unsigned long) ptr - (unsigned long) _percpu_start;
+    __per_cpu_offset[i] = (unsigned long)ptr - (unsigned long)_percpu_start;
 
     /* Set 'this_cpu_off' inside the per-cpu area */
     DECLARE_PER_CPU(unsigned long, this_cpu_off);
-    *(unsigned long *) ((uint8_t *) ptr + ((unsigned long) &this_cpu_off - (unsigned long) _percpu_start)) =
+    *(unsigned long *)((uint8_t *)ptr + ((unsigned long)&this_cpu_off -
+                                         (unsigned long)_percpu_start)) =
         __per_cpu_offset[i];
 
     printk(KERN_DEBUG PERCPU_CLASS "  CPU %lu: per-cpu area @ %p\n", i, ptr);
@@ -106,38 +108,43 @@ void setup_per_cpu_areas(void) {
   wrmsr(MSR_GS_BASE, __per_cpu_offset[0]);
   g_percpu_ready = true;
 
-  printk(KERN_INFO PERCPU_CLASS "Full per-cpu setup done. Dynamic area: %d bytes\n",
-         PCPU_CHUNK_SIZE - (int) pcpu_start_offset);
+  printk(KERN_INFO PERCPU_CLASS
+         "Full per-cpu setup done. Dynamic area: %d bytes\n",
+         PCPU_CHUNK_SIZE - (int)pcpu_start_offset);
 }
 
 void *pcpu_alloc(size_t size, size_t align) {
-  if (size == 0) return nullptr;
+  if (size == 0)
+    return nullptr;
 
   /* We allocate in units of 16 bytes */
   int nr_units = (size + 15) / 16;
   int align_units = (align + 15) / 16;
-  if (align_units == 0) align_units = 1;
+  if (align_units == 0)
+    align_units = 1;
 
   spinlock_lock(&pcpu_lock);
 
-  int bit = (int) bitmap_find_next_zero_area(pcpu_bitmap, pcpu_nr_bits, 0, nr_units, align_units - 1);
+  int bit = (int)bitmap_find_next_zero_area(pcpu_bitmap, pcpu_nr_bits, 0,
+                                            nr_units, align_units - 1);
   if (bit < 0 || bit >= pcpu_nr_bits) {
     spinlock_unlock(&pcpu_lock);
     return nullptr;
   }
 
   bitmap_set(pcpu_bitmap, bit, nr_units);
-  pcpu_unit_counts[bit] = (uint16_t) nr_units;
+  pcpu_unit_counts[bit] = (uint16_t)nr_units;
   spinlock_unlock(&pcpu_lock);
 
   unsigned long offset = pcpu_start_offset + (bit * 16);
-  return (void *) ((unsigned long) _percpu_start + offset);
+  return (void *)((unsigned long)_percpu_start + offset);
 }
 
 void pcpu_free(void *ptr) {
-  if (!ptr) return;
+  if (!ptr)
+    return;
 
-  unsigned long offset = (unsigned long) ptr - (unsigned long) _percpu_start;
+  unsigned long offset = (unsigned long)ptr - (unsigned long)_percpu_start;
   if (offset < pcpu_start_offset || offset >= PCPU_CHUNK_SIZE) {
     return;
   }
@@ -147,7 +154,9 @@ void pcpu_free(void *ptr) {
   spinlock_lock(&pcpu_lock);
   if (!test_bit(bit, pcpu_bitmap)) {
     spinlock_unlock(&pcpu_lock);
-    printk(KERN_ERR PERCPU_CLASS "Double free or invalid free of per-cpu pointer %p\n", ptr);
+    printk(KERN_ERR PERCPU_CLASS
+           "Double free or invalid free of per-cpu pointer %p\n",
+           ptr);
     return;
   }
 
@@ -173,14 +182,13 @@ void percpu_test(void) {
   }
 
   /* Initialize each CPU's copy */
-  for_each_possible_cpu(cpu) {
-    *per_cpu_ptr(*p, cpu) = cpu + 100;
-  }
+  for_each_possible_cpu(cpu) { *per_cpu_ptr(*p, cpu) = cpu + 100; }
 
   /* Verify each CPU's copy */
   for_each_possible_cpu(cpu) {
     if (*per_cpu_ptr(*p, cpu) != cpu + 100) {
-      printk(KERN_ERR TEST_CLASS "Per-CPU verification failed for CPU %d (got %d, expected %d)\n",
+      printk(KERN_ERR TEST_CLASS
+             "Per-CPU verification failed for CPU %d (got %d, expected %d)\n",
              cpu, *per_cpu_ptr(*p, cpu), cpu + 100);
       goto out;
     }

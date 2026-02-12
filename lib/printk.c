@@ -21,6 +21,7 @@
 #include <arch/x86_64/io.h>
 #include <lib/log.h>
 #include <aerosync/classes.h>
+#include <aerosync/errno.h>
 #include <aerosync/timer.h>
 #include <aerosync/types.h>
 #include <lib/printk.h>
@@ -125,7 +126,7 @@ int printk_set_sink(const char *backend_name, bool cleanup) {
           // Fallback to auto select if preferred backend failed
           const printk_backend_t *fallback = printk_auto_select_backend(backend_name);
           if (fallback) return printk_set_sink(fallback->name, false);
-          return -1;
+          return -ENODEV;
         }
       }
 
@@ -143,8 +144,8 @@ int printk_set_sink(const char *backend_name, bool cleanup) {
   printk(KERN_ERR KERN_CLASS "printk backend %s not found, falling back\n", backend_name);
   const printk_backend_t *fallback = printk_auto_select_backend(backend_name);
   if (fallback) return printk_set_sink(fallback->name, false);
-  
-  return -1;
+
+  return -ENODEV;
 }
 EXPORT_SYMBOL(printk_set_sink);
 
@@ -216,7 +217,7 @@ static const char *parse_level_prefix(const char *fmt, int *level_io) {
 
 int vprintk(const char *fmt, va_list args) {
   if (!fmt)
-    return -1;
+    return -EINVAL;
 
   int level = KLOG_INFO; // Default log level
   // Parse optional level prefix (e.g. "$3$")
@@ -234,7 +235,7 @@ EXPORT_SYMBOL(vprintk);
 
 int vprintkln(const char *fmt, va_list args) {
   if (!fmt)
-    return -1;
+    return -EINVAL;
 
   int level = KLOG_INFO; // Default log level
   // Parse optional level prefix (e.g. "$3$")

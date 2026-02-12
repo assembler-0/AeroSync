@@ -172,39 +172,45 @@ endmenu
 
 menu "Command Line"
 
-config CMDLINE_BUF_SIZE
+config COMMAND_LINE_SIZE
     int "Command line buffer size"
     default 4096
     help
       Maximum size of the command line string that can be parsed.
 
-config CMDLINE_MAX_OPTS
-    int "Maximum number of command line options"
-    default 128
+endmenu
+
+menu "System Fusion"
+
+config FUSION_UBC
+    bool "Unified Buffer Cache (UBC)"
+    default y
     help
-      Maximum number of distinct key=value or flag options that can be stored.
+      Enables full fusion between the page cache (VM objects) and
+      the VFS layer. mmap, read, and write will share the same pages.
 
-config CMDLINE_MAX_KEY
-    int "Maximum length of a command line key"
-    default 64
-
-config CMDLINE_MAX_VAL
-    int "Maximum length of a command line value"
-    default 256
-
-config CMDLINE_OVERRIDE
-    string "Built-in command line override"
-    default ""
+config FUSION_RESDOMAIN_MM
+    bool "ResDomain Memory Accounting"
+    depends on RESDOMAIN_MEM
+    default y
     help
-      If non-empty, this command line will be used instead of the one
-      provided by the bootloader.
+      Enables automatic memory accounting in the VM system using
+      Resource Domains. Memory mapped or allocated via mmap will
+      be charged to the process's domain.
 
-config CMDLINE_APPEND
-    string "Built-in command line append"
-    default ""
+config FUSION_BLOCKING_IO
+    bool "Unified Blocking I/O"
+    default y
     help
-      If non-empty, this string will be appended to the command line
-      provided by the bootloader.
+      Integrates VFS wait queues with the scheduler for efficient
+      blocking I/O operations.
+
+config FUSION_POSIX_SYSCALLS
+    bool "Enhanced POSIX Syscall Layer"
+    default y
+    help
+      Enables a more comprehensive and compliant POSIX system call
+      layer, including advanced FD management and signals.
 
 endmenu
 

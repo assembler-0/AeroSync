@@ -93,18 +93,6 @@ function(add_fkx_module MODULE_NAME)
 	    )
 	endif()
 
-    if(MOD_LTO)
-        target_compile_options(${MODULE_NAME} PRIVATE 
-        	$<$<COMPILE_LANGUAGE:C>:
-        		-flto
-        	>
-       	)
-        target_link_options(${MODULE_NAME} PRIVATE 
-        	-flto
-        	-Wl,--gc-sections
-       	)
-    endif()
-
 	if(MOD_INTEL_CET)
 		target_compile_options(${MODULE_NAME} PRIVATE
 			$<$<COMPILE_LANGUAGE:C>:

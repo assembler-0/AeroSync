@@ -19,6 +19,7 @@
  */
 
 #include <aerosync/classes.h>
+#include <aerosync/errno.h>
 #include <aerosync/fkx/fkx.h>
 #include <aerosync/panic.h>
 #include <aerosync/sysintf/time.h>
@@ -31,6 +32,7 @@
 #include <lib/string.h>
 #include <lib/vsprintf.h>
 #include <mm/slub.h>
+#include <aerosync/errno.h>
 
 static struct class time_class = {
   .name = "time_source",
@@ -197,7 +199,7 @@ void time_wait_ns(uint64_t ns) {
 
 int time_calibrate_tsc_system(void) {
   if (!current_time_source)
-    return -1;
+    return -ENODEV;
 
   if (current_time_source->calibrate_tsc) {
     return current_time_source->calibrate_tsc();

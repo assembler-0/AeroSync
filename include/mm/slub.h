@@ -4,24 +4,25 @@
 #include <aerosync/types.h>
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/mm/pmm.h>
+#include <mm/gfp.h>
 #include <mm/page.h>
 
 #ifndef SLAB_MAX_ORDER
-  #ifndef CONFIG_SLAB_MAX_ORDER
-    #define SLAB_MAX_ORDER 11
-  #else
-    #define SLAB_MAX_ORDER CONFIG_SLAB_MAX_ORDER
-  #endif
+#ifndef CONFIG_SLAB_MAX_ORDER
+#define SLAB_MAX_ORDER 11
+#else
+#define SLAB_MAX_ORDER CONFIG_SLAB_MAX_ORDER
+#endif
 #endif
 
 #define SLAB_MAX_SIZE (128 * 1024)
 
 #ifndef SLAB_MAG_SIZE
-  #ifndef CONFIG_SLAB_MAG_SIZE
-    #define SLAB_MAG_SIZE 16
-  #else
-    #define SLAB_MAG_SIZE CONFIG_SLAB_MAG_SIZE
-  #endif
+#ifndef CONFIG_SLAB_MAG_SIZE
+#define SLAB_MAG_SIZE 16
+#else
+#define SLAB_MAG_SIZE CONFIG_SLAB_MAG_SIZE
+#endif
 #endif
 
 #define CACHE_LINE_SIZE 64

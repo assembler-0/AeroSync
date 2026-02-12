@@ -272,6 +272,29 @@ static void sys_lseek(struct syscall_regs *regs) {
   REGS_RETURN_VAL(regs, ret);
 }
 
+static void sys_dup_handler(struct syscall_regs *regs) {
+  int oldfd = (int) regs->rdi;
+  extern int sys_dup(int oldfd);
+  REGS_RETURN_VAL(regs, sys_dup(oldfd));
+}
+
+static void sys_dup2_handler(struct syscall_regs *regs) {
+  int oldfd = (int) regs->rdi;
+  int newfd = (int) regs->rsi;
+  extern int sys_dup2(int oldfd, int newfd);
+  REGS_RETURN_VAL(regs, sys_dup2(oldfd, newfd));
+}
+
+static void sys_fcntl_handler(struct syscall_regs *regs) {
+  int fd = (int) regs->rdi;
+  unsigned int cmd = (unsigned int) regs->rsi;
+  unsigned long arg = (unsigned long) regs->rdx;
+
+  extern int sys_fcntl(int fd, unsigned int cmd, unsigned long arg);
+  int ret = sys_fcntl(fd, cmd, arg);
+  REGS_RETURN_VAL(regs, ret);
+}
+
 static void sys_execve(struct syscall_regs *regs) {
   const char *filename_user = (const char *) regs->rdi;
   char **argv_user = (char **) regs->rsi;
@@ -549,6 +572,69 @@ static void sys_getcwd_handler(struct syscall_regs *regs) {
   REGS_RETURN_VAL(regs, (uint64_t)ret);
 }
 
+static void sys_unlink_handler(struct syscall_regs *regs) {
+  const char *path = (const char *) regs->rdi;
+  REGS_RETURN_VAL(regs, sys_unlink(path));
+}
+
+static void sys_rmdir_handler(struct syscall_regs *regs) {
+  const char *path = (const char *) regs->rdi;
+  REGS_RETURN_VAL(regs, sys_rmdir(path));
+}
+
+static void sys_rename_handler(struct syscall_regs *regs) {
+  const char *oldpath = (const char *) regs->rdi;
+  const char *newpath = (const char *) regs->rsi;
+  REGS_RETURN_VAL(regs, sys_rename(oldpath, newpath));
+}
+
+static void sys_symlink_handler(struct syscall_regs *regs) {
+  const char *oldpath = (const char *) regs->rdi;
+  const char *newpath = (const char *) regs->rsi;
+  REGS_RETURN_VAL(regs, sys_symlink(oldpath, newpath));
+}
+
+static void sys_readlink_handler(struct syscall_regs *regs) {
+  const char *path = (const char *) regs->rdi;
+  char *buf = (char *) regs->rsi;
+  size_t bufsiz = (size_t) regs->rdx;
+  REGS_RETURN_VAL(regs, sys_readlink(path, buf, bufsiz));
+}
+
+static void sys_chmod_handler(struct syscall_regs *regs) {
+  const char *path = (const char *) regs->rdi;
+  vfs_mode_t mode = (vfs_mode_t) regs->rsi;
+  REGS_RETURN_VAL(regs, sys_chmod(path, mode));
+}
+
+static void sys_chown_handler(struct syscall_regs *regs) {
+  const char *path = (const char *) regs->rdi;
+  uid_t owner = (uid_t) regs->rsi;
+  gid_t group = (gid_t) regs->rdx;
+  REGS_RETURN_VAL(regs, sys_chown(path, owner, group));
+}
+
+static void sys_truncate_handler(struct syscall_regs *regs) {
+  const char *path = (const char *) regs->rdi;
+  vfs_loff_t length = (vfs_loff_t) regs->rsi;
+  REGS_RETURN_VAL(regs, sys_truncate(path, length));
+}
+
+static void sys_ftruncate_handler(struct syscall_regs *regs) {
+  int fd = (int) regs->rdi;
+  vfs_loff_t length = (vfs_loff_t) regs->rsi;
+  REGS_RETURN_VAL(regs, sys_ftruncate(fd, length));
+}
+
+static void sys_mount_handler(struct syscall_regs *regs) {
+  const char *dev_name = (const char *) regs->rdi;
+  const char *dir_name = (const char *) regs->rsi;
+  const char *type = (const char *) regs->rdx;
+  unsigned long flags = (unsigned long) regs->r10;
+  void *data = (void *) regs->r8;
+  REGS_RETURN_VAL(regs, sys_mount(dev_name, dir_name, type, flags, data));
+}
+
 static sys_call_ptr_t syscall_table[] = {
   [0] = sys_read,
   [1] = sys_write,
@@ -565,6 +651,9 @@ static sys_call_ptr_t syscall_table[] = {
   [14] = sys_rt_sigprocmask,
   [15] = sys_rt_sigreturn,
   [16] = sys_ioctl,
+  [32] = sys_dup_handler,
+  [33] = sys_dup2_handler,
+  [72] = sys_fcntl_handler,
   [22] = sys_pipe,
   [25] = sys_mremap,
   [39] = sys_getpid_handler,
@@ -573,10 +662,20 @@ static sys_call_ptr_t syscall_table[] = {
   [59] = sys_execve,
   [60] = sys_exit_handler,
   [62] = sys_kill,
+  [76] = sys_truncate_handler,
+  [77] = sys_ftruncate_handler,
   [79] = sys_getcwd_handler,
   [80] = sys_chdir_handler,
+  [82] = sys_rename_handler,
   [83] = sys_mkdir_handler,
+  [84] = sys_rmdir_handler,
+  [87] = sys_unlink_handler,
+  [88] = sys_symlink_handler,
+  [89] = sys_readlink_handler,
+  [90] = sys_chmod_handler,
+  [92] = sys_chown_handler,
   [133] = sys_mknod_handler,
+  [165] = sys_mount_handler,
   [200] = sys_tkill,
   [234] = sys_tgkill,
 };

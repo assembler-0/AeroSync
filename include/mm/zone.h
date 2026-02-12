@@ -1,30 +1,25 @@
 #pragma once
 
-#include <aerosync/spinlock.h>
 #include <aerosync/atomic.h>
-#include <linux/list.h>
-#include <mm/page.h>
+#include <aerosync/spinlock.h>
+#include <aerosync/wait.h>
 #include <arch/x86_64/cpu.h>
-#include <mm/gfp.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/smp.h>
-#include <aerosync/wait.h>
+#include <linux/list.h>
+#include <mm/gfp.h>
+#include <mm/page.h>
 
 /* Zone types */
-enum zone_type {
-  ZONE_DMA,
-  ZONE_DMA32,
-  ZONE_NORMAL,
-  MAX_NR_ZONES
-};
+enum zone_type { ZONE_DMA, ZONE_DMA32, ZONE_NORMAL, MAX_NR_ZONES };
 
 /*
  * Page types for Per-CPU lists
  */
 enum {
   PCP_LEFT_OVER, /* Pages that didn't fit into other lists */
-  PCP_HOT, /* Hot pages (recently freed) */
-  PCP_COLD, /* Cold pages */
+  PCP_HOT,       /* Hot pages (recently freed) */
+  PCP_COLD,      /* Cold pages */
   PCP_TYPES
 };
 
@@ -49,9 +44,9 @@ enum migrate_type {
 };
 
 #ifndef CONFIG_MM_PMM_PAGEBLOCK_ORDER
-  #define PAGEBLOCK_ORDER 9
+#define PAGEBLOCK_ORDER 9
 #else
-  #define PAGEBLOCK_ORDER CONFIG_MM_PMM_PAGEBLOCK_ORDER
+#define PAGEBLOCK_ORDER CONFIG_MM_PMM_PAGEBLOCK_ORDER
 #endif
 
 #define PAGEBLOCK_NR_PAGES (1UL << PAGEBLOCK_ORDER)
@@ -62,17 +57,17 @@ struct free_area {
 };
 
 #ifndef CONFIG_MM_PMM_PCP_MAX_ORDER
-  #define PCP_ORDERS 4
+#define PCP_ORDERS 4
 #else
-  #define PCP_ORDERS (CONFIG_MM_PMM_PCP_MAX_ORDER + 1)
+#define PCP_ORDERS (CONFIG_MM_PMM_PCP_MAX_ORDER + 1)
 #endif
 
 #ifdef CONFIG_MM_PMM_PCP_HOT_COLD
-  #define PCP_LIST_HOT 0
-  #define PCP_LIST_COLD 1
-  #define PCP_LISTS 2
+#define PCP_LIST_HOT 0
+#define PCP_LIST_COLD 1
+#define PCP_LISTS 2
 #else
-  #define PCP_LISTS 1
+#define PCP_LISTS 1
 #endif
 
 struct per_cpu_pages {
@@ -103,9 +98,9 @@ struct per_cpu_pages {
 };
 
 #ifdef CONFIG_MM_PMM_INLINE_HOTPATH
-  #define PMM_INLINE __always_inline
+#define PMM_INLINE __always_inline
 #else
-  #define PMM_INLINE inline
+#define PMM_INLINE inline
 #endif
 
 alignas(64) struct zone {
@@ -195,11 +190,11 @@ alignas(64) struct zone {
 };
 
 #ifndef MAX_NUMNODES
-  #ifndef CONFIG_MAX_NUMNODES
-    #define MAX_NUMNODES 8
-  #else
-    #define MAX_NUMNODES CONFIG_MAX_NUMNODES
-  #endif
+#ifndef CONFIG_MAX_NUMNODES
+#define MAX_NUMNODES 8
+#else
+#define MAX_NUMNODES CONFIG_MAX_NUMNODES
+#endif
 #endif
 #define NUMA_NO_NODE (-1)
 
@@ -231,7 +226,7 @@ alignas(64) struct pglist_data {
   unsigned long node_present_pages;
   unsigned long node_spanned_pages;
   int node_id;
-  
+
   wait_queue_head_t kswapd_wait;
   struct task_struct *kswapd_task;
 
@@ -248,9 +243,9 @@ extern struct zone managed_zones[MAX_NR_ZONES];
 /*
  * Zone watermarks
  */
-#define WMARK_MIN   0
-#define WMARK_LOW   1
-#define WMARK_HIGH  2
+#define WMARK_MIN 0
+#define WMARK_LOW 1
+#define WMARK_HIGH 2
 #define WMARK_PROMO 3
 
 /*
@@ -266,9 +261,13 @@ struct folio *alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order);
 int rmqueue_bulk(struct zone *zone, unsigned int order, unsigned int count,
                  struct list_head *list, int migratetype);
 
-void free_pcp_pages(struct zone *zone, int count, struct list_head *list, int order);
+void free_pcp_pages(struct zone *zone, int count, struct list_head *list,
+                    int order);
 
 void __free_pages(struct page *page, unsigned int order);
+
+/* Boot-only: bypasses poisoning, PCP, locking. Single-threaded init only. */
+void __free_pages_boot_core(struct page *page, unsigned int order);
 
 void free_pages(uint64_t addr, unsigned int order);
 
@@ -277,10 +276,6 @@ static inline struct folio *alloc_page(gfp_t gfp_mask) {
 }
 
 int cpu_to_node(int cpu);
-static inline int this_node(void) {
-    return cpu_to_node((int)smp_get_id());
-}
+static inline int this_node(void) { return cpu_to_node((int)smp_get_id()); }
 
-static inline void __free_page(struct page *page) {
-  __free_pages(page, 0);
-}
+static inline void __free_page(struct page *page) { __free_pages(page, 0); }

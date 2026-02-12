@@ -28,7 +28,8 @@
         "STACK_PROTECTION": "OFF",
         "STACK_PROTECTION_ALL": "ON",
         "SANITIZER": "ON",
-        "LTO": "ON"
+        "LTO": "ON",
+        "STRIP": "ON"
       }
     },
     {
@@ -43,7 +44,8 @@
         "STACK_PROTECTION": "ON",
         "STACK_PROTECTION_ALL": "OFF",
         "SANITIZER": "OFF",
-        "LTO": "ON"
+        "LTO": "ON",
+        "STRIP": "ON"
       }
     },
     {
@@ -58,7 +60,8 @@
         "STACK_PROTECTION": "OFF",
         "STACK_PROTECTION_ALL": "ON",
         "SANITIZER": "ON",
-        "LTO": "ON"
+        "LTO": "ON",
+        "STRIP": "OFF"
       }
     },
     {
@@ -72,8 +75,7 @@
         "DSYM_LEVEL": "3",
         "STACK_PROTECTION": "ON",
         "STACK_PROTECTION_ALL": "OFF",
-        "SANITIZER": "ON",
-        "LTO": "ON"
+        "STRIP": "OFF"
       }
     }
   ],

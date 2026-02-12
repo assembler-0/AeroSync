@@ -36,6 +36,10 @@ int fd_install(unsigned int fd, struct file *file);
 int get_unused_fd_flags(unsigned int flags);
 void put_unused_fd(unsigned int fd);
 
+int sys_dup(int oldfd);
+int sys_dup2(int oldfd, int newfd);
+int sys_fcntl(int fd, unsigned int cmd, unsigned long arg);
+
 /* VFS core functions */
 struct file *vfs_open(const char *path, int flags, int mode);
 ssize_t vfs_read(struct file *file, char *buf, size_t count, vfs_loff_t *pos);

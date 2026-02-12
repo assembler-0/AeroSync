@@ -11,10 +11,11 @@
 #define PG_slab (1 << 3)
 #define PG_referenced (1 << 4)
 #define PG_lru (1 << 5)
-#define PG_head (1 << 6)   /* Page is the head of a compound page (folio) */
-#define PG_tail (1 << 7)   /* Page is a tail of a compound page */
-#define PG_dirty (1 << 8)  /* Page has been modified and needs writeback */
-#define PG_locked (1 << 9) /* Page is locked (bit-spinlock for SLUB) */
+#define PG_head (1 << 6)      /* Page is the head of a compound page (folio) */
+#define PG_tail (1 << 7)      /* Page is a tail of a compound page */
+#define PG_dirty (1 << 8)     /* Page has been modified and needs writeback */
+#define PG_locked (1 << 9)    /* Page is locked (bit-spinlock for SLUB) */
+#define PG_poisoned (1 << 10) /* Page has been poisoned by kernel */
 
 /* MGLRU flags (bits 50-53) */
 #define LRU_GEN_MASK 0x7ULL
@@ -72,6 +73,8 @@ struct page {
   uint32_t node;        /* NUMA node ID */
   atomic_t _refcount;   /* Reference count */
 
+  struct resdomain *rd; /* Resource domain that owns this page */
+
   /* Split page table lock */
   spinlock_t ptl;
 };
@@ -126,6 +129,10 @@ struct folio {
 #define ClearPageTail(page) ((page)->flags &= ~PG_tail)
 
 #define PageLocked(page) ((page)->flags & PG_locked)
+
+#define PagePoisoned(page) ((page)->flags & PG_poisoned)
+#define SetPagePoisoned(page) ((page)->flags |= PG_poisoned)
+#define ClearPagePoisoned(page) ((page)->flags &= ~PG_poisoned)
 
 #define offset_in_page(p) (((unsigned long)p) % PAGE_SIZE)
 

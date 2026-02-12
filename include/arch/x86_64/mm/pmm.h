@@ -2,6 +2,7 @@
 
 #include <aerosync/types.h>
 #include <arch/x86_64/mm/paging.h>
+#include <mm/page.h>
 
 #define MAX_ORDER 19
 
@@ -20,11 +21,6 @@ typedef struct {
   uint64_t memmap_pages;    // Pages used by mem_map array
   uint64_t memmap_size;     // Size of mem_map array in bytes
 } pmm_stats_t;
-
-#include <mm/zone.h>
-
-/* Per-CPU page cache for order-0 pages */
-/* Defined in mm/zone.h */
 
 /**
  * Initialize the physical memory manager.
@@ -60,7 +56,7 @@ uint64_t pmm_alloc_pages(size_t count);
 /**
  * Allocate a physical huge page of a specific size.
  * Automatically checks for architectural support and uses fail-fast paths.
- * 
+ *
  * @param size Size in bytes (e.g., VMM_PAGE_SIZE_2M, VMM_PAGE_SIZE_1G)
  * @return Physical address of the block, or 0 on failure.
  */
@@ -104,14 +100,13 @@ static inline void *pmm_phys_to_virt(uint64_t phys_addr);
  */
 static inline uint64_t pmm_virt_to_phys(void *virt_addr);
 
-
 uint64_t pmm_get_max_pfn(void);
 
 // HHDM offset - set during pmm_init
 
 extern uint64_t g_hhdm_offset;
-extern struct page *mem_map;
 extern uint64_t pmm_max_pages;
+extern struct page *mem_map;
 
 static inline void *pmm_phys_to_virt(uint64_t phys_addr) {
   return (void *)(phys_addr + g_hhdm_offset);
@@ -123,7 +118,8 @@ static inline uint64_t pmm_virt_to_phys(void *virt_addr) {
 
 static inline struct page *phys_to_page(uint64_t phys) {
   uint64_t pfn = PHYS_TO_PFN(phys);
-  if (pfn >= pmm_max_pages) return nullptr;
+  if (pfn >= pmm_max_pages)
+    return nullptr;
   return &mem_map[pfn];
 }
 
@@ -142,3 +138,5 @@ void pmm_test(void);
  * Report system memory capabilities and potential limitations.
  */
 void pmm_report_capabilities(void);
+
+#include <mm/zone.h>

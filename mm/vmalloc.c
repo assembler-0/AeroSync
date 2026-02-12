@@ -451,7 +451,7 @@ static void free_vmap_area_metadata(struct vmap_area *va) {
  */
 static inline int pcp_bin_index(unsigned long pages) {
   if (pages == 0 || pages > (1UL << (VMALLOC_PCP_BINS - 1)))
-    return -1;
+    return -EINVAL;
 
   /* Find the smallest bin that fits this allocation */
   int bin = 0;

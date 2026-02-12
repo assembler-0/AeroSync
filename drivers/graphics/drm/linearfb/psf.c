@@ -2,16 +2,17 @@
 /**
  * linearfb - PSF Font Support
  *
- * @file lib/linearfb/psf.c
+ * @file drivers/graphics/drm/linearfb/psf.c
  * @brief PC Screen Font (PSF) 1 & 2 parser
  * @copyright (C) 2026 assembler-0
  */
 
+#include <aerosync/errno.h>
 #include <lib/linearfb/psf.h>
 #include <lib/string.h>
 
 int psf_parse(const void *data, size_t size, psf_font_t *font) {
-    if (!data || !font || size < sizeof(psf1_header_t)) return -1;
+    if (!data || !font || size < sizeof(psf1_header_t)) return -EINVAL;
     
     const uint8_t *bytes = (const uint8_t *)data;
 
@@ -30,7 +31,7 @@ int psf_parse(const void *data, size_t size, psf_font_t *font) {
         
         // Validation
         size_t expected = sizeof(psf1_header_t) + font->num_glyphs * font->bytes_per_glyph;
-        if (size < expected) return -2;
+        if (size < expected) return -EINVAL;
         
         return 0;
     }
@@ -52,10 +53,10 @@ int psf_parse(const void *data, size_t size, psf_font_t *font) {
 
         // Validation
         size_t expected = h->headersize + font->num_glyphs * font->bytes_per_glyph;
-        if (size < expected) return -3;
-        
+        if (size < expected) return -EINVAL;
+
         return 0;
     }
 
-    return -4; // Unknown format
+    return -EINVAL; // Unknown format
 }

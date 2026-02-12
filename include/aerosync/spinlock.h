@@ -156,7 +156,7 @@ static inline uint32_t spinlock_get_cpu(spinlock_t *lock) {
 #if defined(CONFIG_DEBUG_SPINLOCK) && defined(CONFIG_TICKET_SPINLOCKS)
   return READ_ONCE(lock->owner_cpu);
 #else
-  return -1;
+  return -ENOTSUPP;
 #endif
 }
 

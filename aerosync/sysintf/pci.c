@@ -8,6 +8,7 @@
  */
 
 #include <aerosync/classes.h>
+#include <aerosync/errno.h>
 #include <aerosync/fkx/fkx.h>
 #include <aerosync/sysintf/pci.h>
 #include <lib/printk.h>
@@ -17,6 +18,7 @@
 #include <aerosync/sysintf/device.h>
 #include <mm/slub.h>
 #include <linux/container_of.h>
+#include <aerosync/errno.h>
 
 static struct class pci_hw_class = {
     .name = "pci_hardware",
@@ -98,7 +100,7 @@ EXPORT_SYMBOL(pci_write);
 int pci_register_driver(struct pci_driver *driver) {
   if (current_subsys_ops && current_subsys_ops->register_driver)
     return current_subsys_ops->register_driver(driver);
-  return -1;
+  return -ENODEV;
 }
 
 EXPORT_SYMBOL(pci_register_driver);
@@ -120,7 +122,7 @@ EXPORT_SYMBOL(pci_enumerate_bus);
 int pci_enable_device(struct pci_dev *dev) {
   if (current_subsys_ops && current_subsys_ops->enable_device)
     return current_subsys_ops->enable_device(dev);
-  return -1;
+  return -ENODEV;
 }
 
 EXPORT_SYMBOL(pci_enable_device);

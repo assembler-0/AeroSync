@@ -9,8 +9,9 @@
 
 #pragma once
 
+#include <aerosync/rw_semaphore.h>
 #include <fs/vfs.h>
-#include <linux/list.h>
+#include <linux/rbtree.h>
 
 struct pseudo_node;
 
@@ -30,17 +31,23 @@ struct pseudo_fs_info {
 struct pseudo_node {
     char name[64];
     vfs_mode_t mode;
+    vfs_ino_t i_ino;
     struct inode *inode;
     void *private_data;
     const struct file_operations *fop;
     const struct inode_operations *iop;
+    char *symlink_target; /* For symlinks */
     
     /* Callback for custom inode initialization (e.g. for devfs) */
     void (*init_inode)(struct inode *inode, struct pseudo_node *node);
 
     struct pseudo_node *parent;
-    struct list_head children;
-    struct list_head sibling;
+    struct rb_root children; /* RB-Tree root for children */
+    struct rb_node rb_node;  /* Node in parent's tree */
+    struct list_head sibling; /* Fallback list for iteration if needed */
+    
+    struct rw_semaphore lock; /* Protects children */
+    struct resdomain *rd;     /* Resource domain to charge */
 };
 
 /**
@@ -49,7 +56,12 @@ struct pseudo_node {
 int pseudo_fs_register(struct pseudo_fs_info *fs);
 
 /**
- * pseudo_fs_create_node - Create a file or directory in the pseudo-FS
+ * pseudo_fs_find_node - Find a node by name in a parent
+ */
+struct pseudo_node *pseudo_fs_find_node(struct pseudo_node *parent, const char *name);
+
+/**
+ * pseudo_fs_create_node - Generic creation function
  */
 struct pseudo_node *pseudo_fs_create_node(struct pseudo_fs_info *fs,
                                           struct pseudo_node *parent,
@@ -57,6 +69,22 @@ struct pseudo_node *pseudo_fs_create_node(struct pseudo_fs_info *fs,
                                           vfs_mode_t mode,
                                           const struct file_operations *fops,
                                           void *private_data);
+
+/* Helper functions for specific types */
+struct pseudo_node *pseudo_fs_create_dir(struct pseudo_fs_info *fs,
+                                         struct pseudo_node *parent,
+                                         const char *name);
+
+struct pseudo_node *pseudo_fs_create_file(struct pseudo_fs_info *fs,
+                                          struct pseudo_node *parent,
+                                          const char *name,
+                                          const struct file_operations *fops,
+                                          void *private_data);
+
+struct pseudo_node *pseudo_fs_create_link(struct pseudo_fs_info *fs,
+                                          struct pseudo_node *parent,
+                                          const char *name,
+                                          const char *target);
 
 /**
  * pseudo_fs_remove_node - Remove a node from the tree

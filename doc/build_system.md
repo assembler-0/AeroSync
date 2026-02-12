@@ -79,6 +79,12 @@ There are two ways to configure the kernel:
 - **CMake (cache):** `cmake -D<OPTION>=<VALUE> <SRC_DIR>` or `cmake-gui <SRC_DIR>` or `ccmake <SRC_DIR>`
 - **Kconfig:** `python -m *config <SRC_DIR>` or `<GENERATOR> *config`
 
+#### Notable CMake options:
+- `AEROSYNC_INITRD`: Path to a CPIO archive to be used as an initial ramdisk. If provided:
+  - The file will be copied to `/module/` in the ISO.
+  - The kernel command line will be automatically appended with `initrd=<filename>`.
+  - The kernel will unpack it into the root `tmpfs` during early boot.
+
 ## ISO Generation
 
 The build system creates a hybrid ISO that supports both BIOS and UEFI boot modes using the Limine bootloader:

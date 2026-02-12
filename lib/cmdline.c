@@ -1,306 +1,277 @@
-///SPDX-License-Identifier: GPL-2.0-only
-/**
- * AeroSync monolithic kernel
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * linux/lib/cmdline.c
+ * Helper functions generally used for parsing kernel command line
+ * and module options.
  *
- * @file lib/cmdline.c
- * @brief Production-Ready Command-Line Parser
- * @copyright (C) 2025-2026 assembler-0
+ * Code and copyrights come from init/main.c and arch/i386/kernel/setup.c.
+ *
+ * GNU Indent formatting options for this file: -kr -i8 -npsl -pcs
  */
 
-#include <aerosync/cmdline.h>
+#include <compiler.h>
+#include <aerosync/export.h>
+#include <aerosync/types.h>
 #include <lib/string.h>
 #include <aerosync/ctype.h>
-#include <aerosync/export.h>
 
-#ifndef CONFIG_USE_CMDLINE_PARSER
-static cstring g_cmdline = nullptr;
-#endif
+/*
+ *	If a hyphen was found in get_option, this will handle the
+ *	range of numbers, M-N.  This will expand the range and insert
+ *	the values[M, M+1, ..., N] into the ints array in get_options.
+ */
 
-#ifdef CONFIG_CMDLINE_PARSER
+static int get_range(char **str, int *pint, int n)
+{
+	int x, inc_counter, upper_range;
 
-#ifndef CONFIG_CMDLINE_MAX_OPTS
-#define CONFIG_CMDLINE_MAX_OPTS 128
-#endif
-
-#ifndef CONFIG_CMDLINE_MAX_KEY
-#define CONFIG_CMDLINE_MAX_KEY 64
-#endif
-
-#ifndef CONFIG_CMDLINE_MAX_VAL
-#define CONFIG_CMDLINE_MAX_VAL 256
-#endif
-
-#ifndef CONFIG_CMDLINE_BUF_SIZE
-#define CONFIG_CMDLINE_BUF_SIZE 4096
-#endif
-
-struct cmdline_entry {
-  char key[CONFIG_CMDLINE_MAX_KEY];
-  char value[CONFIG_CMDLINE_MAX_VAL];
-  cmdline_type_t type;
-  int present;
-  int is_registered;
-};
-
-static struct cmdline_entry entries[CONFIG_CMDLINE_MAX_OPTS];
-static int entry_count = 0;
-
-static struct cmdline_entry *find_entry(const char *key) {
-  if (!key) return nullptr;
-  for (int i = 0; i < entry_count; i++) {
-    if (strcmp(entries[i].key, key) == 0)
-      return &entries[i];
-  }
-  return nullptr;
-}
-
-static struct cmdline_entry *get_or_create_entry(const char *key) {
-  struct cmdline_entry *e = find_entry(key);
-  if (e) return e;
-
-  if (entry_count >= CONFIG_CMDLINE_MAX_OPTS) return nullptr;
-
-  e = &entries[entry_count++];
-  strncpy(e->key, key, CONFIG_CMDLINE_MAX_KEY);
-  e->present = 0;
-  e->is_registered = 0;
-  e->value[0] = '\0';
-  return e;
+	(*str)++;
+	upper_range = (int)simple_strtol((*str), nullptr, 0);
+	inc_counter = upper_range - *pint;
+	for (x = *pint; n && x < upper_range; x++, n--)
+		*pint++ = x;
+	return inc_counter;
 }
 
 /**
- * Tokenize cmdline string handling quotes and escapes.
- * Does NOT modify the original string, uses an internal write pointer
- * to strip quotes and handle escapes into the same buffer.
- * Returns next token and updates *pos.
+ *	get_option - Parse integer from an option string
+ *	@str: option string
+ *	@pint: (optional output) integer value parsed from @str
+ *
+ *	Read an int from an option string; if available accept a subsequent
+ *	comma as well.
+ *
+ *	When @pint is nullptr the function can be used as a validator of
+ *	the current option in the string.
+ *
+ *	Return values:
+ *	0 - no int in string
+ *	1 - int found, no subsequent comma
+ *	2 - int found including a subsequent comma
+ *	3 - hyphen found to denote a range
+ *
+ *	Leading hyphen without integer is no integer case, but we consume it
+ *	for the sake of simplification.
  */
-static char *next_token(char **pos) {
-  static char token_buf[CONFIG_CMDLINE_MAX_VAL];
-  char *p = *pos;
-  while (*p && isspace((unsigned char)*p))
-    p++;
 
-  if (!*p) {
-    *pos = p;
-    return nullptr;
-  }
+int get_option(char **str, int *pint)
+{
+	char *cur = *str;
+	int value;
 
-  char *token_start = p;
-  char quote = 0;
-  bool escaped = false;
+	if (!cur || !(*cur))
+		return 0;
+	if (*cur == '-')
+		value = -(int)simple_strtoull(++cur, str, 0);
+	else
+		value = (int)simple_strtoull(cur, str, 0);
+	if (pint)
+		*pint = value;
+	if (cur == *str)
+		return 0;
+	if (**str == ',') {
+		(*str)++;
+		return 2;
+	}
+	if (**str == '-')
+		return 3;
 
-  // First pass: find token end
-  char *token_end = p;
-  while (*token_end) {
-    if (escaped) {
-      escaped = false;
-      token_end++;
-      continue;
-    }
-    if (*token_end == '\\') {
-      escaped = true;
-      token_end++;
-      continue;
-    }
-    if (quote) {
-      if (*token_end == quote)
-        quote = 0;
-      token_end++;
-    } else {
-      if (*token_end == '"' || *token_end == '\'') {
-        quote = *token_end++;
-      } else if (isspace((unsigned char)*token_end)) {
-        break;
-      } else {
-        token_end++;
-      }
-    }
-  }
-
-  // Now process quotes/escapes into token_buf
-  char *write = token_buf;
-  char *write_end = token_buf + CONFIG_CMDLINE_MAX_VAL - 1;
-  quote = 0;
-  escaped = false;
-  p = token_start;
-
-  while (p < token_end && write < write_end) {
-    if (escaped) {
-      *write++ = *p++;
-      escaped = false;
-      continue;
-    }
-    if (*p == '\\') {
-      escaped = true;
-      p++;
-      continue;
-    }
-    if (quote) {
-      if (*p == quote) {
-        quote = 0;
-        p++;
-      } else {
-        *write++ = *p++;
-      }
-    } else {
-      if (*p == '"' || *p == '\'') {
-        quote = *p++;
-      } else {
-        *write++ = *p++;
-      }
-    }
-  }
-
-  *write = '\0';
-
-  // Skip trailing whitespace for next call
-  while (*token_end && isspace((unsigned char)*token_end))
-    token_end++;
-  *pos = token_end;
-
-  return token_buf;
+	return 1;
 }
+EXPORT_SYMBOL(get_option);
 
-#endif /* CONFIG_CMDLINE_PARSER */
+/**
+ *	get_options - Parse a string into a list of integers
+ *	@str: String to be parsed
+ *	@nints: size of integer array
+ *	@ints: integer array (must have room for at least one element)
+ *
+ *	This function parses a string containing a comma-separated
+ *	list of integers, a hyphen-separated range of _positive_ integers,
+ *	or a combination of both.  The parse halts when the array is
+ *	full, or when no more numbers can be retrieved from the
+ *	string.
+ *
+ *	When @nints is 0, the function just validates the given @str and
+ *	returns the amount of parseable integers as described below.
+ *
+ *	Returns:
+ *
+ *	The first element is filled by the number of collected integers
+ *	in the range. The rest is what was parsed from the @str.
+ *
+ *	Return value is the character in the string which caused
+ *	the parse to end (typically a null terminator, if @str is
+ *	completely parseable).
+ */
 
-int cmdline_register_option(const char *key, cmdline_type_t type) {
-#ifdef CONFIG_CMDLINE_PARSER
-  if (!key) return -1;
+char *get_options(const char *str, int nints, int *ints)
+{
+	bool validate = (nints == 0);
+	int res, i = 1;
 
-  struct cmdline_entry *e = get_or_create_entry(key);
-  if (!e) return -1;
+	while (i < nints || validate) {
+		int *pint = validate ? ints : ints + i;
 
-  e->type = type;
-  e->is_registered = 1;
-#endif
-  return 0; /* no-op for simple parser */
+		res = get_option((char **)&str, pint);
+		if (res == 0)
+			break;
+		if (res == 3) {
+			int n = validate ? 0 : nints - i;
+			int range_nums;
+
+			range_nums = get_range((char **)&str, pint, n);
+			if (range_nums < 0)
+				break;
+			/*
+			 * Decrement the result by one to leave out the
+			 * last number in the range.  The next iteration
+			 * will handle the upper number in the range
+			 */
+			i += (range_nums - 1);
+		}
+		i++;
+		if (res == 1)
+			break;
+	}
+	ints[0] = i - 1;
+	return (char *)str;
 }
-EXPORT_SYMBOL(cmdline_register_option);
+EXPORT_SYMBOL(get_options);
 
-int cmdline_parse(char *cmdline) {
-#ifdef CONFIG_CMDLINE_PARSER
-  if (!cmdline) return 0;
+/**
+ *	memparse - parse a string with mem suffixes into a number
+ *	@ptr: Where parse begins
+ *	@retptr: (output) Optional pointer to next char after parse completes
+ *
+ *	Parses a string into a number.  The number stored at @ptr is
+ *	potentially suffixed with K, M, G, T, P, E.
+ */
 
-  static char parse_buf[CONFIG_CMDLINE_BUF_SIZE];
-  
-#ifdef CONFIG_CMDLINE_OVERRIDE
-  if (strlen(CONFIG_CMDLINE_OVERRIDE) > 0) {
-    cmdline = CONFIG_CMDLINE_OVERRIDE;
-  }
-#endif
+unsigned long long memparse(const char *ptr, char **retptr)
+{
+	char *endptr;	/* local pointer to end of parsed string */
 
-  strncpy(parse_buf, cmdline, CONFIG_CMDLINE_BUF_SIZE);
+	unsigned long long ret = simple_strtoull(ptr, &endptr, 0);
 
-#ifdef CONFIG_CMDLINE_APPEND
-  if (strlen(CONFIG_CMDLINE_APPEND) > 0) {
-    strlcat(parse_buf, " ", CONFIG_CMDLINE_BUF_SIZE);
-    strlcat(parse_buf, CONFIG_CMDLINE_APPEND, CONFIG_CMDLINE_BUF_SIZE);
-  }
-#endif
+	switch (*endptr) {
+	case 'E':
+	case 'e':
+		ret <<= 10;
+		fallthrough;
+	case 'P':
+	case 'p':
+		ret <<= 10;
+		fallthrough;
+	case 'T':
+	case 't':
+		ret <<= 10;
+		fallthrough;
+	case 'G':
+	case 'g':
+		ret <<= 10;
+		fallthrough;
+	case 'M':
+	case 'm':
+		ret <<= 10;
+		fallthrough;
+	case 'K':
+	case 'k':
+		ret <<= 10;
+		endptr++;
+		fallthrough;
+	default:
+		break;
+	}
 
-  char *p = parse_buf;
-  char *token;
-  int parsed = 0;
+	if (retptr)
+		*retptr = endptr;
 
-  while ((token = next_token(&p)) != nullptr) {
-    char *eq = strchr(token, '=');
-    if (eq) {
-      *eq = '\0';
-      char *key = token;
-      char *val = eq + 1;
-
-      struct cmdline_entry *e = get_or_create_entry(key);
-      if (e) {
-        strncpy(e->value, val, CONFIG_CMDLINE_MAX_VAL);
-        e->present = 1;
-        parsed++;
-      }
-    } else {
-      struct cmdline_entry *e = get_or_create_entry(token);
-      if (e) {
-        e->present = 1;
-        parsed++;
-      }
-    }
-  }
-
-  return parsed;
-#else
-  g_cmdline = cmdline;
-  return 0;
-#endif
+	return ret;
 }
-EXPORT_SYMBOL(cmdline_parse);
+EXPORT_SYMBOL(memparse);
 
-int cmdline_has_option(const char *key) {
-#ifdef CONFIG_CMDLINE_PARSER
-  struct cmdline_entry *e = find_entry(key);
-  return (e && e->present) ? 1 : 0;
-#else
-  return find(g_cmdline, key);
-#endif
+/**
+ *	parse_option_str - Parse a string and check an option is set or not
+ *	@str: String to be parsed
+ *	@option: option name
+ *
+ *	This function parses a string containing a comma-separated list of
+ *	strings like a=b,c.
+ *
+ *	Return true if there's such option in the string, or return false.
+ */
+bool parse_option_str(const char *str, const char *option)
+{
+	while (*str) {
+		if (!strncmp(str, option, strlen(option))) {
+			str += strlen(option);
+			if (!*str || *str == ',')
+				return true;
+		}
+
+		while (*str && *str != ',')
+			str++;
+
+		if (*str == ',')
+			str++;
+	}
+
+	return false;
 }
-EXPORT_SYMBOL(cmdline_has_option);
+EXPORT_SYMBOL(parse_option_str);
 
-int cmdline_get_flag(const char *key) {
-#ifdef CONFIG_CMDLINE_PARSER
-  return cmdline_has_option(key);
-#else
-  return find(g_cmdline, key);
-#endif
+/*
+ * Parse a string to get a param value pair.
+ * You can use " around spaces, but can't escape ".
+ * Hyphens and underscores equivalent in parameter names.
+ */
+char *next_arg(char *args, char **param, char **val)
+{
+	unsigned int i, equals = 0;
+	int in_quote = 0, quoted = 0;
+
+	if (*args == '"') {
+		args++;
+		in_quote = 1;
+		quoted = 1;
+	}
+
+	for (i = 0; args[i]; i++) {
+		if (isspace(args[i]) && !in_quote)
+			break;
+		if (equals == 0) {
+			if (args[i] == '=')
+				equals = i;
+		}
+		if (args[i] == '"')
+			in_quote = !in_quote;
+	}
+
+	*param = args;
+	if (!equals)
+		*val = nullptr;
+	else {
+		args[equals] = '\0';
+		*val = args + equals + 1;
+
+		/* Don't include quotes in value. */
+		if (**val == '"') {
+			(*val)++;
+			if (args[i-1] == '"')
+				args[i-1] = '\0';
+		}
+	}
+	if (quoted && i > 0 && args[i-1] == '"')
+		args[i-1] = '\0';
+
+	if (args[i]) {
+		args[i] = '\0';
+		args += i + 1;
+	} else
+		args += i;
+
+	/* Chew up trailing spaces. */
+	return skip_spaces(args);
 }
-EXPORT_SYMBOL(cmdline_get_flag);
-
-#ifdef CONFIG_CMDLINE_PARSER
-const char *cmdline_get_string(const char *key) {
-  struct cmdline_entry *e = find_entry(key);
-  if (!e || !e->present || e->value[0] == '\0') return nullptr;
-  return e->value;
-}
-EXPORT_SYMBOL(cmdline_get_string);
-
-long long cmdline_get_int(const char *key, long long default_val) {
-  const char *val = cmdline_get_string(key);
-  if (!val) return default_val;
-  return simple_strtoll(val, nullptr, 0);
-}
-EXPORT_SYMBOL(cmdline_get_int);
-
-unsigned long long cmdline_get_uint(const char *key, unsigned long long default_val) {
-  const char *val = cmdline_get_string(key);
-  if (!val) return default_val;
-  return simple_strtoull(val, nullptr, 0);
-}
-EXPORT_SYMBOL(cmdline_get_uint);
-
-int cmdline_get_bool(const char *key, int default_val) {
-  struct cmdline_entry *e = find_entry(key);
-  if (!e || !e->present) return default_val;
-
-  // If it's just a flag without value, it's true
-  if (e->value[0] == '\0') return 1;
-
-  const char *v = e->value;
-  if (strcasecmp(v, "yes") == 0 || strcasecmp(v, "true") == 0 ||
-      strcasecmp(v, "on") == 0 || strcmp(v, "1") == 0) {
-    return 1;
-  }
-  if (strcasecmp(v, "no") == 0 || strcasecmp(v, "false") == 0 ||
-      strcasecmp(v, "off") == 0 || strcmp(v, "0") == 0) {
-    return 0;
-  }
-
-  return default_val;
-}
-EXPORT_SYMBOL(cmdline_get_bool);
-
-void cmdline_for_each(cmdline_iter_t iter, void *priv) {
-  if (!iter) return;
-  for (int i = 0; i < entry_count; i++) {
-    if (entries[i].present) {
-      iter(entries[i].key, entries[i].value[0] ? entries[i].value : nullptr, priv);
-    }
-  }
-}
-EXPORT_SYMBOL(cmdline_for_each);
-#endif
+EXPORT_SYMBOL(next_arg);

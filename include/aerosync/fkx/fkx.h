@@ -139,6 +139,7 @@ void __init lmm_load_fkx_callback(struct lmm_entry *entry, void *data);
  */
 int fkx_load_image(void *data, size_t size);
 
+
 /**
  * Initialize all modules of a specific class
  *

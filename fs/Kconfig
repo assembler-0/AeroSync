@@ -17,6 +17,38 @@ config VFS_UBC
       Memory Management layers share the same physical pages for file
       data. All buffered I/O goes through the Page Cache.
 
+config VFS_POSIX_ACL
+    bool "VFS POSIX Access Control Lists (ACL)"
+    depends on VFS
+    default n
+    help
+      Enable support for POSIX Access Control Lists.
+
+config VFS_RESCONTROL
+    bool "Resource Domain Control (ResDomain) VFS integration"
+    depends on VFS && RESDOMAINS
+    default y
+    help
+      Integrate Hierarchical Resource Domains (ResDomain) with the VFS.
+      This allows associating filesystems or mount points with specific
+      resource limits and accounting.
+
+config VFS_DEBUG_EVENTS
+    bool "VFS Event Debugging"
+    depends on VFS
+    default n
+    help
+      Enable verbose logging of VFS events (create, delete, modify).
+
+config VFS_RENAME_OVERWRITE
+    bool "VFS rename overwrites destination"
+    depends on VFS
+    default y
+    help
+      If enabled, the rename() system call will overwrite the destination
+      if it exists and is of the same type (file or directory). This is
+      the default POSIX and Linux behavior.
+
 config VFS_DCACHE_SIZE
     int "Dentry Cache Size"
     depends on VFS
@@ -31,14 +63,6 @@ config DEVFS
     default y
     help
       Enable support for devfs, a pseudo-filesystem for device nodes.
-
-config DEVFS_USE_PSEUDO_FS
-    bool "Use Pseudo-FS framework for devfs"
-    depends on DEVFS
-    default y
-    help
-      Use the generic pseudo-filesystem library (APS) as the backend for
-      devfs. This improves consistency and reduces boilerplate.
 
 config DEVFS_MOUNT
     bool "Mount devfs automatically during boot"
@@ -57,11 +81,46 @@ config DEVFS_MOUNT_PATH
     help
       The path where devfs should be mounted automatically.
 
+config SYSFS
+    bool "System Filesystem (sysfs) support"
+    depends on VFS
+    default y
+    help
+      Enable support for sysfs, a pseudo-filesystem for kernel objects.
+
+config SYSFS_MOUNT
+    bool "Mount sysfs automatically during boot"
+    depends on SYSFS
+    default y
+    help
+      Automatically mount sysfs during kernel initialization.
+
+config SYSFS_MOUNT_PATH
+    string "Default mount path for sysfs"
+    depends on SYSFS_MOUNT
+    default "/runtime/sys"
+    help
+      The path where sysfs should be mounted automatically.
+
 config USTARFS
     bool "USTAR (tar) filesystem support"
     depends on VFS
     default y
     help
-      Enable support for the USTAR filesystem, useful for initrd.
+      Enable support for the USTAR filesystem.
+
+config INITRAMFS
+    bool "Initramfs (CPIO) support"
+    depends on VFS
+    default y
+    help
+      Enable support for unpacking a CPIO archive into the rootfs.
+
+config INITRD_NAME_MAX_SIZE
+    int "Maximum name size for initramfs image"
+    depends on INITRAMFS
+    default 128
+    help
+      Maximum length for initramfs name passed in initrd= in cmdline
 
 endmenu

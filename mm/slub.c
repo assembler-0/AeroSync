@@ -78,7 +78,7 @@ static inline int kmalloc_index(size_t size) {
   if (size <= 8)
     return 0;
   if (unlikely(size > 131072))
-    return -1;
+    return -EINVAL;
   return 64 - __builtin_clzll(size - 1) - 3;
 }
 
@@ -279,8 +279,7 @@ find_slab:;
   extern int numa_mem_id(void); /* Get memory-local node (not CPU node) */
 
   int cpu_node = (node == -1) ? this_node() : node;
-  int mem_node = numa_mem_id(); /* Prefer memory-local for better bandwidth */
-  int alloc_node = mem_node;
+  int alloc_node = cpu_node;
 
   /* Tier 1: Local node (distance 10) */
   struct kmem_cache_node *target_node = s->node[cpu_node];

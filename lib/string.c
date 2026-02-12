@@ -52,6 +52,28 @@ bool find(const char *buff, const char *pattern) {
   return false;
 }
 
+char *skip_spaces(const char *str) {
+  while (isspace(*str))
+    ++str;
+  return (char *) str;
+}
+
+char *strim(char *s) {
+  size_t size;
+  char *end;
+
+  size = strlen(s);
+  if (!size)
+    return s;
+
+  end = s + size - 1;
+  while (end >= s && isspace(*end))
+    end--;
+  *(end + 1) = '\0';
+
+  return skip_spaces(s);
+}
+
 char *strstr(const char *haystack, const char *needle) {
   if (*needle == '\0') {
     return (char *) haystack;
@@ -124,7 +146,7 @@ int strlen(const char *str) {
 #else
   const char *s;
   for (s = str; *s; ++s);
-  return (int)(s - str);
+  return (int) (s - str);
 #endif
 }
 
@@ -145,7 +167,7 @@ int strnlen(const char *str, const size_t max) {
 #else
   const char *s;
   for (s = str; max-- && *s; ++s);
-  return (int)(s - str);
+  return (int) (s - str);
 #endif
 }
 
@@ -675,12 +697,12 @@ void *memset32(void *s, uint32_t val, size_t n) {
 void *memscan(void *addr, int c, size_t size) {
   unsigned char *p = addr;
   while (size) {
-    if (*p == (unsigned char)c)
-      return (void *)p;
+    if (*p == (unsigned char) c)
+      return (void *) p;
     p++;
     size--;
   }
-  return (void *)p;
+  return (void *) p;
 }
 #endif
 
@@ -865,8 +887,8 @@ int kstrtou8(const char *s, unsigned int base, uint8_t *res) {
   int ret;
   ret = kstrtoull(s, base, &tmp);
   if (ret < 0) return ret;
-  if (tmp > (uint8_t)-1) return -ERANGE;
-  *res = (uint8_t)tmp;
+  if (tmp > (uint8_t) -1) return -ERANGE;
+  *res = (uint8_t) tmp;
   return 0;
 }
 
@@ -875,8 +897,8 @@ int kstrtos8(const char *s, unsigned int base, int8_t *res) {
   int ret;
   ret = kstrtoll(s, base, &tmp);
   if (ret < 0) return ret;
-  if (tmp < (int8_t)-128 || tmp > 127) return -ERANGE;
-  *res = (int8_t)tmp;
+  if (tmp < (int8_t) -128 || tmp > 127) return -ERANGE;
+  *res = (int8_t) tmp;
   return 0;
 }
 
@@ -885,8 +907,8 @@ int kstrtou16(const char *s, unsigned int base, uint16_t *res) {
   int ret;
   ret = kstrtoull(s, base, &tmp);
   if (ret < 0) return ret;
-  if (tmp > (uint16_t)-1) return -ERANGE;
-  *res = (uint16_t)tmp;
+  if (tmp > (uint16_t) -1) return -ERANGE;
+  *res = (uint16_t) tmp;
   return 0;
 }
 
@@ -895,8 +917,8 @@ int kstrtos16(const char *s, unsigned int base, int16_t *res) {
   int ret;
   ret = kstrtoll(s, base, &tmp);
   if (ret < 0) return ret;
-  if (tmp < (int16_t)-32768 || tmp > 32767) return -ERANGE;
-  *res = (int16_t)tmp;
+  if (tmp < (int16_t) -32768 || tmp > 32767) return -ERANGE;
+  *res = (int16_t) tmp;
   return 0;
 }
 
@@ -905,8 +927,8 @@ int kstrtou32(const char *s, unsigned int base, uint32_t *res) {
   int ret;
   ret = kstrtoull(s, base, &tmp);
   if (ret < 0) return ret;
-  if (tmp > (uint32_t)-1) return -ERANGE;
-  *res = (uint32_t)tmp;
+  if (tmp > (uint32_t) -1) return -ERANGE;
+  *res = (uint32_t) tmp;
   return 0;
 }
 
@@ -915,8 +937,8 @@ int kstrtos32(const char *s, unsigned int base, int32_t *res) {
   int ret;
   ret = kstrtoll(s, base, &tmp);
   if (ret < 0) return ret;
-  if (tmp < (int32_t)-2147483648LL || tmp > 2147483647LL) return -ERANGE;
-  *res = (int32_t)tmp;
+  if (tmp < (int32_t) -2147483648LL || tmp > 2147483647LL) return -ERANGE;
+  *res = (int32_t) tmp;
   return 0;
 }
 
@@ -948,10 +970,10 @@ void *memchr(const void *s, int c, size_t n) {
     : "memory");
   return res;
 #else
-  const unsigned char *p = (const unsigned char *)s;
+  const unsigned char *p = (const unsigned char *) s;
   while (n--) {
-    if (*p == (unsigned char)c)
-      return (void *)p;
+    if (*p == (unsigned char) c)
+      return (void *) p;
     p++;
   }
   return nullptr;
@@ -961,40 +983,42 @@ void *memchr(const void *s, int c, size_t n) {
 #ifdef CONFIG_STRING_ADVANCED
 void *memrchr(const void *s, int c, size_t n) {
   if (n == 0) return nullptr;
-  const unsigned char *p = (const unsigned char *)s + n - 1;
+  const unsigned char *p = (const unsigned char *) s + n - 1;
   while (n--) {
-    if (*p == (unsigned char)c)
-      return (void *)p;
+    if (*p == (unsigned char) c)
+      return (void *) p;
     p--;
   }
   return nullptr;
 }
 
 void *memmem(const void *haystack, size_t hlen, const void *needle, size_t nlen) {
-  if (nlen == 0) return (void *)haystack;
+  if (nlen == 0) return (void *) haystack;
   if (hlen < nlen) return nullptr;
-  
-  const unsigned char *h = (const unsigned char *)haystack;
-  const unsigned char *n = (const unsigned char *)needle;
-  
+
+  const unsigned char *h = (const unsigned char *) haystack;
+  const unsigned char *n = (const unsigned char *) needle;
+
   for (size_t i = 0; i <= hlen - nlen; i++) {
     if (memcmp(h + i, n, nlen) == 0)
-      return (void *)(h + i);
+      return (void *) (h + i);
   }
   return nullptr;
 }
 
 void memswap(void *a, void *b, size_t n) {
-  unsigned char *pa = (unsigned char *)a;
-  unsigned char *pb = (unsigned char *)b;
-  
+  unsigned char *pa = (unsigned char *) a;
+  unsigned char *pb = (unsigned char *) b;
+
   while (n >= 8) {
-    uint64_t tmp = *(uint64_t *)pa;
-    *(uint64_t *)pa = *(uint64_t *)pb;
-    *(uint64_t *)pb = tmp;
-    pa += 8; pb += 8; n -= 8;
+    uint64_t tmp = *(uint64_t *) pa;
+    *(uint64_t *) pa = *(uint64_t *) pb;
+    *(uint64_t *) pb = tmp;
+    pa += 8;
+    pb += 8;
+    n -= 8;
   }
-  
+
   while (n--) {
     unsigned char tmp = *pa;
     *pa++ = *pb;
@@ -1005,19 +1029,19 @@ void memswap(void *a, void *b, size_t n) {
 
 #ifdef CONFIG_STRING_CRYPTO
 int memcmp_const_time(const void *s1, const void *s2, size_t n) {
-  const unsigned char *p1 = (const unsigned char *)s1;
-  const unsigned char *p2 = (const unsigned char *)s2;
+  const unsigned char *p1 = (const unsigned char *) s1;
+  const unsigned char *p2 = (const unsigned char *) s2;
   unsigned char diff = 0;
-  
+
   while (n--) {
     diff |= *p1++ ^ *p2++;
   }
-  
+
   return diff;
 }
 
 void explicit_bzero(void *s, size_t n) {
-  volatile unsigned char *p = (volatile unsigned char *)s;
+  volatile unsigned char *p = (volatile unsigned char *) s;
   while (n--) *p++ = 0;
 }
 #endif
@@ -1025,21 +1049,20 @@ void explicit_bzero(void *s, size_t n) {
 #ifdef CONFIG_STRING_PATTERN
 int fnmatch(const char *pattern, const char *string, int flags) {
   const char *p = pattern, *s = string;
-  
+
   while (*p) {
     switch (*p) {
-    case '*':
-      if (!*++p) return 0;
-      while (*s) {
-        if (!fnmatch(p, s, flags)) return 0;
-        s++;
-      }
-      return 1;
-    case '?':
-      if (!*s++) return 1;
-      break;
-    case '[':
-      {
+      case '*':
+        if (!*++p) return 0;
+        while (*s) {
+          if (!fnmatch(p, s, flags)) return 0;
+          s++;
+        }
+        return 1;
+      case '?':
+        if (!*s++) return 1;
+        break;
+      case '[': {
         int not = (*++p == '!');
         if (not) p++;
         int match = 0;
@@ -1052,10 +1075,10 @@ int fnmatch(const char *pattern, const char *string, int flags) {
         if (!*s++) return 1;
       }
       break;
-    default:
-      if (*p != *s) return 1;
-      s++;
-      break;
+      default:
+        if (*p != *s) return 1;
+        s++;
+        break;
     }
     p++;
   }
@@ -1063,21 +1086,22 @@ int fnmatch(const char *pattern, const char *string, int flags) {
 }
 
 int strverscmp(const char *s1, const char *s2) {
-  const unsigned char *p1 = (const unsigned char *)s1;
-  const unsigned char *p2 = (const unsigned char *)s2;
-  
+  const unsigned char *p1 = (const unsigned char *) s1;
+  const unsigned char *p2 = (const unsigned char *) s2;
+
   while (*p1 == *p2) {
     if (*p1 == '\0') return 0;
-    p1++; p2++;
+    p1++;
+    p2++;
   }
-  
+
   if (isdigit(*p1) && isdigit(*p2)) {
     int val1 = 0, val2 = 0;
     while (isdigit(*p1)) val1 = val1 * 10 + (*p1++ - '0');
     while (isdigit(*p2)) val2 = val2 * 10 + (*p2++ - '0');
     return val1 - val2;
   }
-  
+
   return *p1 - *p2;
 }
 #endif
@@ -1087,17 +1111,19 @@ double strtod(const char *nptr, char **endptr) {
   const char *s = nptr;
   double result = 0.0;
   int sign = 1;
-  
+
   while (isspace(*s)) s++;
-  
-  if (*s == '-') { sign = -1; s++; }
-  else if (*s == '+') s++;
-  
+
+  if (*s == '-') {
+    sign = -1;
+    s++;
+  } else if (*s == '+') s++;
+
   while (isdigit(*s)) {
     result = result * 10.0 + (*s - '0');
     s++;
   }
-  
+
   if (*s == '.') {
     s++;
     double frac = 0.1;
@@ -1107,36 +1133,179 @@ double strtod(const char *nptr, char **endptr) {
       s++;
     }
   }
-  
+
   if (*s == 'e' || *s == 'E') {
     s++;
     int exp_sign = 1;
     int exp = 0;
-    
-    if (*s == '-') { exp_sign = -1; s++; }
-    else if (*s == '+') s++;
-    
+
+    if (*s == '-') {
+      exp_sign = -1;
+      s++;
+    } else if (*s == '+') s++;
+
     while (isdigit(*s)) {
       exp = exp * 10 + (*s - '0');
       s++;
     }
-    
+
     double pow10 = 1.0;
     for (int i = 0; i < exp; i++) pow10 *= 10.0;
-    
+
     if (exp_sign == 1) result *= pow10;
     else result /= pow10;
   }
-  
-  if (endptr) *endptr = (char *)s;
+
+  if (endptr) *endptr = (char *) s;
   return sign * result;
 }
 
 float strtof(const char *nptr, char **endptr) {
-  return (float)strtod(nptr, endptr);
+  return (float) strtod(nptr, endptr);
 }
 #endif
 
+int errno_to_str(char *restrict buff, const int err) {
+  if (!buff || err > MAX_ERRNO) return -EINVAL;
+  switch (err) {
+    case EPERM: strcpy(buff, "Operation not permitted"); break;
+    case ENOENT: strcpy(buff, "No such file or directory"); break;
+    case ESRCH: strcpy(buff, "No such process"); break;
+    case EINTR: strcpy(buff, "Interrupted system call"); break;
+    case EIO: strcpy(buff, "I/O error"); break;
+    case ENXIO: strcpy(buff, "No such device or address"); break;
+    case E2BIG: strcpy(buff, "Argument list too long"); break;
+    case ENOEXEC: strcpy(buff, "Exec format error"); break;
+    case EBADF: strcpy(buff, "Bad file number"); break;
+    case ECHILD: strcpy(buff, "No child processes"); break;
+    case EAGAIN: strcpy(buff, "Try again"); break;
+    case ENOMEM: strcpy(buff, "Out of memory"); break;
+    case EACCES: strcpy(buff, "Permission denied"); break;
+    case EFAULT: strcpy(buff, "Bad address"); break;
+    case ENOTBLK: strcpy(buff, "Block device required"); break;
+    case EBUSY: strcpy(buff, "Device or resource busy"); break;
+    case EEXIST: strcpy(buff, "File exists"); break;
+    case EXDEV: strcpy(buff, "Cross-device link"); break;
+    case ENODEV: strcpy(buff, "No such device"); break;
+    case ENOTDIR: strcpy(buff, "Not a directory"); break;
+    case EISDIR: strcpy(buff, "Is a directory"); break;
+    case EINVAL: strcpy(buff, "Invalid argument"); break;
+    case ENFILE: strcpy(buff, "File table overflow"); break;
+    case EMFILE: strcpy(buff, "Too many open files"); break;
+    case ENOTTY: strcpy(buff, "Not a typewriter"); break;
+    case ETXTBSY: strcpy(buff, "Text file busy"); break;
+    case EFBIG: strcpy(buff, "File too large"); break;
+    case ENOSPC: strcpy(buff, "No space left on device"); break;
+    case ESPIPE: strcpy(buff, "Illegal seek"); break;
+    case EROFS: strcpy(buff, "Read-only file system"); break;
+    case EMLINK: strcpy(buff, "Too many links"); break;
+    case EPIPE: strcpy(buff, "Broken pipe"); break;
+    case EDOM: strcpy(buff, "Math argument out of domain of func"); break;
+    case ERANGE: strcpy(buff, "Math result not representable"); break;
+    case EDEADLK: strcpy(buff, "Resource deadlock would occur"); break;
+    case ENAMETOOLONG: strcpy(buff, "File name too long"); break;
+    case ENOLCK: strcpy(buff, "No record locks available"); break;
+    case ENOSYS: strcpy(buff, "Function not implemented"); break;
+    case ENOTEMPTY: strcpy(buff, "Directory not empty"); break;
+    case ELOOP: strcpy(buff, "Too many symbolic links encountered"); break;
+    /* case EWOULDBLOCK: strcpy(buff, "Operation would block"); break; */
+    case ENOMSG: strcpy(buff, "No message of desired type"); break;
+    case EIDRM: strcpy(buff, "Identifier removed"); break;
+    case ECHRNG: strcpy(buff, "Channel number out of range"); break;
+    case EL2NSYNC: strcpy(buff, "Level 2 not synchronized"); break;
+    case EL3HLT: strcpy(buff, "Level 3 halted"); break;
+    case EL3RST: strcpy(buff, "Level 3 reset"); break;
+    case ELNRNG: strcpy(buff, "Link number out of range"); break;
+    case EUNATCH: strcpy(buff, "Protocol driver not attached"); break;
+    case ENOCSI: strcpy(buff, "No CSI structure available"); break;
+    case EL2HLT: strcpy(buff, "Level 2 halted"); break;
+    case EBADE: strcpy(buff, "Invalid exchange"); break;
+    case EBADR: strcpy(buff, "Invalid request descriptor"); break;
+    case EXFULL: strcpy(buff, "Exchange full"); break;
+    case ENOANO: strcpy(buff, "No anode"); break;
+    case EBADRQC: strcpy(buff, "Invalid request code"); break;
+    case EBADSLT: strcpy(buff, "Invalid slot"); break;
+    case EBFONT: strcpy(buff, "Bad font file format"); break;
+    case ENOSTR: strcpy(buff, "Device not a stream"); break;
+    case ENODATA: strcpy(buff, "No data available"); break;
+    case ETIME: strcpy(buff, "Timer expired"); break;
+    case ENOSR: strcpy(buff, "Out of streams resources"); break;
+    case ENONET: strcpy(buff, "Machine is not on the network"); break;
+    case ENOPKG: strcpy(buff, "Package not installed"); break;
+    case EREMOTE: strcpy(buff, "Object is remote"); break;
+    case ENOLINK: strcpy(buff, "Link has been severed"); break;
+    case EADV: strcpy(buff, "Advertise error"); break;
+    case ESRMNT: strcpy(buff, "Srmount error"); break;
+    case ECOMM: strcpy(buff, "Communication error on send"); break;
+    case EPROTO: strcpy(buff, "Protocol error"); break;
+    case EMULTIHOP: strcpy(buff, "Multihop attempted"); break;
+    case EDOTDOT: strcpy(buff, "RFS specific error"); break;
+    case EBADMSG: strcpy(buff, "Not a data message"); break;
+    case EOVERFLOW: strcpy(buff, "Value too large for defined data type"); break;
+    case ENOTUNIQ: strcpy(buff, "Name not unique on network"); break;
+    case EBADFD: strcpy(buff, "File descriptor in bad state"); break;
+    case EREMCHG: strcpy(buff, "Remote address changed"); break;
+    case ELIBACC: strcpy(buff, "Can not access a needed shared library"); break;
+    case ELIBBAD: strcpy(buff, "Accessing a corrupted shared library"); break;
+    case ELIBSCN: strcpy(buff, ".lib section in a.out corrupted"); break;
+    case ELIBMAX: strcpy(buff, "Attempting to link in too many shared libraries"); break;
+    case ELIBEXEC: strcpy(buff, "Cannot exec a shared library directly"); break;
+    case EILSEQ: strcpy(buff, "Illegal byte sequence"); break;
+    case ERESTART: strcpy(buff, "Interrupted system call should be restarted"); break;
+    case ESTRPIPE: strcpy(buff, "Streams pipe error"); break;
+    case EUSERS: strcpy(buff, "Too many users"); break;
+    case ENOTSOCK: strcpy(buff, "Socket operation on non-socket"); break;
+    case EDESTADDRREQ: strcpy(buff, "Destination address required"); break;
+    case EMSGSIZE: strcpy(buff, "Message too long"); break;
+    case EPROTOTYPE: strcpy(buff, "Protocol wrong type for socket"); break;
+    case ENOPROTOOPT: strcpy(buff, "Protocol not available"); break;
+    case EPROTONOSUPPORT: strcpy(buff, "Protocol not supported"); break;
+    case ESOCKTNOSUPPORT: strcpy(buff, "Socket type not supported"); break;
+    case EOPNOTSUPP: strcpy(buff, "Operation not supported on transport endpoint"); break;
+    case EPFNOSUPPORT: strcpy(buff, "Protocol family not supported"); break;
+    case EAFNOSUPPORT: strcpy(buff, "Address family not supported by protocol"); break;
+    case EADDRINUSE: strcpy(buff, "Address already in use"); break;
+    case EADDRNOTAVAIL: strcpy(buff, "Cannot assign requested address"); break;
+    case ENETDOWN: strcpy(buff, "Network is down"); break;
+    case ENETUNREACH: strcpy(buff, "Network is unreachable"); break;
+    case ENETRESET: strcpy(buff, "Network dropped connection because of reset"); break;
+    case ECONNABORTED: strcpy(buff, "Software caused connection abort"); break;
+    case ECONNRESET: strcpy(buff, "Connection reset by peer"); break;
+    case ENOBUFS: strcpy(buff, "No buffer space available"); break;
+    case EISCONN: strcpy(buff, "Transport endpoint is already connected"); break;
+    case ENOTCONN: strcpy(buff, "Transport endpoint is not connected"); break;
+    case ESHUTDOWN: strcpy(buff, "Cannot send after transport endpoint shutdown"); break;
+    case ETOOMANYREFS: strcpy(buff, "Too many references: cannot splice"); break;
+    case ETIMEDOUT: strcpy(buff, "Connection timed out"); break;
+    case ECONNREFUSED: strcpy(buff, "Connection refused"); break;
+    case EHOSTDOWN: strcpy(buff, "Host is down"); break;
+    case EHOSTUNREACH: strcpy(buff, "No route to host"); break;
+    case EALREADY: strcpy(buff, "Operation already in progress"); break;
+    case EINPROGRESS: strcpy(buff, "Operation now in progress"); break;
+    case ESTALE: strcpy(buff, "Stale NFS file handle"); break;
+    case EUCLEAN: strcpy(buff, "Structure needs cleaning"); break;
+    case ENOTNAM: strcpy(buff, "Not a XENIX named type file"); break;
+    case ENAVAIL: strcpy(buff, "No XENIX semaphores available"); break;
+    case EISNAM: strcpy(buff, "Is a named type file"); break;
+    case EREMOTEIO: strcpy(buff, "Remote I/O error"); break;
+    case EDQUOT: strcpy(buff, "Quota exceeded"); break;
+    case ENOMEDIUM: strcpy(buff, "No medium found"); break;
+    case EMEDIUMTYPE: strcpy(buff, "Wrong medium type"); break;
+    case ECANCELED: strcpy(buff, "Operation Canceled"); break;
+    case ENOKEY: strcpy(buff, "Required key not available"); break;
+    case EKEYEXPIRED: strcpy(buff, "Key has expired"); break;
+    case EKEYREVOKED: strcpy(buff, "Key has been revoked"); break;
+    case EKEYREJECTED: strcpy(buff, "Key was rejected by service"); break;
+    case EOWNERDEAD: strcpy(buff, "Owner died"); break;
+    case ENOTRECOVERABLE: strcpy(buff, "State not recoverable"); break;
+    case ERFKILL: strcpy(buff, "Operation not possible due to RF-kill"); break;
+    case EHWPOISON: strcpy(buff, "Memory page has hardware error"); break;
+    default: strcpy(buff, "Unknown error"); break;
+  }
+  return 0;
+}
+
+EXPORT_SYMBOL(errno_to_str);
 EXPORT_SYMBOL(memset);
 EXPORT_SYMBOL(memset32);
 EXPORT_SYMBOL(memcpy);

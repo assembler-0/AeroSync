@@ -12,6 +12,7 @@
  */
 
 #include <aerosync/classes.h>
+#include <aerosync/errno.h>
 #include <aerosync/panic.h>
 #include <lib/printk.h>
 #include <lib/string.h>
@@ -74,7 +75,7 @@ int kmem_cache_refill_sheaf(struct kmem_cache *cache, gfp_t gfp,
   int added;
 
   if (!sheaf || !cache || sheaf->cache != cache)
-    return -1;
+    return -EINVAL;
 
   /* Calculate how many we can actually add */
   size_t space = sheaf->capacity - sheaf->count;

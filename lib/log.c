@@ -161,9 +161,14 @@ int log_try_init_async(void) {
 #endif
 
 static const char *const klog_prefixes[] = {
-    [KLOG_EMERG] = "[0] ", [KLOG_ALERT] = "[1] ",   [KLOG_CRIT] = "[2] ",
-    [KLOG_ERR] = "[3] ",   [KLOG_WARNING] = "[4] ", [KLOG_NOTICE] = "[5] ",
-    [KLOG_INFO] = "[6] ",  [KLOG_DEBUG] = "[7] ",
+  [KLOG_EMERG] = "[0] ",
+  [KLOG_ALERT] = "[1] ",
+  [KLOG_CRIT] = "[2] ",
+  [KLOG_ERR] = "[3] ",
+  [KLOG_WARNING] = "[4] ",
+  [KLOG_NOTICE] = "[5] ",
+  [KLOG_INFO] = "[6] ",
+  [KLOG_DEBUG] = "[7] ",
 };
 
 static void console_emit_prefix_ts(int level, uint64_t ts_ns) {
@@ -194,6 +199,8 @@ static void console_emit_prefix_ts(int level, uint64_t ts_ns) {
 
 static int klog_sync_threshold = KLOG_ERR; // ERR and above stay synchronous
 
+static int early_printk_recursion = 0;
+
 int log_write_str(int level, const char *msg) {
   if (!msg)
     return 0;
@@ -203,20 +210,25 @@ int log_write_str(int level, const char *msg) {
   if (percpu_ready()) {
     rec = this_cpu_read(printk_recursion);
     if (rec > 0) {
-      // We are in a nested call (e.g. printk called from vsnprintf or sink)
-      // We skip immediate console emission and just try to store in ring buffer
-      // if possible, or if we are too deep, we drop to avoid infinite
-      // recursion.
       if (rec > 3)
         return 0;
     }
     this_cpu_inc(printk_recursion);
+  } else {
+    rec = early_printk_recursion;
+    if (rec > 0) {
+      if (rec > 3)
+        return 0;
+    }
+    early_printk_recursion++;
   }
 
   // If level is DEBUG but debug is currently disabled, drop early
   if (level == KLOG_DEBUG && !klog_debug_enabled) {
     if (percpu_ready())
       this_cpu_dec(printk_recursion);
+    else
+      early_printk_recursion--;
     return 0;
   }
 
@@ -280,6 +292,8 @@ int log_write_str(int level, const char *msg) {
 
   if (percpu_ready())
     this_cpu_dec(printk_recursion);
+  else
+    early_printk_recursion--;
 
   // Don't check_preempt here - IRQ state may be inconsistent immediately
   // after spinlock_unlock_irqrestore(). The scheduler will preempt naturally

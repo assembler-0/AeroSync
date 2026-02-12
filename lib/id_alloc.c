@@ -38,12 +38,12 @@ int ida_alloc_min(struct ida *ida, int min) {
         
         if (id >= min && min > 0) {
             spinlock_unlock(&ida->lock);
-            return -1;
+            return -ENOSPC;
         }
-        
+
         if (id >= ida->max_id) {
             spinlock_unlock(&ida->lock);
-            return -1;
+            return -ENOSPC;
         }
     }
     
