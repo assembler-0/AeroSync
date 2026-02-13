@@ -37,7 +37,7 @@
 #include <mm/vma.h>
 #include <mm/vm_object.h>
 #include <arch/x86_64/mm/tlb.h>
-#include <aerosync/resdomain.h>
+#include <aerosync/export.h>
 
 /* Forward declarations for RMAP (defined in memory.c) */
 struct folio;
@@ -179,6 +179,7 @@ void mm_init(struct mm_struct *mm) {
   mm->brk = 0;
   mm->start_stack = 0;
 }
+EXPORT_SYMBOL(mm_init);
 
 struct mm_struct *mm_alloc(void) {
   struct mm_struct *mm = nullptr;
@@ -204,6 +205,7 @@ struct mm_struct *mm_alloc(void) {
 
   return mm;
 }
+EXPORT_SYMBOL(mm_alloc);
 
 void mm_free(struct mm_struct *mm) {
   if (!mm)
@@ -226,6 +228,7 @@ void mm_free(struct mm_struct *mm) {
 
   kfree(mm);
 }
+EXPORT_SYMBOL(mm_free);
 
 struct mm_struct *mm_create(void) {
   struct mm_struct *mm = mm_alloc();
@@ -259,10 +262,12 @@ struct mm_struct *mm_create(void) {
   mm->pml_root = (uint64_t *) pml_root_phys;
   return mm;
 }
+EXPORT_SYMBOL(mm_create);
 
 void mm_get(struct mm_struct *mm) {
   if (mm) atomic_inc(&mm->mm_count);
 }
+EXPORT_SYMBOL(mm_get);
 
 void mm_put(struct mm_struct *mm) {
   if (!mm) return;
@@ -270,6 +275,7 @@ void mm_put(struct mm_struct *mm) {
     mm_free(mm);
   }
 }
+EXPORT_SYMBOL(mm_put);
 
 struct mm_struct *mm_copy(struct mm_struct *old_mm) {
   struct mm_struct *new_mm = mm_create();
@@ -343,6 +349,7 @@ struct mm_struct *mm_copy(struct mm_struct *old_mm) {
   up_write(&old_mm->mmap_lock);
   return new_mm;
 }
+EXPORT_SYMBOL(mm_copy);
 
 void mm_destroy(struct mm_struct *mm) {
   if (!mm || mm == &init_mm)
@@ -374,6 +381,7 @@ void mm_destroy(struct mm_struct *mm) {
 
   up_write(&mm->mmap_lock);
 }
+EXPORT_SYMBOL(mm_destroy);
 
 /* ========================================================================
  * VMA Allocation
@@ -425,6 +433,7 @@ struct vm_area_struct *vma_alloc(void) {
 
   return vma;
 }
+EXPORT_SYMBOL(vma_alloc);
 
 static void vma_free_rcu(struct rcu_head *head) {
   struct vm_area_struct *vma = container_of(head, struct vm_area_struct, rcu);
@@ -465,6 +474,7 @@ void vma_free(struct vm_area_struct *vma) {
 
   call_rcu(&vma->rcu, vma_free_rcu);
 }
+EXPORT_SYMBOL(vma_free);
 
 /* ========================================================================
  * VMA Tree Management
@@ -566,6 +576,7 @@ struct vm_area_struct *vma_find(struct mm_struct *mm, uint64_t addr) {
 
   return vma;
 }
+EXPORT_SYMBOL(vma_find);
 
 struct vm_area_struct *vma_find_exact(struct mm_struct *mm, uint64_t start, uint64_t end) {
   struct vm_area_struct *vma = vma_find(mm, start);
@@ -573,6 +584,7 @@ struct vm_area_struct *vma_find_exact(struct mm_struct *mm, uint64_t start, uint
     return vma;
   return nullptr;
 }
+EXPORT_SYMBOL(vma_find_exact);
 
 struct vm_area_struct *vma_find_intersection(struct mm_struct *mm, uint64_t start, uint64_t end) {
   if (!mm) return nullptr;
@@ -580,6 +592,7 @@ struct vm_area_struct *vma_find_intersection(struct mm_struct *mm, uint64_t star
   MA_STATE(mas, &mm->mm_mt, start, end - 1);
   return mas_find(&mas, end - 1);
 }
+EXPORT_SYMBOL(vma_find_intersection);
 
 /* ========================================================================
  * VMA Insertion and Removal
@@ -646,6 +659,7 @@ int vma_insert(struct mm_struct *mm, struct vm_area_struct *vma) {
 
   return 0;
 }
+EXPORT_SYMBOL(vma_insert);
 
 void vma_remove(struct mm_struct *mm, struct vm_area_struct *vma) {
   if (!mm || !vma) return;
@@ -663,7 +677,7 @@ void vma_remove(struct mm_struct *mm, struct vm_area_struct *vma) {
 
   vma->vm_mm = nullptr;
 }
-
+EXPORT_SYMBOL(vma_remove);
 
 /* ========================================================================
  * VMA Splitting and Merging
@@ -731,6 +745,7 @@ int vma_split(struct mm_struct *mm, struct vm_area_struct *vma, uint64_t addr) {
   if (new_vma->vm_ops && new_vma->vm_ops->open) new_vma->vm_ops->open(new_vma);
   return 0;
 }
+EXPORT_SYMBOL(vma_split);
 
 /*
  * vma_merge - Proactive VMA merging logic.
@@ -833,18 +848,21 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm, struct vm_area_struct *pr
 
   return nullptr;
 }
+EXPORT_SYMBOL(vma_merge);
 
 struct vm_area_struct *vma_next(struct vm_area_struct *vma) {
   if (!vma || !vma->vm_mm) return nullptr;
   unsigned long index = vma->vm_end;
   return mt_find(&vma->vm_mm->mm_mt, &index, ULONG_MAX);
 }
+EXPORT_SYMBOL(vma_next);
 
 struct vm_area_struct *vma_prev(struct vm_area_struct *vma) {
   if (!vma || !vma->vm_mm || vma->vm_start == 0) return nullptr;
   MA_STATE(mas, &vma->vm_mm->mm_mt, vma->vm_start - 1, vma->vm_start - 1);
   return mas_find_rev(&mas, 0);
 }
+EXPORT_SYMBOL(vma_prev);
 
 /* ========================================================================
  * VMA Creation and Initialization
@@ -863,6 +881,7 @@ uint64_t vm_get_page_prot(uint64_t flags) {
 
   return prot;
 }
+EXPORT_SYMBOL(vm_get_page_prot);
 
 struct vm_area_struct *vma_create(uint64_t start, uint64_t end, uint64_t flags) {
   if (start >= end || (start & (PAGE_SIZE - 1)) || (end & (PAGE_SIZE - 1)))
@@ -895,6 +914,7 @@ struct vm_area_struct *vma_create(uint64_t start, uint64_t end, uint64_t flags) 
 
   return vma;
 }
+EXPORT_SYMBOL(vma_create);
 
 /* ========================================================================
  * High-level VMA management (mmap/munmap/mprotect)
@@ -1017,6 +1037,7 @@ out:
   up_write(&mm->mmap_lock);
   return addr;
 }
+EXPORT_SYMBOL(do_mmap);
 
 int do_munmap(struct mm_struct *mm, uint64_t addr, size_t len) {
   struct vm_area_struct *vma, *tmp;
@@ -1072,6 +1093,7 @@ int do_munmap(struct mm_struct *mm, uint64_t addr, size_t len) {
   tlb_finish_mmu(&tlb);
   return 0;
 }
+EXPORT_SYMBOL(do_munmap);
 
 int do_mprotect(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot) {
   struct vm_area_struct *vma;
@@ -1131,6 +1153,7 @@ int do_mprotect(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot) 
   up_write(&mm->mmap_lock);
   return 0;
 }
+EXPORT_SYMBOL(do_mprotect);
 
 /* ========================================================================
  * Legacy Compatibility / High-level VMA Operations
@@ -1216,6 +1239,7 @@ uint64_t do_mremap(struct mm_struct *mm, uint64_t old_addr, size_t old_len, size
   up_write(&mm->mmap_lock);
   return old_addr;
 }
+EXPORT_SYMBOL(do_mremap);
 
 int mm_populate_user_range(struct mm_struct *mm, uint64_t start, size_t size, uint64_t flags, const uint8_t *data,
                            size_t data_len) {
@@ -1303,6 +1327,7 @@ int mm_populate_user_range(struct mm_struct *mm, uint64_t start, size_t size, ui
 
   return 0;
 }
+EXPORT_SYMBOL(mm_populate_user_range);
 
 /**
  * mm_prefault_range - Prefault pages in a VMA range
@@ -1406,6 +1431,7 @@ int mm_prefault_range(struct vm_area_struct *vma, uint64_t start, uint64_t end) 
   vma_unlock_shared(vma);
   return ret;
 }
+EXPORT_SYMBOL(mm_prefault_range);
 
 /**
  * mm_populate_range - Populate (prefault) pages in an address range
@@ -1507,6 +1533,7 @@ int mm_populate_range(struct mm_struct *mm, uint64_t start, uint64_t end, bool l
 
   return ret;
 }
+EXPORT_SYMBOL(mm_populate_range);
 
 /* ========================================================================
  * Free Region Finding
@@ -1517,6 +1544,7 @@ uint64_t vma_find_free_region(struct mm_struct *mm, size_t size,
   return vma_find_free_region_aligned(mm, size, PAGE_SIZE, range_start,
                                       range_end);
 }
+EXPORT_SYMBOL(vma_find_free_region);
 
 uint64_t vma_find_free_region_aligned(struct mm_struct *mm, size_t size,
                                       uint64_t alignment, uint64_t range_start,
@@ -1599,6 +1627,7 @@ retry:
 
   return addr;
 }
+EXPORT_SYMBOL(vma_find_free_region_aligned);
 
 /* ========================================================================
  * Statistics and Debugging

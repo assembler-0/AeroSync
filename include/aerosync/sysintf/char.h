@@ -30,6 +30,7 @@ struct char_operations {
   ssize_t (*read)(struct char_device *dev, void *buf, size_t count, vfs_loff_t *ppos);
   ssize_t (*write)(struct char_device *dev, const void *buf, size_t count, vfs_loff_t *ppos);
   int (*ioctl)(struct char_device *dev, uint32_t cmd, void *arg);
+  int (*mmap)(struct char_device *dev, struct vm_area_struct *vma);
 };
 
 /**

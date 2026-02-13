@@ -32,6 +32,7 @@
 #include <mm/swap.h>
 #include <mm/workingset.h>
 #include <aerosync/workqueue.h>
+#include <aerosync/export.h>
 
 /* Page Tree Management - Now using embedded obj_node in struct page for O(1) node allocation */
 
@@ -695,6 +696,7 @@ struct vm_object *vm_object_vnode_create(struct inode *vnode, size_t size) {
   obj->ops = &vnode_obj_ops;
   return obj;
 }
+EXPORT_SYMBOL(vm_object_vnode_create);
 
 /**
  * vm_object_shadow_depth - Get the depth of a shadow chain
@@ -710,6 +712,7 @@ int vm_object_shadow_depth(struct vm_object *obj) {
   }
   return depth;
 }
+EXPORT_SYMBOL(vm_object_shadow_depth);
 
 /**
  * vm_object_collapse - Deep flattening of shadow chains.
@@ -1135,6 +1138,7 @@ struct vm_object *vm_object_shadow_create(struct vm_object *backing, uint64_t of
 
   return obj;
 }
+EXPORT_SYMBOL(vm_object_shadow_create);
 
 struct vm_object *vm_object_anon_create(size_t size) {
   struct vm_object *obj = vm_object_alloc(VM_OBJECT_ANON);
@@ -1144,6 +1148,7 @@ struct vm_object *vm_object_anon_create(size_t size) {
   obj->ops = &anon_obj_ops;
   return obj;
 }
+EXPORT_SYMBOL(vm_object_anon_create);
 
 struct vm_object *vm_object_device_create(uint64_t phys_addr, size_t size) {
   struct vm_object *obj = vm_object_alloc(VM_OBJECT_DEVICE);
@@ -1154,6 +1159,7 @@ struct vm_object *vm_object_device_create(uint64_t phys_addr, size_t size) {
   obj->ops = &device_obj_ops;
   return obj;
 }
+EXPORT_SYMBOL(vm_object_device_create);
 
 int vm_object_cow_prepare(struct vm_area_struct *vma, struct vm_area_struct *new_vma) {
   struct vm_object *old_obj = vma->vm_obj;
@@ -1186,6 +1192,7 @@ int vm_object_cow_prepare(struct vm_area_struct *vma, struct vm_area_struct *new
   vm_object_put(old_obj);
   return 0;
 }
+EXPORT_SYMBOL(vm_object_cow_prepare);
 
 void vm_obj_stress_test(void) {
   printk(VMM_CLASS "vm_object: Starting shadow chain stress test...\n");
@@ -1193,7 +1200,7 @@ void vm_obj_stress_test(void) {
   /* 1. Create a base object */
   struct vm_object *base = vm_object_anon_create(PAGE_SIZE * 4);
   if (!base) {
-    printk(VMM_CLASS "vm_object: Failed to create base object\n");
+    panic(VMM_CLASS "vm_object: Failed to create base object\n");
     return;
   }
 
@@ -1211,7 +1218,7 @@ void vm_obj_stress_test(void) {
   for (int i = 0; i < levels; i++) {
     struct vm_object *shadow = vm_object_shadow_create(curr, 0, PAGE_SIZE * 4);
     if (!shadow) {
-      printk(VMM_CLASS "vm_object: Failed at shadow level %d\n", i);
+      panic(VMM_CLASS "vm_object: Failed at shadow level %d\n", i);
       break;
     }
     
@@ -1231,7 +1238,7 @@ void vm_obj_stress_test(void) {
         /* Verify data */
         uint8_t *data = pmm_phys_to_virt(folio_to_phys(vmf.folio));
         if (data[0] != 0xAA) {
-          printk(VMM_CLASS "vm_object: Data corruption at level %d!\n", i);
+          panic(VMM_CLASS "vm_object: Data corruption at level %d!\n", i);
         }
         folio_put(vmf.folio);
       }
@@ -1251,7 +1258,7 @@ void vm_obj_stress_test(void) {
          final_depth, levels);
   
   if (final_depth > 16) {
-    printk(VMM_CLASS "vm_object: WARNING: Chain depth too high, collapse might be failing!\n");
+    printk(KERN_WARNING VMM_CLASS "vm_object: Chain depth too high, collapse might be failing!\n");
   }
 
   vm_object_put(curr);

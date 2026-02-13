@@ -965,6 +965,18 @@ static ssize_t __no_cfi chrdev_write(struct file *file, const char *buf, size_t 
   return cdev->ops->write(cdev, buf, count, ppos);
 }
 
+static int __no_cfi chrdev_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
+  struct char_device *cdev = file->private_data;
+  if (!cdev || !cdev->ops || !cdev->ops->ioctl) return -ENOTTY;
+  return cdev->ops->ioctl(cdev, cmd, (void *) arg);
+}
+
+static int __no_cfi chrdev_mmap(struct file *file, struct vm_area_struct *vma) {
+  struct char_device *cdev = file->private_data;
+  if (!cdev || !cdev->ops || !cdev->ops->mmap) return -ENODEV;
+  return cdev->ops->mmap(cdev, vma);
+}
+
 static int blkdev_open(struct inode *inode, struct file *file) {
   struct block_device *bdev = blkdev_lookup(inode->i_rdev);
   if (!bdev) return -ENODEV;
@@ -1045,6 +1057,8 @@ static struct file_operations def_chr_fops = {
   .release = chrdev_release,
   .read = chrdev_read,
   .write = chrdev_write,
+  .ioctl = chrdev_ioctl,
+  .mmap = chrdev_mmap,
 };
 
 static struct file_operations def_fifo_fops = {
@@ -1071,14 +1085,6 @@ void init_special_inode(struct inode *inode, vfs_mode_t mode, dev_t rdev) {
 }
 
 EXPORT_SYMBOL(init_special_inode);
-
-/* 
- * vfs_notify_change is now implemented in fs/vfs_events.c
- * with a full subscriber model.
- */
-extern void vfs_notify_change(struct dentry *dentry, uint32_t event);
-
-EXPORT_SYMBOL(vfs_notify_change);
 
 struct timespec current_time(struct inode *inode) {
   struct timespec now;

@@ -15,6 +15,7 @@
 #include <aerosync/classes.h>
 #include <aerosync/panic.h>
 #include <aerosync/spinlock.h>
+#include <aerosync/export.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <mm/vma.h>
@@ -107,10 +108,12 @@ int vmm_get_paging_levels(void) {
 uint64_t vmm_get_canonical_high_base(void) {
   return (vmm_get_paging_levels() == 5) ? 0xFF00000000000000ULL : 0xFFFF800000000000ULL;
 }
+EXPORT_SYMBOL(vmm_get_canonical_high_base);
 
 uint64_t vmm_get_max_user_address(void) {
   return (vmm_get_paging_levels() == 5) ? 0x0100000000000000ULL : 0x0000800000000000ULL;
 }
+EXPORT_SYMBOL(vmm_get_max_user_address);
 
 static bool g_support_1gb = false;
 
