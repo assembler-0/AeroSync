@@ -45,7 +45,7 @@ void printk_register_backend(const printk_backend_t *backend) {
 }
 EXPORT_SYMBOL(printk_register_backend);
 
-void printk_auto_configure(void *payload, const int reinit) {
+void __no_cfi printk_auto_configure(void *payload, const int reinit) {
   const printk_backend_t *best = nullptr;
 
   for (int i = 0; i < num_registered_backends; i++) {
@@ -104,7 +104,7 @@ void printk_init_async(void) {
 }
 #endif
 
-int printk_set_sink(const char *backend_name, bool cleanup) {
+int __no_cfi printk_set_sink(const char *backend_name, bool cleanup) {
   if (!backend_name) {
     printk_shutdown();
     return 0;
@@ -190,7 +190,7 @@ const printk_backend_t *printk_auto_select_backend(const char *not) {
 }
 EXPORT_SYMBOL(printk_auto_select_backend);
 
-void printk_shutdown(void) {
+void __no_cfi printk_shutdown(void) {
   if (active_backend && active_backend->cleanup) {
     active_backend->cleanup();
   }

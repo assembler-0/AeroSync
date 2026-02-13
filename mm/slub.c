@@ -1050,11 +1050,11 @@ void slab_test(void) {
   printk(KERN_DEBUG SLAB_CLASS "Starting SLUB Stress Test...\n");
 
   /* Test 1: Basic kmalloc/kfree */
-  void *p = kmalloc(32);
-  if (!p)
+  void *ptr = kmalloc(32);
+  if (!ptr)
     panic(SLAB_CLASS "kmalloc(32) failed");
-  memset(p, 0xAA, 32);
-  kfree(p);
+  memset(ptr, 0xAA, 32);
+  kfree(ptr);
   printk(KERN_DEBUG SLAB_CLASS "  - Basic Alloc/Free: OK\n");
 
   /* Test 2: Array Allocation (Stress) */

@@ -6,10 +6,12 @@
 #include <aerosync/types.h>
 #include <linux/list.h>
 #include <linux/rbtree.h>
+#include <aerosync/pid_ns.h>
 
 /* Forward declarations */
 struct sched_class;
 struct fpu_state;
+struct psi_group;
 
 /* Task States */
 /* Wait queue sleep states */
@@ -270,6 +272,7 @@ struct task_struct {
    */
   pid_t pid;
   pid_t tgid; /* Thread group ID */
+  int exit_code;
 
   /*
    * Family relationships
@@ -288,6 +291,12 @@ struct task_struct {
    * Resource management
    */
   struct resdomain *rd;
+  struct pid_namespace *nsproxy;
+
+  /*
+   * Pressure Stall Information
+   */
+  struct psi_group *psi;
 
   /*
    * Task name and debugging
@@ -516,6 +525,7 @@ void schedule_tail(struct task_struct *prev);
 void idle_loop(void);
 
 void set_task_nice(struct task_struct *p, int nice);
+struct task_struct *find_task_by_pid(pid_t pid);
 
 /* Scheduling policy functions */
 int sched_setscheduler(struct task_struct *p, int policy, int priority);

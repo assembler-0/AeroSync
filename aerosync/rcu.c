@@ -308,7 +308,7 @@ void call_rcu(struct rcu_head *head, void (*func)(struct rcu_head *head)) {
   local_irq_restore(flags);
 }
 
-static void rcu_process_callbacks(void) {
+static void __no_cfi rcu_process_callbacks(void) {
   struct rcu_head *list = nullptr;
   struct rcu_data *rdp = this_cpu_ptr(rcu_data);
 

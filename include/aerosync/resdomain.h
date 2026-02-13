@@ -86,6 +86,7 @@ void resdomain_init(void);
  * resdomain_create - Create a new sub-domain
  */
 struct resdomain *resdomain_create(struct resdomain *parent, const char *name);
+bool resdomain_is_descendant(struct resdomain *parent, struct resdomain *child);
 
 /**
  * resdomain_put - Decrement refcount and destroy if 0
@@ -135,6 +136,9 @@ struct pid_rd_state {
 
 int resdomain_can_fork(struct resdomain *rd);
 void resdomain_cancel_fork(struct resdomain *rd);
+
+/* --- IO Controller API --- */
+int resdomain_io_throttle(struct resdomain *rd, uint64_t bytes);
 
 /* --- CPU Controller API --- */
 struct cpu_rd_state {

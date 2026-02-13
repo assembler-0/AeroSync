@@ -80,6 +80,13 @@ struct limine_smbios_request smbios_request = {
 __attribute__((
   used,
   section(".limine_requests"))) static volatile
+struct limine_efi_system_table_request efi_system_table_request = {
+  .id = LIMINE_EFI_SYSTEM_TABLE_REQUEST_ID, .revision = 0
+};
+
+__attribute__((
+  used,
+  section(".limine_requests"))) static volatile
 struct limine_module_request module_request = {
   .id = LIMINE_MODULE_REQUEST_ID, .revision = 0
 };
@@ -161,6 +168,11 @@ volatile struct limine_smbios_request *get_smbios_request(void) {
   return &smbios_request;
 }
 EXPORT_SYMBOL(get_smbios_request);
+
+volatile struct limine_efi_system_table_request *get_efi_system_table_request(void) {
+  return &efi_system_table_request;
+}
+EXPORT_SYMBOL(get_efi_system_table_request);
 
 volatile struct limine_module_request *get_module_request(void) {
   return &module_request;

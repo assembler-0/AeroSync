@@ -8,3 +8,4 @@
 - `dumpdevtree`: dump the device tree
 - `nosmp`: disable SMP (depends on CONFIG_SYMETRIC_MP)
 - `initrd=VAL`: VAL is path to initrd
+- `bootinfo`: display some limine boot info

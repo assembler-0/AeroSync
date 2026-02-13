@@ -488,7 +488,7 @@ static irq_mapping_t *irq_map_head = nullptr;
 static DEFINE_SPINLOCK(irq_map_lock);
 
 // Generic trampoline
-static void acpi_irq_trampoline(cpu_regs *regs) {
+static void __no_cfi acpi_irq_trampoline(cpu_regs *regs) {
   uint32_t vector = regs->interrupt_number;
 
   irq_flags_t flags = spinlock_lock_irqsave(&irq_map_lock);
@@ -626,7 +626,7 @@ static work_item_t *work_tail = nullptr;
 static DEFINE_SPINLOCK(work_lock);
 static wait_queue_head_t work_wait_q;
 
-static int acpi_worker_thread(void *data) {
+static int __no_cfi acpi_worker_thread(void *data) {
   (void)data;
   wait_queue_entry_t wait;
   init_wait(&wait);
@@ -711,7 +711,7 @@ static struct task_struct *worker = nullptr;
 /*
  * Initialization
  */
-uacpi_status uacpi_kernel_initialize(uacpi_init_level current_init_lvl) {
+uacpi_status __no_cfi uacpi_kernel_initialize(uacpi_init_level current_init_lvl) {
   if (current_init_lvl == UACPI_INIT_LEVEL_SUBSYSTEM_INITIALIZED) {
     spinlock_init(&work_lock);
     init_waitqueue_head(&work_wait_q);

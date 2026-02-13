@@ -27,7 +27,7 @@ static struct device_driver tty_driver = {
     .name = "tty_core",
 };
 
-static int tty_cdev_open(struct char_device *cdev) {
+static int __no_cfi tty_cdev_open(struct char_device *cdev) {
   struct tty_struct *tty = cdev->private_data;
   if (tty && tty->ops && tty->ops->open) {
     return tty->ops->open(tty);
@@ -44,7 +44,7 @@ static ssize_t tty_cdev_read(struct char_device *cdev, void *buf, size_t count, 
   return ringbuf_read(tty->read_buf, buf, count);
 }
 
-static ssize_t tty_cdev_write(struct char_device *cdev, const void *buf, size_t count, vfs_loff_t *ppos) {
+static ssize_t __no_cfi tty_cdev_write(struct char_device *cdev, const void *buf, size_t count, vfs_loff_t *ppos) {
   (void) ppos;
   struct tty_struct *tty = cdev->private_data;
   if (!tty || !tty->ops || !tty->ops->write) return -EIO;

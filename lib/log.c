@@ -171,7 +171,7 @@ static const char *const klog_prefixes[] = {
   [KLOG_DEBUG] = "[7] ",
 };
 
-static void console_emit_prefix_ts(int level, uint64_t ts_ns) {
+static void __no_cfi console_emit_prefix_ts(int level, uint64_t ts_ns) {
   if (!klog_console_sink)
     return;
 
@@ -201,7 +201,7 @@ static int klog_sync_threshold = KLOG_ERR; // ERR and above stay synchronous
 
 static int early_printk_recursion = 0;
 
-int log_write_str(int level, const char *msg) {
+int __no_cfi log_write_str(int level, const char *msg) {
   if (!msg)
     return 0;
 
@@ -303,8 +303,7 @@ int log_write_str(int level, const char *msg) {
 }
 
 // Background logger thread: drains ring buffer to console
-// Background logger thread: drains ring buffer to console
-static int klogd_thread(void *data) {
+static int __no_cfi klogd_thread(void *data) {
   (void)data;
   char out_buf[512];
   while (1) {

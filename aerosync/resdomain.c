@@ -314,15 +314,92 @@ static struct rd_subsys pid_subsys = {
   .populate = pid_populate,
 };
 
+/* --- IO Controller Ops --- */
+
+struct io_rd_state {
+  struct resdomain_subsys_state css;
+  uint32_t weight; /* I/O Weight (10-1000, default 100) */
+  uint64_t max_bps; /* Max Bytes Per Second (0 = unlimited) */
+  uint64_t max_iops; /* Max IOPS (0 = unlimited) */
+
+  /* Token Bucket State */
+  spinlock_t lock;
+  uint64_t bps_tokens;
+  uint64_t iops_tokens;
+  uint64_t last_refill_ns;
+};
+
+static struct resdomain_subsys_state *io_css_alloc(struct resdomain *rd) {
+  struct io_rd_state *ios = kzalloc(sizeof(struct io_rd_state));
+  if (!ios) return nullptr;
+  ios->weight = 100;
+  ios->max_bps = 0;
+  ios->max_iops = 0;
+  spinlock_init(&ios->lock);
+  ios->last_refill_ns = get_time_ns();
+  ios->bps_tokens = 0;
+  ios->iops_tokens = 0;
+  return &ios->css;
+}
+
+static void io_css_free(struct resdomain *rd) {
+  kfree(rd->subsys[RD_SUBSYS_IO]);
+}
+
+static ssize_t resfs_io_weight_read(struct file *file, char *buf, size_t count, vfs_loff_t *ppos) {
+  struct resdomain *rd = file->f_inode->i_fs_info;
+  struct io_rd_state *ios = (struct io_rd_state *) rd->subsys[RD_SUBSYS_IO];
+  char kbuf[32];
+  int len = snprintf(kbuf, sizeof(kbuf), "%u\n", ios->weight);
+  return simple_read_from_buffer(buf, count, ppos, kbuf, (size_t) len);
+}
+
+static ssize_t resfs_io_weight_write(struct file *file, const char *buf, size_t count, vfs_loff_t *ppos) {
+  (void) ppos;
+  struct resdomain *rd = file->f_inode->i_fs_info;
+  struct io_rd_state *ios = (struct io_rd_state *) rd->subsys[RD_SUBSYS_IO];
+  char kbuf[32];
+  if (count >= sizeof(kbuf)) return -EINVAL;
+  if (copy_from_user(kbuf, buf, count)) return -EFAULT;
+  kbuf[count] = 0;
+  unsigned long val;
+  if (kstrtoul(kbuf, 10, &val)) return -EINVAL;
+  if (val < 10 || val > 1000) return -EINVAL;
+  ios->weight = (uint32_t) val;
+  return (ssize_t) count;
+}
+
+static const struct file_operations resfs_io_weight_fops = {
+  .read = resfs_io_weight_read,
+  .write = resfs_io_weight_write,
+};
+
+static void io_populate(struct resdomain *rd, struct pseudo_node *dir) {
+  extern struct pseudo_fs_info resfs_info;
+  extern void resfs_init_inode(struct inode *inode, struct pseudo_node *pnode);
+  struct pseudo_node *node;
+  node = pseudo_fs_create_file(&resfs_info, dir, "io.weight", &resfs_io_weight_fops, rd);
+  if (node) node->init_inode = resfs_init_inode;
+}
+
+static struct rd_subsys io_subsys = {
+  .name = "io",
+  .id = RD_SUBSYS_IO,
+  .css_alloc = io_css_alloc,
+  .css_free = io_css_free,
+  .populate = io_populate,
+};
+
 struct rd_subsys *rd_subsys_list[RD_SUBSYS_COUNT] = {
   [RD_SUBSYS_CPU] = &cpu_subsys,
   [RD_SUBSYS_MEM] = &mem_subsys,
   [RD_SUBSYS_PID] = &pid_subsys,
+  [RD_SUBSYS_IO] = &io_subsys,
 };
 
 /* --- Core Management --- */
 
-static int resdomain_init_subsys(struct resdomain *rd, int subsys_id) {
+static int __no_cfi resdomain_init_subsys(struct resdomain *rd, int subsys_id) {
   struct rd_subsys *ss = rd_subsys_list[subsys_id];
   if (!ss || !ss->css_alloc) return 0;
   struct resdomain_subsys_state *css = ss->css_alloc(rd);
@@ -339,7 +416,8 @@ void resdomain_init(void) {
   INIT_LIST_HEAD(&root_resdomain.children);
   INIT_LIST_HEAD(&root_resdomain.sibling);
   spinlock_init(&root_resdomain.lock);
-  root_resdomain.subtree_control = (1 << RD_SUBSYS_CPU) | (1 << RD_SUBSYS_MEM) | (1 << RD_SUBSYS_PID);
+  root_resdomain.subtree_control = (1 << RD_SUBSYS_CPU) | (1 << RD_SUBSYS_MEM) | (1 << RD_SUBSYS_PID) | (
+                                     1 << RD_SUBSYS_IO);
   root_resdomain.child_subsys_mask = root_resdomain.subtree_control;
   for (int i = 0; i < RD_SUBSYS_COUNT; i++) {
     resdomain_init_subsys(&root_resdomain, i);
@@ -374,7 +452,7 @@ struct resdomain *resdomain_create(struct resdomain *parent, const char *name) {
   return rd;
 }
 
-void resdomain_put(struct resdomain *rd) {
+void __no_cfi resdomain_put(struct resdomain *rd) {
   if (!rd || rd == &root_resdomain) return;
   if (atomic_dec_and_test(&rd->refcount)) {
     if (rd->parent) {
@@ -415,7 +493,7 @@ void resdomain_task_exit(struct task_struct *p) {
   p->rd = nullptr;
 }
 
-int resdomain_attach_task(struct resdomain *rd, struct task_struct *task) {
+int __no_cfi resdomain_attach_task(struct resdomain *rd, struct task_struct *task) {
   if (!rd || !task) return -EINVAL;
   struct resdomain *old_rd = task->rd;
   if (rd == old_rd) return 0;
@@ -443,7 +521,7 @@ int resdomain_attach_task(struct resdomain *rd, struct task_struct *task) {
   return 0;
 }
 
-int resdomain_charge_mem(struct resdomain *rd, uint64_t bytes, bool force) {
+int __no_cfi resdomain_charge_mem(struct resdomain *rd, uint64_t bytes, bool force) {
   if (!rd) rd = &root_resdomain;
   struct mem_rd_state *ms = (struct mem_rd_state *) rd->subsys[RD_SUBSYS_MEM];
   if (!ms) return 0;
@@ -483,4 +561,93 @@ int resdomain_can_fork(struct resdomain *rd) {
 
 void resdomain_cancel_fork(struct resdomain *rd) {
   (void) rd;
+}
+
+bool resdomain_is_descendant(struct resdomain *parent, struct resdomain *child) {
+  if (!parent || !child) return false;
+  if (parent == child) return true;
+  struct resdomain *tmp = child;
+  while (tmp) {
+    if (tmp == parent) return true;
+    tmp = tmp->parent;
+  }
+  return false;
+}
+
+int resdomain_io_throttle(struct resdomain *rd, uint64_t bytes) {
+  if (!rd) return 0;
+  struct io_rd_state *ios = (struct io_rd_state *) rd->subsys[RD_SUBSYS_IO];
+  if (!ios) return 0;
+
+  /* Simple Token Bucket */
+  /* If max_bps or max_iops are set, throttle */
+
+  if (ios->max_bps == 0 && ios->max_iops == 0) return 0;
+
+  /* Logic:
+     1. Refill tokens based on time elapsed.
+     2. Check if enough tokens.
+     3. If not, sleep (throttle).
+  */
+
+  spinlock_lock(&ios->lock);
+  uint64_t now = get_time_ns();
+  uint64_t elapsed = now - ios->last_refill_ns;
+
+  /* Refill BPS */
+  if (ios->max_bps > 0) {
+    uint64_t new_tokens = (elapsed * ios->max_bps) / 1000000000ULL;
+    ios->bps_tokens += new_tokens;
+    if (ios->bps_tokens > ios->max_bps) ios->bps_tokens = ios->max_bps; /* Max burst = 1 sec */
+  }
+
+  /* Refill IOPS */
+  if (ios->max_iops > 0) {
+    uint64_t new_tokens = (elapsed * ios->max_iops) / 1000000000ULL;
+    ios->iops_tokens += new_tokens;
+    if (ios->iops_tokens > ios->max_iops) ios->iops_tokens = ios->max_iops;
+  }
+
+  ios->last_refill_ns = now;
+
+  bool wait = false;
+  uint64_t wait_ns = 0;
+
+  /* Check BPS */
+  if (ios->max_bps > 0) {
+    if (ios->bps_tokens < bytes) {
+      wait = true;
+      uint64_t needed = bytes - ios->bps_tokens;
+      wait_ns = (needed * 1000000000ULL) / ios->max_bps;
+    } else {
+      ios->bps_tokens -= bytes;
+    }
+  }
+
+  /* Check IOPS (1 IO) */
+  if (ios->max_iops > 0) {
+    if (ios->iops_tokens < 1) {
+      wait = true;
+      uint64_t needed = 1;
+      uint64_t w = (needed * 1000000000ULL) / ios->max_iops;
+      if (w > wait_ns) wait_ns = w;
+    } else {
+      ios->iops_tokens -= 1;
+    }
+  }
+
+  spinlock_unlock(&ios->lock);
+
+  if (wait) {
+    /* Cap wait time to avoid excessively long sleeps */
+    if (wait_ns > 100000000ULL) wait_ns = 100000000ULL; /* 100ms max sleep per check */
+
+    /* Sleep */
+    schedule_timeout(wait_ns);
+
+    /* Retry */
+    return resdomain_io_throttle(rd, bytes);
+  }
+
+  return 0;
 }

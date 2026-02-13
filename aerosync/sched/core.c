@@ -99,13 +99,13 @@ void set_task_cpu(struct task_struct *task, int cpu) { task->cpu = cpu; }
  * Core Scheduler Operations
  */
 
-void activate_task(struct rq *rq, struct task_struct *p, int flags) {
+void __no_cfi activate_task(struct rq *rq, struct task_struct *p, int flags) {
   if (p->sched_class && p->sched_class->enqueue_task) {
     p->sched_class->enqueue_task(rq, p, flags);
   }
 }
 
-void deactivate_task(struct rq *rq, struct task_struct *p, int flags) {
+void __no_cfi deactivate_task(struct rq *rq, struct task_struct *p, int flags) {
   if (p->sched_class && p->sched_class->dequeue_task) {
     p->sched_class->dequeue_task(rq, p, flags);
   }
@@ -114,7 +114,7 @@ void deactivate_task(struct rq *rq, struct task_struct *p, int flags) {
 /*
  * Internal migration helper - caller must hold __rq_lock
  */
-static void __move_task_to_rq_locked(struct task_struct *task, int dest_cpu) {
+static void __no_cfi __move_task_to_rq_locked(struct task_struct *task, int dest_cpu) {
   struct rq *src_rq = per_cpu_ptr(runqueues, task->cpu);
   struct rq *dest_rq = per_cpu_ptr(runqueues, dest_cpu);
 
@@ -162,7 +162,7 @@ void move_task_to_rq(struct task_struct *task, int dest_cpu) {
  * sched_move_task - Moves a task from its current scheduling group to a new one.
  * Used when a task is attached to a different ResDomain.
  */
-void sched_move_task(struct task_struct *p) {
+void __no_cfi sched_move_task(struct task_struct *p) {
   struct rq *rq = per_cpu_ptr(runqueues, p->cpu);
   irq_flags_t flags = spinlock_lock_irqsave(&rq->lock);
 
@@ -214,7 +214,7 @@ static void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 /*
  * Pick the next task to run by iterating through scheduler classes
  */
-static struct task_struct *pick_next_task(struct rq *rq) {
+static struct task_struct * __no_cfi pick_next_task(struct rq *rq) {
   struct task_struct *p;
   const struct sched_class *class;
 
@@ -238,7 +238,7 @@ static struct task_struct *pick_next_task(struct rq *rq) {
 /*
  * Context Switch
  */
-extern struct task_struct *switch_to(struct task_struct *prev,
+extern struct task_struct * __no_cfi switch_to(struct task_struct *prev,
                                      struct task_struct *next);
 
 /*
@@ -269,7 +269,7 @@ static inline int task_on_rq(struct task_struct *p) {
  * __update_task_prio - update the effective priority of a task
  * Must be called with p->pi_lock held.
  */
-void __update_task_prio(struct task_struct *p) {
+void __no_cfi __update_task_prio(struct task_struct *p) {
   int old_prio = p->prio;
   int top_pi = task_top_pi_prio(p);
   const struct sched_class *old_class = p->sched_class;
@@ -372,7 +372,7 @@ void pi_restore_prio(struct task_struct *owner, struct task_struct *waiter) {
  * Task state management functions
  */
 
-void task_sleep(void) {
+void __no_cfi task_sleep(void) {
   struct task_struct *curr = get_current();
   struct rq *rq = this_rq();
 
@@ -421,7 +421,7 @@ long schedule_timeout(uint64_t ns) {
   return remaining < 0 ? 0 : remaining;
 }
 
-void task_wake_up(struct task_struct *task) {
+void __no_cfi task_wake_up(struct task_struct *task) {
   int cpu = smp_get_id();
   int target_cpu;
   struct rq *rq;
@@ -506,7 +506,7 @@ void schedule_tail(struct task_struct *prev) {
   }
 }
 
-void set_task_nice(struct task_struct *p, int nice) {
+void __no_cfi set_task_nice(struct task_struct *p, int nice) {
   if (nice < MIN_NICE)
     nice = MIN_NICE;
   if (nice > MAX_NICE)
@@ -550,7 +550,7 @@ void set_task_nice(struct task_struct *p, int nice) {
 /*
  * The main schedule function
  */
-void schedule(void) {
+void __no_cfi schedule(void) {
   struct task_struct *prev_task, *next_task;
   struct rq *rq = this_rq();
 
@@ -899,7 +899,7 @@ static void run_rebalance_domains(struct softirq_action *h) {
 }
 #endif
 
-void __hot scheduler_tick(void) {
+void __hot __no_cfi scheduler_tick(void) {
   struct rq *rq = this_rq();
   struct task_struct *curr = rq->curr;
 
@@ -1002,6 +1002,11 @@ void sched_init_task(struct task_struct *initial_task) {
   initial_task->se.load.weight = prio_to_weight[initial_task->nice + 20];
   initial_task->se.on_rq = 0;
   initial_task->se.exec_start_ns = get_time_ns();
+  initial_task->se.cfs_rq = &rq->cfs;
+  initial_task->se.parent = nullptr;
+  
+  extern struct pid_namespace init_pid_ns;
+  initial_task->nsproxy = &init_pid_ns;
 
   /* PI initialization */
   spinlock_init(&initial_task->pi_lock);

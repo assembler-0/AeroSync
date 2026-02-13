@@ -73,6 +73,7 @@ include(drivers/pci/pci.cmake)
 include(drivers/timer/timer.cmake)
 include(drivers/block/ide/ide.cmake)
 include(drivers/char/pty.cmake)
+include(drivers/fw/fw.cmake)
 
 # Kernel Target Definition & Compilation Rules
 include(aerosync-compile)

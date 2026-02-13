@@ -18,6 +18,8 @@
 #include <aerosync/sysintf/class.h>
 #include <mm/slub.h>
 #include <lib/vsprintf.h> /* For snprintf */
+#include <aerosync/resdomain.h>
+#include <aerosync/sched/process.h>
 
 static struct class block_class = {
     .name = "block",
@@ -301,7 +303,7 @@ EXPORT_SYMBOL(blkdev_lookup);
 
 /* --- Dispatchers --- */
 
-int block_read(struct block_device *dev, void *buffer, uint64_t start_sector,
+int __no_cfi block_read(struct block_device *dev, void *buffer, uint64_t start_sector,
                uint32_t sector_count) {
   if (!dev || !buffer)
     return -EINVAL;
@@ -317,6 +319,10 @@ int block_read(struct block_device *dev, void *buffer, uint64_t start_sector,
   if (start_sector + sector_count > dev->sector_count)
     return -ERANGE;
 
+  if (current && current->rd) {
+      resdomain_io_throttle(current->rd, sector_count * dev->block_size);
+  }
+
   mutex_lock(&dev->lock);
   int ret = dev->ops->read(dev, buffer, start_sector, sector_count);
   mutex_unlock(&dev->lock);
@@ -325,7 +331,7 @@ int block_read(struct block_device *dev, void *buffer, uint64_t start_sector,
 }
 EXPORT_SYMBOL(block_read);
 
-int block_write(struct block_device *dev, const void *buffer,
+int __no_cfi block_write(struct block_device *dev, const void *buffer,
                 uint64_t start_sector, uint32_t sector_count) {
   if (!dev || !buffer)
     return -EINVAL;
@@ -340,6 +346,10 @@ int block_write(struct block_device *dev, const void *buffer,
   if (start_sector + sector_count > dev->sector_count)
     return -ERANGE;
 
+  if (current && current->rd) {
+      resdomain_io_throttle(current->rd, sector_count * dev->block_size);
+  }
+
   mutex_lock(&dev->lock);
   int ret = dev->ops->write(dev, buffer, start_sector, sector_count);
   mutex_unlock(&dev->lock);
@@ -348,7 +358,7 @@ int block_write(struct block_device *dev, const void *buffer,
 }
 EXPORT_SYMBOL(block_write);
 
-int block_flush(struct block_device *dev) {
+int __no_cfi block_flush(struct block_device *dev) {
   if (!dev)
     return -EINVAL;
     

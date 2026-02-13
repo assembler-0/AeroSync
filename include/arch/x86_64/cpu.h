@@ -2,6 +2,7 @@
 
 #include <compiler.h>
 #include <aerosync/types.h>
+#include <arch/x86_64/cpuid_vendor.h>
 
 #ifndef MAX_CPUS
 #define MAX_CPUS 512
@@ -90,6 +91,20 @@ void cpuid(uint32_t leaf, uint32_t *eax, uint32_t *ebx, uint32_t *ecx,
            uint32_t *edx);
 void cpuid_count(uint32_t leaf, uint32_t subleaf, uint32_t *eax, uint32_t *ebx,
                  uint32_t *ecx, uint32_t *edx);
+
+/**
+ * Get the CPU vendor string (12 chars + null)
+ * 
+ * @param out_vendor Pointer to buffer of at least 13 bytes
+ */
+void cpuid_get_vendor(char *out_vendor);
+
+/**
+ * Check if the kernel is running under a hypervisor
+ * 
+ * @return true if hypervisor bit is set
+ */
+bool is_host_hypervisor(void);
 
 
 #ifdef CONFIG_RDPID_SUPPORT

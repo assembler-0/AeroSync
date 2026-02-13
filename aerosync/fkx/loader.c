@@ -464,7 +464,7 @@ int fkx_finalize_loading(void) {
   return 0;
 }
 
-int fkx_init_module_class(fkx_module_class_t module_class) {
+int __no_cfi fkx_init_module_class(fkx_module_class_t module_class) {
   if (module_class >= FKX_MAX_CLASS) {
     printk(KERN_ERR FKX_CLASS "Invalid module class: %d\n", module_class);
     return -EINVAL;

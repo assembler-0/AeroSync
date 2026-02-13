@@ -872,7 +872,7 @@ const printk_backend_t *linearfb_get_backend(void) {
   return &fb_backend;
 }
 
-int linearfb_mod_init(void) {
+int __no_cfi linearfb_mod_init(void) {
   framebuffer_request = get_framebuffer_request();
   printk_register_backend(linearfb_get_backend());
   return 0;

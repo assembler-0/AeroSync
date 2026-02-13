@@ -71,7 +71,7 @@ void raise_softirq(unsigned int nr) {
 /**
  * __do_softirq - Internal softirq processing loop
  */
-static void __do_softirq(void) {
+static void __no_cfi __do_softirq(void) {
   uint32_t pending;
   int max_restart = MAX_SOFTIRQ_RESTART;
   struct softirq_action *h;

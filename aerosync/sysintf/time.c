@@ -104,7 +104,7 @@ static int time_collect_candidates(struct device *dev, void *data) {
   return 0;
 }
 
-int time_init(void) {
+int __no_cfi time_init(void) {
   const time_source_t *selected = nullptr;
   struct time_candidate_list list = {0};
 
@@ -160,7 +160,7 @@ const char *time_get_source_name(void) {
   return current_time_source->name;
 }
 
-void time_wait_ns(uint64_t ns) {
+void __no_cfi time_wait_ns(uint64_t ns) {
   if (ns == 0)
     return;
 
@@ -197,7 +197,7 @@ void time_wait_ns(uint64_t ns) {
   }
 }
 
-int time_calibrate_tsc_system(void) {
+int __no_cfi time_calibrate_tsc_system(void) {
   if (!current_time_source)
     return -ENODEV;
 

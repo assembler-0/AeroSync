@@ -18,7 +18,7 @@
 
 static struct workqueue_struct *system_wq;
 
-static int worker_thread(void *data) {
+static int __no_cfi worker_thread(void *data) {
   struct workqueue_struct *wq = data;
 
   while (1) {

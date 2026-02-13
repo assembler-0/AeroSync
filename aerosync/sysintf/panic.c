@@ -58,7 +58,7 @@ void panic_handler_install() {
   active_backend = best;
 }
 
-void panic_switch_handler(const char *name) {
+void __no_cfi panic_switch_handler(const char *name) {
   if (!name) return;
   for (int i = 0; i < num_registered_backends; i++) {
     const panic_ops_t *b = registered_backends[i];
@@ -79,7 +79,7 @@ void panic_switch_handler(const char *name) {
   }
 }
 
-void __exit __noinline __noreturn __sysv_abi panic(const char *msg, ...) {
+void __no_cfi __exit __noinline __noreturn __sysv_abi panic(const char *msg, ...) {
   va_list va;
   va_start(va, msg);
   char buff[128];
@@ -88,10 +88,10 @@ void __exit __noinline __noreturn __sysv_abi panic(const char *msg, ...) {
   va_end(va);
 }
 
-void __exit __noinline __noreturn __sysv_abi panic_exception(cpu_regs *regs) {
+void __no_cfi __exit __noinline __noreturn __sysv_abi panic_exception(cpu_regs *regs) {
   active_backend->panic_exception(regs);
 }
 
-void __exit __noinline __noreturn __sysv_abi panic_early() {
+void __no_cfi __exit __noinline __noreturn __sysv_abi panic_early() {
   active_backend->panic_early();
 }

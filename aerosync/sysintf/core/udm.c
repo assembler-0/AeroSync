@@ -77,7 +77,7 @@ enum udm_driver_state udm_get_driver_state(struct device *dev) {
 }
 EXPORT_SYMBOL(udm_get_driver_state);
 
-int udm_suspend_device(struct device *dev) {
+int __no_cfi udm_suspend_device(struct device *dev) {
   struct udm_device_entry *entry;
   int ret = -ENODEV;
 
@@ -100,7 +100,7 @@ int udm_suspend_device(struct device *dev) {
 }
 EXPORT_SYMBOL(udm_suspend_device);
 
-int udm_resume_device(struct device *dev) {
+int __no_cfi udm_resume_device(struct device *dev) {
   struct udm_device_entry *entry;
   int ret = -ENODEV;
 
@@ -123,7 +123,7 @@ int udm_resume_device(struct device *dev) {
 }
 EXPORT_SYMBOL(udm_resume_device);
 
-int udm_suspend_all(void) {
+int __no_cfi udm_suspend_all(void) {
   struct udm_device_entry *entry;
   int ret = 0, failed = 0;
 
@@ -165,7 +165,7 @@ int udm_suspend_all(void) {
 }
 EXPORT_SYMBOL(udm_suspend_all);
 
-int udm_resume_all(void) {
+int __no_cfi udm_resume_all(void) {
   struct udm_device_entry *entry;
   int ret = 0, failed = 0;
 
@@ -206,7 +206,7 @@ int udm_resume_all(void) {
 }
 EXPORT_SYMBOL(udm_resume_all);
 
-int udm_stop_all(void) {
+int __no_cfi udm_stop_all(void) {
   struct udm_device_entry *entry;
   int ret = 0, failed = 0;
 
@@ -246,7 +246,7 @@ int udm_stop_all(void) {
 }
 EXPORT_SYMBOL(udm_stop_all);
 
-int udm_restart_all(void) {
+int __no_cfi udm_restart_all(void) {
   struct udm_device_entry *entry;
   int ret = 0, failed = 0;
 
@@ -286,7 +286,7 @@ int udm_restart_all(void) {
 }
 EXPORT_SYMBOL(udm_restart_all);
 
-void udm_shutdown_all(void) {
+void __no_cfi udm_shutdown_all(void) {
   struct udm_device_entry *entry;
 
   printk(KERN_INFO HAL_CLASS "Shutting down all drivers...\n");
@@ -310,7 +310,7 @@ void udm_shutdown_all(void) {
 }
 EXPORT_SYMBOL(udm_shutdown_all);
 
-void udm_emergency_stop_all(void) {
+void __no_cfi udm_emergency_stop_all(void) {
   struct udm_device_entry *entry;
 
   printk(KERN_EMERG HAL_CLASS "EMERGENCY STOP - Halting all drivers\n");

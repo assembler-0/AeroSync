@@ -29,6 +29,7 @@
         "STACK_PROTECTION_ALL": "ON",
         "SANITIZER": "ON",
         "LTO": "ON",
+        "CFI_ENABLE": "OFF",
         "STRIP": "ON"
       }
     },
@@ -45,6 +46,7 @@
         "STACK_PROTECTION_ALL": "OFF",
         "SANITIZER": "OFF",
         "LTO": "ON",
+        "CFI_ENABLE": "OFF",
         "STRIP": "ON"
       }
     },
@@ -54,13 +56,14 @@
       "inherits": "base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "AEROSYNC_DEFCONFIG": "amd64",
-        "OPT_LEVEL": "0",
+        "AEROSYNC_DEFCONFIG": "amd64-hardened",
+        "OPT_LEVEL": "2",
         "DSYM_LEVEL": "3",
         "STACK_PROTECTION": "OFF",
         "STACK_PROTECTION_ALL": "ON",
         "SANITIZER": "ON",
         "LTO": "ON",
+        "CFI_ENABLE": "ON",
         "STRIP": "OFF"
       }
     },
@@ -71,10 +74,11 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "AEROSYNC_DEFCONFIG": "amd64",
-        "OPT_LEVEL": "0",
+        "OPT_LEVEL": "2",
         "DSYM_LEVEL": "3",
         "STACK_PROTECTION": "ON",
         "STACK_PROTECTION_ALL": "OFF",
+        "CFI_ENABLE": "ON",
         "STRIP": "OFF"
       }
     }

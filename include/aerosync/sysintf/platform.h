@@ -22,9 +22,9 @@ struct platform_device;
  * @resources: Array of resources (MMIO, IRQ)
  */
 struct platform_device {
+    struct device dev;
     const char *name;
     int id;
-    struct device dev;
     
     uint32_t num_resources;
     struct resource *resources;

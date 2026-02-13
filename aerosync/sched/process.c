@@ -38,9 +38,12 @@
 #include <fs/file.h>
 #include <aerosync/signal.h>
 #include <aerosync/errno.h>
+#include <aerosync/kref.h>
 #include <fs/fs_struct.h>
 #include <linux/container_of.h>
 #include <aerosync/resdomain.h>
+
+#include <aerosync/pid_ns.h>
 
 /*
  * Process/Thread Management
@@ -60,6 +63,13 @@ struct ida pid_ida;
 struct list_head task_list;
 spinlock_t tasklist_lock;
 
+struct pid_namespace init_pid_ns = {
+  .kref = KREF_INIT(2), /* 2 refs: one for init_task, one for being permanent */
+  .parent = nullptr,
+  .level = 0,
+  .child_reaper = nullptr,
+};
+
 void pid_allocator_init(void) {
   /* Initialize global task list and its lock at runtime */
   INIT_LIST_HEAD(&task_list);
@@ -67,17 +77,60 @@ void pid_allocator_init(void) {
 
   ida_init(&pid_ida, 32768);
   ida_alloc(&pid_ida); // Allocate 0 for idle/init
+
+  ida_init(&init_pid_ns.pid_ida, 32768);
+  ida_alloc(&init_pid_ns.pid_ida); /* Reserve 0 */
 }
 
-static pid_t alloc_pid(void) { return ida_alloc(&pid_ida); }
+struct pid_namespace *create_pid_namespace(struct pid_namespace *parent) {
+  struct pid_namespace *ns = kzalloc(sizeof(struct pid_namespace));
+  if (!ns) return nullptr;
+
+  kref_init(&ns->kref);
+  ns->parent = parent; /* TODO: get_pid_ns(parent) */
+  ns->level = parent ? parent->level + 1 : 0;
+  ida_init(&ns->pid_ida, 32768);
+  ida_alloc(&ns->pid_ida); /* Reserve 0 */
+
+  return ns;
+}
+
+static void free_pid_ns(struct kref *kref) {
+  struct pid_namespace *ns = container_of(kref, struct pid_namespace, kref);
+  /* TODO: clean up parent ref */
+  kfree(ns);
+}
+
+void put_pid_ns(struct pid_namespace *ns) {
+  if (ns && ns != &init_pid_ns)
+    kref_put(&ns->kref, free_pid_ns);
+}
+
+static inline void get_pid_ns(struct pid_namespace *ns) {
+  if (ns) kref_get(&ns->kref);
+}
+
+pid_t pid_ns_alloc(struct pid_namespace *ns) {
+  return ida_alloc(&ns->pid_ida);
+}
+
+void pid_ns_free(struct pid_namespace *ns, pid_t pid) {
+  ida_free(&ns->pid_ida, pid);
+}
+
+static pid_t alloc_pid_for_task(struct task_struct *task, struct pid_namespace *ns) {
+  /* For now, we only allocate in the active namespace.
+     A full implementation would allocate in all parent namespaces. */
+  return pid_ns_alloc(ns);
+}
 
 static void release_pid(pid_t pid) { ida_free(&pid_ida, pid); }
 
 // Defined in switch.asm
-struct task_struct *__switch_to(struct thread_struct *prev,
+struct task_struct * __no_cfi __switch_to(struct thread_struct *prev,
                                 struct thread_struct *next);
 
-struct task_struct *switch_to(struct task_struct *prev,
+struct task_struct * __no_cfi switch_to(struct task_struct *prev,
                               struct task_struct *next) {
   if (prev == next)
     return prev;
@@ -86,10 +139,10 @@ struct task_struct *switch_to(struct task_struct *prev,
 }
 
 // Entry point for new kernel threads
-void __used kthread_entry_stub(int (*threadfn)(void *data), void *data) {
+void __no_cfi __used kthread_entry_stub(int (*threadfn)(void *data), void *data) {
   cpu_sti(); // Enable interrupts as we are starting a fresh thread
-  threadfn(data);
-  sys_exit(0);
+  const int ret = threadfn(data);
+  sys_exit(ret);
 }
 
 /*
@@ -110,10 +163,36 @@ struct task_struct *copy_process(uint64_t clone_flags,
 
   memset(p, 0, sizeof(*p));
 
-  p->pid = alloc_pid();
+  /* Namespace handling */
+  if (clone_flags & CLONE_NEWPID) {
+    if (!parent) {
+      free_task_struct(p);
+      return nullptr;
+    }
+    p->nsproxy = create_pid_namespace(parent->nsproxy);
+    if (!p->nsproxy) {
+      free_task_struct(p);
+      return nullptr;
+    }
+  } else {
+    if (parent) {
+      p->nsproxy = parent->nsproxy;
+      get_pid_ns(p->nsproxy);
+    } else {
+      p->nsproxy = &init_pid_ns;
+      get_pid_ns(&init_pid_ns);
+    }
+  }
+
+  p->pid = alloc_pid_for_task(p, p->nsproxy);
   if (p->pid < 0) {
+    put_pid_ns(p->nsproxy);
     free_task_struct(p);
     return nullptr;
+  }
+
+  if (p->nsproxy->child_reaper == nullptr) {
+    p->nsproxy->child_reaper = p;
   }
 
   // Allocate 16KB kernel stack with guard page
@@ -143,6 +222,8 @@ struct task_struct *copy_process(uint64_t clone_flags,
   INIT_LIST_HEAD(&p->pi_list);
 
   // Setup memory management
+  if (!parent) return nullptr;
+
   if (clone_flags & CLONE_VM) {
     p->mm = parent->mm;
     mm_get(p->mm);
@@ -211,9 +292,7 @@ struct task_struct *copy_process(uint64_t clone_flags,
   // Link into global lists
   irq_flags_t flags = spinlock_lock_irqsave(&tasklist_lock);
   list_add_tail(&p->tasks, &task_list);
-  if (parent) {
-    list_add_tail(&p->sibling, &parent->children);
-  }
+  list_add_tail(&p->sibling, &parent->children);
   spinlock_unlock_irqrestore(&tasklist_lock, flags);
 
   return p;
@@ -234,7 +313,6 @@ struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
    * so it actually gets scheduled.
    */
   if (p->sched_class == &idle_sched_class || !p->sched_class) {
-    extern const struct sched_class fair_sched_class;
     p->sched_class = &fair_sched_class;
     p->prio = DEFAULT_PRIO;
     p->static_prio = DEFAULT_PRIO;
@@ -266,13 +344,13 @@ struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
 
 EXPORT_SYMBOL(kthread_create);
 
-void kthread_run(struct task_struct *k) {
+void __no_cfi kthread_run(struct task_struct *k) {
   if (k) wake_up_new_task(k);
 }
 
 EXPORT_SYMBOL(kthread_run);
 
-pid_t do_fork(uint64_t clone_flags, uint64_t stack_start, struct syscall_regs *regs) {
+pid_t __no_cfi do_fork(uint64_t clone_flags, uint64_t stack_start, struct syscall_regs *regs) {
   struct task_struct *curr = get_current();
   struct task_struct *p = copy_process(clone_flags, stack_start, curr);
   if (!p) return -ENOMEM;
@@ -324,15 +402,86 @@ pid_t sys_fork(void) {
   return -ENOSYS;
 }
 
+static void reparent_children(struct task_struct *parent) {
+  struct task_struct *child, *tmp;
+  struct task_struct *reaper = parent->nsproxy->child_reaper;
+
+  if (reaper == parent) {
+    /* If the reaper itself is exiting, move children to global init or parent reaper */
+    if (parent->nsproxy->parent)
+      reaper = parent->nsproxy->parent->child_reaper;
+    else
+      reaper = find_task_by_pid(1); /* Fallback to global init */
+  }
+
+  if (!reaper || reaper == parent) return;
+
+  list_for_each_entry_safe(child, tmp, &parent->children, sibling) {
+    list_del(&child->sibling);
+    child->parent = reaper;
+    list_add_tail(&child->sibling, &reaper->children);
+    
+    if (child->state == TASK_ZOMBIE) {
+        /* If child was already zombie, notify the new parent */
+        send_signal(SIGCHLD, reaper);
+    }
+  }
+}
+
 void sys_exit(int error_code) {
   struct task_struct *curr = get_current();
 
-  cpu_cli();
+  /* 1. Mark as exiting to prevent further allocations/interrupts handling */
+  curr->flags |= PF_EXITING;
+  curr->exit_code = error_code;
+
+  /* 2. Release Memory Management context */
+  if (curr->mm) {
+    mm_put(curr->mm);
+    curr->mm = nullptr;
+  }
+
+  /* 3. Close all open files */
+  if (curr->files) {
+    if (atomic_dec_and_test(&curr->files->count)) {
+      for (int i = 0; i < curr->files->fdtab.max_fds; i++) {
+        if (curr->files->fd_array[i]) {
+          fput(curr->files->fd_array[i]);
+          curr->files->fd_array[i] = nullptr;
+        }
+      }
+      kfree(curr->files);
+    }
+    curr->files = nullptr;
+  }
+
+  /* 4. Release fs_struct */
+  if (curr->fs) {
+    free_fs_struct(curr->fs);
+    curr->fs = nullptr;
+  }
+
+  /* 5. Handle process hierarchy */
+  spinlock_lock(&tasklist_lock);
+  
+  /* Reparent my children */
+  reparent_children(curr);
+
+  /* 6. Mark as Zombie */
   curr->state = TASK_ZOMBIE;
 
-  // TODO: Notify parent, cleanup children
+  /* 7. Notify parent */
+  if (curr->parent) {
+    send_signal(SIGCHLD, curr->parent);
+  }
 
+  spinlock_unlock(&tasklist_lock);
+
+  /* 8. Final Reschedule */
+  cpu_cli();
   schedule();
+
+  /* Should never reach here */
   while (1)
     cpu_hlt();
 }
@@ -370,6 +519,11 @@ void free_task(struct task_struct *task) {
     resdomain_task_exit(task);
   }
 
+  if (task->nsproxy) {
+    pid_ns_free(task->nsproxy, task->pid);
+    put_pid_ns(task->nsproxy);
+  }
+
   if (task->signal) {
     if (--task->signal->count == 0) {
       kfree(task->signal);
@@ -404,7 +558,7 @@ struct task_struct *find_task_by_pid(pid_t pid) {
 
 EXPORT_SYMBOL(find_task_by_pid);
 
-void wake_up_new_task(struct task_struct *p) {
+void __no_cfi wake_up_new_task(struct task_struct *p) {
   struct rq *rq;
   int cpu = p->cpu;
 

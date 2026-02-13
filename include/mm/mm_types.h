@@ -174,6 +174,7 @@ struct mm_struct {
 
   /* Accounting */
   size_t total_vm;  /* Total number of pages mapped */
+  atomic64_t rss;   /* Resident Set Size (actually in memory) */
   size_t locked_vm; /* Number of locked pages */
   size_t pinned_vm; /* Refcount permanently increased */
   size_t data_vm;   /* VM_WRITE & ~VM_SHARED & ~VM_STACK */

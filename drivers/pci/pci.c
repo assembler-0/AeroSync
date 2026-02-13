@@ -44,7 +44,7 @@ static const struct pci_device_id *pci_match_device(struct pci_driver *drv, stru
   return nullptr;
 }
 
-static int pci_bus_match(struct device *dev, struct device_driver *drv) {
+static int __no_cfi pci_bus_match(struct device *dev, struct device_driver *drv) {
   struct pci_dev *pci_dev = to_pci_dev(dev);
   struct pci_driver *pci_drv = to_pci_driver(drv);
   const struct pci_device_id *id;
@@ -55,7 +55,7 @@ static int pci_bus_match(struct device *dev, struct device_driver *drv) {
   return 0;
 }
 
-static int pci_device_probe(struct device *dev) {
+static int __no_cfi pci_device_probe(struct device *dev) {
   struct pci_dev *pci_dev = to_pci_dev(dev);
   struct pci_driver *pci_drv = to_pci_driver(dev->driver);
   const struct pci_device_id *id;
@@ -67,7 +67,7 @@ static int pci_device_probe(struct device *dev) {
   return -ENODEV;
 }
 
-static void pci_device_remove(struct device *dev) {
+static void __no_cfi pci_device_remove(struct device *dev) {
   struct pci_dev *pci_dev = to_pci_dev(dev);
   struct pci_driver *pci_drv = to_pci_driver(dev->driver);
 
@@ -202,7 +202,7 @@ static void pci_scan_device(struct pci_bus *bus, uint8_t devfn) {
   }
 }
 
-static void subsys_enumerate_bus(struct pci_bus *bus) {
+static void __no_cfi subsys_enumerate_bus(struct pci_bus *bus) {
   for (uint8_t slot = 0; slot < 32; slot++) {
     pci_handle_t handle = {bus->segment, bus->number, slot, 0};
     uint16_t vendor = pci_read(&handle, PCI_VENDOR_ID, 16);

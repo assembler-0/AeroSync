@@ -24,7 +24,7 @@ static int platform_match(struct device *dev, struct device_driver *drv) {
   return (strcmp(pdev->name, drv->name) == 0);
 }
 
-static int platform_probe(struct device *dev) {
+static int __no_cfi platform_probe(struct device *dev) {
   struct platform_driver *pdrv = container_of(dev->driver, struct platform_driver, driver);
   struct platform_device *pdev = container_of(dev, struct platform_device, dev);
 
@@ -34,7 +34,7 @@ static int platform_probe(struct device *dev) {
   return 0;
 }
 
-static void platform_remove(struct device *dev) {
+static void __no_cfi platform_remove(struct device *dev) {
   struct platform_driver *pdrv = container_of(dev->driver, struct platform_driver, driver);
   struct platform_device *pdev = container_of(dev, struct platform_device, dev);
 
@@ -43,7 +43,7 @@ static void platform_remove(struct device *dev) {
   }
 }
 
-static void platform_shutdown(struct device *dev) {
+static void __no_cfi platform_shutdown(struct device *dev) {
   struct platform_driver *pdrv = container_of(dev->driver, struct platform_driver, driver);
   struct platform_device *pdev = container_of(dev, struct platform_device, dev);
 

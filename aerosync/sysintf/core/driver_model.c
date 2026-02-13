@@ -134,7 +134,7 @@ void class_unregister(struct class *cls) {
 
 EXPORT_SYMBOL(class_unregister);
 
-int class_for_each_dev(struct class *cls, struct device *start, void *data,
+int __no_cfi class_for_each_dev(struct class *cls, struct device *start, void *data,
                        class_iter_fn func) {
   if (!cls)
     return -EINVAL;
@@ -161,7 +161,7 @@ EXPORT_SYMBOL(class_for_each_dev);
 
 /* --- Device/Driver Matching --- */
 
-static int device_bind_driver(struct device *dev) {
+static int __no_cfi device_bind_driver(struct device *dev) {
   int ret;
 
   if (dev->bus->probe) {
@@ -180,7 +180,7 @@ static int device_bind_driver(struct device *dev) {
   return ret;
 }
 
-static int device_attach_driver(struct device *dev) {
+static int __no_cfi device_attach_driver(struct device *dev) {
   struct device_driver *drv;
   int ret = -ENODEV;
 
@@ -209,7 +209,7 @@ out:
 
 /* --- Device Logic --- */
 
-static void device_release_kref(struct kref *kref) {
+static void __no_cfi device_release_kref(struct kref *kref) {
   struct device *dev = container_of(kref, struct device, kref);
 
   if (dev->release)
@@ -320,7 +320,7 @@ static void generate_device_name(struct device *dev) {
   device_set_name(dev, "%s", name);
 }
 
-int device_add(struct device *dev) {
+int __no_cfi device_add(struct device *dev) {
   driver_model_init();
   if (!dev)
     return -EINVAL;
@@ -432,7 +432,7 @@ void device_remove_file(struct device *dev, const struct device_attribute *attr)
 
 EXPORT_SYMBOL(device_remove_file);
 
-void device_del(struct device *dev) {
+void __no_cfi device_del(struct device *dev) {
   /* Release all managed resources before detaching */
   devres_release_all(dev);
 
@@ -489,7 +489,7 @@ EXPORT_SYMBOL(device_unregister);
 
 /* --- Driver Logic --- */
 
-int driver_register(struct device_driver *drv) {
+int __no_cfi driver_register(struct device_driver *drv) {
   driver_model_init();
   if (!drv || !drv->bus)
     return -EINVAL;
@@ -518,7 +518,7 @@ int driver_register(struct device_driver *drv) {
 
 EXPORT_SYMBOL(driver_register);
 
-void driver_unregister(struct device_driver *drv) {
+void __no_cfi driver_unregister(struct device_driver *drv) {
   if (!drv || !drv->bus)
     return;
 
@@ -556,7 +556,7 @@ struct device *device_find_by_name(const char *name) {
 
 EXPORT_SYMBOL(device_find_by_name);
 
-int bus_for_each_dev(struct bus_type *bus, struct device *start, void *data,
+int __no_cfi bus_for_each_dev(struct bus_type *bus, struct device *start, void *data,
                      int (*func)(struct device *, void *)) {
   struct device *dev;
   int error = 0;
@@ -581,7 +581,7 @@ int bus_for_each_dev(struct bus_type *bus, struct device *start, void *data,
 
 EXPORT_SYMBOL(bus_for_each_dev);
 
-int bus_for_each_drv(struct bus_type *bus, struct device_driver *start, void *data,
+int __no_cfi bus_for_each_drv(struct bus_type *bus, struct device_driver *start, void *data,
                      int (*func)(struct device_driver *, void *)) {
   struct device_driver *drv;
   int error = 0;
@@ -678,7 +678,7 @@ void devres_add(struct device *dev, void *res) {
 
 EXPORT_SYMBOL(devres_add);
 
-void devres_release_all(struct device *dev) {
+void __no_cfi devres_release_all(struct device *dev) {
   struct devres *dr, *tmp;
 
   mutex_lock(&dev->devres_lock);
@@ -747,7 +747,7 @@ static void devm_irq_release(struct device *dev, void *res) {
   irq_uninstall_handler(irq_res->vector);
 }
 
-int devm_request_irq(struct device *dev, uint8_t vector, void (*handler)(void *regs),
+int __no_cfi devm_request_irq(struct device *dev, uint8_t vector, void (*handler)(void *regs),
                      const char *name, void *dev_id) {
   (void) name;
   (void) dev_id;

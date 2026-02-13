@@ -636,7 +636,7 @@ out_fault:
 
 EXPORT_SYMBOL(sys_mount);
 
-struct file *vfs_open(const char *path, int flags, int mode) {
+struct file *__no_cfi vfs_open(const char *path, int flags, int mode) {
   struct dentry *dentry = vfs_path_lookup(path, 0);
 
   if (!dentry || !dentry->d_inode) {
@@ -720,7 +720,7 @@ extern ssize_t filemap_read(struct file *file, char *buf, size_t count, vfs_loff
 
 extern ssize_t filemap_write(struct file *file, const char *buf, size_t count, vfs_loff_t *ppos);
 
-ssize_t vfs_read(struct file *file, char *buf, size_t count, vfs_loff_t *pos) {
+ssize_t __no_cfi vfs_read(struct file *file, char *buf, size_t count, vfs_loff_t *pos) {
   if (!file) return -EBADF;
   ssize_t ret = -1;
 
@@ -746,7 +746,7 @@ int vfs_mmap(struct file *file, struct vm_area_struct *vma) {
 
 EXPORT_SYMBOL(vfs_mmap);
 
-ssize_t vfs_write(struct file *file, const char *buf, size_t count, vfs_loff_t *pos) {
+ssize_t __no_cfi vfs_write(struct file *file, const char *buf, size_t count, vfs_loff_t *pos) {
   if (!file) return -EINVAL;
   ssize_t ret = -1;
 
@@ -765,7 +765,7 @@ ssize_t vfs_write(struct file *file, const char *buf, size_t count, vfs_loff_t *
 
 EXPORT_SYMBOL(vfs_write);
 
-int vfs_close(struct file *file) {
+int __no_cfi vfs_close(struct file *file) {
   if (!file) return -EINVAL;
   if (file->f_op && file->f_op->release) {
     file->f_op->release(file->f_inode, file);
@@ -805,7 +805,7 @@ vfs_loff_t vfs_llseek(struct file *file, vfs_loff_t offset, int whence) {
 
 EXPORT_SYMBOL(vfs_llseek);
 
-int vfs_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
+int __no_cfi vfs_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
   if (!file) return -EBADF;
 
   if (file->f_op && file->f_op->ioctl) {
@@ -917,7 +917,7 @@ EXPORT_SYMBOL(unregister_filesystem);
 /*
  * Default operations for character devices
  */
-static int chrdev_open(struct inode *inode, struct file *file) {
+static int __no_cfi chrdev_open(struct inode *inode, struct file *file) {
   struct char_device *cdev = chrdev_lookup(inode->i_rdev);
   if (!cdev) return -ENODEV;
 
@@ -931,7 +931,7 @@ static int chrdev_open(struct inode *inode, struct file *file) {
   return 0;
 }
 
-static int chrdev_release(struct inode *inode, struct file *file) {
+static int __no_cfi chrdev_release(struct inode *inode, struct file *file) {
   struct char_device *cdev = file->private_data;
   if (cdev && cdev->ops && cdev->ops->close) {
     cdev->ops->close(cdev);
@@ -939,13 +939,13 @@ static int chrdev_release(struct inode *inode, struct file *file) {
   return 0;
 }
 
-static ssize_t chrdev_read(struct file *file, char *buf, size_t count, vfs_loff_t *ppos) {
+static ssize_t __no_cfi chrdev_read(struct file *file, char *buf, size_t count, vfs_loff_t *ppos) {
   struct char_device *cdev = file->private_data;
   if (!cdev || !cdev->ops || !cdev->ops->read) return -EINVAL;
   return cdev->ops->read(cdev, buf, count, ppos);
 }
 
-static ssize_t chrdev_write(struct file *file, const char *buf, size_t count, vfs_loff_t *ppos) {
+static ssize_t __no_cfi chrdev_write(struct file *file, const char *buf, size_t count, vfs_loff_t *ppos) {
   struct char_device *cdev = file->private_data;
   if (!cdev || !cdev->ops || !cdev->ops->write) return -EINVAL;
   return cdev->ops->write(cdev, buf, count, ppos);

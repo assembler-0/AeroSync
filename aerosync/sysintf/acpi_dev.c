@@ -42,7 +42,7 @@ static int acpi_bus_match(struct device *dev, struct device_driver *drv) {
   return 0;
 }
 
-static int acpi_bus_probe(struct device *dev) {
+static int __no_cfi acpi_bus_probe(struct device *dev) {
   struct acpi_device *adev = to_acpi_dev(dev);
   struct acpi_driver *adrv = to_acpi_driver(dev->driver);
 
@@ -64,7 +64,7 @@ static void acpi_dev_release(struct device *dev) {
   kfree(adev);
 }
 
-static uacpi_iteration_decision
+static uacpi_iteration_decision __no_cfi
 acpi_enum_callback(void *user, uacpi_namespace_node *node, uacpi_u32 depth) {
   (void) user;
   (void) depth;

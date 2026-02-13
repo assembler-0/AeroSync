@@ -63,12 +63,13 @@
 #include <mm/vmalloc.h>
 #include <mm/zmm.h>
 #include <aerosync/resdomain.h>
+#include <aerosync/sysintf/fw.h>
 #include <fs/initramfs.h>
 #include <uacpi/uacpi.h>
 
 static alignas(16) struct task_struct bsp_task;
 
-static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
+static int __late_init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
   (void) unused;
 
   printk(KERN_INFO KERN_CLASS "finishing system initialization\n");
@@ -101,6 +102,8 @@ static int __init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
     printk(KERN_ERR KERN_CLASS "failed to execute %s. (%d)\n", STRINGIFY(CONFIG_INIT_PATH), ret);
     printkln(KERN_ERR KERN_CLASS "attempted to kill init.");
   }
+
+  fw_dump_hardware_info();
 
   printkln(KERN_CLASS "AeroSync global initialization done.");
 
@@ -147,9 +150,10 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
   printk_init_early();
   tsc_calibrate_early();
 
+  /* parse cmdline before any stuff get prints */
   if (get_cmdline_request()->response) {
     if (cmdline_find_option_bool(current_cmdline, "quiet")) {
-      printk_disable(); /* 'quiet' will automatically override 'verbose' */
+      printk_disable(); /* if 'verbose' is also there, it would still just be logged into the buffer  */
     }
     if (cmdline_find_option_bool(current_cmdline, "verbose")) {
       log_enable_debug();
@@ -165,34 +169,36 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
     ksymtab_init(get_executable_file_request()->response->executable_file->address);
   }
 
-  if (get_bootloader_info_request()->response &&
-      get_bootloader_performance_request()->response) {
-    printk(KERN_CLASS
-           "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
-           get_bootloader_info_request()->response->name
-             ? get_bootloader_info_request()->response->name
-             : "(null)",
-           get_bootloader_info_request()->response->version
-             ? get_bootloader_info_request()->response->version
-             : "(null-version)",
-           get_bootloader_performance_request()->response->exec_usec,
-           get_bootloader_performance_request()->response->init_usec);
-  }
+  if (cmdline_find_option_bool(current_cmdline, "bootinfo")) {
+    if (get_bootloader_info_request()->response &&
+        get_bootloader_performance_request()->response) {
+      printk(KERN_CLASS
+             "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
+             get_bootloader_info_request()->response->name
+               ? get_bootloader_info_request()->response->name
+               : "(null)",
+             get_bootloader_info_request()->response->version
+               ? get_bootloader_info_request()->response->version
+               : "(null-version)",
+             get_bootloader_performance_request()->response->exec_usec,
+             get_bootloader_performance_request()->response->init_usec);
+    }
 
-  if (get_fw_request()->response) {
-    printk(
-      FW_CLASS "firmware type: %s\n",
-      get_fw_request()->response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI64
-        ? "UEFI (64-bit)"
-        : get_fw_request()->response->firmware_type ==
-          LIMINE_FIRMWARE_TYPE_EFI32
-            ? "UEFI (32-bit)"
-            : get_fw_request()->response->firmware_type ==
-              LIMINE_FIRMWARE_TYPE_X86BIOS
-                ? "BIOS (x86)"
-                : get_fw_request()->response->firmware_type == LIMINE_FIRMWARE_TYPE_SBI
-                    ? "SBI"
-                    : "(unknown)");
+    if (get_fw_request()->response) {
+      printk(
+        FW_CLASS "firmware type: %s\n",
+        get_fw_request()->response->firmware_type == LIMINE_FIRMWARE_TYPE_EFI64
+          ? "UEFI (64-bit)"
+          : get_fw_request()->response->firmware_type ==
+            LIMINE_FIRMWARE_TYPE_EFI32
+              ? "UEFI (32-bit)"
+              : get_fw_request()->response->firmware_type ==
+                LIMINE_FIRMWARE_TYPE_X86BIOS
+                  ? "BIOS (x86)"
+                  : get_fw_request()->response->firmware_type == LIMINE_FIRMWARE_TYPE_SBI
+                      ? "SBI"
+                      : "(unknown)");
+    }
   }
 
   printk(KERN_CLASS "system pagination level: %d\n", vmm_get_paging_levels());
@@ -238,6 +244,7 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
   syscall_init();
 
   fpu_init();
+  pid_allocator_init();
   sched_init();
   bsp_task.active_mm = &init_mm;
   sched_init_task(&bsp_task);
@@ -261,6 +268,8 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
     vmalloc_dump();
   }
 #endif
+
+  fw_init();
 
   /* load all FKX images */
   system_load_extensions();

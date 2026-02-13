@@ -17,5 +17,6 @@ volatile struct limine_paging_mode_request *get_paging_request(void);
 volatile struct limine_memmap_request *get_memmap_request(void);
 volatile struct limine_framebuffer_request *get_framebuffer_request(void);
 volatile struct limine_rsdp_request *get_rsdp_request(void);
+volatile struct limine_efi_system_table_request *get_efi_system_table_request(void);
 
 #define current_cmdline get_cmdline_request()->response->cmdline

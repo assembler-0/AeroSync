@@ -101,7 +101,7 @@ void timer_del(struct timer_list *timer) {
   spinlock_unlock_irqrestore(&base->lock, flags);
 }
 
-void timer_handler(void) {
+void __no_cfi timer_handler(void) {
   struct timer_cpu_base *base = this_cpu_ptr(timer_bases);
   uint64_t now = get_time_ns();
 

@@ -11,6 +11,7 @@ struct syscall_regs;
 #define CLONE_FILES 0x00000400
 #define CLONE_SIGHAND 0x00000800
 #define CLONE_THREAD 0x00010000
+#define CLONE_NEWPID 0x20000000
 
 /* Global task list */
 extern struct list_head task_list;

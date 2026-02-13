@@ -39,6 +39,7 @@
 #define SYSCALL_CLASS "[sys::core::syscall] "      // System call entry/exit tracing
 #define ATOMIC_CLASS "[sys::core::atomic] "     // Atomic operations
 #define FW_CLASS "[sys::core::fw] "           // Firmware interfaces (BIOS/UEFI)
+#define NVRAM_CLASS "[sys::core::fw::nvram] "
 #define SMBIOS_CLASS "[sys::core::fw::smbios] " // SMBIOS parsing
 #define FKX_CLASS "[sys::sysintf::fkx] "         // FKX Module Loader
 #define SYNC_CLASS "[sys::core::sync] " // Synchronization (Mutex, Semaphores, Spinlocks)
@@ -59,6 +60,7 @@
 #define TSAN_CLASS "[sys::san::tsan] "   // Thread Sanitizer
 #define MSAN_CLASS "[sys::san::msan] "   // Memory Sanitizer
 #define LSAN_CLASS "[sys::san::lsan] "   // Leak Sanitizer
+#define CFI_CLASS  "[sys::san::cfi] "    // Control Flow Integrity
 
 /* =========================================================================
  *  MEMORY MANAGEMENT

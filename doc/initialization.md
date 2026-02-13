@@ -1,5 +1,8 @@
 # AeroSync Initialization Documentation
 
+> i am a very lazy person (at least in terms of documentation), what you are reading right now may not be entirely true,
+> please refer to the actual implementation for accurate information 
+
 ## Overview
 
 The AeroSync kernel initialization process begins in `start_kernel()` and proceeds through several distinct phases to bring up the system. The initialization sequence is carefully orchestrated to ensure that each subsystem is ready before dependent components are initialized.

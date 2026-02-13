@@ -1,4 +1,5 @@
 #pragma once
+#include <aerosync/types.h>
 
 /* ========================
  * BASIC PLATFORM DETECTION
@@ -36,6 +37,7 @@
 /* include/linux/compiler_attributes.h:368 */
 #define __must_check    __attribute__((__warn_unused_result__))
 #define __no_sanitize   __attribute__((no_sanitize("undefined", "address", "integer", "null", "bounds", "vla-bound", "object-size")))
+#define __no_cfi        __attribute__((no_sanitize("cfi")))
 
 /* ========================
  * MEMORY / LAYOUT ATTRIBUTES
@@ -133,3 +135,23 @@ do { \
 #define __percpu
 #define __rcu
 #define __force
+
+#ifdef COMPILER_CLANG
+
+/*
+ * useful for clang sanitizers
+ */
+
+struct SourceLocation {
+  const char *file;
+  uint32_t line;
+  uint32_t column;
+};
+
+struct TypeDescriptor {
+  uint16_t type_kind;
+  uint16_t type_info;
+  char type_name[];
+};
+
+#endif

@@ -24,18 +24,6 @@
 #include <lib/printk.h>
 #include <aerosync/fkx/fkx.h>
 
-struct SourceLocation {
-  const char *file;
-  uint32_t line;
-  uint32_t column;
-};
-
-struct TypeDescriptor {
-  uint16_t type_kind;
-  uint16_t type_info;
-  char type_name[];
-};
-
 struct TypeMismatchData {
   struct SourceLocation location;
   struct TypeDescriptor *type;
