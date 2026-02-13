@@ -85,8 +85,8 @@
 	- [x] Magazines integration for SLUB
 	- [x] Faster SLUB
 	- [x] More sophisticated PMM system (buddy `page_alloc`)
-	- [ ] Streamline the use of `struct folio` rather than `struct page` for high-level mm
-	- [ ] KASLR (PIC/PIE)
+	- [x] Streamline the use of `struct folio` rather than `struct page` for high-level mm
+	- [x] KASLR (PIC/PIE)
 	- [x] ASLR
 	- [x] Guard pages where possible
 	- [x] Proper DMA support for legacy devices

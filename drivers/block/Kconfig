@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+menu "block"
+
+config BLOCK_PARTITION
+    bool "Enable support for partitions"
+    default n
+    help
+      Enable partitions support for block devices
+
+endmenu

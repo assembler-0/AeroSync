@@ -28,6 +28,12 @@ CONFIG_ACPI_NAME_PREFIX="acpi"
 CONFIG_LOG_DEVICE_TREE=y
 
 #
+# block
+#
+# CONFIG_BLOCK_PARTITION is not set
+# end of block
+
+#
 # graphics
 #
 
@@ -148,10 +154,10 @@ CONFIG_ZMM_ALGO_RLE=y
 # end of ZMM Tuning
 
 #
-# Kernel Memory Layout
+# memory layout
 #
 CONFIG_VMALLOC_SIZE_GB=128
-# end of Kernel Memory Layout
+# end of memory layout
 
 #
 # vmalloc Tuning

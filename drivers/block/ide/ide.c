@@ -216,10 +216,10 @@ static int ide_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
         chan->devices[d] = ide;
 
         if (ide->atapi) {
-            block_device_assign_atapi_name(&ide->bdev, i * 2 + d);
+          block_device_assign_atapi_name(&ide->bdev, i * 2 + d);
         } else {
-            /* Use configurable naming prefix */
-            block_device_assign_name(&ide->bdev, STRINGIFY(CONFIG_IDE_NAME_PREFIX), i * 2 + d);
+          /* Use configurable naming prefix */
+          block_device_assign_name(&ide->bdev, STRINGIFY(CONFIG_IDE_NAME_PREFIX), i * 2 + d);
         }
 
         ide->bdev.ops = &ide_ops;
@@ -236,12 +236,14 @@ static int ide_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
         if (block_device_register(&ide->bdev) == 0) {
           printk(KERN_INFO ATA_CLASS "Found %s: %s (%llu MB)\n",
                  ide->bdev.dev.name, ide->model, (ide->sectors * ide->bdev.block_size) / 1024 / 1024);
+#ifdef CONFIG_BLOCK_PARTITION
           /* Scan for partitions */
           int parts = block_partition_scan(&ide->bdev);
           if (parts > 0) {
             printk(KERN_INFO ATA_CLASS "  %s: detected %d partitions\n",
                    ide->bdev.dev.name, parts);
           }
+#endif
         }
       } else {
         kfree(ide);
@@ -256,7 +258,7 @@ static int ide_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
 }
 
 static void ide_remove(struct pci_dev *pdev) {
-  (void)pdev;
+  (void) pdev;
   if (!g_ide_ctrl) return;
 
   for (int i = 0; i < 2; i++) {
@@ -268,7 +270,7 @@ static void ide_remove(struct pci_dev *pdev) {
 }
 
 static int ide_suspend(struct device *dev) {
-  (void)dev;
+  (void) dev;
   if (!g_ide_ctrl) return 0;
 
   for (int i = 0; i < 2; i++) {
@@ -279,7 +281,7 @@ static int ide_suspend(struct device *dev) {
 }
 
 static int ide_resume(struct device *dev) {
-  (void)dev;
+  (void) dev;
   if (!g_ide_ctrl) return 0;
 
   for (int i = 0; i < 2; i++) {
@@ -290,7 +292,7 @@ static int ide_resume(struct device *dev) {
 }
 
 static void ide_shutdown(struct device *dev) {
-  (void)dev;
+  (void) dev;
   if (!g_ide_ctrl) return;
 
   for (int i = 0; i < 2; i++) {
