@@ -14,7 +14,7 @@ if(LIMINE_EXECUTABLE)
             OUTPUT_STRIP_TRAILING_WHITESPACE
             ERROR_QUIET
     )
-    message(STATUS "System Limine found: ${LIMINE_EXECUTABLE} (${LIMINE_SYS_VERSION})")
+    message(STATUS "System Limine found: ${LIMINE_EXECUTABLE}")
     
     # We still need the resource files (limine.sys, etc.)
     # Usually in /usr/share/limine

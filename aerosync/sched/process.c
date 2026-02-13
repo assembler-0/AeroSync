@@ -238,6 +238,12 @@ struct task_struct *copy_process(uint64_t clone_flags,
   }
   p->active_mm = p->mm ? p->mm : parent->active_mm;
 
+  /* Initialize ResDomain for MM */
+  if (p->mm && p->mm != parent->mm) {
+    p->mm->rd = p->rd;
+    resdomain_get(p->mm->rd);
+  }
+
   // Setup files
   extern struct files_struct *copy_files(struct files_struct *old_files);
   if (clone_flags & CLONE_FILES) {

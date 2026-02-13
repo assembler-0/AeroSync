@@ -724,9 +724,16 @@ ssize_t __no_cfi vfs_read(struct file *file, char *buf, size_t count, vfs_loff_t
   if (!file) return -EBADF;
   ssize_t ret = -1;
 
+  /* ResDomain IO Throttling */
+  struct resdomain *rd = nullptr;
+  if (current && current->rd) rd = current->rd;
+  else if (file->f_inode && file->f_inode->i_sb) rd = file->f_inode->i_sb->s_resdomain;
+
+  if (rd && resdomain_io_throttle(rd, count) < 0) return -EAGAIN;
+
   if (file->f_op && file->f_op->read)
     ret = file->f_op->read(file, buf, count, pos);
-  else if (file->f_inode && file->f_inode->i_mapping)
+  else if (file->f_inode && file->f_inode->i_ubc)
     /* Fallback to Page Cache (Buffered I/O) */
     ret = filemap_read(file, buf, count, pos);
 
@@ -750,9 +757,16 @@ ssize_t __no_cfi vfs_write(struct file *file, const char *buf, size_t count, vfs
   if (!file) return -EINVAL;
   ssize_t ret = -1;
 
+  /* ResDomain IO Throttling */
+  struct resdomain *rd = nullptr;
+  if (current && current->rd) rd = current->rd;
+  else if (file->f_inode && file->f_inode->i_sb) rd = file->f_inode->i_sb->s_resdomain;
+
+  if (rd && resdomain_io_throttle(rd, count) < 0) return -EAGAIN;
+
   if (file->f_op && file->f_op->write)
     ret = file->f_op->write(file, buf, count, pos);
-  else if (file->f_inode && file->f_inode->i_mapping)
+  else if (file->f_inode && file->f_inode->i_ubc)
     ret = filemap_write(file, buf, count, pos);
 
   if (ret > 0 && file->f_inode) {
@@ -1058,17 +1072,11 @@ void init_special_inode(struct inode *inode, vfs_mode_t mode, dev_t rdev) {
 
 EXPORT_SYMBOL(init_special_inode);
 
-void vfs_notify_change(struct dentry *dentry, uint32_t event) {
-  /* This is a hook for future VFS event subscribers (e.g. inotify) */
-  (void) dentry;
-  (void) event;
-
-#ifdef CONFIG_VFS_DEBUG_EVENTS
-  if (dentry && dentry->d_name.name) {
-    printk(VFS_CLASS "Event 0x%x on %s\n", event, dentry->d_name.name);
-  }
-#endif
-}
+/* 
+ * vfs_notify_change is now implemented in fs/vfs_events.c
+ * with a full subscriber model.
+ */
+extern void vfs_notify_change(struct dentry *dentry, uint32_t event);
 
 EXPORT_SYMBOL(vfs_notify_change);
 
@@ -1117,8 +1125,8 @@ void iput(struct inode *inode) {
     list_del(&inode->i_list);
     mutex_unlock(&inode_mutex);
 
-    if (inode->i_mapping) {
-      vm_object_put(inode->i_mapping);
+    if (inode->i_ubc) {
+      vm_object_put(inode->i_ubc);
     }
 
     if (inode->i_sb && inode->i_sb->s_op && inode->i_sb->s_op->destroy_inode) {

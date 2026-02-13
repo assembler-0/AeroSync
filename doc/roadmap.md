@@ -40,6 +40,15 @@
 		- [x] **Maple Tree**: Replace VMA RB-tree with Maple Tree (Linux-style) for cache-aligned, multi-element nodes and O(1) interval lookups.
 		- [x] **XArray (Radix Tree 2.0)**: Replace `vm_object` page RB-trees with XArray for better cache locality and faster large-file/SHM mapping.
 		- [x] **Aggressive Fault-Around**: Expand fault-around window (currently +/- 1 page) to dynamic windows (16-64KB) for better spatial locality.
+	- [x] **Phase 2.5: Deep Shadow Compaction & UBC Hardening**
+		- [x] **Aggressive Shadow Collapsing**: Flatten deep COW chains during faults to maintain O(1) lookup.
+		- [x] **Iterative Shadow Lookup**: Replaced recursive faulting with safe iterative chain walking to prevent kernel stack overflow.
+		- [x] **Clustered Writeback**: Group contiguous dirty pages in UBC for high-throughput disk I/O.
+		- [x] **Thrash-Aware Readahead**: Adaptive readahead window that shrinks under memory pressure and detects thrashing.
+	- [x] **Phase 2.6: Production-Grade Fault Scaling**
+		- [x] **Per-VMA Locking**: Fine-grained fault serialization using `vma_lock` to eliminate `mmap_lock` contention.
+		- [x] **Direct Reclaim Integration**: Enforce hard memory limits in ResDomain by triggering synchronous reclaim on charge failure.
+		- [x] **Proportional Writeback Throttling**: Throttled dirty page creation based on system-wide writeback speed.
 	- [ ] **Phase 4: Userspace & Device Infrastructure (Production Grade)**
 		- [x] **Recursive Path Lookup**: Implement robust `vfs_path_lookup` in `namei.c` with support for `..`, `.`, symlinks, and mount point crossing.
 		- [ ] **Unified Device Model (UDM) Integration**: 
@@ -49,7 +58,7 @@
 		- [x] **Advanced VFS Integration**:
 			- [x] **fs_struct**: Implement per-process root and working directory.
 			- [x] **Mount Management**: Implement a global mount tree and `sys_mount`/`sys_umount`.
-			- [x] **File-backed mmap**: Complete the link between `inode->i_mapping` and `vm_area_struct`.
+			- [x] **File-backed mmap**: Complete the link between `inode->i_ubc` and `vm_area_struct`.
 			- [x] **Everything-is-a-file**: Unified `devfs` linkage where UDM `struct device` automatically appears in `/dev`.
 		- [x] **Terminal & TTY Subsystem**:
 			- [x] **TTY Core**: Generic TTY driver with line discipline support (N_TTY).
@@ -59,11 +68,13 @@
 			- [ x **USTAR/CPIO Parser**: Support for loading early userspace from bootloader-provided modules.
 			- [ ] **Rootfs Pivot**: Mechanism to switch from initrd to a persistent root filesystem.
 		- [ ] **POSIX System Call Bridge**:
-			- [ ] Complete `open`, `close`, `read`, `write`, `ioctl`, `lseek`, `fstat`, `poll`, `select`.
+			- [x] Complete `open`, `close`, `read`, `write`, `ioctl`, `lseek`, `fstat`, `poll`, `select`.
+			- [x] **VFS Event System**: Robust bitmask-based notification system with per-dentry subscriber lists.
 			- [ ] Implement `pipe()` and `dup2()` for shell support.
 	- [ ] **Phase 5: Advanced FS & Performance**
 		- [x] **Unified Buffer Cache (UBC)**: Integrate page cache with block layer for zero-copy file I/O.
-		- [ ] **Writeback Engine**: Dedicated threads for flushing dirty pages to disk.
+		- [x] **Kernel UBC API**: Implemented `ubc_map_page` and `ubc_unmap_page` for safe kernel-side buffer access.
+		- [x] **Writeback Engine**: Dedicated threads for flushing dirty pages to disk.
 	- [x] **vmalloc**: use maple tree for vmalloc
 	- [x] **Phase 3: Robustness & Advanced Features**
 		- [x] **OOM Killer 2.0**: Implement a "Reaper" thread to asynchronously reclaim memory from killed tasks, preventing deadlocks.

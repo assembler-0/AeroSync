@@ -116,6 +116,7 @@ struct swap_info_struct {
 #define SWP_DISCARDING  (1 << 3)    /* Discard in progress */
 #define SWP_SOLIDSTATE  (1 << 4)    /* SSD-backed */
 #define SWP_FILE        (1 << 5)    /* Swap file (not partition) */
+#define SWP_SYNTHETIC   (1 << 6)    /* Synthetic swap for testing */
 
   int prio; /* Swap priority (higher = preferred) */
   int type; /* Index in swap_info[] */

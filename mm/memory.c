@@ -38,6 +38,7 @@
 #include <lib/vsprintf.h>
 #include <aerosync/wait.h>
 #include <aerosync/sched/process.h>
+#include <aerosync/sched/sched.h>
 #include <arch/x86_64/mm/tlb.h>
 
 /* LRU Management */
@@ -67,71 +68,71 @@ DEFINE_PER_CPU(spinlock_t, lru_lock);
 #define BLOOM_HASH_COUNT    3
 
 struct lru_gen_bloom {
-    unsigned long *bits[MAX_NR_GENS];
-    spinlock_t lock;
-    atomic_long_t set_count[MAX_NR_GENS];
+  unsigned long *bits[MAX_NR_GENS];
+  spinlock_t lock;
+  atomic_long_t set_count[MAX_NR_GENS];
 };
 
 static struct lru_gen_bloom *node_bloom[MAX_NUMNODES];
 
 static inline unsigned long bloom_hash(unsigned long addr, int seed) {
-    /* Simple hash mixing - use different seeds for each hash */
-    addr ^= seed * 0x9e3779b97f4a7c15UL;
-    addr ^= addr >> 33;
-    addr *= 0xff51afd7ed558ccdUL;
-    addr ^= addr >> 33;
-    return addr % BLOOM_FILTER_BITS;
+  /* Simple hash mixing - use different seeds for each hash */
+  addr ^= seed * 0x9e3779b97f4a7c15UL;
+  addr ^= addr >> 33;
+  addr *= 0xff51afd7ed558ccdUL;
+  addr ^= addr >> 33;
+  return addr % BLOOM_FILTER_BITS;
 }
 
 static void bloom_add(struct lru_gen_bloom *bloom, int gen, unsigned long addr) {
-    if (!bloom || !bloom->bits[gen])
-        return;
+  if (!bloom || !bloom->bits[gen])
+    return;
 
-    for (int i = 0; i < BLOOM_HASH_COUNT; i++) {
-        unsigned long bit = bloom_hash(addr, i);
-        unsigned long word = bit / 64;
-        unsigned long mask = 1UL << (bit % 64);
-        __atomic_or_fetch(&bloom->bits[gen][word], mask, __ATOMIC_RELAXED);
-    }
-    atomic_long_inc(&bloom->set_count[gen]);
+  for (int i = 0; i < BLOOM_HASH_COUNT; i++) {
+    unsigned long bit = bloom_hash(addr, i);
+    unsigned long word = bit / 64;
+    unsigned long mask = 1UL << (bit % 64);
+    __atomic_or_fetch(&bloom->bits[gen][word], mask, __ATOMIC_RELAXED);
+  }
+  atomic_long_inc(&bloom->set_count[gen]);
 }
 
 static bool bloom_test(struct lru_gen_bloom *bloom, int gen, unsigned long addr) {
-    if (!bloom || !bloom->bits[gen])
-        return true;  /* Assume present if no filter */
+  if (!bloom || !bloom->bits[gen])
+    return true; /* Assume present if no filter */
 
-    for (int i = 0; i < BLOOM_HASH_COUNT; i++) {
-        unsigned long bit = bloom_hash(addr, i);
-        unsigned long word = bit / 64;
-        unsigned long mask = 1UL << (bit % 64);
-        if (!(__atomic_load_n(&bloom->bits[gen][word], __ATOMIC_RELAXED) & mask))
-            return false;
-    }
-    return true;
+  for (int i = 0; i < BLOOM_HASH_COUNT; i++) {
+    unsigned long bit = bloom_hash(addr, i);
+    unsigned long word = bit / 64;
+    unsigned long mask = 1UL << (bit % 64);
+    if (!(__atomic_load_n(&bloom->bits[gen][word], __ATOMIC_RELAXED) & mask))
+      return false;
+  }
+  return true;
 }
 
 static void bloom_clear(struct lru_gen_bloom *bloom, int gen) {
-    if (!bloom || !bloom->bits[gen])
-        return;
+  if (!bloom || !bloom->bits[gen])
+    return;
 
-    memset(bloom->bits[gen], 0, BLOOM_FILTER_SIZE);
-    atomic_long_set(&bloom->set_count[gen], 0);
+  memset(bloom->bits[gen], 0, BLOOM_FILTER_SIZE);
+  atomic_long_set(&bloom->set_count[gen], 0);
 }
 
 static void bloom_init_node(int nid) {
-    struct lru_gen_bloom *bloom = kmalloc(sizeof(*bloom));
-    if (!bloom)
-        return;
+  struct lru_gen_bloom *bloom = kmalloc(sizeof(*bloom));
+  if (!bloom)
+    return;
 
-    spinlock_init(&bloom->lock);
-    for (int i = 0; i < MAX_NR_GENS; i++) {
-        bloom->bits[i] = kmalloc(BLOOM_FILTER_SIZE);
-        if (bloom->bits[i]) {
-            memset(bloom->bits[i], 0, BLOOM_FILTER_SIZE);
-        }
-        atomic_long_set(&bloom->set_count[i], 0);
+  spinlock_init(&bloom->lock);
+  for (int i = 0; i < MAX_NR_GENS; i++) {
+    bloom->bits[i] = kmalloc(BLOOM_FILTER_SIZE);
+    if (bloom->bits[i]) {
+      memset(bloom->bits[i], 0, BLOOM_FILTER_SIZE);
     }
-    node_bloom[nid] = bloom;
+    atomic_long_set(&bloom->set_count[i], 0);
+  }
+  node_bloom[nid] = bloom;
 }
 #endif /* CONFIG_MM_MGLRU_BLOOM_FILTER */
 
@@ -149,26 +150,26 @@ static void bloom_init_node(int nid) {
  *   - If reclaim_rate is low, age more aggressively
  */
 struct lru_gen_stats {
-    atomic_long_t refaults[MAX_NR_GENS];
-    atomic_long_t scanned[MAX_NR_GENS];
-    atomic_long_t reclaimed[MAX_NR_GENS];
-    atomic_long_t promoted[MAX_NR_GENS];  /* Pages promoted to younger gen */
+  atomic_long_t refaults[MAX_NR_GENS];
+  atomic_long_t scanned[MAX_NR_GENS];
+  atomic_long_t reclaimed[MAX_NR_GENS];
+  atomic_long_t promoted[MAX_NR_GENS]; /* Pages promoted to younger gen */
 };
 
 static struct lru_gen_stats *node_lru_stats[MAX_NUMNODES];
 
 static void lru_stats_init_node(int nid) {
-    struct lru_gen_stats *stats = kmalloc(sizeof(*stats));
-    if (!stats)
-        return;
+  struct lru_gen_stats *stats = kmalloc(sizeof(*stats));
+  if (!stats)
+    return;
 
-    for (int i = 0; i < MAX_NR_GENS; i++) {
-        atomic_long_set(&stats->refaults[i], 0);
-        atomic_long_set(&stats->scanned[i], 0);
-        atomic_long_set(&stats->reclaimed[i], 0);
-        atomic_long_set(&stats->promoted[i], 0);
-    }
-    node_lru_stats[nid] = stats;
+  for (int i = 0; i < MAX_NR_GENS; i++) {
+    atomic_long_set(&stats->refaults[i], 0);
+    atomic_long_set(&stats->scanned[i], 0);
+    atomic_long_set(&stats->reclaimed[i], 0);
+    atomic_long_set(&stats->promoted[i], 0);
+  }
+  node_lru_stats[nid] = stats;
 }
 
 /*
@@ -176,44 +177,44 @@ static void lru_stats_init_node(int nid) {
  * Higher pressure = faster aging; higher refaults = slower aging.
  */
 static unsigned long lru_gen_aging_interval(struct pglist_data *pgdat) {
-    struct lru_gen_stats *stats = node_lru_stats[pgdat->node_id];
-    if (!stats)
-        return 100;  /* Default: 100 jiffies */
+  struct lru_gen_stats *stats = node_lru_stats[pgdat->node_id];
+  if (!stats)
+    return 100; /* Default: 100 jiffies */
 
-    int oldest_gen = pgdat->lrugen.min_seq[0] % MAX_NR_GENS;
-    long reclaimed = atomic_long_read(&stats->reclaimed[oldest_gen]);
-    long refaults = atomic_long_read(&stats->refaults[oldest_gen]);
+  int oldest_gen = pgdat->lrugen.min_seq[0] % MAX_NR_GENS;
+  long reclaimed = atomic_long_read(&stats->reclaimed[oldest_gen]);
+  long refaults = atomic_long_read(&stats->refaults[oldest_gen]);
 
-    /* Calculate refault ratio (scaled by 100) */
-    int refault_rate = 0;
-    if (reclaimed > 0) {
-        refault_rate = (refaults * 100) / reclaimed;
+  /* Calculate refault ratio (scaled by 100) */
+  int refault_rate = 0;
+  if (reclaimed > 0) {
+    refault_rate = (refaults * 100) / reclaimed;
+  }
+
+  /* Base interval: 100 jiffies */
+  unsigned long interval = 100;
+
+  /* Increase interval if refault rate is high (slow down aging) */
+  if (refault_rate > 50) {
+    interval += (refault_rate - 50) * 2;
+  }
+
+  /* Decrease interval under memory pressure (speed up aging) */
+  for (int i = 0; i < MAX_NR_ZONES; i++) {
+    struct zone *z = &pgdat->node_zones[i];
+    if (z->present_pages > 0 && z->nr_free_pages < z->watermark[WMARK_LOW]) {
+      interval = interval / 2;
+      break;
     }
+  }
 
-    /* Base interval: 100 jiffies */
-    unsigned long interval = 100;
+  /* Clamp to reasonable bounds */
+  if (interval < 10)
+    interval = 10;
+  if (interval > 1000)
+    interval = 1000;
 
-    /* Increase interval if refault rate is high (slow down aging) */
-    if (refault_rate > 50) {
-        interval += (refault_rate - 50) * 2;
-    }
-
-    /* Decrease interval under memory pressure (speed up aging) */
-    for (int i = 0; i < MAX_NR_ZONES; i++) {
-        struct zone *z = &pgdat->node_zones[i];
-        if (z->present_pages > 0 && z->nr_free_pages < z->watermark[WMARK_LOW]) {
-            interval = interval / 2;
-            break;
-        }
-    }
-
-    /* Clamp to reasonable bounds */
-    if (interval < 10)
-        interval = 10;
-    if (interval > 1000)
-        interval = 1000;
-
-    return interval;
+  return interval;
 }
 #endif /* CONFIG_MM_MGLRU */
 
@@ -226,23 +227,23 @@ struct scan_control {
   int priority; /* 0 (max) to 12 (min) */
   size_t nr_reclaimed;
   size_t nr_scanned;
-  int nid;      /* Node being scanned */
+  int nid; /* Node being scanned */
 
-  /* Enhanced scan control (Phase 3) */
-  bool may_writepage;     /* Allow writing dirty pages */
-  bool may_unmap;         /* Allow unmapping pages */
-  bool may_swap;          /* Allow swapping anonymous pages */
-  unsigned long scan_limit;  /* Max pages to scan before giving up */
-  unsigned int contention_count;  /* Lock contention backoff */
+  /* scan control */
+  bool may_writepage; /* Allow writing dirty pages */
+  bool may_unmap; /* Allow unmapping pages */
+  bool may_swap; /* Allow swapping anonymous pages */
+  unsigned long scan_limit; /* Max pages to scan before giving up */
+  unsigned int contention_count; /* Lock contention backoff */
 };
 
 #ifdef CONFIG_MM_MGLRU
 static inline int folio_lru_gen(struct folio *folio) {
-  return (int)((folio->flags >> LRU_GEN_SHIFT) & LRU_GEN_MASK);
+  return (int) ((folio->flags >> LRU_GEN_SHIFT) & LRU_GEN_MASK);
 }
 
 static inline int folio_is_file(struct folio *folio) {
-  return !((uintptr_t)folio->mapping & 0x1);
+  return !((uintptr_t) folio->mapping & 0x1);
 }
 
 /*
@@ -293,7 +294,7 @@ static void __lru_batch_flush(struct lru_batch *batch) {
       old_flags = folio->flags;
       new_flags = old_flags | PG_lru;
       new_flags &= ~(LRU_GEN_MASK << LRU_GEN_SHIFT);
-      new_flags |= ((unsigned long)gen << LRU_GEN_SHIFT);
+      new_flags |= ((unsigned long) gen << LRU_GEN_SHIFT);
     } while (!__atomic_compare_exchange_n(&folio->flags, &old_flags, new_flags,
                                           false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
 
@@ -554,10 +555,10 @@ int folio_reclaim(struct folio *folio, struct mmu_gather *tlb) {
     return -EAGAIN;
   }
 
-  bool is_anon = (uintptr_t)folio->mapping & 0x1;
+  bool is_anon = (uintptr_t) folio->mapping & 0x1;
 
   if (is_anon) {
-    struct vm_object *obj = (struct vm_object *)((uintptr_t)folio->mapping & ~0x1);
+    struct vm_object *obj = (struct vm_object *) ((uintptr_t) folio->mapping & ~0x1);
 
 #ifdef CONFIG_MM_ZMM
     /* Strategy 1: Try ZMM compression */
@@ -569,7 +570,7 @@ int folio_reclaim(struct folio *folio, struct mmu_gather *tlb) {
        * Since our handles are zmm_entry pointers (8-byte aligned), bit 1 is free.
        * We use bit 0=1 to mark it as NOT a folio pointer.
        */
-      void *exceptional = (void *)(handle | 0x1);
+      void *exceptional = (void *) (handle | 0x1);
       xa_store(&obj->page_tree, folio->index, exceptional, GFP_ATOMIC);
 
       /* Unmap from all users before freeing physical page */
@@ -599,7 +600,7 @@ int folio_reclaim(struct folio *folio, struct mmu_gather *tlb) {
            * We use a special encoding: swap entries have bits [1:0] = 0b10
            * to distinguish from folios (0b00) and ZMM (0b01).
            */
-          void *swap_exceptional = (void *)((entry.val << 2) | 0x2);
+          void *swap_exceptional = (void *) ((entry.val << 2) | 0x2);
           xa_store(&obj->page_tree, folio->index, swap_exceptional, GFP_ATOMIC);
 
           /* Track swap usage */
@@ -610,7 +611,7 @@ int folio_reclaim(struct folio *folio, struct mmu_gather *tlb) {
           /* Store shadow entry for refault detection */
           void *shadow = workingset_eviction(folio, obj);
           /* Shadow is stored implicitly via the swap entry */
-          (void)shadow;
+          (void) shadow;
 #endif
 
           /* Unmap from all users */
@@ -636,8 +637,8 @@ int folio_reclaim(struct folio *folio, struct mmu_gather *tlb) {
 
   /* File-backed pages can always be reclaimed (if not dirty) */
   if (folio->page.flags & PG_dirty) {
-     wakeup_writeback();
-     return -EAGAIN;
+    wakeup_writeback();
+    return -EAGAIN;
   }
 
   if (try_to_unmap_folio(folio, tlb)) {
@@ -662,15 +663,18 @@ void shrink_active_list(size_t nr_to_scan, struct scan_control *sc) {
 
   irq_flags_t flags = spinlock_lock_irqsave(lock);
   for (size_t i = 0; i < nr_to_scan && !list_empty(active); i++) {
-    struct folio *folio = list_last_entry(active, struct folio, lru);
+    struct
+    folio *folio = list_last_entry(active, struct folio, lru);
     list_move(&folio->lru, &folio_list);
     folio->flags &= ~PG_active;
   }
   spinlock_unlock_irqrestore(lock, flags);
 
   struct list_head *pos, *q;
-  list_for_each_safe(pos, q, &folio_list) {
-    struct folio *folio = list_entry(pos, struct folio, lru);
+  list_for_each_safe(pos, q, &folio_list)
+  {
+    struct
+    folio *folio = list_entry(pos, struct folio, lru);
 
     if (folio_referenced(folio)) {
       /* Still active, move back to head of active list */
@@ -701,7 +705,8 @@ size_t shrink_inactive_list(size_t nr_to_scan) {
 
   irq_flags_t flags = spinlock_lock_irqsave(lock);
   for (size_t i = 0; i < nr_to_scan && !list_empty(inactive); i++) {
-    struct folio *folio = list_last_entry(inactive, struct folio, lru);
+    struct
+    folio *folio = list_last_entry(inactive, struct folio, lru);
     list_move(&folio->lru, &folio_list);
     folio->flags &= ~PG_lru;
   }
@@ -715,8 +720,10 @@ size_t shrink_inactive_list(size_t nr_to_scan) {
   tlb_gather_mmu(&tlb, &init_mm, 0, 0); // Dynamic range
 
   struct list_head *pos, *q;
-  list_for_each_safe(pos, q, &folio_list) {
-    struct folio *folio = list_entry(pos, struct folio, lru);
+  list_for_each_safe(pos, q, &folio_list)
+  {
+    struct
+    folio *folio = list_entry(pos, struct folio, lru);
 
     int ret = folio_reclaim(folio, &tlb);
     if (ret == 0) {
@@ -748,7 +755,7 @@ size_t shrink_inactive_list(size_t nr_to_scan) {
  * lru_gen_folio_gen - Get the generation of a folio.
  */
 static inline int lru_gen_folio_gen(struct folio *folio) {
-  return (int)((folio->flags >> LRU_GEN_SHIFT) & LRU_GEN_MASK);
+  return (int) ((folio->flags >> LRU_GEN_SHIFT) & LRU_GEN_MASK);
 }
 
 /**
@@ -808,7 +815,7 @@ static size_t scan_gen(struct pglist_data *pgdat, int gen, int type, struct scan
       unsigned long old_f, new_f;
       do {
         old_f = folio->flags;
-        new_f = (old_f & ~(LRU_GEN_MASK << LRU_GEN_SHIFT)) | ((unsigned long)new_gen << LRU_GEN_SHIFT);
+        new_f = (old_f & ~(LRU_GEN_MASK << LRU_GEN_SHIFT)) | ((unsigned long) new_gen << LRU_GEN_SHIFT);
       } while (!__atomic_compare_exchange_n(&folio->flags, &old_f, new_f, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED));
 
       list_add(&folio->lru, &pgdat->lrugen.lists[new_gen][type]);
@@ -831,7 +838,7 @@ static size_t scan_gen(struct pglist_data *pgdat, int gen, int type, struct scan
     /*
      * 2. Check scan control flags before attempting reclaim.
      */
-    bool is_anon = (uintptr_t)folio->mapping & 0x1;
+    bool is_anon = (uintptr_t) folio->mapping & 0x1;
 
     /* Skip anonymous pages if may_swap is false */
     if (is_anon && !sc->may_swap) {
@@ -858,6 +865,11 @@ static size_t scan_gen(struct pglist_data *pgdat, int gen, int type, struct scan
     if (ret == 0) {
       reclaimed++;
       atomic_long_dec(&pgdat->lrugen.nr_pages[gen][type]);
+
+      /* Throttling: If we reclaimed enough, balance dirty pages if pressure is high */
+      if (reclaimed % 32 == 0) {
+        balance_dirty_pages_ratelimited(folio->mapping);
+      }
 
       /* Track statistics */
       if (stats) {
@@ -1011,7 +1023,7 @@ static int kswapd_should_run(struct pglist_data *pgdat) {
 }
 
 static int kswapd_thread(void *data) {
-  struct pglist_data *pgdat = (struct pglist_data *)data;
+  struct pglist_data *pgdat = (struct pglist_data *) data;
   printk(KERN_INFO SWAP_CLASS "kswapd started for node %d\n", pgdat->node_id);
 
 #ifdef CONFIG_MM_MGLRU
@@ -1037,7 +1049,7 @@ static int kswapd_thread(void *data) {
       .may_writepage = true,
       .may_unmap = true,
       .may_swap = true,
-      .scan_limit = 0,  /* No limit for kswapd */
+      .scan_limit = 0, /* No limit for kswapd */
       .contention_count = 0,
     };
 
@@ -1048,10 +1060,10 @@ static int kswapd_thread(void *data) {
 #ifdef CONFIG_MM_PMM_WATERMARK_BOOST
         /* Once satisfied, gradually decay the boost */
         for (int i = 0; i < MAX_NR_ZONES; i++) {
-            struct zone *z = &pgdat->node_zones[i];
-            if (z->watermark_boost > 0) {
-                z->watermark_boost >>= 1; // Simple decay
-            }
+          struct zone *z = &pgdat->node_zones[i];
+          if (z->watermark_boost > 0) {
+            z->watermark_boost >>= 1; // Simple decay
+          }
         }
 #endif
         break;
@@ -1082,7 +1094,7 @@ size_t try_to_free_pages(struct pglist_data *pgdat, size_t nr_to_reclaim, gfp_t 
     .may_writepage = !(gfp_mask & __GFP_IO) ? false : true,
     .may_unmap = true,
     .may_swap = !(gfp_mask & __GFP_IO) ? false : true,
-    .scan_limit = nr_to_reclaim * 4,  /* Don't scan forever */
+    .scan_limit = nr_to_reclaim * 4, /* Don't scan forever */
     .contention_count = 0,
   };
 
@@ -1109,13 +1121,13 @@ size_t try_to_free_pages(struct pglist_data *pgdat, size_t nr_to_reclaim, gfp_t 
 void kswapd_init(void) {
   for (int n = 0; n < MAX_NUMNODES; n++) {
     if (node_data[n] && node_data[n]->node_spanned_pages > 0) {
-       char name[16];
-       snprintf(name, sizeof(name), "kswapd%d", n);
-       struct task_struct *k = kthread_create(kswapd_thread, node_data[n], name);
-       if (k) {
-         node_data[n]->kswapd_task = k;
-         kthread_run(k);
-       }
+      char name[16];
+      snprintf(name, sizeof(name), "kswapd%d", n);
+      struct task_struct *k = kthread_create(kswapd_thread, node_data[n], name);
+      if (k) {
+        node_data[n]->kswapd_task = k;
+        kthread_run(k);
+      }
     }
   }
 }
@@ -1223,37 +1235,37 @@ const struct vm_operations_struct shmem_vm_ops = {
  * migrate_folio_to_node - Physically move a folio to a different NUMA node.
  */
 static int migrate_folio_to_node(struct folio *folio, int nid) {
-    if (!folio || folio->node == nid) return 0;
-    
-    struct folio *new_folio = alloc_pages_node(nid, GFP_KERNEL, folio_order(folio));
-    if (!new_folio) return -ENOMEM;
-    
-    /* 1. Unmap all users to freeze the page */
-    if (try_to_unmap_folio(folio, nullptr) != 0) {
-        folio_put(new_folio);
-        return -EBUSY;
+  if (!folio || folio->node == nid) return 0;
+
+  struct folio *new_folio = alloc_pages_node(nid, GFP_KERNEL, folio_order(folio));
+  if (!new_folio) return -ENOMEM;
+
+  /* 1. Unmap all users to freeze the page */
+  if (try_to_unmap_folio(folio, nullptr) != 0) {
+    folio_put(new_folio);
+    return -EBUSY;
+  }
+
+  /* 2. Copy data */
+  memcpy(folio_address(new_folio), folio_address(folio), folio_size(folio));
+
+  /* 3. Update mapping */
+  void *mapping = folio->mapping;
+  if (mapping) {
+    if (!((uintptr_t) mapping & 0x1)) {
+      struct vm_object *obj = (struct vm_object *) mapping;
+      down_write(&obj->lock);
+      xa_store(&obj->page_tree, folio->index, new_folio, GFP_ATOMIC);
+      up_write(&obj->lock);
     }
-    
-    /* 2. Copy data */
-    memcpy(folio_address(new_folio), folio_address(folio), folio_size(folio));
-    
-    /* 3. Update mapping */
-    void *mapping = folio->mapping;
-    if (mapping) {
-        if (!((uintptr_t)mapping & 0x1)) {
-            struct vm_object *obj = (struct vm_object *)mapping;
-            down_write(&obj->lock);
-            xa_store(&obj->page_tree, folio->index, new_folio, GFP_ATOMIC);
-            up_write(&obj->lock);
-        }
-    }
-    
-    new_folio->mapping = mapping;
-    new_folio->index = folio->index;
-    new_folio->page.flags = folio->page.flags;
-    
-    /* 4. The old folio will be freed by the caller or by its last put */
-    return 0;
+  }
+
+  new_folio->mapping = mapping;
+  new_folio->index = folio->index;
+  new_folio->page.flags = folio->page.flags;
+
+  /* 4. The old folio will be freed by the caller or by its last put */
+  return 0;
 }
 
 /**
@@ -1270,23 +1282,28 @@ static int do_numa_page(struct vm_area_struct *vma, uint64_t address, struct fol
     return VM_FAULT_COMPLETED;
   }
 
-  /* 
+  /*
    * NUMA Balancing: Migrate if the remote latency is significantly higher.
    * In a real kernel, we would track "access density" here.
    */
   if (migrate_folio_to_node(folio, target_node) == 0) {
-      /* Migration succeeded, map the new location */
-      vmm_map_page(vma->vm_mm, address, folio_to_phys(folio), vma->vm_page_prot);
+    /* Migration succeeded, map the new location */
+    vmm_map_page(vma->vm_mm, address, folio_to_phys(folio), vma->vm_page_prot);
   } else {
-      /* Migration failed, just restore access to the remote page */
-      vmm_map_page(vma->vm_mm, address, folio_to_phys(folio), vma->vm_page_prot);
+    /* Migration failed, just restore access to the remote page */
+    vmm_map_page(vma->vm_mm, address, folio_to_phys(folio), vma->vm_page_prot);
   }
 
   return VM_FAULT_COMPLETED;
 }
 
 /**
- * Generic fault handler that dispatches to VMA-specific operations.
+ * handle_mm_fault - Generic fault handler that dispatches to VMA-specific operations.
+ *
+ * NOTE: The caller MUST hold either:
+ *   1. mm->mmap_lock (Read/Write)
+ *   2. vma->vm_lock (Shared/Exclusive)
+ *   3. RCU read lock (if flags & FAULT_FLAG_SPECULATIVE)
  */
 int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int flags) {
   struct mm_struct *mm = vma->vm_mm;
@@ -1294,27 +1311,12 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
 
   /* Check for NUMA hint faults first if the PTE is present but marked for hinting */
   if (vmm_is_numa_hint(mm, address)) {
-      struct folio *folio = vmm_get_folio(mm, address);
-      if (folio) {
-          int ret = do_numa_page(vma, address, folio);
-          folio_put(folio);
-          return ret;
-      }
-  }
-
-  /* 
-   * SPF (Speculative Page Fault) Check:
-   * If this is a speculative fault, we must ensure the VMA didn't change
-   * under us. We use the sequence counter for this.
-   */
-  if (flags & FAULT_FLAG_SPECULATIVE) {
-    /* 
-     * In a production kernel, we would check if the mmap_lock is NOT held 
-     * and use RCU to safely access the VMA.
-     */
-#ifndef CONFIG_MM_SPF
-    return VM_FAULT_RETRY;
-#endif
+    struct folio *folio = vmm_get_folio(mm, address);
+    if (folio) {
+      int ret = do_numa_page(vma, address, folio);
+      folio_put(folio);
+      return ret;
+    }
   }
 
   struct vm_fault vmf;
@@ -1328,29 +1330,31 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
 
   /*
    * Priority 1: VMA Operations (Special/Legacy)
-   * Check these first as they might override object behavior.
    */
   if (vma->vm_ops && vma->vm_ops->fault) {
     ret = vma->vm_ops->fault(vma, &vmf);
   }
   /*
    * Priority 2: VM Object (Production-ready MM)
-   * The object owns the pages and handles its own backing store.
    */
   else if (vma->vm_obj && vma->vm_obj->ops && vma->vm_obj->ops->fault) {
     ret = vma->vm_obj->ops->fault(vma->vm_obj, vma, &vmf);
   }
   /*
    * Priority 3: Lazy Anonymous Object Creation
-   * If no object exists and it's a standard mapping, create an anon object.
    */
   else if (!vma->vm_obj && !(vma->vm_flags & (VM_IO | VM_PFNMAP))) {
     if (flags & FAULT_FLAG_SPECULATIVE) return VM_FAULT_RETRY;
 
+    /*
+     * We cannot upgrade locks safely here if we only hold shared.
+     * In a real kernel, we would return VM_FAULT_RETRY and the caller
+     * would retry with an exclusive lock.
+     */
     vma->vm_obj = vm_object_anon_create(vma_size(vma));
-    if (!vma->vm_obj) return VM_FAULT_OOM;
-
-    /* Link to object */
+    if (!vma->vm_obj) {
+      return VM_FAULT_OOM;
+    }
     down_write(&vma->vm_obj->lock);
     list_add(&vma->vm_shared, &vma->vm_obj->i_mmap);
     up_write(&vma->vm_obj->lock);
@@ -1367,7 +1371,13 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
      */
     if (flags & FAULT_FLAG_SPECULATIVE) {
       if (unlikely(vma->vma_seq != vma_seq)) {
-        if (vmf.folio) folio_put(vmf.folio);
+        folio_put(vmf.folio);
+        return VM_FAULT_RETRY;
+      }
+      
+      /* Verify mmap_seq to detect any address space changes */
+      if (unlikely(atomic_read(&mm->mmap_seq) != (int)(flags >> 16))) {
+        folio_put(vmf.folio);
         return VM_FAULT_RETRY;
       }
     }
@@ -1380,40 +1390,10 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
                         phys, vmf.prot, VMM_PAGE_SIZE_2M);
     } else {
       vmm_map_page(vma->vm_mm, vmf.address, phys, vmf.prot);
-      
-      /* 
-       * FAULT-AROUND: Try to map neighboring pages if they are already in memory.
-       * We expand the window to 16 pages (64KB) for better spatial locality.
-       */
-      if (!(flags & FAULT_FLAG_WRITE) && vma->vm_obj) {
-        struct vm_object *obj = vma->vm_obj;
-        uint64_t window = 16;
-        uint64_t start_pgoff = vmf.pgoff > (window / 2) ? vmf.pgoff - (window / 2) : 0;
-        if (start_pgoff < vma->vm_pgoff) start_pgoff = vma->vm_pgoff;
-
-        uint64_t end_pgoff = vmf.pgoff + (window / 2);
-        
-        down_read(&obj->lock);
-        for (uint64_t off = start_pgoff; off <= end_pgoff; off++) {
-          if (off == vmf.pgoff) continue;
-          if (off >= (obj->size >> PAGE_SHIFT)) break;
-          
-          struct folio *f = vm_object_find_folio(obj, off);
-          if (f) {
-             uint64_t addr = vma->vm_start + ((off - (vma->vm_pgoff)) << PAGE_SHIFT);
-             if (addr >= vma->vm_start && addr < vma->vm_end) {
-                /* Map it if not already present (vmm_map_page handles present check) */
-                vmm_map_page(vma->vm_mm, addr, folio_to_phys(f), vmf.prot);
-             }
-          }
-        }
-        up_read(&obj->lock);
-      }
     }
 
     /*
      * Handle Shared Writable Mappings & page_mkwrite.
-     * If this is a write fault on a shared mapping, we must notify the owner.
      */
     if ((vma->vm_flags & VM_SHARED) && (flags & FAULT_FLAG_WRITE)) {
       int mk_ret = 0;
@@ -1426,10 +1406,8 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
 
       if (mk_ret != 0) return mk_ret;
 
-      /* Mark folio as dirty for writeback */
       folio->page.flags |= PG_dirty;
-
-      /* Re-map with write permissions now that mkwrite succeeded */
+      account_page_dirtied();
       vmm_map_page(vma->vm_mm, vmf.address, phys, vmf.prot | PTE_RW);
     }
   }

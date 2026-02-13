@@ -69,15 +69,15 @@ struct inode *tmpfs_get_inode(struct super_block *sb, const struct inode *dir, v
   if (S_ISREG(mode)) {
     inode->i_op = &tmpfs_file_inode_ops;
     inode->i_fop = &tmpfs_file_operations;
-    inode->i_mapping = vm_object_alloc(VM_OBJECT_FILE);
-    if (inode->i_mapping) {
-      inode->i_mapping->priv = inode;
-      inode->i_mapping->flags |= VM_OBJECT_SWAP_BACKED;
-      inode->i_mapping->rd = rd;
+    inode->i_ubc = vm_object_alloc(VM_OBJECT_VNODE);
+    if (inode->i_ubc) {
+      inode->i_ubc->vnode = inode;
+      inode->i_ubc->flags |= VM_OBJECT_SWAP_BACKED;
+      inode->i_ubc->rd = rd;
       resdomain_get(rd);
 
-      extern const struct vm_object_operations filemap_obj_ops;
-      inode->i_mapping->ops = &filemap_obj_ops;
+      extern const struct vm_object_operations vnode_ubc_ops;
+      inode->i_ubc->ops = &vnode_ubc_ops;
     }
   } else if (S_ISDIR(mode)) {
     inode->i_op = &tmpfs_dir_inode_ops;
@@ -212,9 +212,9 @@ static struct inode_operations tmpfs_file_inode_ops = {
 static void tmpfs_destroy_inode(struct inode *inode) {
   struct tmpfs_inode_info *info = inode->i_fs_info;
 
-  if (inode->i_mapping) {
-    if (inode->i_mapping->rd) resdomain_put(inode->i_mapping->rd);
-    vm_object_put(inode->i_mapping);
+  if (inode->i_ubc) {
+    if (inode->i_ubc->rd) resdomain_put(inode->i_ubc->rd);
+    vm_object_put(inode->i_ubc);
   }
 
   if (info) {

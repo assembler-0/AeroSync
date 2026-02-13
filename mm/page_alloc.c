@@ -1429,3 +1429,14 @@ void free_area_init(void) {
     }
   }
 }
+
+unsigned long nr_free_pages(void) {
+    unsigned long total = 0;
+    for (int n = 0; n < MAX_NUMNODES; n++) {
+        if (!node_data[n]) continue;
+        for (int i = 0; i < MAX_NR_ZONES; i++) {
+            total += node_data[n]->node_zones[i].nr_free_pages;
+        }
+    }
+    return total;
+}

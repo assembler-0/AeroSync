@@ -188,4 +188,5 @@ struct mm_struct {
   int preferred_node; /* Default NUMA node for this address space */
 
   struct cpumask cpu_mask; /* CPUs currently using this mm */
+  struct resdomain *rd;    /* Resource domain for this address space */
 };

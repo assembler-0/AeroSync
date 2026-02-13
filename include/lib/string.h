@@ -114,3 +114,9 @@ char *next_arg(char *args, char **param, char **val);
 int cmdline_find_option_bool(const char *cmdline, const char *option);
 int cmdline_find_option(const char *cmdline, const char *option, char *buffer,
       int bufsize);
+
+/* convenience wrapper, though just use the normal way */
+#define DEFINE_CMDLINE_KEY(name) \
+  static inline int cmdline_have_##name(void) {              \
+    return cmdline_find_option_bool(current_cmdline, #name); \
+  }

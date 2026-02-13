@@ -37,6 +37,7 @@
 #include <mm/vma.h>
 #include <mm/vm_object.h>
 #include <arch/x86_64/mm/tlb.h>
+#include <aerosync/resdomain.h>
 
 /* Forward declarations for RMAP (defined in memory.c) */
 struct folio;
@@ -207,6 +208,11 @@ struct mm_struct *mm_alloc(void) {
 void mm_free(struct mm_struct *mm) {
   if (!mm)
     return;
+
+  if (mm->rd) {
+    resdomain_put(mm->rd);
+    mm->rd = nullptr;
+  }
 
   mm_destroy(mm);
 
@@ -1554,7 +1560,10 @@ uint64_t vma_find_free_region_aligned(struct mm_struct *mm, size_t size,
     // 16MB threshold
     uint64_t offset;
     if (rdrand64_safe(&offset)) {
-      /* TODO: TRNG */
+      /*
+       * Use RDRAND for ASLR. On systems without hardware RNG,
+       * this would fall back to a software PRNG seeded by boot entropy.
+       */
       uint64_t max_offset = range_end - range_start - total_needed;
       range_start += ALIGN(offset % max_offset, alignment);
     }

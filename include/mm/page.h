@@ -173,6 +173,10 @@ static inline void folio_get(struct folio *folio) {
   atomic_inc(&folio->page._refcount);
 }
 
+static inline bool folio_try_get(struct folio *folio) {
+  return atomic_inc_not_zero(&folio->page._refcount);
+}
+
 static inline void folio_put(struct folio *folio) { put_page(&folio->page); }
 
 static inline int folio_ref_count(struct folio *folio) {

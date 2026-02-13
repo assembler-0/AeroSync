@@ -273,6 +273,7 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
     vma_test();
     vmalloc_test();
     vmalloc_dump();
+    vm_obj_stress_test();
   }
 #endif
 

@@ -13,6 +13,8 @@
 #include <aerosync/sched/process.h>
 #include <lib/vsprintf.h>
 #include <aerosync/timer.h>
+#include <mm/vm_object.h>
+#include <arch/x86_64/mm/pmm.h>
 
 static struct pseudo_fs_info procfs_info = {
   .name = "proc",
@@ -23,14 +25,18 @@ static ssize_t proc_meminfo_read(struct file *file, char *buf, size_t count, vfs
   (void) file;
   char kbuf[512];
 
-  // Placeholder values
-  unsigned long total = 0, free = 0;
+  pmm_stats_t *stats = pmm_get_stats();
+  
+  unsigned long total = stats->total_pages;
+  unsigned long free = stats->free_pages;
 
   int len = snprintf(kbuf, sizeof(kbuf),
                      "MemTotal:       %lu kB\n"
                      "MemFree:        %lu kB\n"
-                     "MemAvailable:   %lu kB\n",
-                     total * 4, free * 4, free * 4);
+                     "MemAvailable:   %lu kB\n"
+                     "ShadowObjects:  %ld\n",
+                     total * 4, free * 4, free * 4,
+                     atomic_long_read(&nr_shadow_objects));
 
   return simple_read_from_buffer(buf, count, ppos, kbuf, (size_t) len);
 }

@@ -368,6 +368,7 @@ struct dentry *d_alloc_pseudo(struct super_block *sb, const struct qstr *name) {
   INIT_LIST_HEAD(&dentry->d_subdirs);
   INIT_LIST_HEAD(&dentry->d_child);
   INIT_LIST_HEAD(&dentry->i_list);
+  INIT_LIST_HEAD(&dentry->d_subscribers);
 
   return dentry;
 }

@@ -128,7 +128,7 @@ struct inode {
     struct timespec     i_mtime;          // Last modification time
     struct timespec     i_ctime;          // Last status change time
     struct super_block  *i_sb;            // Pointer to superblock
-    struct vm_object    *i_mapping;       // The page cache for this inode
+    struct vm_object    *i_ubc;           // Unified Buffer Cache / Mapping
     dev_t               i_rdev;           // Device number (if special file)
     const struct inode_operations *i_op;  // Inode operations
     const struct file_operations  *i_fop; // Default file operations
@@ -150,7 +150,7 @@ struct dentry {
     spinlock_t          d_lock;           // Protects dentry data
     atomic_t            d_count;          // Reference count
     uint32_t            d_flags;          // Dentry flags
-    // ... more fields for mounted state, etc.
+    struct list_head    d_subscribers;    // VFS Event Subscribers
 };
 
 // struct file: Represents an open file description

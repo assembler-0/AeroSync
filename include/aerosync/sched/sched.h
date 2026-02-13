@@ -263,6 +263,13 @@ struct task_struct {
   uint64_t vmacache_seqnum;
 
   /*
+   * Dirty page throttling state
+   */
+  uint64_t dirty_paused_ns;
+  unsigned long nr_dirtied;
+  unsigned long nr_dirtied_pause;
+
+  /*
    * Context for context switching
    */
   struct thread_struct thread;

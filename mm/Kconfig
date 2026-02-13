@@ -105,6 +105,22 @@ config MM_SPF
       VMA sequence counters. Dramatically improves scalability on multi-core
       systems for fault-heavy workloads.
 
+config MM_SPF_STATS
+    bool "Speculative Fault Statistics"
+    depends on MM_SPF
+    default n
+    help
+      Track success/failure rates of speculative faults. Useful for tuning
+      but adds minor overhead to the fault path.
+
+config MM_SPECULATIVE_ALLOC
+    bool "Speculative Page Allocation"
+    depends on MM_SPF
+    default y
+    help
+      Allow allocating and inserting new pages during a speculative fault
+      if the VMA lock is held. Further reduces mmap_lock contention.
+
 config MM_COMPACTION
     bool "Memory Compaction"
     default y
@@ -155,6 +171,68 @@ config MM_SHADOW_ASYNC_COLLAPSE
       Collapse deep shadow chains in a background workqueue instead of
       inline during page faults. Reduces fault latency at the cost of
       slightly delayed memory reclamation.
+
+config MM_SHADOW_BYPASS
+    bool "Enable Shadow Object Bypass Optimization"
+    default y
+    depends on MM_SHADOW_COLLAPSE
+    help
+      Skip empty shadow objects in the lookup chain. Improves performance
+      for workloads with high fork() frequency but low memory modification.
+
+endmenu
+
+menu "UBC and Readahead Tuning"
+
+config MM_UBC_CLUSTERING
+    bool "Enable Clustered Writeback (Dirty Clustering)"
+    default y
+    help
+      Group contiguous dirty pages into a single write operation.
+      Significantly improves I/O throughput for sequential writes.
+
+config MM_READAHEAD
+    bool "Adaptive Page Cache Readahead"
+    default y
+    help
+      Enable proactive readahead of file data into the page cache.
+      Significantly improves sequential read performance.
+
+config MM_READAHEAD_PAGES
+    int "Max Readahead Window Size (Pages)"
+    depends on MM_READAHEAD
+    default 32
+    range 1 512
+    help
+      Maximum number of pages to read ahead on sequential access.
+
+config MM_READAHEAD_THRASH_PROTECTION
+    bool "Readahead Thrash Protection"
+    default y
+    depends on MM_READAHEAD
+    help
+      Shrink readahead window dynamically if the kernel detects that
+      readahead pages are being evicted before use (thrashing).
+
+endmenu
+
+menu "Advanced Fault Tuning"
+
+config MM_VMA_LOCKING
+    bool "Per-VMA Locking"
+    default y
+    help
+      Use fine-grained locking per VMA instead of a global address space
+      lock during page faults. Enables high concurrency for multi-threaded
+      workloads on large systems.
+
+config MM_RESDOMAIN_DIRECT_RECLAIM
+    bool "Direct Reclaim on ResDomain Exhaustion"
+    default y
+    depends on RESDOMAINS
+    help
+      Synchronously attempt to reclaim memory when a resource domain's
+      hard limit is reached, before failing an allocation.
 
 endmenu
 
@@ -241,19 +319,43 @@ config DIRTY_THRESHOLD_THROTTLE
       Number of dirty pages at which processes are throttled during writes.
 
 config MM_READAHEAD
-    bool "Page Cache Readahead"
+    bool "Adaptive Page Cache Readahead"
     default y
     help
       Enable proactive readahead of file data into the page cache.
       Significantly improves sequential read performance.
 
 config MM_READAHEAD_PAGES
-    int "Readahead Window Size (Pages)"
+    int "Max Readahead Window Size (Pages)"
     depends on MM_READAHEAD
-    default 16
-    range 1 128
+    default 32
+    range 1 512
     help
-      Number of pages to read ahead on sequential access. 16 pages = 64KB.
+      Maximum number of pages to read ahead on sequential access.
+
+config MM_READAHEAD_THRASH_PROTECTION
+    bool "Readahead Thrash Protection"
+    default y
+    depends on MM_READAHEAD
+    help
+      Shrink readahead window dynamically if the kernel detects that
+      readahead pages are being evicted before use (thrashing).
+
+config MM_DIRTY_THROTTLING
+    bool "Per-Task Dirty Page Throttling"
+    default y
+    help
+      Enable proportional throttling for processes that dirty memory faster
+      than it can be written back. Prevents I/O starvation and memory
+      exhaustion.
+
+config MM_THROTTLE_MAX_PAUSE_MS
+    int "Maximum Throttling Pause (ms)"
+    depends on MM_DIRTY_THROTTLING
+    default 100
+    range 10 1000
+    help
+      Maximum duration a process can be paused in balance_dirty_pages.
 
 endmenu
 

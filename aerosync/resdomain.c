@@ -525,10 +525,39 @@ int __no_cfi resdomain_charge_mem(struct resdomain *rd, uint64_t bytes, bool for
   if (!rd) rd = &root_resdomain;
   struct mem_rd_state *ms = (struct mem_rd_state *) rd->subsys[RD_SUBSYS_MEM];
   if (!ms) return 0;
+
   uint64_t usage = atomic64_read(&ms->usage);
+  
+  /* 
+   * HARD LIMIT ENFORCEMENT:
+   * If we exceed the limit, try direct reclaim before failing.
+   */
   if (!force && (ms->max != (uint64_t) -1) && (usage + bytes > ms->max)) {
+#ifdef CONFIG_MM_RESDOMAIN_DIRECT_RECLAIM
+    /* 
+     * DIRECT RECLAIM:
+     * We call into the memory management system to attempt to free pages.
+     */
+    extern size_t try_to_free_pages(struct pglist_data *pgdat, size_t nr_to_reclaim, gfp_t gfp_mask);
+    
+    size_t nr_to_reclaim = (bytes + PAGE_SIZE - 1) >> PAGE_SHIFT;
+    /* Try to reclaim from all online nodes */
+    for (int i = 0; i < MAX_NUMNODES; i++) {
+        if (node_data[i]) {
+            try_to_free_pages(node_data[i], nr_to_reclaim, GFP_KERNEL);
+        }
+    }
+
+    /* Re-check usage after reclaim */
+    usage = atomic64_read(&ms->usage);
+    if (usage + bytes > ms->max) {
+        return -ENOMEM;
+    }
+#else
     return -ENOMEM;
+#endif
   }
+
   atomic64_add(bytes, &ms->usage);
   if (rd->parent) {
     if (resdomain_charge_mem(rd->parent, bytes, force) < 0) {

@@ -29,7 +29,7 @@
         "STACK_PROTECTION_ALL": "ON",
         "SANITIZER": "ON",
         "LTO": "ON",
-        "CFI_ENABLE": "OFF",
+        "CFI_ENABLE": "ON",
         "STRIP": "ON"
       }
     },
@@ -73,7 +73,7 @@
       "inherits": "base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "AEROSYNC_DEFCONFIG": "amd64",
+        "AEROSYNC_DEFCONFIG": "amd64-hardened",
         "OPT_LEVEL": "2",
         "DSYM_LEVEL": "3",
         "STACK_PROTECTION": "ON",

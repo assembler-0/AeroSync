@@ -66,15 +66,16 @@
  *  MEMORY MANAGEMENT
  * ========================================================================= */
 ///@section Physical & Virtual Memory
-#define PMM_CLASS "[sys::mm::pmm] "   // Physical Memory Manager (Bitmap/Buddy)
-#define VMM_CLASS "[sys::mm::vmm] "   // Virtual Memory Manager (Paging, PDE/PTE)
-#define SWAP_CLASS "[sys::mm::swap] " // Swap space / Paging to disk
-#define MMIO_CLASS "[sys::mm::mmio] " // MMIO Virtual Address Allocator
-#define VMA_CLASS "[sys::mm::vma] " // Virtual Memory Area
+#define PMM_CLASS "[sys::mm::pm] "   // Physical Memory Manager (Bitmap/Buddy)
+#define VMM_CLASS "[sys::mm::vm] "    // Virtual Memory
+#define SWAP_CLASS "[sys::mm::vm::swap] " // Swap space / Paging to disk
+#define MMIO_CLASS "[sys::mm::vm::mmio] " // MMIO Virtual Address Allocator
+#define IOMMU_CLASS "[sys::mm::vm::iommu] "
+#define VMA_CLASS "[sys::mm::vm::vma] " // Virtual Memory Area
 #define FOLIO_CLASS "[sys::mm::folio] " // Linux struct folio
-#define WRITEBACK_CLASS "[sys::mm::writeback] "
-#define THP_CLASS "[sys::mm::thp] "
-#define DMA_CLASS "[sys::mm::pmm::dma] "
+#define WRITEBACK_CLASS "[sys::mm::vm::writeback] "
+#define THP_CLASS "[sys::mm::vm::thp] "
+#define DMA_CLASS "[sys::mm::pm::dma] "
 
 ///@section Heaps & Allocators
 #define SLAB_CLASS "[sys::mm::slab] " // Slab allocator specific
