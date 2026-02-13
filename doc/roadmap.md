@@ -43,30 +43,30 @@
 	- [ ] **Phase 4: Userspace & Device Infrastructure (Production Grade)**
 		- [x] **Recursive Path Lookup**: Implement robust `vfs_path_lookup` in `namei.c` with support for `..`, `.`, symlinks, and mount point crossing.
 		- [ ] **Unified Device Model (UDM) Integration**: 
-			- [ ] **Char Device Layer**: `register_chrdev` API with major/minor number management.
-			- [ ] **Block Device Layer**: Refine block I/O request queues and bio-like structures.
+			- [x] **Char Device Layer**: `register_chrdev` API with major/minor number management.
+			- [x] **Block Device Layer**: Refine block I/O request queues and bio-like structures.
 			- [x] **DevFS**: Pseudo-filesystem for automatic device node exposure in `/dev`.
 		- [x] **Advanced VFS Integration**:
 			- [x] **fs_struct**: Implement per-process root and working directory.
 			- [x] **Mount Management**: Implement a global mount tree and `sys_mount`/`sys_umount`.
 			- [x] **File-backed mmap**: Complete the link between `inode->i_mapping` and `vm_area_struct`.
 			- [x] **Everything-is-a-file**: Unified `devfs` linkage where UDM `struct device` automatically appears in `/dev`.
-		- [ ] **Terminal & TTY Subsystem**:
-			- [ ] **TTY Core**: Generic TTY driver with line discipline support (N_TTY).
+		- [x] **Terminal & TTY Subsystem**:
+			- [x] **TTY Core**: Generic TTY driver with line discipline support (N_TTY).
 			- [ ] **Virtual Consoles**: Support for multiple TTYs on the same display/serial.
 			- [ ] **PTY (Pseudo-Terminals)**: Support for terminal emulators and SSH.
 		- [ ] **Initial RAM Disk (Initrd)**:
-			- [ ] **USTAR/CPIO Parser**: Support for loading early userspace from bootloader-provided modules.
+			- [ x **USTAR/CPIO Parser**: Support for loading early userspace from bootloader-provided modules.
 			- [ ] **Rootfs Pivot**: Mechanism to switch from initrd to a persistent root filesystem.
 		- [ ] **POSIX System Call Bridge**:
 			- [ ] Complete `open`, `close`, `read`, `write`, `ioctl`, `lseek`, `fstat`, `poll`, `select`.
 			- [ ] Implement `pipe()` and `dup2()` for shell support.
 	- [ ] **Phase 5: Advanced FS & Performance**
-		- [ ] **Unified Buffer Cache (UBC)**: Integrate page cache with block layer for zero-copy file I/O.
+		- [x] **Unified Buffer Cache (UBC)**: Integrate page cache with block layer for zero-copy file I/O.
 		- [ ] **Writeback Engine**: Dedicated threads for flushing dirty pages to disk.
-	- [ ] **vmalloc**: use maple tree for vmalloc
-	- [ ] **Phase 3: Robustness & Advanced Features**
-		- [ ] **OOM Killer 2.0**: Implement a "Reaper" thread to asynchronously reclaim memory from killed tasks, preventing deadlocks.
+	- [x] **vmalloc**: use maple tree for vmalloc
+	- [x] **Phase 3: Robustness & Advanced Features**
+		- [x] **OOM Killer 2.0**: Implement a "Reaper" thread to asynchronously reclaim memory from killed tasks, preventing deadlocks.
 		- [x] **Hardened Usercopy**: Rigorous bounds checking for `copy_from_user`/`copy_to_user` based on VMA limits.
 		- [x] **Kernel Guard Pages**: Unmapped guard pages between vmalloc stacks.
 		- [x] **Transparent Huge Pages (THP)**: Background promotion of contiguous 4KB pages to 2MB pages using a dedicated `khugepaged` daemon.
@@ -78,10 +78,10 @@
 	- [x] Selective lazy allocation/free for kernel `vmalloc()
 	- [ ] Fix subtle, logic bugs
 	- [x] True memory reclamation
-	- [ ] Integrate with VFS
+	- [x] Integrate with VFS
 	- [x] working `mmap`/`munmap`/`mprotect`/`mremap`
 	- [ ] add `brk` and `sbrk` for compatibility
-	- [ ] Cache *everywhere*, (UBC - Unified Buffer Cache)
+	- [x] Cache *everywhere*, (UBC - Unified Buffer Cache)
 	- [x] Magazines integration for SLUB
 	- [x] Faster SLUB
 	- [x] More sophisticated PMM system (buddy `page_alloc`)
@@ -89,11 +89,11 @@
 	- [ ] KASLR (PIC/PIE)
 	- [x] ASLR
 	- [x] Guard pages where possible
-	- [ ] Proper DMA support for legacy devices
+	- [x] Proper DMA support for legacy devices
 	- [ ] IOMMU
 	- [ ] more rigid MMIO
 	- [x] Stack management
-	- [ ] handle user MM faults gracully
+	- [x] handle user MM faults gracully
 - scheduling
 	- [x] PI (Priority Inheritance)
 	- [x] Per-Entity Load Tracking (PELT) - 32ms half-life decaying averages
@@ -106,7 +106,7 @@
 	- [x] vruntime normalization/denormalization on migration
 	- [x] Aggressive multi-task load balancing (move load, not just tasks)
 	- [x] Cross-CPU wake-up preemption (IPI)
-	- [ ] XNU-inspired deadline inheritence (idk what's it called)
+	- [ ] XNU-inspired priority inheritance (idk what's it called)
 - VFS
 	- [x] FD allocation
 	- [ ] proper FD table
@@ -129,11 +129,11 @@
 	- [ ] overlayfs
 	- [ ] USTAR
 	- [ ] ISOFS (ISO9660 + RockRidge extension)
-	- [ ] NEWC CPIO
+	- [x] NEWC CPIO
 	- [ ] File systems as a module
 - POSIX-compliant
-	- [ ] `open()`/`close()`
-	- [ ] pipes
+	- [x] `open()`/`close()`
+	- [x] pipes
 	- [ ] sockets
 	- [ ] mman
 	- [x] System V ABI (implicit!!)
@@ -153,10 +153,10 @@
 		- [x] **Managed Resources (devres)**: Implement base `devres` API and `devm_kzalloc`.
 		- [ ] **Unified Resource Management**: Implement `devm_ioremap` and `devm_request_irq` for automatic cleanup.
 		- [ ] **Global Resource Tree**: Standardize `struct resource` and implement a global tree for I/O and Memory tracking.
-		- [ ] **Standardized Driver Lifecycle**: Enforce `probe`/`remove`/`shutdown`/`suspend`/`resume` symmetry across all subsystems.
-		- [ ] **Hierarchical Device Tree**: Ensure proper parent-child relationships (e.g., PCI -> AHCI -> SATA).
+		- [x] **Standardized Driver Lifecycle**: Enforce `probe`/`remove`/`shutdown`/`suspend`/`resume` symmetry across all subsystems.
+		- [x] **Hierarchical Device Tree**: Ensure proper parent-child relationships (e.g., PCI -> AHCI -> SATA).
 		- [ ] **Generic IRQ Mapping**: Abstract IRQ allocation and routing behind UDM to support MSI/MSI-X transparently.
-		- [ ] **SysFS-like Attributes**: Expand `struct attribute` for runtime device introspection.
+		- [x] **SysFS-like Attributes**: Expand `struct attribute` for runtime device introspection.
 	- [x] **Enhanced SYSINTF**
 		- [x] Configurable via Kconfig
 	- [ ] skeleton kernel
@@ -188,15 +188,15 @@
 	- [ ] xHCI controller stack (usable for OHCI & EHCI)
 	- [ ] PCIe with MSI and MSI-X
 	- [ ] ACPICA
-	- [ ] SMBIOS
+	- [x] SMBIOS
 	- [ ] True time counting
 	- [ ] Software timer
 	- [ ] Unified input stack
 	- [ ] PS2 keyboard and mouse
 	- [ ] USB keyboard and mouse
-	- [ ] proper APIC stack (enhance for more features)
-	- [ ] Oneshot mode support
-	- [ ] EFI RT table support
+	- [x] proper APIC stack (enhance for more features)
+	- [x] Oneshot mode support
+	- [x] EFI RT table support
 	- [ ] ARP/ICMP Stack
 	- [ ] UDP stack
 	- [ ] TCP/IP (v4 and v6) support
@@ -218,5 +218,5 @@
 	- [ ] C-states support
 	- [ ] Hybrid architecture handling
 	- [ ] CPU microcode loading
-	- [ ] PTY & TTY drivers
+	- [x] PTY & TTY drivers
 	- [ ] CSPRNG using a TRNG

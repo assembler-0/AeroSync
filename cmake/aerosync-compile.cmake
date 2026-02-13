@@ -144,23 +144,23 @@ set(AEROSYNC_LINKER_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/arch/x86_64/aerosync.ld"
 set_target_properties(aerosync.krnl PROPERTIES LINK_DEPENDS "${AEROSYNC_LINKER_SCRIPT}")
 
 target_link_options(aerosync.krnl PRIVATE
-        -fuse-ld=lld
-        -T ${AEROSYNC_LINKER_SCRIPT}
-        -nostdlib
-        -static
-        -Wl,-melf_x86_64
-        -Wl,--gc-sections
-        -Wl,--icf=all
-        -Wl,-z,relro
-        -Wl,-z,now
-        -Wl,-z,noexecstack
-        -Wl,-z,separate-code
-        -Wl,--build-id=sha1
+    -fuse-ld=lld
+    -T ${AEROSYNC_LINKER_SCRIPT}
+    -nostdlib
+    -static
+    -Wl,-melf_x86_64
+    -Wl,--gc-sections
+    -Wl,--icf=all
+    -Wl,-z,relro
+    -Wl,-z,now
+    -Wl,-z,noexecstack
+    -Wl,-z,separate-code
+    -Wl,--build-id=sha1
 )
 
 if (STRIP)
     add_custom_command(TARGET aerosync.krnl POST_BUILD
-            COMMAND ${LLVM_STRIP} --strip-debug --strip-unneeded $<TARGET_FILE:aerosync.krnl>
-            COMMENT "Stripping kernel image"
+        COMMAND ${LLVM_STRIP} --strip-debug --strip-unneeded $<TARGET_FILE:aerosync.krnl>
+        COMMENT "Stripping kernel image"
     )
 endif()

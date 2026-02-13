@@ -638,7 +638,7 @@ void __no_cfi schedule(void) {
   spinlock_unlock_irqrestore(&rq->lock, flags);
 }
 
-void idle_loop(void) {
+void __noreturn idle_loop(void) {
   while (1) {
     check_preempt();
     cpu_hlt();

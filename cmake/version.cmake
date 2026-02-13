@@ -16,7 +16,7 @@ execute_process(
 )
 
 set(AEROSYNC_RELEASE "0" CACHE STRING "AeroSync release")
-set(AEROSYNC_CANDIDATE "2" CACHE STRING "AeroSync release candidate")
+set(AEROSYNC_CANDIDATE "3" CACHE STRING "AeroSync release candidate")
 set(AEROSYNC_ABI_LEVEL "0" CACHE STRING "AeroSync ABI level")
 set(AEROSYNC_CODENAME "Convergence" CACHE STRING "AeroSync codename")
 configure_file(

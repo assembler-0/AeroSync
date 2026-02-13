@@ -1,6 +1,6 @@
 # AeroSync
 
-**Version:** r0c2-3.2.5
+**Version:** r0c3-4.3.7
 
 <p align="center">
   <img src="https://img.shields.io/github/languages/top/assembler-0/AeroSync?style=for-the-badge&color=blueviolet" />

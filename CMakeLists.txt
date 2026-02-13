@@ -25,7 +25,7 @@
 
 cmake_minimum_required(VERSION 3.30)
 project(AeroSync
-    VERSION 3.2.5
+    VERSION 4.3.7
     LANGUAGES C CXX ASM_NASM
     HOMEPAGE_URL "https://github.com/assembler-0/AeroSync"
     DESCRIPTION "A modern monolithic operating system kernel."
