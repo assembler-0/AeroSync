@@ -52,15 +52,11 @@ int vmm_get_paging_levels(void);
 
 /**
  * Get the start of the canonical higher-half address space.
- * 4-level: 0xFFFF800000000000
- * 5-level: 0xFF00000000000000
  */
 uint64_t vmm_get_canonical_high_base(void);
 
 /**
  * Get the maximum valid user-space address.
- * 4-level: 0x00007FFFFFFFFFFF
- * 5-level: 0x00FFFFFFFFFFFFFF
  */
 uint64_t vmm_get_max_user_address(void);
 

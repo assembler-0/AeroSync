@@ -26,6 +26,7 @@
 #include <arch/x86_64/mm/vmm.h>
 #include <arch/x86_64/percpu.h>
 #include <compiler.h>
+#include <arch/x86_64/mm/layout.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <limine/limine.h>
@@ -34,9 +35,26 @@
 #include <mm/page.h>
 #include <mm/zone.h>
 
+#include <arch/x86_64/requests.h>
+
 // Global HHDM offset
 uint64_t g_hhdm_offset = 0;
 EXPORT_SYMBOL(g_hhdm_offset);
+
+uint64_t g_hhdm_size = 0;
+EXPORT_SYMBOL(g_hhdm_size);
+
+uint64_t g_vmalloc_base = 0;
+EXPORT_SYMBOL(g_vmalloc_base);
+
+uint64_t g_vmalloc_end = 0;
+EXPORT_SYMBOL(g_vmalloc_end);
+
+uint64_t g_kernel_virt_base = 0;
+EXPORT_SYMBOL(g_kernel_virt_base);
+
+uint64_t g_kernel_phys_base = 0;
+EXPORT_SYMBOL(g_kernel_phys_base);
 
 struct page *mem_map = nullptr;
 uint64_t pmm_max_pages = 0;
@@ -87,6 +105,20 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
   }
 
   g_hhdm_offset = hhdm_offset;
+
+  volatile struct limine_executable_address_request *exec_addr = get_executable_address_request();
+  if (exec_addr->response) {
+    g_kernel_virt_base = exec_addr->response->virtual_base;
+    g_kernel_phys_base = exec_addr->response->physical_base;
+  } else {
+    /*
+     * If Limine is old or doesn't provide this, we are in trouble with KASLR.
+     * However, the user said they just made it compatible, so we assume
+     * Limine v4+ which MUST provide this for relocatable kernels.
+     */
+    panic(PMM_CLASS "KASLR requested but no executable address response");
+  }
+
   printk(KERN_DEBUG PMM_CLASS "Initializing buddy system...\n");
 
   // Initialize NUMA topology manually (early ACPI walk)
@@ -100,12 +132,12 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
     struct limine_memmap_entry *entry = memmap->entries[i];
     uint64_t end = entry->base + entry->length;
 
-    if (entry->type == LIMINE_MEMMAP_USABLE ||
-        entry->type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE ||
-        entry->type == LIMINE_MEMMAP_EXECUTABLE_AND_MODULES) {
-      if (end > highest_addr)
-        highest_addr = end;
-    }
+    /* 
+     * We track the highest address across all reported memory regions
+     * to ensure the HHDM covers everything.
+     */
+    if (end > highest_addr)
+      highest_addr = end;
 
     if (entry->type == LIMINE_MEMMAP_USABLE) {
       uint64_t aligned_base = PAGE_ALIGN_UP(entry->base);
@@ -114,6 +146,17 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
         total_usable_bytes += (aligned_end - aligned_base);
     }
   }
+
+  /* Set dynamic HHDM size and Vmalloc base */
+  g_hhdm_size = PAGE_ALIGN_UP(highest_addr);
+  
+  /* 
+   * Vmalloc starts after HHDM with a 128GB safety gap.
+   * This ensures that even if some driver uses slightly out of bounds HHDM,
+   * it won't hit vmalloc space immediately.
+   */
+  g_vmalloc_base = g_hhdm_offset + g_hhdm_size + (128ULL * 1024 * 1024 * 1024);
+  g_vmalloc_end = g_vmalloc_base + VMALLOC_VIRT_SIZE;
 
   pmm_max_pages = PHYS_TO_PFN(PAGE_ALIGN_UP(highest_addr));
   uint64_t memmap_size = pmm_max_pages * sizeof(struct page);

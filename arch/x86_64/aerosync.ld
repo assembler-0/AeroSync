@@ -31,6 +31,7 @@ PHDRS
     text     PT_LOAD    FLAGS(5); /* R(4) | E(1) = 5 */
     rodata   PT_LOAD    FLAGS(4); /* R(4) */
     data     PT_LOAD    FLAGS(6); /* R(4) | W(2) = 6 */
+    dynamic  PT_DYNAMIC FLAGS(6);
     bss      PT_LOAD    FLAGS(6); /* R(4) | W(2) = 6 */
 }
 
@@ -89,6 +90,21 @@ SECTIONS
 
         . = ALIGN(PAGE_SIZE);
         _rodata_end = .;
+    } :rodata
+
+    .dynamic ALIGN(PAGE_SIZE) :
+    {
+        *(.dynamic)
+    } :rodata :dynamic
+
+    .rela.dyn ALIGN(PAGE_SIZE) :
+    {
+        *(.rela.dyn)
+    } :rodata
+
+    .rela.plt ALIGN(PAGE_SIZE) :
+    {
+        *(.rela.plt)
     } :rodata
 
 	.ctors ALIGN(BYTE) :

@@ -1,4 +1,5 @@
 [bits 64]
+default rel
 
 section .text
 
@@ -47,15 +48,6 @@ ret_from_fork:
     mov rdi, rax
     call schedule_tail
     
-    ; We are now in the child process.
-    ; The stack contains syscall_regs (or cpu_regs if from exception).
-    ; We need to jump to the appropriate return path.
-    
-    ; Check if we were a kernel thread or user process?
-    ; For now, assume user process return via syscall_exit logic.
-    ; Since we don't have a separate syscall_exit, we'll re-use the one in syscall.asm
-    ; or just implement it here.
-    
     jmp .syscall_return_path
 
 .syscall_return_path:
@@ -84,7 +76,11 @@ ret_from_fork:
 
     ; Restore User RSP and switch back
     extern cpu_user_rsp
-    mov rsp, [gs:cpu_user_rsp]
+    extern _percpu_start
+    lea rax, [rel cpu_user_rsp]
+    lea rbx, [rel _percpu_start]
+    sub rax, rbx
+    mov rsp, [gs:rax]
     swapgs
     o64 sysret
 

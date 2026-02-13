@@ -169,7 +169,18 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
     ksymtab_init(get_executable_file_request()->response->executable_file->address);
   }
 
+  if (get_cmdline_request()->response) {
+    printkln(KERN_CLASS "cmdline: %s", current_cmdline);
+  }
+
   if (cmdline_find_option_bool(current_cmdline, "bootinfo")) {
+    if (
+      get_executable_address_request()->response &&
+      cmdline_find_option_bool(current_cmdline, "kaslrinfo")
+    ) {
+      printkln(KERN_CLASS "kaslr base: %p", get_executable_address_request()->response->virtual_base);
+    }
+
     if (get_bootloader_info_request()->response &&
         get_bootloader_performance_request()->response) {
       printk(KERN_CLASS
@@ -202,10 +213,6 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
   }
 
   printk(KERN_CLASS "system pagination level: %d\n", vmm_get_paging_levels());
-
-  if (get_cmdline_request()->response) {
-    printkln(KERN_CLASS "cmdline: %s", current_cmdline);
-  }
 
   if (get_date_at_boot_request()->response) {
     uint64_t boot_ts = get_date_at_boot_request()->response->timestamp;

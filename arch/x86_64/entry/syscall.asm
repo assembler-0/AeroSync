@@ -22,10 +22,20 @@ syscall_entry:
     swapgs                  ; Switch to kernel GS
 
     ; Save User RSP to per-cpu scratch
-    mov [gs:cpu_user_rsp], rsp
+    ; We need the offset of cpu_user_rsp from _percpu_start
+    extern _percpu_start
+    lea rax, [rel cpu_user_rsp]
+    lea rbx, [rel _percpu_start]
+    sub rax, rbx
+    mov [gs:rax], rsp
 
     ; Load Kernel RSP from TSS (tss_entry.rsp0 is at offset 4)
-    mov rsp, [gs:tss_entry + 4]
+    lea rax, [rel tss_entry]
+    lea rbx, [rel _percpu_start]
+    sub rax, rbx
+    add rax, 4              ; Offset to rsp0
+    mov rax, [gs:rax]
+    mov rsp, rax
 
     ; Construct struct syscall_regs on stack
     ; Layout needs to be 16-byte aligned for C calls.
@@ -33,7 +43,10 @@ syscall_entry:
 
     ; Simulated Interrupt Frame (SS, RSP, RFLAGS, CS, RIP)
     push 0x1B                   ; User SS (User Data + 3)
-    push qword [gs:cpu_user_rsp]; User RSP
+    lea rax, [rel cpu_user_rsp]
+    lea rbx, [rel _percpu_start]
+    sub rax, rbx
+    push qword [gs:rax]         ; User RSP
     push r11                    ; Saved RFLAGS
     push 0x23                   ; User CS (User Code + 3)
     push rcx                    ; Saved RI
@@ -99,6 +112,9 @@ syscall_entry:
     add rsp, 8  ; Skip Alignment Dummy
 
     ; RSP is now back to Kernel Stack top (as it was after TSS switch)
-    mov rsp, [gs:cpu_user_rsp] ; Restore User RSP (while still on Kernel GS)
+    lea rax, [rel cpu_user_rsp]
+    lea rbx, [rel _percpu_start]
+    sub rax, rbx
+    mov rsp, [gs:rax] ; Restore User RSP (while still on Kernel GS)
     swapgs                     ; Switch to User GS
     o64 sysret  ; Return to Ring 3 (64-bit)

@@ -115,8 +115,9 @@ uint64_t search_exception_table(uint64_t addr) {
   struct exception_table_entry *entry;
 
   for (entry = __start___ex_table; entry < __stop___ex_table; entry++) {
-    if (entry->insn == addr) {
-      return entry->fixup;
+    uint64_t insn_addr = (uint64_t)&entry->insn + entry->insn;
+    if (insn_addr == addr) {
+      return (uint64_t)&entry->fixup + entry->fixup;
     }
   }
 

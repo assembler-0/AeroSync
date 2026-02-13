@@ -2,10 +2,11 @@
 #include <aerosync/ksymtab.h>
 #include <lib/printk.h>
 #include <aerosync/classes.h>
+#include <arch/x86_64/mm/vmm.h>
 
 // Helper to check if address is likely a valid kernel stack address
 static int is_valid_stack_addr(uintptr_t addr) {
-  if (addr < 0xffff800000000000ULL) return 0; // Not in high half
+  if (addr < vmm_get_canonical_high_base()) return 0; // Not in high half
   if (addr & 0x7) return 0; // Not aligned
   return 1;
 }

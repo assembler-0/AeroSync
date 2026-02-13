@@ -127,6 +127,13 @@ struct limine_firmware_type_request fw_request = {
 __attribute__((
   used,
   section(".limine_requests"))) static volatile
+struct limine_executable_address_request executable_address_request = {
+  .id = LIMINE_EXECUTABLE_ADDRESS_REQUEST_ID, .revision = 0
+};
+
+__attribute__((
+  used,
+  section(".limine_requests"))) static volatile
 struct limine_date_at_boot_request date_at_boot_request = {
   .id = LIMINE_DATE_AT_BOOT_REQUEST_ID,
   .revision = 0
@@ -208,6 +215,11 @@ volatile struct limine_date_at_boot_request *get_date_at_boot_request(void) {
   return &date_at_boot_request;
 }
 EXPORT_SYMBOL(get_date_at_boot_request);
+
+volatile struct limine_executable_address_request *get_executable_address_request(void) {
+  return &executable_address_request;
+}
+EXPORT_SYMBOL(get_executable_address_request);
 
 volatile struct limine_rsdp_request *get_rsdp_request(void) {
   return &rsdp_request;

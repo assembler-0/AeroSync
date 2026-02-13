@@ -31,9 +31,10 @@ target_compile_options(aerosync.krnl PRIVATE
         -mno-avx
         -mno-80387
 
-        -fno-pic
-        -fno-pie
+        -fPIE
+        -fPIC
         -fno-plt
+        -mno-retpoline
         -fvisibility=hidden
         -fdata-sections
         -ffunction-sections
@@ -147,7 +148,8 @@ target_link_options(aerosync.krnl PRIVATE
     -fuse-ld=lld
     -T ${AEROSYNC_LINKER_SCRIPT}
     -nostdlib
-    -static
+    -Wl,-pie
+    -Wl,-Bsymbolic
     -Wl,-melf_x86_64
     -Wl,--gc-sections
     -Wl,--icf=all

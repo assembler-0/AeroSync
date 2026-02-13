@@ -85,7 +85,7 @@ void ksymtab_init(void *kernel_base_addr) {
         const char *name = kernel_strtab + kernel_symtab[i].st_name;
         if (strcmp(name, "ksymtab_init") == 0) {
           kernel_slide = (uintptr_t) &ksymtab_init - kernel_symtab[i].st_value;
-          printk(KERN_INFO KERN_CLASS "ksymtab: detected KASLR slide: %p (Link: %p, Run: %p)\n",
+          printk(KERN_INFO KERN_CLASS "ksymtab: slide: %p (Link: %p, Run: %p)\n",
                  (void *) kernel_slide, (void *) kernel_symtab[i].st_value, (void *) &ksymtab_init);
           break;
         }

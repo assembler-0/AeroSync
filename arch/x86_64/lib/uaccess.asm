@@ -53,8 +53,9 @@ __copy_from_user:
     mov rax, rcx
     ret
 
-section __ex_table alloc align=8
-    dq .copy_in, __copy_from_user.fixup
+section __ex_table alloc align=4
+    dd (.copy_in - $)
+    dd (__copy_from_user.fixup - $)
 section .text
 
 ; size_t __copy_to_user(void *to [rdi], const void *from [rsi], size_t n [rdx])
@@ -84,4 +85,7 @@ __copy_to_user:
     ret
 
 section __ex_table
-    dq .copy_out, __copy_to_user.fixup_to
+
+    dd (.copy_out - $)
+
+    dd (__copy_to_user.fixup_to - $)

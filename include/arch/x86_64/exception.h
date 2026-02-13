@@ -5,8 +5,8 @@
 void get_exception_as_str(char* buff, uint32_t num);
 
 struct exception_table_entry {
-    uint64_t insn;
-    uint64_t fixup;
+    int32_t insn;
+    int32_t fixup;
 };
 
 extern struct exception_table_entry __start___ex_table[];
@@ -21,7 +21,7 @@ uint64_t search_exception_table(uint64_t addr);
 
 #define EX_TABLE_ENTRY(insn, fixup) \
     ".section __ex_table,\"a\"\n"    \
-    ".align 8\n"                     \
-    ".quad (" insn ")\n"             \
-    ".quad (" fixup ")\n"            \
+    ".align 4\n"                     \
+    ".long (" insn ") - .\n"         \
+    ".long (" fixup ") - .\n"        \
     ".previous\n"
