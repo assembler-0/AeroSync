@@ -149,6 +149,30 @@ int __wake_up(struct wait_queue_head *wq_head, unsigned int mode,
 }
 EXPORT_SYMBOL(__wake_up);
 
+struct task_struct *wake_up_nr_ret_first(struct wait_queue_head *wq_head, int nr)
+{
+    unsigned long flags;
+    struct task_struct *first_task = nullptr;
+    wait_queue_entry_t *curr, *next;
+
+    spin_lock_irqsave(&wq_head->lock, &flags);
+    
+    list_for_each_entry_safe(curr, next, &wq_head->head, entry) {
+        unsigned wq_flags = curr->flags;
+        struct task_struct *p = curr->private;
+
+        if (curr->func(curr, TASK_NORMAL, 0, nullptr)) {
+            if (!first_task) first_task = p;
+            if ((wq_flags & WQ_FLAG_EXCLUSIVE) && !--nr)
+                break;
+        }
+    }
+
+    spin_unlock_irqrestore(&wq_head->lock, flags);
+    return first_task;
+}
+EXPORT_SYMBOL(wake_up_nr_ret_first);
+
 void __wake_up_on_current_cpu(struct wait_queue_head *wq_head, unsigned int mode, void *key)
 {
 	__wake_up_common_lock(wq_head, mode, 1, WF_CURRENT_CPU, key);

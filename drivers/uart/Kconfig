@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+menu "uart"
+
+config EXT_UART
+    bool "Enable support for uart driver"
+    default y
+    help
+      Builds a uart driver module
+
+endmenu

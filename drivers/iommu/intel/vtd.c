@@ -189,6 +189,7 @@ FKX_MODULE_DEFINE(
   "Intel VT-d IOMMU Driver",
   0,
   FKX_DRIVER_CLASS,
-  vtd_mod_init,
-  nullptr
+  FKX_SUBCLASS_IOMMU,
+  FKX_NO_REQUIREMENTS,
+  vtd_mod_init
 );

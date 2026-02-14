@@ -327,8 +327,6 @@ static int ide_init(void) {
   return pci_register_driver(&ide_pci_driver);
 }
 
-const char *dependency_names[] = {"pci", nullptr};
-
 FKX_MODULE_DEFINE(
   ide,
   "0.0.2",
@@ -336,6 +334,7 @@ FKX_MODULE_DEFINE(
   "Standard IDE/ATA Block Driver",
   0,
   FKX_DRIVER_CLASS,
-  ide_init,
-  dependency_names
+  FKX_SUBCLASS_IDE,
+  FKX_SUBCLASS_PCI,
+  ide_init
 );

@@ -271,12 +271,15 @@ void smp_call_function(smp_call_func_t func, void *info, bool wait) {
 }
 
 
-void smp_init(void) {
+int smp_init(const interrupt_controller_t ic_type) {
+  if (
+    ic_type != INTC_APIC
+  ) return -ENODEV;
 #ifdef SYMMETRIC_MP
   if (cmdline_find_option_bool(current_cmdline, "nosmp")) {
     printk(KERN_WARNING SMP_CLASS "nosmp found in cmdline, single-core mode\n");
     cpu_count = 1;
-    return;
+    return -ENOSYS;
   }
 
   if (cpu_count == 0) {
@@ -286,7 +289,7 @@ void smp_init(void) {
   struct limine_mp_response *mp_response = mp_request.response;
 
   if (cpu_count == 1) {
-    return;
+    return -ENODEV;
   }
   uint64_t bsp_lapic_id = mp_response->bsp_lapic_id;
 
@@ -306,7 +309,7 @@ void smp_init(void) {
   }
   for (uint64_t i = 0; i < max_init; i++) {
     struct limine_mp_info *cpu = mp_response->cpus[i];
-    *per_cpu_ptr(cpu_apic_id, i) = cpu->lapic_id;
+    *per_cpu_ptr(cpu_apic_id, i) = (int)cpu->lapic_id;
   }
 
   // Ensure per_cpu_apic_id is visible to all CPUs before waking them
@@ -335,7 +338,9 @@ void smp_init(void) {
 #else
   printk(KERN_NOTICE SMP_CLASS "SYMMETRIC_MP is not enabled, single core mode only\n");
   cpu_count = 1;
+  return -ENOSYS;
 #endif
+  return 0;
 }
 
 void smp_prepare_boot_cpu(void) {

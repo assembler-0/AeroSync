@@ -69,6 +69,12 @@
 
 static alignas(16) struct task_struct bsp_task;
 
+static int __noreturn __init test(void *u) {
+  while (1) {
+
+  }
+}
+
 static int __late_init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
   (void) unused;
 
@@ -226,10 +232,12 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
   }
 
   cpu_features_init();
-  pmm_init(get_memmap_request()->response, get_hhdm_request()->response->offset,
-           get_rsdp_request()->response
-             ? get_rsdp_request()->response->address
-             : nullptr);
+  if (pmm_init(get_memmap_request()->response, get_hhdm_request()->response->offset,
+               get_rsdp_request()->response
+                 ? get_rsdp_request()->response->address
+                 : nullptr) < 0) {
+    panic(PMM_CLASS "Failed to initialize PMM");
+  }
   lru_init();
   vmm_init();
   slab_init();
@@ -296,7 +304,8 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   acpi_tables_init();
 
-  interrupt_controller_t ic_type = ic_install();
+  const interrupt_controller_t ic_type =
+    ic_install();
   uacpi_notify_ic_ready();
 
   // --- Time Subsystem Initialization ---
@@ -320,8 +329,10 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
     dump_device_tree();
 #endif
 
-  if (ic_type == INTC_APIC)
-    smp_init();
+  int smp_status;
+  if ((smp_status = smp_init(ic_type)) < 0) {
+    printk(KERN_ERR KERN_CLASS "SMP init failed: %d\n", smp_status);
+  }
   softirq_init();
 
 #ifdef ASYNC_PRINTK

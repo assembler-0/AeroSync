@@ -79,11 +79,36 @@ static void pic_shutdown(void) {
     printk(PIC_CLASS "PIC shut down.\n");
 }
 
+static void pit_io_wait_intneral(void) {
+  outb(0x80, 0);
+}
+
+static void pit_set_frequency_internal(uint32_t frequency) {
+  if (frequency == 0)
+    frequency = 100;
+  if (frequency > PIT_FREQUENCY_BASE)
+    frequency = PIT_FREQUENCY_BASE;
+
+  uint32_t divisor = PIT_FREQUENCY_BASE / frequency;
+  if (divisor > 65535)
+    divisor = 65535;
+
+  irq_flags_t flags = save_irq_flags();
+
+  outb(PIT_CMD_PORT, 0x34);
+  pit_io_wait_intneral();
+  outb(PIT_CH0_PORT, divisor & 0xFF);
+  pit_io_wait_intneral();
+  outb(PIT_CH0_PORT, (divisor >> 8) & 0xFF);
+
+  restore_irq_flags(flags);
+}
+
 static const interrupt_controller_interface_t pic_interface = {
     .type = INTC_PIC,
     .probe = pic_probe,
     .install = pic_install,
-    .timer_set = pit_set_frequency,
+    .timer_set = pit_set_frequency_internal,
     .enable_irq = pic_enable_irq,
     .disable_irq = pic_disable_irq,
     .send_eoi = pic_send_eoi,

@@ -129,10 +129,7 @@ void *uacpi_kernel_alloc(uacpi_size size) {
 }
 
 void *uacpi_kernel_alloc_zeroed(uacpi_size size) {
-  void *res = uacpi_kernel_alloc(size);
-  if (res)
-    memset(res, 0, size);
-  return res;
+  return size > SLAB_MAX_SIZE ? vzalloc(size) : kzalloc(size);
 }
 
 void uacpi_kernel_free(void *mem) {
@@ -157,8 +154,6 @@ void uacpi_kernel_log(uacpi_log_level level, const uacpi_char *str) {
 
   switch (level) {
   case UACPI_LOG_DEBUG:
-    printk(KERN_DEBUG ACPI_CLASS "%s", str);
-    break;
   case UACPI_LOG_TRACE:
     printk(KERN_DEBUG ACPI_CLASS "%s", str);
     break;
@@ -435,7 +430,7 @@ uacpi_status uacpi_kernel_handle_firmware_request(uacpi_firmware_request *req) {
     printk(KERN_ERR ACPI_CLASS "Fatal: Type %x Code %x Arg %x\n",
            req->fatal.type, req->fatal.code, req->fatal.arg);
     // Maybe panic?
-    return UACPI_STATUS_OK;
+    return UACPI_STATUS_NO_HANDLER;
   }
   return UACPI_STATUS_OK;
 }
@@ -459,19 +454,11 @@ uacpi_handle uacpi_kernel_create_spinlock(void) {
 void uacpi_kernel_free_spinlock(uacpi_handle h) { kfree(h); }
 
 uacpi_cpu_flags uacpi_kernel_lock_spinlock(uacpi_handle h) {
-  // We need to save flags. spinlock_lock doesn't return flags usually.
-  // spinlock.h: spinlock_lock(spinlock_t *lock)
-  // We should implement spinlock_lock_irqsave behavior.
-  // If spinlock.h doesn't have irqsave, we do it manually.
-  irq_flags_t flags = save_irq_flags();
-  cpu_cli();
-  spinlock_lock(h);
-  return (uacpi_cpu_flags)flags;
+  return spinlock_lock_irqsave(h);
 }
 
 void uacpi_kernel_unlock_spinlock(uacpi_handle h, uacpi_cpu_flags flags) {
-  spinlock_unlock(h);
-  restore_irq_flags((irq_flags_t)flags);
+  spinlock_unlock_irqrestore(h, flags);
 }
 
 /*
@@ -726,7 +713,7 @@ void uacpi_kernel_deinitialize(void) {
   send_signal(SIGKILL, worker);
 }
 
-#include <aerosync/fkx/fkx.h>
+#include <aerosync/export.h>
 EXPORT_SYMBOL(uacpi_table_find_by_signature);
 EXPORT_SYMBOL(uacpi_status_to_string);
 EXPORT_SYMBOL(uacpi_table_unref);

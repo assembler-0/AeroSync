@@ -30,6 +30,13 @@ static struct resdomain_subsys_state *cpu_css_alloc(struct resdomain *rd) {
   if (!cs) return nullptr;
   cs->weight = 1024;
 
+  /* Initialize bandwidth */
+  spinlock_init(&cs->bandwidth.lock);
+  cs->bandwidth.period = 100 * 1000000ULL; /* 100ms default */
+  cs->bandwidth.quota = (uint64_t) -1;      /* Unlimited */
+  cs->bandwidth.runtime = 0;
+  INIT_LIST_HEAD(&cs->bandwidth.throttled_cfs_rq);
+
   cs->se = kzalloc(sizeof(struct sched_entity *) * MAX_CPUS);
   cs->cfs_rq = kzalloc(sizeof(struct cfs_rq *) * MAX_CPUS);
 
@@ -47,6 +54,7 @@ static struct resdomain_subsys_state *cpu_css_alloc(struct resdomain *rd) {
     /* Initialize CFS RQ */
     cs->cfs_rq[i]->tasks_timeline = RB_ROOT;
     cs->cfs_rq[i]->rb_leftmost = nullptr;
+    cs->cfs_rq[i]->cs = cs;
 
     /* Root domain doesn't need its own sched_entities, it uses the RQ's root */
     if (rd == &root_resdomain) {
@@ -141,11 +149,79 @@ static const struct file_operations resfs_cpu_weight_fops = {
   .write = resfs_cpu_weight_write,
 };
 
+static ssize_t resfs_cpu_max_read(struct file *file, char *buf, size_t count, vfs_loff_t *ppos) {
+  struct resdomain *rd = file->f_inode->i_fs_info;
+  struct cpu_rd_state *cs = (struct cpu_rd_state *) rd->subsys[RD_SUBSYS_CPU];
+  char kbuf[64];
+  int len;
+  if (cs->bandwidth.quota == (uint64_t) -1)
+    len = snprintf(kbuf, sizeof(kbuf), "max %llu\n", (unsigned long long) cs->bandwidth.period);
+  else
+    len = snprintf(kbuf, sizeof(kbuf), "%llu %llu\n", (unsigned long long) cs->bandwidth.quota, (unsigned long long) cs->bandwidth.period);
+  return simple_read_from_buffer(buf, count, ppos, kbuf, (size_t) len);
+}
+
+static ssize_t resfs_cpu_max_write(struct file *file, const char *buf, size_t count, vfs_loff_t *ppos) {
+  (void) ppos;
+  struct resdomain *rd = file->f_inode->i_fs_info;
+  struct cpu_rd_state *cs = (struct cpu_rd_state *) rd->subsys[RD_SUBSYS_CPU];
+  char kbuf[64];
+  if (count >= sizeof(kbuf)) return -EINVAL;
+  if (copy_from_user(kbuf, buf, count)) return -EFAULT;
+  kbuf[count] = 0;
+
+  char s_quota[32], s_period[32];
+  if (sscanf(kbuf, "%s %s", s_quota, s_period) != 2) return -EINVAL;
+
+  unsigned long long quota, period;
+  if (strcmp(s_quota, "max") == 0) quota = (uint64_t) -1;
+  else if (kstrtoull(s_quota, 10, &quota)) return -EINVAL;
+
+  if (kstrtoull(s_period, 10, &period)) return -EINVAL;
+  if (period < 1000) return -EINVAL; /* Min 1us period */
+
+  spinlock_lock(&cs->bandwidth.lock);
+  cs->bandwidth.quota = (uint64_t) quota;
+  cs->bandwidth.period = (uint64_t) period;
+  cs->bandwidth.runtime = (uint64_t) quota;
+
+  if (quota != (uint64_t) -1 && !cs->bandwidth.timer_active) {
+    extern void sched_cfs_period_timer(struct timer_list *timer);
+    timer_setup(&cs->bandwidth.period_timer, sched_cfs_period_timer, nullptr);
+    timer_add(&cs->bandwidth.period_timer, get_time_ns() + period);
+    cs->bandwidth.timer_active = 1;
+  }
+  spinlock_unlock(&cs->bandwidth.lock);
+
+  return (ssize_t) count;
+}
+
+static const struct file_operations resfs_cpu_max_fops = {
+  .read = resfs_cpu_max_read,
+  .write = resfs_cpu_max_write,
+};
+
+static ssize_t resfs_cpu_stat_read(struct file *file, char *buf, size_t count, vfs_loff_t *ppos) {
+  struct resdomain *rd = file->f_inode->i_fs_info;
+  struct cpu_rd_state *cs = (struct cpu_rd_state *) rd->subsys[RD_SUBSYS_CPU];
+  char kbuf[64];
+  int len = snprintf(kbuf, sizeof(kbuf), "usage_usec %llu\n", (unsigned long long) (atomic64_read(&cs->usage) / 1000));
+  return simple_read_from_buffer(buf, count, ppos, kbuf, (size_t) len);
+}
+
+static const struct file_operations resfs_cpu_stat_fops = {
+  .read = resfs_cpu_stat_read,
+};
+
 static void cpu_populate(struct resdomain *rd, struct pseudo_node *dir) {
   extern struct pseudo_fs_info resfs_info;
   extern void resfs_init_inode(struct inode *inode, struct pseudo_node *pnode);
   struct pseudo_node *node;
   node = pseudo_fs_create_file(&resfs_info, dir, "cpu.weight", &resfs_cpu_weight_fops, rd);
+  if (node) node->init_inode = resfs_init_inode;
+  node = pseudo_fs_create_file(&resfs_info, dir, "cpu.max", &resfs_cpu_max_fops, rd);
+  if (node) node->init_inode = resfs_init_inode;
+  node = pseudo_fs_create_file(&resfs_info, dir, "cpu.stat", &resfs_cpu_stat_fops, rd);
   if (node) node->init_inode = resfs_init_inode;
 }
 

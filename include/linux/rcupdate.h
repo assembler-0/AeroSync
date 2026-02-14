@@ -3,14 +3,6 @@
 #include <aerosync/sched/sched.h>
 #include <aerosync/panic.h>
 
-/**
- * struct rcu_head - callback structure for call_rcu()
- */
-struct rcu_head {
-    struct rcu_head *next;
-    void (*func)(struct rcu_head *head);
-};
-
 /*
  * RCU read-side critical sections.
  * For non-preemptible RCU, this just disables preemption.

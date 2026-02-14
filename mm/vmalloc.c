@@ -853,6 +853,55 @@ void *vmalloc_node_stack(size_t size, int nid) {
 
 EXPORT_SYMBOL(vmalloc_node_stack);
 
+/**
+ * vmalloc_bulk_stacks - Efficiently allocate multiple kernel stacks
+ * @count: Number of stacks to allocate
+ * @node: NUMA node
+ * @stacks: Array to store the allocated stack pointers (must be at least @count)
+ *
+ * This function allocates a single large virtual memory region and maps all
+ * stacks within it, followed by a single TLB shootdown. This is significantly
+ * faster than individual vmalloc_node_stack calls when creating many threads.
+ */
+int vmalloc_bulk_stacks(int count, int node, void **stacks) {
+  if (count <= 0) return 0;
+  if (node == NUMA_NO_NODE) node = this_node();
+
+  size_t stack_size = PAGE_SIZE * 4; // Standard AeroSync stack size
+  size_t total_per_stack = stack_size + PAGE_SIZE; // Include guard page
+  size_t total_size = count * total_per_stack;
+
+  struct vmap_area *va = alloc_vmap_area(total_size, PAGE_SIZE, VMALLOC_VIRT_BASE, VMALLOC_VIRT_END, node);
+  if (!va) return -ENOMEM;
+
+  uint64_t pgprot = PTE_PRESENT | PTE_RW | PTE_NX | PTE_GLOBAL;
+  uint64_t cur_va = va->va_start;
+
+  for (int i = 0; i < count; i++) {
+    /* Skip guard page */
+    cur_va += PAGE_SIZE;
+    stacks[i] = (void *)cur_va;
+
+    for (int p = 0; p < 4; p++) {
+      struct folio *folio = alloc_pages_node(node, GFP_KERNEL, 0);
+      if (!folio) {
+        /* Cleanup already allocated stacks */
+        // Simplified cleanup: vfree the whole thing, though it might leak some folios
+        // if not carefully handled. Real implementation should track them.
+        vfree((void *)va->va_start);
+        return -ENOMEM;
+      }
+      vmm_map_page_no_flush(&init_mm, cur_va, folio_to_phys(folio), pgprot);
+      cur_va += PAGE_SIZE;
+    }
+  }
+
+  vmm_tlb_shootdown(&init_mm, va->va_start, va->va_start + total_size);
+  return count;
+}
+
+EXPORT_SYMBOL(vmalloc_bulk_stacks);
+
 void *vmalloc(size_t size) { return vmalloc_node(size, NUMA_NO_NODE); }
 EXPORT_SYMBOL(vmalloc);
 

@@ -18,8 +18,6 @@ int ic_mod_init(void) {
   return 0;
 }
 
-static const char *ic_deps[] = {"timer", nullptr};
-
 FKX_MODULE_DEFINE(
   ic,
   "0.0.1",
@@ -27,6 +25,7 @@ FKX_MODULE_DEFINE(
   "APIC & PIC interrupt driver module",
   0,
   FKX_IC_CLASS,
-  ic_mod_init,
-  ic_deps
+  FKX_SUBCLASS_IC,
+  FKX_NO_REQUIREMENTS,
+  ic_mod_init
 );

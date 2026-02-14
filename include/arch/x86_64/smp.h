@@ -2,15 +2,12 @@
 
 #include <limine/limine.h>
 #include <aerosync/atomic.h>
+#include <aerosync/sysintf/ic.h>
 #include <linux/list.h>
 
-// Initialize SMP (BSP calls this)
-void smp_init(void);
-
-// Parse topology early (sets cpu_count)
+/* initializers */
+int smp_init(interrupt_controller_t ic_type);
 void smp_parse_topology(void);
-
-// Prepare the boot CPU (sets cpu_number per-cpu var)
 void smp_prepare_boot_cpu(void);
 
 // Get number of CPUs found

@@ -32,7 +32,7 @@ __attribute__((
   section(".limine_requests"))) static volatile
 uint64_t limine_base_revision[3] = LIMINE_BASE_REVISION(4);
 
-#ifdef SIMPLE_FB_SUPPORT
+#ifdef CONFIG_FB_REQUEST
 __attribute__((
   used,
   section(".limine_requests"))) volatile
@@ -153,7 +153,7 @@ volatile struct limine_memmap_request *get_memmap_request(void) {
 EXPORT_SYMBOL(get_memmap_request);
 
 volatile struct limine_framebuffer_request *get_framebuffer_request(void) {
-#ifdef SIMPLE_FB_SUPPORT
+#ifdef CONFIG_FB_REQUEST
   return &framebuffer_request;
 #else
   return nullptr;

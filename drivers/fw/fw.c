@@ -27,6 +27,7 @@ FKX_MODULE_DEFINE(
   "Firmware Subsystem (SMBIOS, NVRAM, UEFI)",
   FKX_FLAG_CORE,
   FKX_DRIVER_CLASS,
-  fw_module_init,
-  FKX_NO_DEPENDENCIES
+  FKX_SUBCLASS_FW,
+  FKX_NO_REQUIREMENTS,
+  fw_module_init
 );

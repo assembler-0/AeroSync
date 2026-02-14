@@ -49,6 +49,21 @@ typedef enum {
   FKX_MAX_CLASS,
 } fkx_module_class_t;
 
+typedef enum : uint64_t {
+  FKX_SUBCLASS_NONE        = 0,
+  FKX_SUBCLASS_PCI         = (1ULL << 0),
+  FKX_SUBCLASS_IDE         = (1ULL << 1),
+  FKX_SUBCLASS_AHCI        = (1ULL << 2),
+  FKX_SUBCLASS_DRM_CONSOLE = (1ULL << 3),
+  FKX_SUBCLASS_DRM_PANIC   = (1ULL << 4),
+  FKX_SUBCLASS_IC          = (1ULL << 5),
+  FKX_SUBCLASS_TIMER       = (1ULL << 6),
+  FKX_SUBCLASS_UART        = (1ULL << 7),
+  FKX_SUBCLASS_IOMMU       = (1ULL << 8),
+  FKX_SUBCLASS_FW          = (1ULL << 9),
+  FKX_SUBCLASS_CHAR        = (1ULL << 10),
+} fkx_subclass_t;
+
 /* Forward declarations */
 struct fkx_module_info;
 
@@ -77,11 +92,12 @@ struct fkx_module_info {
   uint32_t flags; /* FKX_FLAG_* combination */
   fkx_module_class_t module_class;
 
+  /* Subclass and Requirements */
+  uint64_t subclass;      /* Bitmask of what this module PROVIDES */
+  uint64_t requirements;  /* Bitmask of what this module NEEDS (at least 1 of each bit set in requirements must be present) */
+
   /* Entry point */
   fkx_entry_fn init;
-
-  /* Dependencies (null-terminated array of module names) */
-  const char **depends;
 
   /* Reserved for future use */
   void *reserved_ptr[4];
@@ -97,11 +113,13 @@ struct fkx_module_info {
  *       "Author Name",
  *       "Module description",
  *       FKX_FLAG_CORE,
- *       my_module_init,
- *       my_module_deps
+ *       FKX_DRIVER_CLASS,
+ *       FKX_SUBCLASS_PCI,
+ *       FKX_SUBCLASS_NONE,
+ *       my_module_init
  *   );
  */
-#define FKX_MODULE_DEFINE(_name, ver, auth, desc, flg, cls, entry, deps) \
+#define FKX_MODULE_DEFINE(_name, ver, auth, desc, flg, cls, subcls, reqs, entry) \
     __attribute__((section(".fkx_info"), used)) struct fkx_module_info __fkx_module_info_##_name = { \
         .magic = FKX_MAGIC, \
         .api_version = FKX_API_VERSION, \
@@ -111,15 +129,16 @@ struct fkx_module_info {
         .description = desc, \
         .flags = flg, \
         .module_class = cls, \
+        .subclass = subcls, \
+        .requirements = reqs, \
         .init = entry, \
-        .depends = deps, \
         .reserved_ptr = {0} \
     }
 
 /**
- * FKX_NO_DEPENDENCIES - Use when module has no dependencies
+ * FKX_NO_REQUIREMENTS - Use when module has no requirements
  */
-#define FKX_NO_DEPENDENCIES nullptr
+#define FKX_NO_REQUIREMENTS FKX_SUBCLASS_NONE
 
 #include <limine/limine.h>
 #include <aerosync/limine_modules.h>

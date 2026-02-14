@@ -120,7 +120,11 @@ void mutex_unlock(mutex_t *m) {
   m->owner = nullptr;
 
   /* Wake up one waiter */
-  wake_up_nr(&m->wait_q, 1);
+  struct task_struct *waiter = wake_up_nr_ret_first(&m->wait_q, 1);
+  if (waiter && waiter->cpu == smp_get_id()) {
+      /* XNU-style Direct Handoff: give our remaining slice to the waiter */
+      curr->direct_handoff = waiter;
+  }
 
   spinlock_unlock_irqrestore(&m->lock, flags);
 }

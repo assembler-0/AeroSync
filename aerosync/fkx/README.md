@@ -39,8 +39,9 @@ FKX_MODULE_DEFINE(
     "Description",     // brief description
     0,                 // flags
     FKX_DRIVER_CLASS,  // Module classes
-    my_init,           // module entry (int (*)(void))
-    nullptr               // dependencies (null-terminated string array)
+    FKX_SUBCLASS_PCI,  // Subclass (what it provides)
+    FKX_NO_REQUIREMENTS, // Requirements (what it needs)
+    my_init            // module entry (int (*)(void))
 );
 ```
 

@@ -25,6 +25,7 @@ FKX_MODULE_DEFINE(
   "HPET & PIT driver",
   0,
   FKX_TIMER_CLASS,
-  timer_mod_init,
-  nullptr
+  FKX_SUBCLASS_TIMER,
+  FKX_NO_REQUIREMENTS,
+  timer_mod_init
 );

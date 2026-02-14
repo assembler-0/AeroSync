@@ -8,4 +8,10 @@ config BLOCK_PARTITION
     help
       Enable partitions support for block devices
 
+config EXT_IDE_ATA
+    bool "Enable support for IDE/ATA drives"
+    default y
+    help
+      Compiles driver for IDE/ATA block storage
+
 endmenu

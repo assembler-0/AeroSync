@@ -43,6 +43,7 @@
 #include <vsprintf.h>
 #include <aerosync/resdomain.h>
 #include <arch/x86_64/gdt/gdt.h>
+#include <linux/rculist.h>
 
 static int idle_balance(struct rq *this_rq);
 
@@ -580,6 +581,18 @@ void __no_cfi schedule(void) {
       prev_task->sched_class->put_prev_task(rq, prev_task);
   }
 
+  /* XNU-style Direct Handoff */
+  if (prev_task && prev_task->direct_handoff) {
+    next_task = prev_task->direct_handoff;
+    prev_task->direct_handoff = nullptr;
+
+    /* Verify successor is runnable on THIS CPU and valid */
+    if (next_task->cpu == rq->cpu && next_task->state == TASK_RUNNING) {
+      /* Directly switch MM if needed */
+      goto switch_tasks;
+    }
+  }
+
   /* Pick next task */
   next_task = pick_next_task(rq);
 
@@ -606,6 +619,7 @@ void __no_cfi schedule(void) {
   /* Prepare next task */
   /* set_next_task called in pick_next_task */
 
+switch_tasks:
   if (prev_task != next_task) {
     rq->curr = next_task;
     set_current(next_task);
@@ -952,6 +966,8 @@ static_assert(MAX_RT_PRIO == 100, "MAX_RT_PRIO != 100");
  */
 void sched_init(void) {
   pid_allocator_init();
+  extern void kthread_init(void);
+  kthread_init();
 
 #ifdef SCHED_AUTO_BALANCE
   /* Register softirq for load balancing */
@@ -1033,7 +1049,7 @@ void sched_init_task(struct task_struct *initial_task) {
   extern struct list_head task_list;
   extern spinlock_t tasklist_lock;
   irq_flags_t tflags = spinlock_lock_irqsave(&tasklist_lock);
-  list_add_tail(&initial_task->tasks, &task_list);
+  list_add_tail_rcu(&initial_task->tasks, &task_list);
   spinlock_unlock_irqrestore(&tasklist_lock, tflags);
 
   rq->curr = initial_task;

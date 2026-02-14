@@ -45,9 +45,215 @@
 
 #include <aerosync/pid_ns.h>
 
+#include <linux/rculist.h>
+#include <aerosync/wait.h>
+
 /*
  * Process/Thread Management
  */
+
+#define THREAD_STACK_SIZE (PAGE_SIZE * 4)
+
+/* Caches for fast allocation */
+static kmem_cache_t *task_struct_cachep;
+
+/*
+ * Kthread Pre-allocation Pool
+ *
+ * This system maintains a pool of pre-allocated stacks to make kthread_create
+ * almost instantaneous. A background worker refills the pool using bulk 
+ * allocation to minimize TLB shootdowns.
+ */
+#define KTHREAD_POOL_TARGET 64
+#define KTHREAD_POOL_LOW 16
+
+struct kthread_stack_node {
+  void *stack;
+  struct kthread_stack_node *next;
+};
+
+static struct {
+  struct kthread_stack_node *head;
+  atomic_t count;
+} kthread_stack_pool;
+
+static struct task_struct * __no_cfi __kthread_create(int (*threadfn)(void *data), void *data,
+                                   const char *namefmt, va_list ap);
+
+static void refill_kthread_stack_pool(void) {
+  int current_count = atomic_read(&kthread_stack_pool.count);
+  if (current_count >= KTHREAD_POOL_TARGET) return;
+
+  int to_alloc = KTHREAD_POOL_TARGET - current_count;
+  void *stacks[KTHREAD_POOL_TARGET];
+  
+  /* Use bulk stack allocator to minimize TLB shootdowns (1 IPI vs 64) */
+  int allocated = vmalloc_bulk_stacks(to_alloc, NUMA_NO_NODE, stacks);
+  if (allocated <= 0) return;
+
+  for (int i = 0; i < allocated; i++) {
+    struct kthread_stack_node *node = kmalloc(sizeof(struct kthread_stack_node));
+    if (!node) {
+      vfree(stacks[i]);
+      continue;
+    }
+    node->stack = stacks[i];
+
+    /* Push to lock-free pool */
+    struct kthread_stack_node *old_head;
+    do {
+      old_head = kthread_stack_pool.head;
+      node->next = old_head;
+    } while (atomic64_cmpxchg((atomic64_t *)&kthread_stack_pool.head, (long)old_head, (long)node) != (long)old_head);
+    
+    atomic_inc(&kthread_stack_pool.count);
+  }
+}
+
+static DECLARE_WAIT_QUEUE_HEAD(kthread_pool_wait);
+
+static int kthread_pool_worker_fn(void *unused) {
+  (void)unused;
+  for (;;) {
+    wait_event_interruptible(kthread_pool_wait, atomic_read(&kthread_stack_pool.count) < KTHREAD_POOL_LOW);
+    refill_kthread_stack_pool();
+  }
+  return 0;
+}
+
+static void *pop_stack_from_pool(void) {
+  struct kthread_stack_node *node;
+  struct kthread_stack_node *next;
+
+  do {
+    node = kthread_stack_pool.head;
+    if (!node) return nullptr;
+    next = node->next;
+  } while (atomic64_cmpxchg((atomic64_t *)&kthread_stack_pool.head, (long)node, (long)next) != (long)node);
+
+  void *stack = node->stack;
+  kfree(node);
+  int remaining = atomic_dec_return(&kthread_stack_pool.count);
+  
+  if (remaining < KTHREAD_POOL_LOW) {
+    wake_up_interruptible(&kthread_pool_wait);
+  }
+  
+  return stack;
+}
+
+/* Per-CPU stack pool to avoid vmalloc overhead for kthreads */
+#define STACK_POOL_SIZE 8
+struct stack_pool {
+  void *stacks[STACK_POOL_SIZE];
+  int count;
+  spinlock_t lock;
+};
+
+DEFINE_PER_CPU(struct stack_pool, kstack_pools);
+
+static void *alloc_kstack(int node) {
+  struct stack_pool *pool = this_cpu_ptr(kstack_pools);
+  void *stack = nullptr;
+
+  irq_flags_t flags = spinlock_lock_irqsave(&pool->lock);
+  if (pool->count > 0) {
+    stack = pool->stacks[--pool->count];
+    spinlock_unlock_irqrestore(&pool->lock, flags);
+    return stack;
+  }
+  
+  /* Pool empty, try bulk refill to avoid multiple TLB shootdowns */
+  void *new_stacks[STACK_POOL_SIZE];
+  int allocated = vmalloc_bulk_stacks(STACK_POOL_SIZE, node, new_stacks);
+  
+  if (allocated > 0) {
+    stack = new_stacks[0];
+    for (int i = 1; i < allocated; i++) {
+      pool->stacks[pool->count++] = new_stacks[i];
+    }
+    spinlock_unlock_irqrestore(&pool->lock, flags);
+    return stack;
+  }
+  
+  spinlock_unlock_irqrestore(&pool->lock, flags);
+
+  /* Fallback to single allocation if bulk fails */
+  return vmalloc_node_stack(THREAD_STACK_SIZE, node);
+}
+
+static void free_kstack(void *stack) {
+  if (!stack) return;
+  struct stack_pool *pool = this_cpu_ptr(kstack_pools);
+
+  irq_flags_t flags = spinlock_lock_irqsave(&pool->lock);
+  if (pool->count < STACK_POOL_SIZE) {
+    pool->stacks[pool->count++] = stack;
+    spinlock_unlock_irqrestore(&pool->lock, flags);
+  } else {
+    spinlock_unlock_irqrestore(&pool->lock, flags);
+    vfree(stack);
+  }
+}
+
+/* Async kthread creation worker */
+struct kthread_create_info {
+  int (*threadfn)(void *data);
+  void *data;
+  char namefmt[64];
+  struct list_head list;
+  struct wait_queue_head done;
+  struct task_struct *result;
+};
+
+static LIST_HEAD(kthread_create_list);
+static DEFINE_SPINLOCK(kthread_create_lock);
+static DECLARE_WAIT_QUEUE_HEAD(kthread_create_wait);
+
+static int kthreadd(void *unused) {
+  (void)unused;
+  for (;;) {
+    wait_event_interruptible(kthread_create_wait, !list_empty(&kthread_create_list));
+
+    irq_flags_t flags = spinlock_lock_irqsave(&kthread_create_lock);
+    while (!list_empty(&kthread_create_list)) {
+      struct kthread_create_info *info = list_first_entry(&kthread_create_list, struct kthread_create_info, list);
+      list_del(&info->list);
+      spinlock_unlock_irqrestore(&kthread_create_lock, flags);
+
+      info->result = kthread_create(info->threadfn, info->data, info->namefmt);
+      if (info->result) {
+        kthread_run(info->result);
+      }
+
+      wake_up_all(&info->done);
+
+      flags = spinlock_lock_irqsave(&kthread_create_lock);
+    }
+    spinlock_unlock_irqrestore(&kthread_create_lock, flags);
+  }
+  return 0;
+}
+
+void kthread_init(void) {
+  task_struct_cachep = kmem_cache_create("task_struct", sizeof(struct task_struct), 0, SLAB_HWCACHE_ALIGN);
+
+  int cpu;
+  for_each_possible_cpu(cpu) {
+    struct stack_pool *pool = per_cpu_ptr(kstack_pools, cpu);
+    spinlock_init(&pool->lock);
+    pool->count = 0;
+  }
+
+  /* Initialize Kthread Stack Pool */
+  kthread_stack_pool.head = nullptr;
+  atomic_set(&kthread_stack_pool.count, 0);
+
+  /* Start pool worker - use __kthread_create directly as pool is not ready */
+  kthread_run(__kthread_create(kthread_pool_worker_fn, nullptr, "kthread_pool", (va_list){0}));
+
+  kthread_run(kthread_create(kthreadd, nullptr, "kthreadd"));
+}
 
 DECLARE_PER_CPU(struct rq, runqueues);
 
@@ -59,9 +265,14 @@ extern void ret_from_fork(void);
 
 struct ida pid_ida;
 
-/* Global list of all tasks in the system */
+/* Global list of all tasks in the system - RCU protected */
 struct list_head task_list;
 spinlock_t tasklist_lock;
+
+static void free_task_rcu(struct rcu_head *rcu) {
+  struct task_struct *task = container_of(rcu, struct task_struct, rcu);
+  free_task_struct(task);
+}
 
 struct pid_namespace init_pid_ns = {
   .kref = KREF_INIT(2), /* 2 refs: one for init_task, one for being permanent */
@@ -195,8 +406,13 @@ struct task_struct *copy_process(uint64_t clone_flags,
     p->nsproxy->child_reaper = p;
   }
 
-  // Allocate 16KB kernel stack with guard page
-  p->stack = vmalloc_node_stack(PAGE_SIZE * 4, p->node_id);
+  // Allocate kernel stack from pool or vmalloc
+  if (clone_flags & CLONE_KSTACK) {
+    p->stack = (void *)stack_start;
+  } else {
+    p->stack = alloc_kstack(p->node_id);
+  }
+
   if (!p->stack) {
     release_pid(p->pid);
     free_task_struct(p);
@@ -230,7 +446,7 @@ struct task_struct *copy_process(uint64_t clone_flags,
   } else if (parent->mm) {
     p->mm = mm_copy(parent->mm);
     if (!p->mm) {
-      vfree(p->stack);
+      free_kstack(p->stack);
       release_pid(p->pid);
       free_task_struct(p);
       return nullptr;
@@ -253,7 +469,7 @@ struct task_struct *copy_process(uint64_t clone_flags,
     p->files = copy_files(parent->files);
     if (!p->files) {
       if (p->mm && p->mm != parent->mm) mm_put(p->mm);
-      vfree(p->stack);
+      free_kstack(p->stack);
       release_pid(p->pid);
       free_task_struct(p);
       return nullptr;
@@ -297,7 +513,7 @@ struct task_struct *copy_process(uint64_t clone_flags,
 
   // Link into global lists
   irq_flags_t flags = spinlock_lock_irqsave(&tasklist_lock);
-  list_add_tail(&p->tasks, &task_list);
+  list_add_tail_rcu(&p->tasks, &task_list);
   list_add_tail(&p->sibling, &parent->children);
   spinlock_unlock_irqrestore(&tasklist_lock, flags);
 
@@ -307,17 +523,25 @@ struct task_struct *copy_process(uint64_t clone_flags,
 struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
                                    const char *namefmt, ...) {
   struct task_struct *curr = get_current();
+  void *stack = pop_stack_from_pool();
+  struct task_struct *p;
+  va_list ap;
 
-  struct task_struct *p = copy_process(CLONE_VM, 0, curr);
-  if (!p) return nullptr;
+  va_start(ap, namefmt);
+  if (stack) {
+    p = copy_process(CLONE_VM | CLONE_KSTACK, (uint64_t)stack, curr);
+  } else {
+    p = copy_process(CLONE_VM, 0, curr);
+  }
+
+  if (!p) {
+    va_end(ap);
+    return nullptr;
+  }
 
   p->flags |= PF_KTHREAD;
-  p->mm = nullptr; // Kernel threads have no user MM
+  p->mm = nullptr;
 
-  /*
-   * If parent was idle class, force kthread into fair class
-   * so it actually gets scheduled.
-   */
   if (p->sched_class == &idle_sched_class || !p->sched_class) {
     p->sched_class = &fair_sched_class;
     p->prio = DEFAULT_PRIO;
@@ -327,10 +551,45 @@ struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
     p->se.load.inv_weight = 0;
   }
 
-  va_list ap;
-  va_start(ap, namefmt);
   vsnprintf(p->comm, sizeof(p->comm), namefmt, ap);
   va_end(ap);
+
+  // Setup stack for ret_from_kernel_thread
+  uint64_t *sp = (uint64_t *) ((uint8_t *) p->stack + (PAGE_SIZE * 4));
+  *(--sp) = (uint64_t) ret_from_kernel_thread;
+  *(--sp) = 0; // rbx
+  *(--sp) = 0; // rbp
+  *(--sp) = (uint64_t) threadfn; // r12
+  *(--sp) = (uint64_t) data; // r13
+  *(--sp) = 0; // r14
+  *(--sp) = 0; // r15
+
+  p->thread.rsp = (uint64_t) sp;
+  p->thread.rflags = 0x202;
+
+  return p;
+}
+
+struct task_struct * __no_cfi __kthread_create(int (*threadfn)(void *data), void *data,
+                                   const char *namefmt, va_list ap) {
+  struct task_struct *curr = get_current();
+
+  struct task_struct *p = copy_process(CLONE_VM, 0, curr);
+  if (!p) return nullptr;
+
+  p->flags |= PF_KTHREAD;
+  p->mm = nullptr;
+
+  if (p->sched_class == &idle_sched_class || !p->sched_class) {
+    p->sched_class = &fair_sched_class;
+    p->prio = DEFAULT_PRIO;
+    p->static_prio = DEFAULT_PRIO;
+    p->normal_prio = DEFAULT_PRIO;
+    p->se.load.weight = NICE_0_LOAD;
+    p->se.load.inv_weight = 0;
+  }
+
+  vsnprintf(p->comm, sizeof(p->comm), namefmt, ap);
 
   // Setup stack for ret_from_kernel_thread
   uint64_t *sp = (uint64_t *) ((uint8_t *) p->stack + (PAGE_SIZE * 4));
@@ -496,7 +755,7 @@ void free_task(struct task_struct *task) {
   if (!task) return;
 
   irq_flags_t flags = spinlock_lock_irqsave(&tasklist_lock);
-  list_del(&task->tasks);
+  list_del_rcu(&task->tasks);
   list_del(&task->sibling);
   spinlock_unlock_irqrestore(&tasklist_lock, flags);
 
@@ -536,29 +795,37 @@ void free_task(struct task_struct *task) {
     }
   }
 
-  free_task_struct(task);
+  /* Release the memory through RCU to protect readers */
+  call_rcu(&task->rcu, free_task_rcu);
 }
 
 struct task_struct *alloc_task_struct(void) {
   struct task_struct *curr = get_current();
   int nid = curr ? curr->node_id : this_node();
+  if (likely(task_struct_cachep))
+    return kmem_cache_alloc_node(task_struct_cachep, nid);
   return kzalloc_node(sizeof(struct task_struct), nid);
 }
 
 void free_task_struct(struct task_struct *task) {
-  if (task) kfree(task);
+  if (task) {
+    if (likely(task_struct_cachep))
+      kmem_cache_free(task_struct_cachep, task);
+    else
+      kfree(task);
+  }
 }
 
 struct task_struct *find_task_by_pid(pid_t pid) {
   struct task_struct *task;
-  spinlock_lock(&tasklist_lock);
-  list_for_each_entry(task, &task_list, tasks) {
+  rcu_read_lock();
+  list_for_each_entry_rcu(task, &task_list, tasks) {
     if (task->pid == pid) {
-      spinlock_unlock(&tasklist_lock);
+      rcu_read_unlock();
       return task;
     }
   }
-  spinlock_unlock(&tasklist_lock);
+  rcu_read_unlock();
   return nullptr;
 }
 

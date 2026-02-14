@@ -83,7 +83,7 @@
 		- [x] **Transparent Huge Pages (THP)**: Background promotion of contiguous 4KB pages to 2MB pages using a dedicated `khugepaged` daemon.
 	- [x] proper COW (Copy-On-Write) using XNU-inspired Shadow Object chains
 	- [x] Finish RMAP for all subsystems
-	- [ ] Advance ANON object fault
+	- [x] Advance ANON object fault
 	- [ ] SHM (SHared Memory) management +IPC)
 	- [x] Use XArray/Radix tree for `vm_object` (with entry type encoding)
 	- [x] Selective lazy allocation/free for kernel `vmalloc()
@@ -101,8 +101,8 @@
 	- [x] ASLR
 	- [x] Guard pages where possible
 	- [x] Proper DMA support for legacy devices
-	- [ ] IOMMU
-	- [ ] more rigid MMIO
+	- [x] IOMMU
+	- [x] more rigid MMIO
 	- [x] Stack management
 	- [x] handle user MM faults gracully
 - scheduling
@@ -117,7 +117,10 @@
 	- [x] vruntime normalization/denormalization on migration
 	- [x] Aggressive multi-task load balancing (move load, not just tasks)
 	- [x] Cross-CPU wake-up preemption (IPI)
-	- [ ] XNU-inspired priority inheritance (idk what's it called)
+	- [x] XNU-style synchronous priority handoff
+	- [x] CFS Bandwidth Control (CPU Quotas)
+	- [x] Hybrid (E/P Core) Awareness
+	- [x] RCU-protected Task List
 - VFS
 	- [x] FD allocation
 	- [ ] proper FD table
@@ -149,7 +152,7 @@
 	- [ ] mman
 	- [x] System V ABI (implicit!!)
 	- [ ] Binary compatibility with Linux
-	- [ ] Linux syscall table
+	- [x] Linux syscall table
 - modularity
 	- [x] FKX (Fused Kernel eXtension)
 	- [ ] rFKX (runtime Fused Kernel eXtension) (FKX modules that can be loaded at any time, not early boot)
@@ -186,7 +189,7 @@
 	- [ ] ksym should be somewhere else not FKX
 	- [ ] configurability (CMake or kconfiglib)
 	- [ ] configurable run targets with CMake caches
-	- [ ] Capability based kernel
+	- [x] Capability based kernel
 	- [ ] runs on cursed PCs
 	- [ ] support S1-5 states?
 - drivers
@@ -201,7 +204,7 @@
 	- [ ] ACPICA
 	- [x] SMBIOS
 	- [ ] True time counting
-	- [ ] Software timer
+	- [x] Software timer
 	- [ ] Unified input stack
 	- [ ] PS2 keyboard and mouse
 	- [ ] USB keyboard and mouse
@@ -227,7 +230,7 @@
 	- [ ] intel & amd PCH driver
 	- [ ] EC integration with ACPI
 	- [ ] C-states support
-	- [ ] Hybrid architecture handling
+	- [x] Hybrid architecture handling
 	- [ ] CPU microcode loading
 	- [x] PTY & TTY drivers
-	- [ ] CSPRNG using a TRNG
+	- [x] CSPRNG using a TRNG (kind of)

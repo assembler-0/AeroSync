@@ -2,8 +2,9 @@
 
 menu "drm"
 
-config SIMPLE_FB_SUPPORT
-    bool "Enable support for simple framebuffer"
+config EXT_DRM_RENDERER
+    bool "Enable a DRM renderer"
+    depends on FB_REQUEST
     default y
     help
       Requests a simple linear framebuffer for simple rendering

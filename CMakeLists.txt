@@ -66,15 +66,7 @@ include(source)       # Core kernel sources
 include(fkx)          # FKX framework
 
 # Driver & Library Modules
-include(drivers/graphics/drm/linearfb/linearfb.cmake)
-include(drivers/uart/uart.cmake)
-include(drivers/apic/ic.cmake)
-include(drivers/pci/pci.cmake)
-include(drivers/iommu/vtd.cmake)
-include(drivers/timer/timer.cmake)
-include(drivers/block/ide/ide.cmake)
-include(drivers/char/pty.cmake)
-include(drivers/fw/fw.cmake)
+include(fkx_modules)
 
 # Kernel Target Definition & Compilation Rules
 include(aerosync-compile)

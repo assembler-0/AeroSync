@@ -283,6 +283,7 @@ FKX_MODULE_DEFINE(
   "Modern PCI Subsystem Core",
   0,
   FKX_DRIVER_CLASS,
-  pci_mod_init,
-  nullptr
+  FKX_SUBCLASS_PCI,
+  FKX_NO_REQUIREMENTS,
+  pci_mod_init
 );

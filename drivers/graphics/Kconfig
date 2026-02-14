@@ -4,4 +4,10 @@ menu "graphics"
 
 source "drivers/graphics/drm/Kconfig"
 
+config FB_REQUEST
+    bool "Request for a linear framebuffer"
+    default y
+    help
+      Requests a simple linear framebuffer for DRM
+
 endmenu

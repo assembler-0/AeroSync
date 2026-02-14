@@ -13,6 +13,7 @@
 #include <linux/list.h>
 #include <aerosync/atomic.h>
 #include <aerosync/spinlock.h>
+#include <aerosync/timer.h>
 
 struct task_struct;
 struct resdomain;
@@ -141,11 +142,25 @@ void resdomain_cancel_fork(struct resdomain *rd);
 int resdomain_io_throttle(struct resdomain *rd, uint64_t bytes);
 
 /* --- CPU Controller API --- */
+struct cfs_bandwidth {
+    spinlock_t lock;
+    uint64_t period;  /* ns */
+    uint64_t quota;   /* ns */
+    uint64_t runtime; /* ns remaining in current period */
+    uint64_t expires; /* ns */
+    
+    int timer_active;
+    struct timer_list period_timer;
+    struct list_head throttled_cfs_rq;
+};
+
 struct cpu_rd_state {
     struct resdomain_subsys_state css;
     struct sched_entity **se; /* Per-CPU entities for this domain */
     struct cfs_rq **cfs_rq;   /* Per-CPU runqueues for children of this domain */
     uint32_t weight;
+    struct cfs_bandwidth bandwidth;
+    atomic64_t usage;         /* Aggregate CPU time in ns */
 };
 
 /* --- Filesystem hooks --- */

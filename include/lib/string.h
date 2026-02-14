@@ -102,6 +102,7 @@ bool is_word_boundary(char c);
 
 /* Error handling */
 int errno_to_str(char *restrict buff, const int err);
+char *errno_to_str_in_place(const int err); /* MUST free! */
 
 /* lib/cmdline.c */
 int get_option(char **str, int *pint);

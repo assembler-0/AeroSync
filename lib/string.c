@@ -1305,7 +1305,15 @@ int errno_to_str(char *restrict buff, const int err) {
   return 0;
 }
 
+char *errno_to_str_in_place(const int err) {
+  char *buff = kmalloc(64);
+  if (!buff) return ERR_PTR(-ENOMEM);
+  if (!errno_to_str(buff, err)) return ERR_PTR(-EFAULT);
+  return buff;
+}
+
 EXPORT_SYMBOL(errno_to_str);
+EXPORT_SYMBOL(errno_to_str_in_place);
 EXPORT_SYMBOL(memset);
 EXPORT_SYMBOL(memset32);
 EXPORT_SYMBOL(memcpy);

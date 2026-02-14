@@ -21,3 +21,7 @@
 - Bool/tri-state symbols also receive the legacy alias `FOO=<value>` so existing `#ifdef FOO` checks remain valid.
 - For modules, both `CONFIG_FOO=m` and `FOO_MODULE=1` are emitted.
 - Integer/hex/string symbols preserve their literal value in both `CONFIG_FOO` and `FOO` (quotes stripped), ensuring there is a single canonical mapping from menu selections to C preprocessor names.
+
+## Naming
+- external drivers/extension global compile/no compile if configurable should be prefixed with EXT_
+  - for example: EXT_IWCTL ifdef: compiles ifndef: defer complilation

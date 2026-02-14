@@ -217,6 +217,7 @@ FKX_MODULE_DEFINE(
   "Serial UART Module",
   0,
   FKX_PRINTK_CLASS,
-  serial_mod_init,
-  nullptr
+  FKX_SUBCLASS_UART,
+  FKX_NO_REQUIREMENTS,
+  serial_mod_init
 );

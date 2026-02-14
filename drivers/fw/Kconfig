@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+menu "fw"
+
+config EXT_RT_FW_SUPPORT
+    bool "Enable support for SMBIOS, NVRAM and EFI runtime services module"
+    default y
+    help
+      Compiles module for SMBIOS, NVRAM and EFI runtime support
+
+endmenu

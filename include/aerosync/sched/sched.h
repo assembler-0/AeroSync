@@ -243,6 +243,7 @@ struct task_struct {
    * Task relationships
    */
   struct list_head tasks;    /* All tasks list */
+  struct rcu_head rcu;       /* RCU callback for freeing */
   struct list_head run_list; /* Runqueue list (legacy) */
 
   /*
@@ -316,6 +317,11 @@ struct task_struct {
   uint64_t nvcsw;         /* Voluntary context switches */
   uint64_t nivcsw;        /* Involuntary context switches */
   uint64_t start_time_ns; /* Task start time */
+
+  /*
+   * XNU-style Direct Handoff
+   */
+  struct task_struct *direct_handoff; /* Task to switch to directly */
 
   /*
    * Signal handling
@@ -426,6 +432,15 @@ struct cfs_rq {
   uint64_t min_vruntime;
   uint64_t exec_clock;
   struct sched_avg avg; /* Aggregate PELT statistics */
+
+  /* Bandwidth Throttling */
+  int throttled;
+  int throttle_count;
+  struct list_head throttled_list;
+  struct cpu_rd_state *cs;
+  uint64_t throttled_clock;
+  uint64_t throttled_clock_task;
+  uint64_t throttled_clock_task_time;
 };
 
 /**

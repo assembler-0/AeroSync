@@ -248,6 +248,8 @@ void *vmalloc_node_prot(size_t size, int nid, uint64_t pgprot);
 
 void *vmalloc_node_stack(size_t size, int nid);
 
+int vmalloc_bulk_stacks(int count, int node, void **stacks);
+
 static inline void *vmalloc_stack(size_t size) { return vmalloc_node_stack(size, -1); }
 
 void *vmalloc_exec(size_t size);

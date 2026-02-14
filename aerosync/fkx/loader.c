@@ -98,6 +98,9 @@ static struct fkx_loaded_image *g_module_class_heads[FKX_MAX_CLASS] = {nullptr};
 // List of modules that are mapped but not yet linked
 static struct fkx_loaded_image *g_unlinked_modules = nullptr;
 
+// Bitmask of currently available subclasses (from linked modules)
+static uint64_t g_available_subclasses = 0;
+
 static int fkx_relocate_module(struct fkx_loaded_image *img);
 
 int fkx_load_image(void *data, size_t size) {
@@ -361,27 +364,6 @@ static int fkx_relocate_module(struct fkx_loaded_image *img) {
   return 0;
 }
 
-static struct fkx_loaded_image *find_unlinked_by_name(const char *name) {
-  struct fkx_loaded_image *curr = g_unlinked_modules;
-  while (curr) {
-    if (strcmp(curr->info->name, name) == 0) return curr;
-    curr = curr->next;
-  }
-  return nullptr;
-}
-
-static struct fkx_loaded_image *find_linked_by_name(const char *name) {
-  for (int i = 0; i < FKX_MAX_CLASS; i++) {
-    struct fkx_loaded_image *curr = g_module_class_heads[i];
-    while (curr) {
-      if (strcmp(curr->info->name, name) == 0) return curr;
-      curr = curr->next;
-    }
-  }
-  return nullptr;
-}
-
-
 int fkx_finalize_loading(void) {
   int total_to_link = 0;
   struct fkx_loaded_image *curr = g_unlinked_modules;
@@ -401,28 +383,19 @@ int fkx_finalize_loading(void) {
     curr = g_unlinked_modules;
 
     while (curr) {
-      int deps_satisfied = 1;
-      if (curr->info->depends) {
-        for (int i = 0; curr->info->depends[i] != nullptr; i++) {
-          const char *dep_name = curr->info->depends[i];
-          if (!find_linked_by_name(dep_name)) {
-            // Dependency not yet linked. Check if it's even in our unlinked list.
-            if (!find_unlinked_by_name(dep_name)) {
-              printk(KERN_ERR FKX_CLASS "Module '%s' depends on '%s', which is NOT found!\n",
-                     curr->info->name, dep_name);
-              // This module can never be satisfied.
-              deps_satisfied = 0;
-              break;
-            }
-            deps_satisfied = 0;
-            break;
-          }
-        }
-      }
+      /* 
+       * Satisfaction criteria: All bits set in requirements must be present 
+       * in g_available_subclasses.
+       */
+      bool reqs_satisfied = (curr->info->requirements & g_available_subclasses) == curr->info->requirements;
 
-      if (deps_satisfied) {
+      if (reqs_satisfied) {
         if (fkx_relocate_module(curr) == 0) {
-          printk(KERN_DEBUG FKX_CLASS "Linked module '%s'\n", curr->info->name);
+          printk(KERN_DEBUG FKX_CLASS "Linked module '%s' (Subclass: 0x%llx)\n", 
+                 curr->info->name, curr->info->subclass);
+
+          // Add this module's provided subclasses to the global pool
+          g_available_subclasses |= curr->info->subclass;
 
           // Remove from unlinked list
           struct fkx_loaded_image *to_link = curr;
@@ -439,7 +412,6 @@ int fkx_finalize_loading(void) {
           linked_in_this_pass++;
         } else {
           printk(KERN_ERR FKX_CLASS "Failed to link module '%s'\n", curr->info->name);
-          // For now, just skip it and let it stay in unlinked list (or we could remove it)
           prev = curr;
           curr = curr->next;
         }
@@ -454,8 +426,8 @@ int fkx_finalize_loading(void) {
   if (g_unlinked_modules) {
     curr = g_unlinked_modules;
     while (curr) {
-      printk(KERN_ERR FKX_CLASS "Module '%s' could not be linked (circular dependency or missing dependency)\n",
-             curr->info->name);
+      printk(KERN_ERR FKX_CLASS "Module '%s' could not be linked (missing requirements: 0x%llx, available: 0x%llx)\n",
+             curr->info->name, curr->info->requirements & ~g_available_subclasses, g_available_subclasses);
       curr = curr->next;
     }
     return -ENODEV;

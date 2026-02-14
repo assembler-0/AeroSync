@@ -1186,7 +1186,17 @@ void linearfb_console_set_cursor(uint32_t col, uint32_t row) { if (primary_fb) {
 void linearfb_console_get_cursor(uint32_t *col, uint32_t *row) { if (primary_fb) { if (col) *col = primary_fb->console_col; if (row) *row = primary_fb->console_row; } }
 void linearfb_console_puts(const char *s) { while (*s) linearfb_console_putc(*s++); }
 
-FKX_MODULE_DEFINE(linearfb, "0.1.0", "assembler-0", "Advanced Multi-FB Linear Framebuffer Driver", 0, FKX_PRINTK_CLASS, linearfb_mod_init, nullptr);
+FKX_MODULE_DEFINE(
+  linearfb,
+  "0.1.0",
+  "assembler-0",
+  "Advanced Multi-FB Linear Framebuffer Driver",
+  0,
+  FKX_PRINTK_CLASS,
+  FKX_SUBCLASS_DRM_CONSOLE | FKX_SUBCLASS_DRM_PANIC,
+  FKX_NO_REQUIREMENTS,
+  linearfb_mod_init
+);
 
 EXPORT_SYMBOL(linearfb_put_pixel);
 EXPORT_SYMBOL(linearfb_fill_rect);

@@ -21,7 +21,6 @@
 #include <aerosync/classes.h>
 #include <aerosync/errno.h>
 #include <aerosync/fkx/fkx.h>
-#include <arch/x86_64/features/features.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/mm/vmm.h>
 #include <arch/x86_64/percpu.h>
@@ -34,7 +33,6 @@
 #include <mm/gfp.h>
 #include <mm/page.h>
 #include <mm/zone.h>
-
 #include <arch/x86_64/requests.h>
 
 // Global HHDM offset
@@ -131,6 +129,7 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
 
   // Pass 1: Calculate max PFN
   uint64_t highest_addr = 0;
+  uint64_t highest_mem_addr = 0;
   uint64_t total_usable_bytes = 0;
 
   for (uint64_t i = 0; i < memmap->entry_count; i++) {
@@ -143,6 +142,20 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
      */
     if (end > highest_addr)
       highest_addr = end;
+
+    /*
+     * We only need 'struct page' entries for memory-like regions.
+     * Including RESERVED or FRAMEBUFFER regions here can cause a massive
+     * 'mem_map' allocation failure on systems with high-address MMIO.
+     */
+    if (entry->type == LIMINE_MEMMAP_USABLE ||
+        entry->type == LIMINE_MEMMAP_ACPI_RECLAIMABLE ||
+        entry->type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE ||
+        entry->type == LIMINE_MEMMAP_EXECUTABLE_AND_MODULES ||
+        entry->type == LIMINE_MEMMAP_ACPI_TABLES) {
+      if (end > highest_mem_addr)
+        highest_mem_addr = end;
+    }
 
     if (entry->type == LIMINE_MEMMAP_USABLE) {
       uint64_t aligned_base = PAGE_ALIGN_UP(entry->base);
@@ -163,7 +176,7 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
   g_vmalloc_base = g_hhdm_offset + g_hhdm_size + (128ULL * 1024 * 1024 * 1024);
   g_vmalloc_end = g_vmalloc_base + VMALLOC_VIRT_SIZE;
 
-  pmm_max_pages = PHYS_TO_PFN(PAGE_ALIGN_UP(highest_addr));
+  pmm_max_pages = PHYS_TO_PFN(PAGE_ALIGN_UP(highest_mem_addr));
   uint64_t memmap_size = pmm_max_pages * sizeof(struct page);
 
   // Allocate mem_map
