@@ -269,8 +269,6 @@ void __free_pages(struct page *page, unsigned int order);
 /* Boot-only: bypasses poisoning, PCP, locking. Single-threaded init only. */
 void __free_pages_boot_core(struct page *page, unsigned int order);
 
-void free_pages(uint64_t addr, unsigned int order);
-
 static inline struct folio *alloc_page(gfp_t gfp_mask) {
   return alloc_pages(gfp_mask, 0);
 }

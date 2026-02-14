@@ -103,15 +103,15 @@ struct dma_pool *dma_pool_create(const char *name, size_t size, size_t align, si
  * pool_alloc_page - Allocate a new page for the pool
  */
 static struct dma_page *pool_alloc_page(struct dma_pool *pool, gfp_t gfp) {
-  struct dma_page *page = kmalloc(sizeof(*page));
-  if (!page)
-    return nullptr;
+  auto page = (struct dma_page *)kmalloc(sizeof(struct dma_page));
+  if (!page) return nullptr;
 
-  page->vaddr = dma_alloc_coherent(PAGE_SIZE, &page->dma, gfp | GFP_DMA32);
+  page->vaddr = dma_alloc_coherent(nullptr, PAGE_SIZE, &page->dma, gfp | GFP_DMA32);
   if (!page->vaddr) {
     kfree(page);
     return nullptr;
   }
+
 
   INIT_LIST_HEAD(&page->page_list);
   page->in_use = 0;
@@ -246,7 +246,7 @@ void dma_pool_free(struct dma_pool *pool, void *vaddr, dma_addr_t dma) {
       if (page->in_use == 0 && page->offset >= PAGE_SIZE) {
         list_del(&page->page_list);
         spinlock_unlock_irqrestore(&pool->lock, flags);
-        dma_free_coherent(PAGE_SIZE, page->vaddr, page->dma);
+        dma_free_coherent(nullptr, PAGE_SIZE, page->vaddr, page->dma);
         kfree(page);
         return;
       }
@@ -279,7 +279,7 @@ void dma_pool_destroy(struct dma_pool *pool) {
              pool->name, page->in_use);
     }
     list_del(&page->page_list);
-    dma_free_coherent(PAGE_SIZE, page->vaddr, page->dma);
+    dma_free_coherent(nullptr, PAGE_SIZE, page->vaddr, page->dma);
     kfree(page);
   }
 

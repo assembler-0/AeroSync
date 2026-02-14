@@ -19,6 +19,7 @@ struct device;
 struct device_driver;
 struct bus_type;
 struct class;
+struct dma_map_ops;
 
 /**
  * struct device_driver - The basic driver structure
@@ -69,6 +70,8 @@ struct device {
 
   struct class *class;         /* class this device belongs to */
   struct list_head class_node; /* node in class->devices list */
+
+  struct dma_map_ops *dma_ops;
 
   void (*release)(struct device *dev);
 };

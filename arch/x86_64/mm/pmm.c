@@ -57,9 +57,14 @@ uint64_t g_kernel_phys_base = 0;
 EXPORT_SYMBOL(g_kernel_phys_base);
 
 struct page *mem_map = nullptr;
+EXPORT_SYMBOL(mem_map);
+
 uint64_t pmm_max_pages = 0;
+EXPORT_SYMBOL(pmm_max_pages);
 
 bool pmm_initialized = false;
+EXPORT_SYMBOL(pmm_initialized);
+
 static pmm_stats_t pmm_stats;
 
 // Find suitable memory region for mem_map array
@@ -169,7 +174,11 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
     return -ENOMEM;
   }
 
-  uint64_t mm_phys = PAGE_ALIGN_UP(mm_region->base);
+  /*
+   * Optimization: Place mem_map at the end of the region to avoid fragmenting
+   * naturally aligned blocks (like 1GB boundaries) at the beginning of the region.
+   */
+  uint64_t mm_phys = PAGE_ALIGN_DOWN(mm_region->base + mm_region->length - memmap_size);
   mem_map = (struct page *)pmm_phys_to_virt(mm_phys);
 
   /*
@@ -299,6 +308,15 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
         if (start_nid != end_nid)
           break;
 
+        /* 
+         * ZONE boundaries are at 16MB (4096) and 4GB (1048576).
+         * Both are 1GB aligned or larger, so a naturally aligned 1GB block
+         * will NEVER cross these boundaries unless it starts before and ends after.
+         * But a 1GB aligned block starts at N*1GB.
+         * 16MB is NOT 1GB aligned. 4GB IS 1GB aligned.
+         * So a block starting at 3GB and ending at 4GB is fine.
+         * A block starting at 0 and ending at 1GB crosses 16MB.
+         */
         int start_z = (cur_pfn < 4096) ? ZONE_DMA : (cur_pfn < 1048576 ? ZONE_DMA32 : ZONE_NORMAL);
         int end_z = ((cur_pfn + next_size - 1) < 4096) ? ZONE_DMA : ((cur_pfn + next_size - 1) < 1048576 ? ZONE_DMA32 : ZONE_NORMAL);
         if (start_z != end_z)
@@ -413,9 +431,10 @@ void pmm_report_capabilities(void) {
     // Check if this node has an order 18 block
     struct pglist_data *pgdat = node_data[n];
     for (int i = 0; i < MAX_NR_ZONES; i++) {
-      if (pgdat->node_zones[i].max_free_order >= 18) {
+      struct zone *z = &pgdat->node_zones[i];
+      if (z->max_free_order >= 18) {
         // Double check free_area[18]
-        if (pgdat->node_zones[i].free_area[18].nr_free > 0) {
+        if (z->free_area[18].nr_free > 0) {
           can_do_1g = true;
           break;
         }

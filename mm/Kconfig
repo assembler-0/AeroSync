@@ -936,11 +936,15 @@ config IOMMU_SUPPORT
     bool "IOMMU Support"
     default y
     depends on DMA_ENGINE
+    help
+      Enable generic IOMMU abstraction and infrastructure.
 
 config INTEL_IOMMU
     bool "Intel VT-d IOMMU Support"
     default y
     depends on IOMMU_SUPPORT
+    help
+      Enable hardware support for Intel VT-d.
 
 config IOMMU_DEFAULT_PASSTHROUGH
     bool "IOMMU Passthrough Mode by Default"

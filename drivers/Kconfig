@@ -82,6 +82,11 @@ config LOG_DEVICE_TREE
       at the end of the initialization process.
 
 source "drivers/block/Kconfig"
+
 source "drivers/graphics/Kconfig"
+
+source "drivers/iommu/Kconfig"
+
+
 
 endmenu

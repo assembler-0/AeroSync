@@ -26,7 +26,7 @@ endif()
 if(QEMU_SYSTEM_X86_64)
     add_custom_target(run
             COMMAND ${QEMU_SYSTEM_X86_64}
-            -M pc,hpet=on
+            -M q35,hpet=on,kernel_irqchip=split
             -cpu max,+la57
             -accel kvm
             -no-reboot -no-shutdown
@@ -40,6 +40,7 @@ if(QEMU_SYSTEM_X86_64)
             -debugcon file:bootstrap.log
             -serial stdio
             -boot d
+            -device intel-iommu,intremap=on,caching-mode=on
             -cdrom ${ISO_PATH}
             DEPENDS iso
             WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
@@ -48,13 +49,15 @@ if(QEMU_SYSTEM_X86_64)
 
     add_custom_target(run-bios
             COMMAND ${QEMU_SYSTEM_X86_64}
+            -M q35,kernel_irqchip=split,hpet=on
             -cpu max
             -no-reboot -no-shutdown
-            -m 1G
+            -m 2G
             -smp 4
             -debugcon file:bootstrap.log
             -serial stdio
             -boot d
+            -device intel-iommu,intremap=on,caching-mode=on
             -cdrom ${ISO_PATH}
             DEPENDS iso
             WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
@@ -93,7 +96,7 @@ if(VBOXMANAGE)
             --acpi on
             --ioapic on
             --rtcuseutc on
-            --chipset piix3
+            --chipset ich9
             --firmware efi64
             --graphicscontroller vmsvga
             --audio none
@@ -121,7 +124,7 @@ if(VBOXMANAGE)
             COMMAND ${CMAKE_COMMAND} -E echo "VM '${VM_NAME}' created successfully!"
             COMMAND ${CMAKE_COMMAND} -E echo "Serial output will be logged to: ${CMAKE_CURRENT_BINARY_DIR}/serial_output.log"
 
-            COMMENT "Creating VirtualBox VM in BIOS mode"
+            COMMENT "Creating VirtualBox VM"
             VERBATIM
     )
 

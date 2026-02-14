@@ -1226,9 +1226,18 @@ void vmm_init(void) {
    * This also ensures that Limine modules (which live in HHDM) are correctly mapped.
    */
   uint64_t max_pfn = pmm_get_max_pfn();
-  for (uint64_t pfn = 0; pfn < max_pfn; pfn += 512) {
+  uint64_t pfn = 0;
+  while (pfn < max_pfn) {
       uint64_t virt = HHDM_VIRT_BASE + (pfn << 12);
-      vmm_map_huge_page_no_flush(&init_mm, virt, pfn << 12, PTE_PRESENT | PTE_RW | PTE_GLOBAL, VMM_PAGE_SIZE_2M);
+      uint64_t phys = pfn << 12;
+      
+      if (g_support_1gb && (phys % VMM_PAGE_SIZE_1G == 0) && (pfn + (VMM_PAGE_SIZE_1G >> 12) <= max_pfn)) {
+          vmm_map_huge_page_no_flush(&init_mm, virt, phys, PTE_PRESENT | PTE_RW | PTE_GLOBAL, VMM_PAGE_SIZE_1G);
+          pfn += (VMM_PAGE_SIZE_1G >> 12);
+      } else {
+          vmm_map_huge_page_no_flush(&init_mm, virt, phys, PTE_PRESENT | PTE_RW | PTE_GLOBAL, VMM_PAGE_SIZE_2M);
+          pfn += 512;
+      }
   }
 
   vmm_switch_pml_root(g_kernel_pml_root);

@@ -34,6 +34,7 @@
 #include <mm/page.h>
 #include <mm/zone.h>
 #include <aerosync/resdomain.h>
+#include <aerosync/export.h>
 
 #define PAGE_POISON_FREE 0xfe
 #define PAGE_POISON_ALLOC 0xad
@@ -507,7 +508,8 @@ static void __free_one_page(struct page *page, unsigned long pfn,
   set_free_area_bit(zone, order, migratetype);
 #endif
   zone->nr_free_pages += (1UL << order);
-  if (order > zone->max_free_order)
+  
+  if ((int)order > (int)zone->max_free_order)
     zone->max_free_order = order;
 }
 
@@ -830,7 +832,11 @@ retry:
         pcp->count--;
 
         check_page_poison(page, 1 << order);
-        kernel_poison_pages(page, 1 << order, PAGE_POISON_ALLOC);
+        if (gfp_mask & __GFP_ZERO) {
+          memset(page_address(page), 0, (size_t)(1UL << order) << PAGE_SHIFT);
+        } else {
+          kernel_poison_pages(page, 1 << order, PAGE_POISON_ALLOC);
+        }
 
         struct folio *folio = (struct folio *)page;
         folio->order = (uint16_t)order;
@@ -959,8 +965,13 @@ found:
 
   /* Verify the page wasn't corrupted while on the free list */
   check_page_poison(page, 1 << order);
-  /* Poison as allocated */
-  kernel_poison_pages(page, 1 << order, PAGE_POISON_ALLOC);
+  
+  if (gfp_mask & __GFP_ZERO) {
+    memset(page_address(page), 0, (size_t)(1UL << order) << PAGE_SHIFT);
+  } else {
+    /* Poison as allocated */
+    kernel_poison_pages(page, 1 << order, PAGE_POISON_ALLOC);
+  }
 
   struct folio *folio = (struct folio *)page;
 
@@ -1062,6 +1073,13 @@ unsigned long alloc_pages_bulk_array(int nid, gfp_t gfp_mask,
         list_del(&page->list);
         pcp->count--;
 
+        check_page_poison(page, 1 << order);
+        if (gfp_mask & __GFP_ZERO) {
+          memset(page_address(page), 0, (size_t)(1UL << order) << PAGE_SHIFT);
+        } else {
+          kernel_poison_pages(page, 1 << order, PAGE_POISON_ALLOC);
+        }
+
         struct folio *folio = (struct folio *)page;
         folio->order = (uint16_t)order;
         folio->node = page->node;
@@ -1092,6 +1110,14 @@ unsigned long alloc_pages_bulk_array(int nid, gfp_t gfp_mask,
         break;
 
       check_page_sanity(page, order);
+
+      check_page_poison(page, 1 << order);
+      if (gfp_mask & __GFP_ZERO) {
+        memset(page_address(page), 0, (size_t)(1UL << order) << PAGE_SHIFT);
+      } else {
+        kernel_poison_pages(page, 1 << order, PAGE_POISON_ALLOC);
+      }
+
       struct folio *folio = (struct folio *)page;
       folio->order = (uint16_t)order;
       folio->node = page->node;
@@ -1177,6 +1203,7 @@ struct folio *alloc_pages(gfp_t gfp_mask, unsigned int order) {
 
   return alloc_pages_node(nid, gfp_mask, order);
 }
+EXPORT_SYMBOL(alloc_pages);
 
 void put_page(struct page *page) {
   if (!page || PageReserved(page))
@@ -1199,10 +1226,13 @@ void put_page(struct page *page) {
           tail->head = nullptr;
         }
       }
+      __free_pages(&folio->page, order);
+    } else {
+      __free_pages(&folio->page, 0);
     }
-    __free_pages(&folio->page, order);
   }
 }
+EXPORT_SYMBOL(put_page);
 
 /**
  * __free_pages_boot_core - Boot-time page freeing, no locking or poisoning.
@@ -1299,12 +1329,13 @@ void __free_pages(struct page *page, unsigned int order) {
     pgdat = node_data[0];
   struct zone *zone = &pgdat->node_zones[page->zone];
 
-  unsigned long pfn = (unsigned long)(page - mem_map);
   unsigned long flags;
+  unsigned long pfn = (unsigned long)(page - mem_map);
   flags = spinlock_lock_irqsave(&zone->lock);
   __free_one_page(page, pfn, zone, order, page->migratetype);
   spinlock_unlock_irqrestore(&zone->lock, flags);
 }
+EXPORT_SYMBOL(__free_pages);
 
 void pmm_verify(void) {
   for (int n = 0; n < MAX_NUMNODES; n++) {

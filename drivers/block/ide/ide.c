@@ -193,7 +193,7 @@ static int ide_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
     struct ide_channel *chan = &ctrl->channels[i];
 
     /* Allocate PRDT (one page is enough for many entries, but we only need one for now) */
-    chan->prdt = dma_alloc_coherent(PAGE_SIZE, &chan->prdt_phys, GFP_KERNEL);
+    chan->prdt = dma_alloc_coherent(&pdev->dev, PAGE_SIZE, &chan->prdt_phys, GFP_KERNEL);
     memset(chan->prdt, 0, PAGE_SIZE);
 
     mutex_init(&chan->lock);
@@ -265,13 +265,13 @@ static void ide_remove(struct pci_dev *pdev) {
     struct ide_channel *chan = &g_ide_ctrl->channels[i];
     ic_disable_irq(chan->irq);
     irq_uninstall_handler(chan->irq);
-    if (chan->prdt) dma_free_coherent(PAGE_SIZE, chan->prdt, chan->prdt_phys);
+    if (chan->prdt) dma_free_coherent(&pdev->dev, PAGE_SIZE, chan->prdt, chan->prdt_phys);
   }
 }
 
 static int ide_suspend(struct device *dev) {
   (void) dev;
-  if (!g_ide_ctrl) return 0;
+  if (!g_ide_ctrl) return -ENODEV;
 
   for (int i = 0; i < 2; i++) {
     struct ide_channel *chan = &g_ide_ctrl->channels[i];
@@ -282,7 +282,7 @@ static int ide_suspend(struct device *dev) {
 
 static int ide_resume(struct device *dev) {
   (void) dev;
-  if (!g_ide_ctrl) return 0;
+  if (!g_ide_ctrl) return -ENODEV;
 
   for (int i = 0; i < 2; i++) {
     struct ide_channel *chan = &g_ide_ctrl->channels[i];

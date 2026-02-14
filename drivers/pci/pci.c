@@ -9,6 +9,8 @@
 
 #include <aerosync/classes.h>
 #include <aerosync/sysintf/pci.h>
+#include <aerosync/sysintf/dma.h>
+#include <aerosync/sysintf/iommu.h>
 #include <aerosync/fkx/fkx.h>
 #include <aerosync/errno.h>
 #include <lib/printk.h>
@@ -167,6 +169,13 @@ static void pci_scan_device(struct pci_bus *bus, uint8_t devfn) {
   INIT_LIST_HEAD(&dev->bus_list);
   dev->dev.bus = &pci_bus_type;
   dev->dev.release = pci_dev_release;
+
+  /* Setup IOMMU if present - the IOMMU layer will attach dma_ops */
+  iommu_probe_device(&dev->dev);
+  
+  if (!dev->dev.dma_ops) {
+    dev->dev.dma_ops = (struct dma_map_ops *)&direct_dma_ops;
+  }
   
   const char *pci_prefix = STRINGIFY(CONFIG_PCI_NAME_PREFIX);
   if (pci_prefix[0] != '\0') {

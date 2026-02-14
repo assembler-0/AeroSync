@@ -307,8 +307,8 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   // -- initialize the rest of uACPI ---
   uacpi_kernel_init_late();
-  acpi_bus_enumerate();
   acpi_power_init();
+  acpi_bus_enumerate();
 
   fkx_init_module_class(FKX_DRIVER_CLASS);
 

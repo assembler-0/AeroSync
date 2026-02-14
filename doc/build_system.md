@@ -34,10 +34,10 @@ a
 ### Presets (recommended) 
 
 #### Available presets (cmake --list-presets): 
-- `amd64` - release kernel (fastest, less overhead, w/o debug symbols)
-- `amd64-hardened` - release kernel with hardened security features (moderate performance, w/o debug symbols)
-- `amd64-dev` - development kernel (no optimization, w/debug symbols)
-- `amd64-dev-hardened` - development kernel with hardened security features (slowest, no optimization, w/debug symbols)
+- `amd64` - release kernel (fastest, less overhead, w/o debug symbols) (recommended for the lowest latency – not explicitly safe for production use)
+- `amd64-hardened` - release kernel with hardened security features (moderate performance, w/o debug symbols) (recommended for normal uses)
+- `amd64-dev` - development kernel (no optimization, w/debug symbols) (recommended for debugging)
+- `amd64-dev-hardened` - development kernel with hardened security features (slowest, no optimization, w/debug symbols) (recommended for most predictitable builds)
 
 1. **Configure the build:**
    ```bash
