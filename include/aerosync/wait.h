@@ -47,7 +47,7 @@ struct task_struct;
 #define __WAITQUEUE_INITIALIZER(name, tsk) {					\
 	.private	= tsk,							\
 	.func		= default_wake_function,				\
-	.entry		= { NULL, NULL } }
+	.entry		= { nullptr, nullptr } }
 
 #define DECLARE_WAITQUEUE(name, tsk)						\
 	struct wait_queue_entry name = __WAITQUEUE_INITIALIZER(name, tsk)
@@ -88,7 +88,7 @@ static inline void
 init_waitqueue_func_entry(struct wait_queue_entry *wq_entry, wait_queue_func_t func)
 {
 	wq_entry->flags		= 0;
-	wq_entry->private	= NULL;
+	wq_entry->private	= nullptr;
 	wq_entry->func		= func;
 }
 
@@ -218,16 +218,16 @@ void __wake_up_locked(struct wait_queue_head *wq_head, unsigned int mode, int nr
 void __wake_up_sync(struct wait_queue_head *wq_head, unsigned int mode);
 void __wake_up_pollfree(struct wait_queue_head *wq_head);
 
-#define wake_up(x)			__wake_up(x, TASK_NORMAL, 1, NULL)
-#define wake_up_nr(x, nr)		__wake_up(x, TASK_NORMAL, nr, NULL)
-#define wake_up_all(x)			__wake_up(x, TASK_NORMAL, 0, NULL)
+#define wake_up(x)			__wake_up(x, TASK_NORMAL, 1, nullptr)
+#define wake_up_nr(x, nr)		__wake_up(x, TASK_NORMAL, nr, nullptr)
+#define wake_up_all(x)			__wake_up(x, TASK_NORMAL, 0, nullptr)
 #define wake_up_locked(x)		__wake_up_locked((x), TASK_NORMAL, 1)
 #define wake_up_all_locked(x)		__wake_up_locked((x), TASK_NORMAL, 0)
 #define wake_up_sync(x)			__wake_up_sync(x, TASK_NORMAL)
 
-#define wake_up_interruptible(x)	__wake_up(x, TASK_INTERRUPTIBLE, 1, NULL)
-#define wake_up_interruptible_nr(x, nr)	__wake_up(x, TASK_INTERRUPTIBLE, nr, NULL)
-#define wake_up_interruptible_all(x)	__wake_up(x, TASK_INTERRUPTIBLE, 0, NULL)
+#define wake_up_interruptible(x)	__wake_up(x, TASK_INTERRUPTIBLE, 1, nullptr)
+#define wake_up_interruptible_nr(x, nr)	__wake_up(x, TASK_INTERRUPTIBLE, nr, nullptr)
+#define wake_up_interruptible_all(x)	__wake_up(x, TASK_INTERRUPTIBLE, 0, nullptr)
 #define wake_up_interruptible_sync(x)	__wake_up_sync((x), TASK_INTERRUPTIBLE)
 
 /*

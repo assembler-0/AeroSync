@@ -53,8 +53,8 @@
 #define APIC_BASE_MSR_ENABLE 0x800
 
 // --- Globals ---
-volatile uint32_t *xapic_lapic_base = NULL;
-static spinlock_t xapic_ipi_lock;
+volatile uint32_t *xapic_lapic_base = nullptr;
+static DEFINE_SPINLOCK(xapic_ipi_lock);
 
 // --- MMIO Helper Functions ---
 

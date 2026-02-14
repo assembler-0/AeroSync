@@ -11,7 +11,7 @@
 #include <lib/bitmap.h>
 #include <mm/slub.h>
 #include <mm/vmalloc.h>
-#include <lib/string.h>
+#include <aerosync/export.h>
 
 void ida_init(struct ida *ida, int max_id) {
     int bitmap_size = (max_id + BITS_PER_LONG - 1) / BITS_PER_LONG;
@@ -22,8 +22,9 @@ void ida_init(struct ida *ida, int max_id) {
     }
     ida->max_id = max_id;
     ida->last_id = 0;
-    ida->lock = 0;
+    spinlock_init(&ida->lock);
 }
+EXPORT_SYMBOL(ida_init);
 
 int ida_alloc_min(struct ida *ida, int min) {
     spinlock_lock(&ida->lock);
@@ -37,12 +38,12 @@ int ida_alloc_min(struct ida *ida, int min) {
         
         if (id >= min && min > 0) {
             spinlock_unlock(&ida->lock);
-            return -1;
+            return -ENOSPC;
         }
-        
+
         if (id >= ida->max_id) {
             spinlock_unlock(&ida->lock);
-            return -1;
+            return -ENOSPC;
         }
     }
     
@@ -52,10 +53,20 @@ int ida_alloc_min(struct ida *ida, int min) {
     spinlock_unlock(&ida->lock);
     return id;
 }
+EXPORT_SYMBOL(ida_alloc_min);
 
 int ida_alloc(struct ida *ida) {
     return ida_alloc_min(ida, 0);
 }
+EXPORT_SYMBOL(ida_alloc);
+
+void ida_destroy(struct ida *ida) {
+    if (ida && ida->bitmap) {
+        vfree(ida->bitmap);
+        ida->bitmap = nullptr;
+    }
+}
+EXPORT_SYMBOL(ida_destroy);
 
 void ida_free(struct ida *ida, int id) {
     if (id < 0 || id >= ida->max_id)
@@ -65,3 +76,4 @@ void ida_free(struct ida *ida, int id) {
     clear_bit(id, ida->bitmap);
     spinlock_unlock(&ida->lock);
 }
+EXPORT_SYMBOL(ida_free);

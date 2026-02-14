@@ -45,9 +45,9 @@ function(add_fkx_module MODULE_NAME)
    	target_compile_options(${MODULE_NAME} PRIVATE
    	    $<$<COMPILE_LANGUAGE:C>:
    	        -m64
-   	        -target ${CLANG_TARGET_TRIPLE}
-   	        -O2
-   	        -g0
+            -target ${CLANG_TARGET_TRIPLE}
+   	        -O${OPT_LEVEL}
+   	        -g${DSYM_LEVEL}
    	        -fdata-sections
    	        -ffunction-sections
    	        -fno-omit-frame-pointer
@@ -92,18 +92,6 @@ function(add_fkx_module MODULE_NAME)
 	        >
 	    )
 	endif()
-
-    if(MOD_LTO)
-        target_compile_options(${MODULE_NAME} PRIVATE 
-        	$<$<COMPILE_LANGUAGE:C>:
-        		-flto
-        	>
-       	)
-        target_link_options(${MODULE_NAME} PRIVATE 
-        	-flto
-        	-Wl,--gc-sections
-       	)
-    endif()
 
 	if(MOD_INTEL_CET)
 		target_compile_options(${MODULE_NAME} PRIVATE

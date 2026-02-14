@@ -33,12 +33,18 @@
 
 static struct class ic_class = {
     .name = "interrupt_controller",
+    .dev_prefix = STRINGIFY(CONFIG_IC_NAME_PREFIX),
+    .naming_scheme = NAMING_NUMERIC,
+};
+
+static struct device_driver ic_driver = {
+    .name = "ic_core",
 };
 
 static bool ic_class_registered = false;
-static interrupt_controller_interface_t *current_ops = NULL;
+static interrupt_controller_interface_t *current_ops = nullptr;
 static uint32_t timer_frequency_hz = IC_DEFAULT_TICK;
-static uint8_t (*get_id)(void) = NULL;
+static uint8_t (*get_id)(void) = nullptr;
 
 struct ic_device {
   struct device dev;
@@ -67,21 +73,11 @@ void ic_register_controller(
 
   ic->ops = controller;
   ic->dev.class = &ic_class;
+  ic->dev.driver = &ic_driver;
   ic->dev.release = ic_dev_release;
-
-  // Naming: ic_[type]_[prio]
-  char *name_buf = kzalloc(32);
-  if (name_buf) {
-    snprintf(name_buf, 32, "ic_%d_%d", controller->type, controller->priority);
-    ic->dev.name = name_buf;
-  } else {
-    ic->dev.name = "ic_device";
-  }
 
   if (device_register(&ic->dev) != 0) {
     printk(KERN_ERR IC_CLASS "Failed to register IC device\n");
-    if (name_buf)
-      kfree(name_buf);
     kfree(ic);
     return;
   }
@@ -93,7 +89,7 @@ void ic_register_controller(
 EXPORT_SYMBOL(ic_register_controller);
 
 // Helper for iterator
-static int ic_find_best(struct device *dev, void *data) {
+static int __no_cfi ic_find_best(struct device *dev, void *data) {
   struct ic_device *ic = container_of(dev, struct ic_device, dev);
   const interrupt_controller_interface_t **best =
       (const interrupt_controller_interface_t **)data;
@@ -106,11 +102,12 @@ static int ic_find_best(struct device *dev, void *data) {
   return 0; // continue calling for all
 }
 
-interrupt_controller_t ic_install(void) {
-  const interrupt_controller_interface_t *selected = NULL;
+interrupt_controller_t __no_cfi ic_install(void) {
+  const interrupt_controller_interface_t *selected = nullptr;
 
   // 1. Find best controller using class iteration
-  class_for_each_dev(&ic_class, NULL, &selected, ic_find_best);
+  class_for_each_dev(&ic_class, nullptr, &selected,
+    (class_iter_fn)ic_find_best);
 
   if (!selected) {
     panic(
@@ -143,7 +140,7 @@ interrupt_controller_t ic_install(void) {
   return current_ops->type;
 }
 
-void ic_ap_init(void) {
+void __no_cfi ic_ap_init(void) {
   if (!current_ops) {
     panic(IC_CLASS "IC not initialized on BSP before AP init");
   }
@@ -156,7 +153,7 @@ void ic_ap_init(void) {
 }
 EXPORT_SYMBOL(ic_ap_init);
 
-void ic_shutdown_controller(void) {
+void __no_cfi ic_shutdown_controller(void) {
   if (!current_ops)
     return;
 
@@ -172,11 +169,11 @@ void ic_shutdown_controller(void) {
     current_ops->shutdown();
   }
 
-  current_ops = NULL;
+  current_ops = nullptr;
 }
 EXPORT_SYMBOL(ic_shutdown_controller);
 
-void ic_enable_irq(uint32_t irq_line) {
+void __no_cfi ic_enable_irq(uint32_t irq_line) {
   if (!current_ops)
     panic(IC_CLASS "IC not initialized");
   if (!current_ops->enable_irq)
@@ -185,7 +182,7 @@ void ic_enable_irq(uint32_t irq_line) {
 }
 EXPORT_SYMBOL(ic_enable_irq);
 
-void ic_disable_irq(uint32_t irq_line) {
+void __no_cfi ic_disable_irq(uint32_t irq_line) {
   if (!current_ops)
     panic(IC_CLASS "IC not initialized");
   if (!current_ops->disable_irq)
@@ -194,7 +191,7 @@ void ic_disable_irq(uint32_t irq_line) {
 }
 EXPORT_SYMBOL(ic_disable_irq);
 
-void ic_send_eoi(uint32_t interrupt_number) {
+void __no_cfi ic_send_eoi(uint32_t interrupt_number) {
   if (!current_ops)
     panic(IC_CLASS "IC not initialized");
   if (!current_ops->send_eoi)
@@ -210,7 +207,7 @@ interrupt_controller_t ic_get_controller_type(void) {
 }
 EXPORT_SYMBOL(ic_get_controller_type);
 
-void ic_set_timer(const uint32_t frequency_hz) {
+void __no_cfi ic_set_timer(const uint32_t frequency_hz) {
   if (!current_ops)
     return;
   if (current_ops->timer_set) {
@@ -220,32 +217,32 @@ void ic_set_timer(const uint32_t frequency_hz) {
 }
 EXPORT_SYMBOL(ic_set_timer);
 
-void ic_timer_stop(void) {
+void __no_cfi ic_timer_stop(void) {
   if (current_ops && current_ops->timer_stop)
     current_ops->timer_stop();
 }
 EXPORT_SYMBOL(ic_timer_stop);
 
-void ic_timer_oneshot(uint32_t microseconds) {
+void __no_cfi ic_timer_oneshot(uint32_t microseconds) {
   if (current_ops && current_ops->timer_oneshot)
     current_ops->timer_oneshot(microseconds);
 }
 EXPORT_SYMBOL(ic_timer_oneshot);
 
-void ic_timer_tsc_deadline(uint64_t deadline) {
+void __no_cfi ic_timer_tsc_deadline(uint64_t deadline) {
   if (current_ops && current_ops->timer_tsc_deadline)
     current_ops->timer_tsc_deadline(deadline);
 }
 EXPORT_SYMBOL(ic_timer_tsc_deadline);
 
-int ic_timer_has_tsc_deadline(void) {
+int __no_cfi ic_timer_has_tsc_deadline(void) {
   if (current_ops && current_ops->timer_has_tsc_deadline)
     return current_ops->timer_has_tsc_deadline();
   return 0;
 }
 EXPORT_SYMBOL(ic_timer_has_tsc_deadline);
 
-void ic_send_ipi(uint8_t dest_apic_id, uint8_t vector, uint32_t delivery_mode) {
+void __no_cfi ic_send_ipi(uint8_t dest_apic_id, uint8_t vector, uint32_t delivery_mode) {
   if (!current_ops)
     panic(IC_CLASS "IC not initialized");
   if (current_ops->type != INTC_APIC || !current_ops->send_ipi) {
@@ -257,7 +254,7 @@ EXPORT_SYMBOL(ic_send_ipi);
 
 static uint8_t ic_get_id_non_smp(void) { return 0; };
 
-static int ic_find_get_id(struct device *dev, void *data) {
+static int __no_cfi ic_find_get_id(struct device *dev, void *data) {
   struct ic_device *ic = container_of(dev, struct ic_device, dev);
   if (ic->ops->type == INTC_APIC && ic->ops->get_id) {
     get_id = ic->ops->get_id;
@@ -267,21 +264,22 @@ static int ic_find_get_id(struct device *dev, void *data) {
 }
 
 void ic_register_lapic_get_id_early() {
-  class_for_each_dev(&ic_class, NULL, NULL, ic_find_get_id);
+  class_for_each_dev(&ic_class, nullptr, nullptr,
+    (class_iter_fn)ic_find_get_id);
 
   if (!get_id) {
     get_id = ic_get_id_non_smp;
   }
 }
 
-uint8_t ic_lapic_get_id(void) {
+uint8_t __no_cfi ic_lapic_get_id(void) {
   if (!get_id) {
     panic(IC_CLASS "IC not initialized");
   }
   return get_id();
 }
 
-void ic_mask_all() {
+void __no_cfi ic_mask_all() {
   if (!current_ops)
     panic(IC_CLASS "IC not initialized");
   if (!current_ops->mask_all)

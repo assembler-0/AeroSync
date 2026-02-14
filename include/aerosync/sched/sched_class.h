@@ -74,7 +74,7 @@ struct sched_class {
    * @pick_next_task: Select the next task to run
    * @rq: The runqueue
    *
-   * Returns the highest priority runnable task for this class, or NULL
+   * Returns the highest priority runnable task for this class, or nullptr
    * if no tasks are runnable in this class.
    */
   struct task_struct *(*pick_next_task)(struct rq *rq);

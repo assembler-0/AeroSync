@@ -39,6 +39,25 @@ void cpuid_count(uint32_t leaf, uint32_t subleaf, uint32_t *eax, uint32_t *ebx, 
 }
 EXPORT_SYMBOL(cpuid_count);
 
+void cpuid_get_vendor(char *out_vendor) {
+  uint32_t eax, ebx, ecx, edx;
+  cpuid(0, &eax, &ebx, &ecx, &edx);
+
+  uint32_t *vendor_u32 = (uint32_t *)out_vendor;
+  vendor_u32[0] = ebx;
+  vendor_u32[1] = edx;
+  vendor_u32[2] = ecx;
+  out_vendor[12] = '\0';
+}
+EXPORT_SYMBOL(cpuid_get_vendor);
+
+bool is_host_hypervisor(void) {
+  uint32_t eax, ebx, ecx, edx;
+  cpuid(1, &eax, &ebx, &ecx, &edx);
+  return (ecx & (1U << 31)) != 0;
+}
+EXPORT_SYMBOL(is_host_hypervisor);
+
 // MSR access
 uint64_t rdmsr(uint32_t msr) {
   uint32_t low, high;

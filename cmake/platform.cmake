@@ -1,0 +1,32 @@
+# ============================================================================
+# Platform Checks
+# ============================================================================
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
+    message(STATUS "Detected Linux host system: ${CMAKE_HOST_SYSTEM_NAME}")
+elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+    message(WARNING "Windows detected. Install WSL or use a cross-compiler.")
+elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+    message(WARNING "macOS detected. Please make sure you have compatible tools.")
+else()
+    message(WARNING "Unsupported host system: ${CMAKE_HOST_SYSTEM_NAME}")
+endif()
+
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+    message(STATUS "CMake Target Architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+else()
+    message(WARNING "Unsupported target architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+    set(CMAKE_EXE_LINKER_FLAGS "")
+    set(CMAKE_SHARED_LINKER_FLAGS "")
+    set(CMAKE_MODULE_LINKER_FLAGS "")
+endif()
+
+message(STATUS "CMake Generator: ${CMAKE_GENERATOR}")
+message(STATUS "CMake Build Type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "CMake Source Directory: ${CMAKE_SOURCE_DIR}")
+message(STATUS "CMake Binary Directory: ${CMAKE_BINARY_DIR}")
+message(STATUS "CMake Current Source Directory: ${CMAKE_CURRENT_SOURCE_DIR}")
+message(STATUS "CMake Current Binary Directory: ${CMAKE_CURRENT_BINARY_DIR}")
+message(STATUS "CMake Host System Name: ${CMAKE_HOST_SYSTEM_NAME}")
+message(STATUS "CMake Host System Processor: ${CMAKE_HOST_SYSTEM_PROCESSOR}")
+message(STATUS "CMake sources configured.")
+message(STATUS "AeroSync version r${AEROSYNC_RELEASE}c${AEROSYNC_CANDIDATE}")

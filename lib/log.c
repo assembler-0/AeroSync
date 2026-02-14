@@ -60,15 +60,14 @@ static ringbuf_t klog_ring = {
     .data = klog_ring_data, .size = KLOG_RING_SIZE, .head = 0, .tail = 0};
 
 static int klog_console_level = KLOG_INFO;
-static log_sink_putc_t klog_console_sink = NULL; // defaults to ring buffer only
-static spinlock_t klog_lock = 0;
-static int klog_inited = 1; // Statically initialized, so always ready
+static log_sink_putc_t klog_console_sink = nullptr; // defaults to ring buffer only
+static DEFINE_SPINLOCK(klog_lock);
 
 // Serialize immediate console output across CPUs to prevent mangled lines
-static spinlock_t klog_console_lock = 0;
+static DEFINE_SPINLOCK(klog_console_lock);
 // Async logging control
 static volatile int klog_async_enabled = 0;
-static struct task_struct *klogd_task = NULL;
+static struct task_struct *klogd_task = nullptr;
 // Hint from the console driver that sink is asynchronous-capable
 static int klog_console_sink_async_hint = 0;
 // Debug enablement (independent of numeric KLOG_DEBUG value)
@@ -108,7 +107,7 @@ void log_init(const log_sink_putc_t backend) {
   // ringbuf_init would reset head/tail.
   // If ringbuffer was somehow not setup (shouldn't happen with static init), do
   // it.
-  if (klog_ring.data == NULL) {
+  if (klog_ring.data == nullptr) {
     ringbuf_init(&klog_ring, klog_ring_data, KLOG_RING_SIZE);
   }
 
@@ -151,7 +150,7 @@ int log_try_init_async(void) {
   if (klog_async_enabled)
     return 1;
   // If scheduler isn't available or kthread creation fails, return 0.
-  struct task_struct *t = kthread_create(klogd_thread, NULL, "kthread/klogd");
+  struct task_struct *t = kthread_create(klogd_thread, nullptr, "kthread/klogd");
   if (!t)
     return 0;
   kthread_run(t);
@@ -162,12 +161,17 @@ int log_try_init_async(void) {
 #endif
 
 static const char *const klog_prefixes[] = {
-    [KLOG_EMERG] = "[0] ", [KLOG_ALERT] = "[1] ",   [KLOG_CRIT] = "[2] ",
-    [KLOG_ERR] = "[3] ",   [KLOG_WARNING] = "[4] ", [KLOG_NOTICE] = "[5] ",
-    [KLOG_INFO] = "[6] ",  [KLOG_DEBUG] = "[7] ",
+  [KLOG_EMERG] = "[0] ",
+  [KLOG_ALERT] = "[1] ",
+  [KLOG_CRIT] = "[2] ",
+  [KLOG_ERR] = "[3] ",
+  [KLOG_WARNING] = "[4] ",
+  [KLOG_NOTICE] = "[5] ",
+  [KLOG_INFO] = "[6] ",
+  [KLOG_DEBUG] = "[7] ",
 };
 
-static void console_emit_prefix_ts(int level, uint64_t ts_ns) {
+static void __no_cfi console_emit_prefix_ts(int level, uint64_t ts_ns) {
   if (!klog_console_sink)
     return;
 
@@ -195,7 +199,9 @@ static void console_emit_prefix_ts(int level, uint64_t ts_ns) {
 
 static int klog_sync_threshold = KLOG_ERR; // ERR and above stay synchronous
 
-int log_write_str(int level, const char *msg) {
+static int early_printk_recursion = 0;
+
+int __no_cfi log_write_str(int level, const char *msg) {
   if (!msg)
     return 0;
 
@@ -204,20 +210,25 @@ int log_write_str(int level, const char *msg) {
   if (percpu_ready()) {
     rec = this_cpu_read(printk_recursion);
     if (rec > 0) {
-      // We are in a nested call (e.g. printk called from vsnprintf or sink)
-      // We skip immediate console emission and just try to store in ring buffer
-      // if possible, or if we are too deep, we drop to avoid infinite
-      // recursion.
       if (rec > 3)
         return 0;
     }
     this_cpu_inc(printk_recursion);
+  } else {
+    rec = early_printk_recursion;
+    if (rec > 0) {
+      if (rec > 3)
+        return 0;
+    }
+    early_printk_recursion++;
   }
 
   // If level is DEBUG but debug is currently disabled, drop early
   if (level == KLOG_DEBUG && !klog_debug_enabled) {
     if (percpu_ready())
       this_cpu_dec(printk_recursion);
+    else
+      early_printk_recursion--;
     return 0;
   }
 
@@ -281,6 +292,8 @@ int log_write_str(int level, const char *msg) {
 
   if (percpu_ready())
     this_cpu_dec(printk_recursion);
+  else
+    early_printk_recursion--;
 
   // Don't check_preempt here - IRQ state may be inconsistent immediately
   // after spinlock_unlock_irqrestore(). The scheduler will preempt naturally
@@ -290,8 +303,7 @@ int log_write_str(int level, const char *msg) {
 }
 
 // Background logger thread: drains ring buffer to console
-// Background logger thread: drains ring buffer to console
-static int klogd_thread(void *data) {
+static int __no_cfi klogd_thread(void *data) {
   (void)data;
   char out_buf[512];
   while (1) {
@@ -376,7 +388,7 @@ void log_init_async(void) {
     spinlock_unlock_irqrestore(&klog_lock, f);
   }
 
-  struct task_struct *t = kthread_create(klogd_thread, NULL, "kthread/klogd");
+  struct task_struct *t = kthread_create(klogd_thread, nullptr, "kthread/klogd");
   if (t) {
     kthread_run(t);
     klogd_task = t;

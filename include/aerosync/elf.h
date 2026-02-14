@@ -133,6 +133,13 @@ typedef struct {
 #define ELF64_ST_BIND(i)   ((i) >> 4)
 #define ELF64_ST_TYPE(i)   ((i) & 0xf)
 
+/* Symbol Types */
+#define STT_NOTYPE  0
+#define STT_OBJECT  1
+#define STT_FUNC    2
+#define STT_SECTION 3
+#define STT_FILE    4
+
 /* Relocation Entries */
 typedef struct {
     Elf64_Addr r_offset;

@@ -34,16 +34,16 @@ extern unsigned long __per_cpu_offset[MAX_CPUS];
     typeof(var) __ret;                                                         \
     switch (sizeof(var)) {                                                     \
     case 1:                                                                    \
-      asm volatile("movb %%gs:%1, %0" : "=q"(__ret) : "m"(var));               \
+      __asm__ volatile("movb %%gs:%1, %0" : "=q"(__ret) : "m"(var));               \
       break;                                                                   \
     case 2:                                                                    \
-      asm volatile("movw %%gs:%1, %0" : "=r"(__ret) : "m"(var));               \
+      __asm__ volatile("movw %%gs:%1, %0" : "=r"(__ret) : "m"(var));               \
       break;                                                                   \
     case 4:                                                                    \
-      asm volatile("movl %%gs:%1, %0" : "=r"(__ret) : "m"(var));               \
+      __asm__ volatile("movl %%gs:%1, %0" : "=r"(__ret) : "m"(var));               \
       break;                                                                   \
     case 8:                                                                    \
-      asm volatile("movq %%gs:%1, %0" : "=r"(__ret) : "m"(var));               \
+      __asm__ volatile("movq %%gs:%1, %0" : "=r"(__ret) : "m"(var));               \
       break;                                                                   \
     default:                                                                   \
       __builtin_unreachable();                                                 \
@@ -60,16 +60,16 @@ extern unsigned long __per_cpu_offset[MAX_CPUS];
     typeof(var) __val = (typeof(var))(val);                                    \
     switch (sizeof(var)) {                                                     \
     case 1:                                                                    \
-      asm volatile("movb %1, %%gs:%0" : "+m"(var) : "qi"(__val));              \
+      __asm__ volatile("movb %1, %%gs:%0" : "+m"(var) : "qi"(__val));              \
       break;                                                                   \
     case 2:                                                                    \
-      asm volatile("movw %1, %%gs:%0" : "+m"(var) : "ri"(__val));              \
+      __asm__ volatile("movw %1, %%gs:%0" : "+m"(var) : "ri"(__val));              \
       break;                                                                   \
     case 4:                                                                    \
-      asm volatile("movl %1, %%gs:%0" : "+m"(var) : "ri"(__val));              \
+      __asm__ volatile("movl %1, %%gs:%0" : "+m"(var) : "ri"(__val));              \
       break;                                                                   \
     case 8:                                                                    \
-      asm volatile("movq %1, %%gs:%0" : "+m"(var) : "re"(__val));              \
+      __asm__ volatile("movq %1, %%gs:%0" : "+m"(var) : "re"(__val));              \
       break;                                                                   \
     default:                                                                   \
       __builtin_unreachable();                                                 \
@@ -81,16 +81,16 @@ extern unsigned long __per_cpu_offset[MAX_CPUS];
     typeof(var) __val = (typeof(var))(val);                                    \
     switch (sizeof(var)) {                                                     \
     case 1:                                                                    \
-      asm volatile("addb %1, %%gs:%0" : "+m"(var) : "qi"(__val));              \
+      __asm__ volatile("addb %1, %%gs:%0" : "+m"(var) : "qi"(__val));              \
       break;                                                                   \
     case 2:                                                                    \
-      asm volatile("addw %1, %%gs:%0" : "+m"(var) : "ri"(__val));              \
+      __asm__ volatile("addw %1, %%gs:%0" : "+m"(var) : "ri"(__val));              \
       break;                                                                   \
     case 4:                                                                    \
-      asm volatile("addl %1, %%gs:%0" : "+m"(var) : "ri"(__val));              \
+      __asm__ volatile("addl %1, %%gs:%0" : "+m"(var) : "ri"(__val));              \
       break;                                                                   \
     case 8:                                                                    \
-      asm volatile("addq %1, %%gs:%0" : "+m"(var) : "re"(__val));              \
+      __asm__ volatile("addq %1, %%gs:%0" : "+m"(var) : "re"(__val));              \
       break;                                                                   \
     default:                                                                   \
       __builtin_unreachable();                                                 \
@@ -108,7 +108,7 @@ extern unsigned long __per_cpu_offset[MAX_CPUS];
 #define this_cpu_cmpxchg_double(pcp1, pcp2, o1, o2, n1, n2)                    \
   ({                                                                           \
     bool __ret;                                                                \
-    asm volatile("lock; cmpxchg16b %%gs:%3; setz %0"                           \
+    __asm__ volatile("lock; cmpxchg16b %%gs:%3; setz %0"                           \
                  : "=a"(__ret), "+d"(o2), "+a"(o1)                             \
                  : "m"(pcp1), "b"(n1), "c"(n2), "1"(o2), "2"(o1)               \
                  : "memory");                                                  \
@@ -137,7 +137,7 @@ extern unsigned long __per_cpu_offset[MAX_CPUS];
  *
  * A common trick:
  *   unsigned long offset;
- *   asm("mov %%gs:0, %0" : "=r"(offset)); // If we store 'this_cpu_off' at 0
+ *   __asm__("mov %%gs:0, %0" : "=r"(offset)); // If we store 'this_cpu_off' at 0
  *   return (type *)(offset + (unsigned long)&var);
  *
  * FOR NOW: simple implementation that relies on 'this_cpu_off' being at the

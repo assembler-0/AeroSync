@@ -39,15 +39,17 @@ extern void do_page_fault(cpu_regs *regs);
 
 static irq_handler_t irq_handlers[MAX_INTERRUPTS];
 
-void irq_install_handler(uint8_t vector, irq_handler_t handler) {
+void __no_cfi irq_install_handler(uint8_t vector, irq_handler_t handler) {
   irq_handlers[vector] = handler;
 }
 EXPORT_SYMBOL(irq_install_handler);
 
-void irq_uninstall_handler(uint8_t vector) { irq_handlers[vector] = NULL; }
+void __no_cfi irq_uninstall_handler(uint8_t vector) {
+  irq_handlers[vector] = nullptr;
+}
 EXPORT_SYMBOL(irq_uninstall_handler);
 
-void __used __hot irq_common_stub(cpu_regs *regs) {
+void __used __hot __no_sanitize __no_cfi irq_common_stub(cpu_regs *regs) {
   // CPU exceptions are vectors 0-31
   if (regs->interrupt_number < IRQ_BASE_VECTOR) {
     if (regs->interrupt_number == 14) {

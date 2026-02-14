@@ -23,7 +23,7 @@
  * @index is the index of the entry being operated on
  * @mark is an xa_mark_t; a small number indicating one of the mark bits.
  * @node refers to an xa_node; usually the primary one being operated on by
- * this function.
+ * this function./
  * @offset is the index into the slots array inside an xa_node.
  * @parent refers to the @xa_node closer to the head than @node.
  * @entry refers to something stored in a slot in the xarray
@@ -149,15 +149,15 @@ static void xas_next_offset(struct xa_state *xas) {
 
 static void *set_bounds(struct xa_state *xas) {
   xas->xa_node = XAS_BOUNDS;
-  return NULL;
+  return nullptr;
 }
 
 /*
  * Starts a walk.  If the @xas is already valid, we assume that it's on
  * the right path and just return where we've got to.  If we're in an
- * error state, return NULL.  If the index is outside the current scope
- * of the xarray, return NULL without changing @xas->xa_node.  Otherwise
- * set @xas->xa_node to NULL and return the current head of the array.
+ * error state, return nullptr.  If the index is outside the current scope
+ * of the xarray, return nullptr without changing @xas->xa_node.  Otherwise
+ * set @xas->xa_node to nullptr and return the current head of the array.
  */
 static void *xas_start(struct xa_state *xas) {
   void *entry;
@@ -165,7 +165,7 @@ static void *xas_start(struct xa_state *xas) {
   if (xas_valid(xas))
     return xas_reload(xas);
   if (xas_error(xas))
-    return NULL;
+    return nullptr;
 
   entry = xa_head(xas->xa);
   if (!xa_is_node(entry)) {
@@ -176,7 +176,7 @@ static void *xas_start(struct xa_state *xas) {
       return set_bounds(xas);
   }
 
-  xas->xa_node = NULL;
+  xas->xa_node = nullptr;
   return entry;
 }
 
@@ -202,11 +202,11 @@ static __always_inline void *xas_descend(struct xa_state *xas,
  * @xas: XArray operation state.
  *
  * Usually walks the @xas to the appropriate state to load the entry
- * stored at xa_index.  However, it will do nothing and return %NULL if
+ * stored at xa_index.  However, it will do nothing and return %nullptr if
  * @xas is in an error state.  xas_load() will never expand the tree.
  *
  * If the xa_state is set up to operate on a multi-index entry, xas_load()
- * may return %NULL or an internal entry, even if there are entries
+ * may return %nullptr or an internal entry, even if there are entries
  * present within the range specified by @xas.
  *
  * Context: Any context.  The caller should hold the xa_lock or the RCU lock.
@@ -284,7 +284,7 @@ bool xas_nomem(struct xa_state *xas, gfp_t gfp) {
   xas->xa_alloc = kmem_cache_alloc(radix_tree_node_cachep);
   if (!xas->xa_alloc)
     return false;
-  xas->xa_alloc->parent = NULL;
+  xas->xa_alloc->parent = nullptr;
   XA_NODE_BUG_ON(xas->xa_alloc, !list_empty(&xas->xa_alloc->private_list));
   xas->xa_node = XAS_RESTART;
   return true;
@@ -319,7 +319,7 @@ static bool __xas_nomem(struct xa_state *xas, gfp_t gfp) {
   }
   if (!xas->xa_alloc)
     return false;
-  xas->xa_alloc->parent = NULL;
+  xas->xa_alloc->parent = nullptr;
   XA_NODE_BUG_ON(xas->xa_alloc, !list_empty(&xas->xa_alloc->private_list));
   xas->xa_node = XAS_RESTART;
   return true;
@@ -337,10 +337,10 @@ static void *xas_alloc(struct xa_state *xas, unsigned int shift) {
   struct xa_node *node = xas->xa_alloc;
 
   if (xas_invalid(xas))
-    return NULL;
+    return nullptr;
 
   if (node) {
-    xas->xa_alloc = NULL;
+    xas->xa_alloc = nullptr;
   } else {
     gfp_t gfp = GFP_NOWAIT;
 
@@ -350,7 +350,7 @@ static void *xas_alloc(struct xa_state *xas, unsigned int shift) {
     node = kmem_cache_alloc(radix_tree_node_cachep);
     if (!node) {
       xas_set_err(xas, -ENOMEM);
-      return NULL;
+      return nullptr;
     }
   }
 
@@ -403,7 +403,7 @@ static unsigned long max_index(void *entry) {
 }
 
 static inline void *xa_zero_to_null(void *entry) {
-  return xa_is_zero(entry) ? NULL : entry;
+  return xa_is_zero(entry) ? nullptr : entry;
 }
 
 static void xas_shrink(struct xa_state *xas) {
@@ -438,7 +438,7 @@ static void xas_shrink(struct xa_state *xas) {
     if (!xa_is_node(entry))
       break;
     node = xa_to_node(entry);
-    node->parent = NULL;
+    node->parent = nullptr;
   }
 }
 
@@ -465,12 +465,12 @@ static void xas_delete_node(struct xa_state *xas) {
     xa_node_free(node);
 
     if (!parent) {
-      xas->xa->xa_head = NULL;
+      xas->xa->xa_head = nullptr;
       xas->xa_node = XAS_BOUNDS;
       return;
     }
 
-    parent->slots[xas->xa_offset] = NULL;
+    parent->slots[xas->xa_offset] = nullptr;
     parent->count--;
     XA_NODE_BUG_ON(parent, parent->count > XA_CHUNK_SIZE);
     node = parent;
@@ -527,7 +527,7 @@ static void xas_free_nodes(struct xa_state *xas, struct xa_node *top) {
  */
 static int xas_expand(struct xa_state *xas, void *head) {
   struct xarray *xa = xas->xa;
-  struct xa_node *node = NULL;
+  struct xa_node *node = nullptr;
   unsigned int shift = 0;
   unsigned long max = xas_max(xas);
 
@@ -541,7 +541,7 @@ static int xas_expand(struct xa_state *xas, void *head) {
     node = xa_to_node(head);
     shift = node->shift + XA_CHUNK_SHIFT;
   }
-  xas->xa_node = NULL;
+  xas->xa_node = nullptr;
 
   while (max > max_index(head)) {
     xa_mark_t mark = 0;
@@ -601,8 +601,8 @@ static int xas_expand(struct xa_state *xas, void *head) {
  * (see the xa_cmpxchg() implementation for an example).
  *
  * Return: If the slot already existed, returns the contents of this slot.
- * If the slot was newly created, returns %NULL.  If it failed to create the
- * slot, returns %NULL and indicates the error in @xas.
+ * If the slot was newly created, returns %nullptr.  If it failed to create the
+ * slot, returns %nullptr and indicates the error in @xas.
  */
 static void *xas_create(struct xa_state *xas, bool allow_root) {
   struct xarray *xa = xas->xa;
@@ -614,18 +614,18 @@ static void *xas_create(struct xa_state *xas, bool allow_root) {
 
   if (xas_top(node)) {
     entry = xa_head_locked(xa);
-    xas->xa_node = NULL;
+    xas->xa_node = nullptr;
     if (!entry && xa_zero_busy(xa))
       entry = XA_ZERO_ENTRY;
     shift = xas_expand(xas, entry);
     if (shift < 0)
-      return NULL;
+      return nullptr;
     if (!shift && !allow_root)
       shift = XA_CHUNK_SHIFT;
     entry = xa_head_locked(xa);
     slot = &xa->xa_head;
   } else if (xas_error(xas)) {
-    return NULL;
+    return nullptr;
   } else if (node) {
     unsigned int offset = xas->xa_offset;
 
@@ -732,7 +732,7 @@ static void update_node(struct xa_state *xas, struct xa_node *node,
  *
  * If @xas is operating on a multi-index entry, the entry returned by this
  * function is essentially meaningless (it may be an internal entry or it
- * may be %NULL, even if there are non-NULL entries at some of the indices
+ * may be %nullptr, even if there are non-nullptr entries at some of the indices
  * covered by the range).  This is not a problem for any current users,
  * and can be changed if needed.
  *
@@ -775,11 +775,11 @@ void *xas_store(struct xa_state *xas, void *entry) {
 
   for (;;) {
     /*
-     * Must clear the marks before setting the entry to NULL,
-     * otherwise xas_for_each_marked may find a NULL entry and
+     * Must clear the marks before setting the entry to nullptr,
+     * otherwise xas_for_each_marked may find a nullptr entry and
      * stop early.  rcu_assign_pointer contains a release barrier
      * so the mark clearing will appear to happen before the
-     * entry is set to NULL.
+     * entry is set to nullptr.
      */
     rcu_assign_pointer(*slot, entry);
     if (xa_is_node(next) && (!node || node->shift))
@@ -965,7 +965,7 @@ static void node_set_marks(struct xa_node *node, unsigned int offset,
 static void __xas_init_node_for_split(struct xa_state *xas,
                                       struct xa_node *node, void *entry) {
   unsigned int i;
-  void *sibling = NULL;
+  void *sibling = nullptr;
   unsigned int mask = xas->xa_sibs;
 
   if (!node)
@@ -1068,7 +1068,7 @@ void xas_split(struct xa_state *xas, void *entry, unsigned int order) {
     } else {
       unsigned int canon = offset - xas->xa_sibs;
 
-      node_set_marks(node, canon, NULL, 0, marks);
+      node_set_marks(node, canon, nullptr, 0, marks);
       rcu_assign_pointer(node->slots[canon], entry);
       while (offset > canon)
         rcu_assign_pointer(node->slots[offset--],
@@ -1115,7 +1115,7 @@ EXPORT_SYMBOL(xas_try_split_min_order);
  * The size of the new entries is set in @xas.  The value in @entry is
  * copied to all the replacement entries. If and only if one new xa_node is
  * needed, the function will use GFP_NOWAIT to get one if xas->xa_alloc is
- * NULL. If more new xa_node are needed, the function gives EINVAL error.
+ * nullptr. If more new xa_node are needed, the function gives EINVAL error.
  *
  * NOTE: use xas_try_split_min_order() to get next split order instead of
  * @order - 1 if you want to minmize xas_try_split() calls.
@@ -1187,7 +1187,7 @@ void xas_try_split(struct xa_state *xas, void *entry, unsigned int order) {
     do {
       unsigned int canon = offset - xas->xa_sibs;
 
-      node_set_marks(node, canon, NULL, 0, marks);
+      node_set_marks(node, canon, nullptr, 0, marks);
       rcu_assign_pointer(node->slots[canon], entry);
       while (offset > canon)
         rcu_assign_pointer(node->slots[offset--],
@@ -1334,13 +1334,13 @@ EXPORT_SYMBOL(__xas_next);
  * is set to the smallest index not yet in the array.  This allows @xas
  * to be immediately passed to xas_store().
  *
- * Return: The entry, if found, otherwise %NULL.
+ * Return: The entry, if found, otherwise %nullptr.
  */
 void *xas_find(struct xa_state *xas, unsigned long max) {
   void *entry;
 
   if (xas_error(xas) || xas->xa_node == XAS_BOUNDS)
-    return NULL;
+    return nullptr;
   if (xas->xa_index > max)
     return set_bounds(xas);
 
@@ -1379,7 +1379,7 @@ void *xas_find(struct xa_state *xas, unsigned long max) {
 
   if (!xas->xa_node)
     xas->xa_node = XAS_BOUNDS;
-  return NULL;
+  return nullptr;
 }
 
 EXPORT_SYMBOL(xas_find);
@@ -1403,7 +1403,7 @@ EXPORT_SYMBOL(xas_find);
  * If no entry is found before @max is reached, @xas is set to the restart
  * state.
  *
- * Return: The entry, if found, otherwise %NULL.
+ * Return: The entry, if found, otherwise %nullptr.
  */
 void *xas_find_marked(struct xa_state *xas, unsigned long max, xa_mark_t mark) {
   bool advance = true;
@@ -1411,7 +1411,7 @@ void *xas_find_marked(struct xa_state *xas, unsigned long max, xa_mark_t mark) {
   void *entry;
 
   if (xas_error(xas))
-    return NULL;
+    return nullptr;
   if (xas->xa_index > max)
     goto max;
 
@@ -1421,7 +1421,7 @@ void *xas_find_marked(struct xa_state *xas, unsigned long max, xa_mark_t mark) {
   } else if (xas_top(xas->xa_node)) {
     advance = false;
     entry = xa_head(xas->xa);
-    xas->xa_node = NULL;
+    xas->xa_node = nullptr;
     if (xas->xa_index > max_index(entry))
       goto out;
     if (!xa_is_node(entry)) {
@@ -1481,7 +1481,7 @@ out:
   return set_bounds(xas);
 max:
   xas->xa_node = XAS_RESTART;
-  return NULL;
+  return nullptr;
 }
 
 EXPORT_SYMBOL(xas_find_marked);
@@ -1493,21 +1493,21 @@ EXPORT_SYMBOL(xas_find_marked);
  * The @xas describes both a range and a position within that range.
  *
  * Context: Any context.  Expects xa_lock to be held.
- * Return: The next entry in the range covered by @xas or %NULL.
+ * Return: The next entry in the range covered by @xas or %nullptr.
  */
 void *xas_find_conflict(struct xa_state *xas) {
   void *curr;
 
   if (xas_error(xas))
-    return NULL;
+    return nullptr;
 
   if (!xas->xa_node)
-    return NULL;
+    return nullptr;
 
   if (xas_top(xas->xa_node)) {
     curr = xas_start(xas);
     if (!curr)
-      return NULL;
+      return nullptr;
     while (xa_is_node(curr)) {
       struct xa_node *node = xa_to_node(curr);
       curr = xas_descend(xas, node);
@@ -1517,7 +1517,7 @@ void *xas_find_conflict(struct xa_state *xas) {
   }
 
   if (xas->xa_node->shift > xas->xa_shift)
-    return NULL;
+    return nullptr;
 
   for (;;) {
     if (xas->xa_node->shift == xas->xa_shift) {
@@ -1542,7 +1542,7 @@ void *xas_find_conflict(struct xa_state *xas) {
       return curr;
   }
   xas->xa_offset -= xas->xa_sibs;
-  return NULL;
+  return nullptr;
 }
 
 EXPORT_SYMBOL(xas_find_conflict);
@@ -1581,7 +1581,7 @@ static void *xas_result(struct xa_state *xas, void *curr) {
  * @xa: XArray.
  * @index: Index into array.
  *
- * After this function returns, loading from @index will return %NULL.
+ * After this function returns, loading from @index will return %nullptr.
  * If the index is part of a multi-index entry, all indices will be erased
  * and none of the entries will be part of a multi-index entry.
  *
@@ -1590,7 +1590,7 @@ static void *xas_result(struct xa_state *xas, void *curr) {
  */
 void *__xa_erase(struct xarray *xa, unsigned long index) {
   XA_STATE(xas, xa, index);
-  return xas_result(&xas, xa_zero_to_null(xas_store(&xas, NULL)));
+  return xas_result(&xas, xa_zero_to_null(xas_store(&xas, nullptr)));
 }
 
 EXPORT_SYMBOL(__xa_erase);
@@ -1600,7 +1600,7 @@ EXPORT_SYMBOL(__xa_erase);
  * @xa: XArray.
  * @index: Index of entry.
  *
- * After this function returns, loading from @index will return %NULL.
+ * After this function returns, loading from @index will return %nullptr.
  * If the index is part of a multi-index entry, all indices will be erased
  * and none of the entries will be part of a multi-index entry.
  *
@@ -1661,7 +1661,7 @@ EXPORT_SYMBOL(__xa_store);
  *
  * After this function returns, loads from this index will return @entry.
  * Storing into an existing multi-index entry updates the entry of every index.
- * The marks associated with @index are unaffected unless @entry is %NULL.
+ * The marks associated with @index are unaffected unless @entry is %nullptr.
  *
  * Context: Any context.  Takes and releases the xa_lock.
  * May sleep if the @gfp flags permit.
@@ -1732,9 +1732,9 @@ static inline void *__xa_cmpxchg_raw(struct xarray *xa, unsigned long index,
  * @entry: New entry.
  * @gfp: Memory allocation flags.
  *
- * Inserting a NULL entry will store a reserved entry (like xa_reserve())
+ * Inserting a nullptr entry will store a reserved entry (like xa_reserve())
  * if no entry is present.  Inserting will fail if a reserved entry is
- * present, even though loading from this index will return NULL.
+ * present, even though loading from this index will return nullptr.
  *
  * Context: Any context.  Expects xa_lock to be held on entry.  May
  * release and reacquire xa_lock if @gfp flags permit.
@@ -1747,11 +1747,11 @@ int __xa_insert(struct xarray *xa, unsigned long index, void *entry, gfp_t gfp) 
 
   if (!entry)
     entry = XA_ZERO_ENTRY;
-  curr = __xa_cmpxchg_raw(xa, index, NULL, entry, gfp);
+  curr = __xa_cmpxchg_raw(xa, index, nullptr, entry, gfp);
   errno = xa_err(curr);
   if (errno)
     return errno;
-  return (curr != NULL) ? -EBUSY : 0;
+  return (curr != nullptr) ? -EBUSY : 0;
 }
 
 EXPORT_SYMBOL(__xa_insert);
@@ -1797,11 +1797,11 @@ static void xas_set_range(struct xa_state *xas, unsigned long first,
  * After this function returns, loads from any index between @first and @last,
  * inclusive will return @entry.
  * Storing into an existing multi-index entry updates the entry of every index.
- * The marks associated with @index are unaffected unless @entry is %NULL.
+ * The marks associated with @index are unaffected unless @entry is %nullptr.
  *
  * Context: Process context.  Takes and releases the xa_lock.  May sleep
  * if the @gfp flags permit.
- * Return: %NULL on success, xa_err(-EINVAL) if @entry cannot be stored in
+ * Return: %nullptr on success, xa_err(-EINVAL) if @entry cannot be stored in
  * an XArray, or xa_err(-ENOMEM) if memory allocation failed.
  */
 void *xa_store_range(struct xarray *xa, unsigned long first,
@@ -1833,7 +1833,7 @@ void *xa_store_range(struct xarray *xa, unsigned long first,
     xas_unlock(&xas);
   } while (xas_nomem(&xas, gfp));
 
-  return xas_result(&xas, NULL);
+  return xas_result(&xas, nullptr);
 }
 
 EXPORT_SYMBOL(xa_store_range);
@@ -1996,7 +1996,7 @@ EXPORT_SYMBOL(__xa_alloc_cyclic);
  * @index: Index of entry.
  * @mark: Mark number.
  *
- * Attempting to set a mark on a %NULL entry does not succeed.
+ * Attempting to set a mark on a %nullptr entry does not succeed.
  *
  * Context: Any context.  Expects xa_lock to be held on entry.
  */
@@ -2066,7 +2066,7 @@ EXPORT_SYMBOL(xa_get_mark);
  * @index: Index of entry.
  * @mark: Mark number.
  *
- * Attempting to set a mark on a %NULL entry does not succeed.
+ * Attempting to set a mark on a %nullptr entry does not succeed.
  *
  * Context: Process context.  Takes and releases the xa_lock.
  */
@@ -2111,7 +2111,7 @@ EXPORT_SYMBOL(xa_clear_mark);
  * %XA_RETRY_ENTRY; if you need to see retry entries, use xas_find().
  *
  * Context: Any context.  Takes and releases the RCU lock.
- * Return: The entry, if found, otherwise %NULL.
+ * Return: The entry, if found, otherwise %nullptr.
  */
 void *xa_find(struct xarray *xa, unsigned long *indexp,
               unsigned long max, xa_mark_t filter) {
@@ -2160,7 +2160,7 @@ static bool xas_sibling(struct xa_state *xas) {
  * %XA_RETRY_ENTRY; if you need to see retry entries, use xas_find().
  *
  * Context: Any context.  Takes and releases the RCU lock.
- * Return: The pointer, if found, otherwise %NULL.
+ * Return: The pointer, if found, otherwise %nullptr.
  */
 void *xa_find_after(struct xarray *xa, unsigned long *indexp,
                     unsigned long max, xa_mark_t filter) {
@@ -2168,7 +2168,7 @@ void *xa_find_after(struct xarray *xa, unsigned long *indexp,
   void *entry;
 
   if (xas.xa_index == 0)
-    return NULL;
+    return nullptr;
 
   rcu_read_lock();
   for (;;) {
@@ -2243,7 +2243,7 @@ static unsigned int xas_extract_marked(struct xa_state *xas, void **dst,
  *
  * The @filter may be an XArray mark value, in which case entries which are
  * marked with that mark will be copied.  It may also be %XA_PRESENT, in
- * which case all entries which are not %NULL will be copied.
+ * which case all entries which are not %nullptr will be copied.
  *
  * The entries returned may not represent a snapshot of the XArray at a
  * moment in time.  For example, if another thread stores to index 5, then
@@ -2289,7 +2289,7 @@ void xa_delete_node(struct xa_node *node, xa_update_node_t update) {
     .xa_update = update,
   };
 
-  xas_store(&xas, NULL);
+  xas_store(&xas, nullptr);
 }
 
 EXPORT_SYMBOL(xa_delete_node); /* For the benefit of the test suite */
@@ -2309,10 +2309,10 @@ void xa_destroy(struct xarray *xa) {
   unsigned long flags;
   void *entry;
 
-  xas.xa_node = NULL;
+  xas.xa_node = nullptr;
   xas_lock_irqsave(&xas, &flags);
   entry = xa_head_locked(xa);
-  RCU_INIT_POINTER(xa->xa_head, NULL);
+  RCU_INIT_POINTER(xa->xa_head, nullptr);
   xas_init_marks(&xas);
   if (xa_zero_busy(xa))
     xa_mark_clear(xa, XA_FREE_MARK);

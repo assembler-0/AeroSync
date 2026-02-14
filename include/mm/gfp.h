@@ -56,6 +56,7 @@ enum {
 	___GFP_NOLOCKDEP_BIT,
 #endif
 	___GFP_NO_OBJ_EXT_BIT,
+	___GFP_NO_CHARGE_BIT,
 	___GFP_LAST_BIT
 };
 
@@ -97,6 +98,7 @@ enum {
 #define ___GFP_NOLOCKDEP	0
 #endif
 #define ___GFP_NO_OBJ_EXT       BIT(___GFP_NO_OBJ_EXT_BIT)
+#define ___GFP_NO_CHARGE        BIT(___GFP_NO_CHARGE_BIT)
 
 /*
  * Physical address zone modifiers (see linux/mmzone.h - low four bits)

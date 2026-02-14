@@ -20,6 +20,7 @@
 
 #include <aerosync/classes.h>
 #include <arch/x86_64/cpu.h>
+#include <arch/x86_64/smp.h>
 #include <arch/x86_64/features/features.h>
 #include <lib/printk.h>
 
@@ -188,6 +189,12 @@ void cpu_features_init_ap(void) {
   //   write_cr4(read_cr4() | CR4_UMIP);
   // }
 
+#ifdef CONFIG_RDPID_SUPPORT
+  if (g_cpu_features.rdpid) {
+    wrmsr(MSR_IA32_TSC_AUX, smp_get_id());
+  }
+#endif
+
   pat_init();
 }
 
@@ -257,6 +264,12 @@ void cpu_features_init(void) {
       g_cpu_features.fsgsbase = true;
     if (ecx & (1 << 7))
       g_cpu_features.cet_ss = true;
+    if (ecx & (1 << 22))
+      g_cpu_features.rdpid = true;
+    if (ebx & (1 << 9))
+      g_cpu_features.erms = true;
+    if (edx & (1 << 4))
+      g_cpu_features.fsrm = true;
   }
 
   // Check extended features
@@ -354,6 +367,12 @@ void cpu_features_init(void) {
   //   write_cr4(read_cr4() | CR4_UMIP);
   // }
 
+#ifdef CONFIG_RDPID_SUPPORT
+  if (g_cpu_features.rdpid) {
+    wrmsr(MSR_IA32_TSC_AUX, 0); // BSP is always 0
+  }
+#endif
+
   pat_init();
 
   cpu_features_dump(&g_cpu_features);
@@ -390,6 +409,9 @@ void cpu_features_dump(cpu_features_t *features) {
   printk(CPU_CLASS "  UMIP: %s\n", features->umip ? "Yes" : "No");
   printk(CPU_CLASS "  PKE: %s\n", features->pke ? "Yes" : "No");
   printk(CPU_CLASS "  CET: %s\n", features->cet_ss ? "Yes" : "No");
+  printk(CPU_CLASS "  RDPID: %s\n", features->rdpid ? "Yes" : "No");
+  printk(CPU_CLASS "  ERMS: %s\n", features->erms ? "Yes" : "No");
+  printk(CPU_CLASS "  FSRM: %s\n", features->fsrm ? "Yes" : "No");
 }
 
 cpu_features_t *get_cpu_features(void) {

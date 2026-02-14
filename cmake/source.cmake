@@ -1,6 +1,8 @@
 # ============================================================================
 # Sources Organization
 # ============================================================================
+include(lib/uACPI/uacpi.cmake)
+
 file(GLOB ARCH_SOURCES "arch/x86_64/*.c")
 file(GLOB_RECURSE ARCH_FEATURE_SOURCES "arch/x86_64/features/*.c")
 file(GLOB_RECURSE ARCH_GDT_SOURCES "arch/x86_64/gdt/*.c")
@@ -8,6 +10,7 @@ file(GLOB_RECURSE ARCH_IDT_SOURCES "arch/x86_64/idt/*.c")
 file(GLOB_RECURSE ARCH_MM_SOURCES "arch/x86_64/mm/*.c")
 file(GLOB_RECURSE ARCH_IRQ_SOURCES "arch/x86_64/irq/*.c")
 file(GLOB_RECURSE ARCH_ENTRY_SOURCES "arch/x86_64/entry/*.c")
+file(GLOB_RECURSE ARCH_LIB_SOURCES "arch/x86_64/lib/*.c")
 file(GLOB_RECURSE ARCH_ASM_SOURCES "arch/x86_64/*.asm")
 list(APPEND ARCH_SOURCES
     ${ARCH_FEATURE_SOURCES}
@@ -16,26 +19,27 @@ list(APPEND ARCH_SOURCES
     ${ARCH_MM_SOURCES}
     ${ARCH_IRQ_SOURCES}
     ${ARCH_ENTRY_SOURCES}
+    ${ARCH_LIB_SOURCES}
     ${ARCH_ASM_SOURCES}
 )
 file(GLOB_RECURSE INIT_SOURCES "init/*.c")
 file(GLOB KERNEL_SOURCES "aerosync/*.c")
 file(GLOB_RECURSE KERNEL_SCHED_SOURCES "aerosync/sched/*.c")
 file(GLOB_RECURSE KERNEL_FKX_SOURCES "aerosync/fkx/*.c")
-file(GLOB_RECURSE KERNEL_SYSINTF_SOURCES "aerosync/sysintf/*.c")
+file(GLOB KERNEL_SYSINTF_CORE_SOURCES "aerosync/sysintf/*.c")
 file(GLOB_RECURSE KERNEL_ASM_SOURCES "aerosync/*.asm")
+file(GLOB_RECURSE KERNEL_SYSINTF_SOURCES "aerosync/sysintf/core/*.c")
 list(APPEND KERNEL_SOURCES
     ${KERNEL_SCHED_SOURCES}
     ${KERNEL_FKX_SOURCES}
+    ${KERNEL_SYSINTF_CORE_SOURCES}
     ${KERNEL_SYSINTF_SOURCES}
     ${KERNEL_ASM_SOURCES}
 )
 file(GLOB DRIVER_SOURCES "drivers/*.c")
-file(GLOB_RECURSE DRIVER_PCI_SOURCES "drivers/pci/*.c")
 file(GLOB_RECURSE DRIVER_ACPI_SOURCES "drivers/acpi/*.c")
 file(GLOB_RECURSE DRIVER_QEMU_SOURCES "drivers/qemu/*.c")
 list(APPEND DRIVER_SOURCES
-    ${DRIVER_PCI_SOURCES}
     ${DRIVER_ACPI_SOURCES}
     ${DRIVER_QEMU_SOURCES}
 )
@@ -71,4 +75,5 @@ set(AEROSYNC_SOURCES
         ${ARCH_SOURCES}
         ${CRYPTO_SOURCES}
         ${FS_SOURCES}
+        ${UACPI_SOURCES}
 )

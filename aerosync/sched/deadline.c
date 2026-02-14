@@ -50,7 +50,7 @@ static void setup_new_dl_entity(struct sched_dl_entity *dl_se) {
 
 static void __enqueue_dl_entity(struct dl_rq *dl_rq, struct sched_dl_entity *dl_se) {
     struct rb_node **link = &dl_rq->root.rb_node;
-    struct rb_node *parent = NULL;
+    struct rb_node *parent = nullptr;
     struct sched_dl_entity *entry;
     int leftmost = 1;
 
@@ -169,7 +169,7 @@ static struct task_struct *pick_next_task_dl(struct rq *rq) {
     struct task_struct *p;
 
     if (!dl_rq->rb_leftmost)
-        return NULL;
+        return nullptr;
 
     dl_se = rb_entry(dl_rq->rb_leftmost, struct sched_dl_entity, rb_node);
     p = container_of(dl_se, struct task_struct, dl);
@@ -315,7 +315,7 @@ const struct sched_class dl_sched_class = {
 
 void init_dl_rq(struct dl_rq *dl_rq) {
     dl_rq->root = RB_ROOT;
-    dl_rq->rb_leftmost = NULL;
+    dl_rq->rb_leftmost = nullptr;
     dl_rq->dl_nr_running = 0;
     dl_rq->dl_bw = 0;
 }

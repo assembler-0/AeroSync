@@ -37,7 +37,7 @@ void zmm_free_handle(zmm_handle_t handle);
 typedef uint64_t zmm_handle_t;
 static inline int zmm_init(void) { return 0; }
 static inline zmm_handle_t zmm_compress_folio(struct folio *folio) { (void)folio; return 0; }
-static inline int zmm_decompress_to_folio(zmm_handle_t handle, struct folio *folio) { (void)handle; (void)folio; return -1; }
+static inline int zmm_decompress_to_folio(zmm_handle_t handle, struct folio *folio) { (void)handle; (void)folio; return -ENOTSUPP; }
 static inline void zmm_free_handle(zmm_handle_t handle) { (void)handle; }
 
 #endif

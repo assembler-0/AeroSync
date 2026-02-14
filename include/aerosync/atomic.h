@@ -87,6 +87,7 @@ static __always_inline bool atomic_long_try_cmpxchg(atomic_long_t *v, long *old,
  * Additional helper macros
  */
 #define ATOMIC_INIT(i) { (i) }
+#define ATOMIC_LONG_INIT(i) { (i) }
 
 /**
  * atomic_add_unless - add unless the number is already a given value

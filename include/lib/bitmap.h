@@ -12,6 +12,9 @@
  */
 
 #define BITS_PER_LONG 64
+#define BITMAP_SIZE(bits) (((bits) + BITS_PER_LONG - 1) / BITS_PER_LONG * sizeof(unsigned long))
+#define BIT_WORD(nr) ((nr) / BITS_PER_LONG)
+#define BIT_MASK(nr) (1UL << ((nr) % BITS_PER_LONG))
 #define BITMAP_FIRST_WORD_MASK(start) (~0UL << ((start) & (BITS_PER_LONG - 1)))
 #define BITMAP_LAST_WORD_MASK(nbits) (~0UL >> (-(nbits) & (BITS_PER_LONG - 1)))
 

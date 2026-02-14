@@ -28,7 +28,7 @@ typedef struct mutex mutex_t;
 #define MUTEX_INITIALIZER(name)                                                \
   {.lock = 0,                                                                  \
    .count = 1,                                                                 \
-   .owner = NULL,                                                              \
+   .owner = nullptr,                                                              \
    .wait_q = __WAIT_QUEUE_HEAD_INITIALIZER(name.wait_q),                       \
    .waiters = LIST_HEAD_INIT(name.waiters),                                    \
    .pi_enabled = true}

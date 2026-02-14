@@ -66,6 +66,8 @@ struct shm_object;
 uint64_t do_mmap(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot, uint64_t flags, struct file *file, struct shm_object *shm, uint64_t pgoff);
 int do_munmap(struct mm_struct *mm, uint64_t addr, size_t len);
 int do_mprotect(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot);
+uint64_t do_mremap(struct mm_struct *mm, uint64_t old_addr, size_t old_len, size_t new_len, int flags,
+                   uint64_t new_addr_hint);
 int do_madvise(struct mm_struct *mm, uint64_t addr, size_t len, int advice);
 
 /* Internal VMA Helpers */
@@ -91,6 +93,10 @@ int vma_unmap_range(struct mm_struct *mm, uint64_t start, uint64_t end);
 int vma_protect(struct mm_struct *mm, uint64_t start, uint64_t end,
                 uint64_t new_flags);
 int mm_populate_user_range(struct mm_struct *mm, uint64_t start, size_t size, uint64_t flags, const uint8_t *data, size_t data_len);
+
+/* Production-ready populate helpers */
+int mm_populate_range(struct mm_struct *mm, uint64_t start, uint64_t end, bool locked);
+int mm_prefault_range(struct vm_area_struct *vma, uint64_t start, uint64_t end);
 
 /* Page fault dispatch */
 int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int flags);
@@ -134,6 +140,7 @@ void vma_dump(struct mm_struct *mm);
 void vma_dump_single(struct vm_area_struct *vma);
 size_t mm_total_size(struct mm_struct *mm);
 size_t mm_map_count(struct mm_struct *mm);
+uint64_t vm_get_page_prot(uint64_t flags);
 
 /* Generic fault handler */
 int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int flags);
@@ -147,6 +154,9 @@ int anon_vma_chain_link(struct vm_area_struct *vma, struct anon_vma *av);
 void lru_init(void);
 void kswapd_init(void);
 void khugepaged_init(void);
+
+/* Compaction */
+void kcompactd_init(void);
 
 struct folio;
 struct vm_object;
@@ -183,18 +193,18 @@ void mm_scrubber_init(void);
 
 #define for_each_vma(mm, vma)                                                  \
   for (unsigned long __idx = 0;                                                \
-       (vma = mt_find(&(mm)->mm_mt, &__idx, ULONG_MAX)) != NULL; )
+       (vma = mt_find(&(mm)->mm_mt, &__idx, ULONG_MAX)) != nullptr; )
 
 #define for_each_vma_safe(mm, vma, tmp)                                        \
   for (unsigned long __idx = 0;                                                \
-       (vma = mt_find(&(mm)->mm_mt, &__idx, ULONG_MAX)) != NULL &&              \
+       (vma = mt_find(&(mm)->mm_mt, &__idx, ULONG_MAX)) != nullptr &&              \
        ({ tmp = vma; 1; }); )
 
 #define for_each_vma_range(mm, vma, start, end)                                \
   for (unsigned long __idx = (start);                                          \
-       (vma = mt_find(&(mm)->mm_mt, &__idx, (end) - 1)) != NULL; )
+       (vma = mt_find(&(mm)->mm_mt, &__idx, (end) - 1)) != nullptr; )
 
 #define for_each_vma_range_safe(mm, vma, tmp, start, end)                      \
   for (unsigned long __idx = (start);                                          \
-       (vma = mt_find(&(mm)->mm_mt, &__idx, (end) - 1)) != NULL &&              \
+       (vma = mt_find(&(mm)->mm_mt, &__idx, (end) - 1)) != nullptr &&              \
        ({ tmp = vma; 1; }); )

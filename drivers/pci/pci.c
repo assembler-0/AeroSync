@@ -9,7 +9,10 @@
 
 #include <aerosync/classes.h>
 #include <aerosync/sysintf/pci.h>
+#include <aerosync/sysintf/dma.h>
+#include <aerosync/sysintf/iommu.h>
 #include <aerosync/fkx/fkx.h>
+#include <aerosync/errno.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <mm/slub.h>
@@ -28,7 +31,7 @@ static const struct pci_device_id *pci_match_one_device(const struct pci_device_
       (id->subdevice == PCI_ANY_ID || id->subdevice == dev->subsystem_device) &&
       !((id->class ^ dev->class) & id->class_mask))
     return id;
-  return NULL;
+  return nullptr;
 }
 
 static const struct pci_device_id *pci_match_device(struct pci_driver *drv, struct pci_dev *dev) {
@@ -40,45 +43,82 @@ static const struct pci_device_id *pci_match_device(struct pci_driver *drv, stru
       ids++;
     }
   }
-  return NULL;
+  return nullptr;
 }
 
-static int pci_bus_match(struct pci_dev *dev, struct pci_driver *drv) {
+static int __no_cfi pci_bus_match(struct device *dev, struct device_driver *drv) {
+  struct pci_dev *pci_dev = to_pci_dev(dev);
+  struct pci_driver *pci_drv = to_pci_driver(drv);
   const struct pci_device_id *id;
 
-  id = pci_match_device(drv, dev);
-  if (id) {
-    if (drv->probe(dev, id) >= 0) {
-      dev->driver = drv;
-      return 1;
-    }
-  }
+  id = pci_match_device(pci_drv, pci_dev);
+  if (id)
+    return 1;
   return 0;
 }
 
-static int subsys_register_driver(struct pci_driver *driver) {
-  list_add_tail(&driver->node, &pci_drivers);
+static int __no_cfi pci_device_probe(struct device *dev) {
+  struct pci_dev *pci_dev = to_pci_dev(dev);
+  struct pci_driver *pci_drv = to_pci_driver(dev->driver);
+  const struct pci_device_id *id;
 
-  struct pci_dev *dev;
-  list_for_each_entry(dev, &pci_devices, global_list) {
-    if (!dev->driver) {
-      pci_bus_match(dev, driver);
-    }
+  id = pci_match_device(pci_drv, pci_dev);
+  if (id) {
+    return pci_drv->probe(pci_dev, id);
   }
+  return -ENODEV;
+}
 
+static void __no_cfi pci_device_remove(struct device *dev) {
+  struct pci_dev *pci_dev = to_pci_dev(dev);
+  struct pci_driver *pci_drv = to_pci_driver(dev->driver);
+
+  if (pci_drv->remove)
+    pci_drv->remove(pci_dev);
+}
+
+static void pci_device_shutdown(struct device *dev) {
+  struct pci_dev *pci_dev = to_pci_dev(dev);
+  uint16_t cmd = pci_read_config16(pci_dev, PCI_COMMAND);
+  cmd &= ~(PCI_COMMAND_IO | PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER);
+  pci_write_config16(pci_dev, PCI_COMMAND, cmd);
+}
+
+static int pci_device_suspend(struct device *dev) {
+  struct pci_dev *pci_dev = to_pci_dev(dev);
+  uint16_t cmd = pci_read_config16(pci_dev, PCI_COMMAND);
+  cmd &= ~(PCI_COMMAND_IO | PCI_COMMAND_MEMORY);
+  pci_write_config16(pci_dev, PCI_COMMAND, cmd);
   return 0;
+}
+
+static int pci_device_resume(struct device *dev) {
+  struct pci_dev *pci_dev = to_pci_dev(dev);
+  uint16_t cmd = pci_read_config16(pci_dev, PCI_COMMAND);
+  cmd |= (PCI_COMMAND_IO | PCI_COMMAND_MEMORY);
+  pci_write_config16(pci_dev, PCI_COMMAND, cmd);
+  return 0;
+}
+
+struct bus_type pci_bus_type = {
+  .name = "pci",
+  .match = pci_bus_match,
+  .probe = pci_device_probe,
+  .remove = pci_device_remove,
+};
+
+static int subsys_register_driver(struct pci_driver *driver) {
+  driver->driver.bus = &pci_bus_type;
+  return driver_register(&driver->driver);
 }
 
 static void subsys_unregister_driver(struct pci_driver *driver) {
-  struct pci_dev *dev;
-  list_for_each_entry(dev, &pci_devices, global_list) {
-    if (dev->driver == driver) {
-      if (driver->remove)
-        driver->remove(dev);
-      dev->driver = NULL;
-    }
-  }
-  list_del(&driver->node);
+  driver_unregister(&driver->driver);
+}
+
+static void pci_dev_release(struct device *dev) {
+  struct pci_dev *pci_dev = to_pci_dev(dev);
+  kfree(pci_dev);
 }
 
 static void pci_scan_device(struct pci_bus *bus, uint8_t devfn) {
@@ -88,11 +128,10 @@ static void pci_scan_device(struct pci_bus *bus, uint8_t devfn) {
   if ((id & 0xFFFF) == 0xFFFF || (id & 0xFFFF) == 0x0000)
     return;
 
-  struct pci_dev *dev = kmalloc(sizeof(struct pci_dev));
+  struct pci_dev *dev = kzalloc(sizeof(struct pci_dev));
   if (!dev) return;
 
-  memset(dev, 0, sizeof(*dev));
-  dev->bus = bus;
+  dev->pbus = bus;
   dev->devfn = devfn;
   dev->handle = handle;
   dev->vendor = id & 0xFFFF;
@@ -118,38 +157,52 @@ static void pci_scan_device(struct pci_bus *bus, uint8_t devfn) {
 
       if (size_val != 0 && size_val != 0xFFFFFFFF) {
         if (bar_val & 1) {
-          // I/O
           dev->bar_sizes[i] = ~(size_val & 0xFFFFFFFC) + 1;
         } else {
-          // Memory
           dev->bar_sizes[i] = ~(size_val & 0xFFFFFFF0) + 1;
         }
       }
     }
   }
 
-  list_add_tail(&dev->bus_list, &bus->devices);
-  list_add_tail(&dev->global_list, &pci_devices);
+  device_initialize(&dev->dev);
+  INIT_LIST_HEAD(&dev->bus_list);
+  dev->dev.bus = &pci_bus_type;
+  dev->dev.release = pci_dev_release;
 
-  printk(KERN_DEBUG PCI_CLASS "Found device %02x:%02x.%d [%04x:%04x] class %06x\n",
-         bus->number, PCI_SLOT(devfn), PCI_FUNC(devfn), dev->vendor, dev->device, dev->class);
-
-  // Check for drivers
-  struct pci_driver *drv;
-  list_for_each_entry(drv, &pci_drivers, node) {
-    if (pci_bus_match(dev, drv))
-      break;
+  /* Setup IOMMU if present - the IOMMU layer will attach dma_ops */
+  iommu_probe_device(&dev->dev);
+  
+  if (!dev->dev.dma_ops) {
+    dev->dev.dma_ops = (struct dma_map_ops *)&direct_dma_ops;
   }
+  
+  const char *pci_prefix = STRINGIFY(CONFIG_PCI_NAME_PREFIX);
+  if (pci_prefix[0] != '\0') {
+    device_set_name(&dev->dev, "%s_%04x:%02x:%02x.%d", pci_prefix, bus->segment, bus->number, PCI_SLOT(devfn), PCI_FUNC(devfn));
+  } else {
+    device_set_name(&dev->dev, "%04x:%02x:%02x.%d", bus->segment, bus->number, PCI_SLOT(devfn), PCI_FUNC(devfn));
+  }
+
+  if (device_add(&dev->dev) != 0) {
+    kfree(dev);
+    return;
+  }
+
+  list_add_tail(&dev->bus_list, &bus->devices);
+
+  printk(KERN_DEBUG PCI_CLASS "Found device %s [%04x:%04x] class %06x\n",
+         dev->dev.name, dev->vendor, dev->device, dev->class);
 
   // If it's a bridge, scan secondary bus
   if ((dev->class >> 8) == 0x0604) {
     uint8_t secondary_bus_num = pci_read(&handle, 0x19, 8);
-    struct pci_bus *child_bus = kmalloc(sizeof(struct pci_bus));
+    struct pci_bus *child_bus = kzalloc(sizeof(struct pci_bus));
     if (child_bus) {
-      memset(child_bus, 0, sizeof(*child_bus));
       child_bus->number = secondary_bus_num;
       child_bus->segment = bus->segment;
       child_bus->parent = bus;
+      child_bus->bus_type = pci_bus_type;
       INIT_LIST_HEAD(&child_bus->devices);
       INIT_LIST_HEAD(&child_bus->children);
       list_add_tail(&child_bus->node, &bus->children);
@@ -158,7 +211,7 @@ static void pci_scan_device(struct pci_bus *bus, uint8_t devfn) {
   }
 }
 
-static void subsys_enumerate_bus(struct pci_bus *bus) {
+static void __no_cfi subsys_enumerate_bus(struct pci_bus *bus) {
   for (uint8_t slot = 0; slot < 32; slot++) {
     pci_handle_t handle = {bus->segment, bus->number, slot, 0};
     uint16_t vendor = pci_read(&handle, PCI_VENDOR_ID, 16);
@@ -197,6 +250,9 @@ static pci_subsystem_ops_t subsys_ops = {
 static int pci_mod_init(void) {
   printk(KERN_INFO PCI_CLASS "Initializing PCI Subsystem\n");
 
+  // 0. Register Bus
+  bus_register(&pci_bus_type);
+
   // 1. Register Subsystem Interface
   pci_register_subsystem(&subsys_ops);
 
@@ -205,12 +261,12 @@ static int pci_mod_init(void) {
   pci_backend_ecam_init();
 
   // 3. Create root bus 0 and scan
-  struct pci_bus *root_bus = kmalloc(sizeof(struct pci_bus));
-  if (!root_bus) return -1;
+  struct pci_bus *root_bus = kzalloc(sizeof(struct pci_bus));
+  if (!root_bus) return -ENOMEM;
 
-  memset(root_bus, 0, sizeof(*root_bus));
   root_bus->number = 0;
   root_bus->segment = 0;
+  root_bus->bus_type = pci_bus_type;
   INIT_LIST_HEAD(&root_bus->devices);
   INIT_LIST_HEAD(&root_bus->children);
   list_add_tail(&root_bus->node, &pci_root_buses);
@@ -228,5 +284,5 @@ FKX_MODULE_DEFINE(
   0,
   FKX_DRIVER_CLASS,
   pci_mod_init,
-  NULL
+  nullptr
 );

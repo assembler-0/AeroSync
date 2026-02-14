@@ -17,6 +17,25 @@ endif()
 
 set(AEROSYNC_KCONFIG "${CMAKE_SOURCE_DIR}/Kconfig" CACHE FILEPATH "Top-level Kconfig file")
 set(AEROSYNC_CONFIG "${CMAKE_SOURCE_DIR}/.config" CACHE FILEPATH "Kernel configuration file")
+set(AEROSYNC_DEFCONFIG "" CACHE STRING "Initial Kconfig configuration to use")
+set(AEROSYNC_FORCE_DEFCONFIG OFF CACHE BOOL "Force re-application of defconfig, overwriting manual changes")
+
+if(AEROSYNC_DEFCONFIG)
+    set(_defconfig_path "${CMAKE_SOURCE_DIR}/kconfig/configs/${AEROSYNC_DEFCONFIG}")
+    if(EXISTS "${_defconfig_path}")
+        set(_last_defconfig "" CACHE INTERNAL "Last applied Kconfig defconfig")
+
+        # Apply defconfig ONLY if .config doesn't exist OR if AEROSYNC_FORCE_DEFCONFIG is ON
+        if(NOT EXISTS "${AEROSYNC_CONFIG}" OR AEROSYNC_FORCE_DEFCONFIG)
+            message(STATUS "Applying Kconfig defconfig: ${AEROSYNC_DEFCONFIG}")
+            configure_file("${_defconfig_path}" "${AEROSYNC_CONFIG}" COPYONLY)
+            set(_last_defconfig "${AEROSYNC_DEFCONFIG}" CACHE INTERNAL "Last applied Kconfig defconfig" FORCE)
+            set(AEROSYNC_FORCE_DEFCONFIG OFF CACHE BOOL "Force re-application of defconfig, overwriting manual changes" FORCE)
+        endif()
+    else()
+        message(WARNING "Kconfig defconfig '${AEROSYNC_DEFCONFIG}' not found at ${_defconfig_path}")
+    endif()
+endif()
 
 file(GLOB_RECURSE AEROSYNC_KCONFIG_TREE CONFIGURE_DEPENDS
         "${CMAKE_SOURCE_DIR}/**/Kconfig")
@@ -48,6 +67,11 @@ if(EXISTS ${AEROSYNC_KCONFIG_CACHE})
 endif()
 
 set(_kconfig_env "KCONFIG_CONFIG=${AEROSYNC_CONFIG}")
+
+if(DEFINED AEROSYNC_KCONFIG_DEFINES)
+    add_compile_definitions(${AEROSYNC_KCONFIG_DEFINES})
+endif()
+
 add_custom_target(menuconfig
         COMMAND ${CMAKE_COMMAND} -E env ${_kconfig_env}
         ${Python3_EXECUTABLE} -m menuconfig ${AEROSYNC_KCONFIG}

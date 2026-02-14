@@ -21,13 +21,81 @@ config MM_MGLRU
 
 endchoice
 
+menu "MGLRU Tuning"
+    depends on MM_MGLRU
+
+config MM_MGLRU_GENERATIONS
+    int "Number of LRU Generations"
+    default 4
+    range 2 8
+    help
+      Number of age generations to track. More generations provide
+      finer-grained aging but consume more memory for tracking.
+
+config MM_MGLRU_BLOOM_FILTER
+    bool "Bloom Filter for Page Table Scanning"
+    default y
+    help
+      Use bloom filters to skip cold page tables during aging scans.
+      Reduces CPU overhead significantly for large address spaces at
+      the cost of minor additional memory usage (~64KB per node per gen).
+
+endmenu
+
+config MM_WORKINGSET
+    bool "Workingset Refault Detection"
+    default y
+    depends on MM_MGLRU || MM_LRU
+    help
+      Track recently evicted pages using shadow entries. When a page
+      refaults within a short time window, it is immediately activated
+      to prevent thrashing. Essential for workload-aware reclamation.
+
+config MM_WORKINGSET_THRESHOLD
+    int "Workingset Refault Distance"
+    default 2
+    range 1 8
+    depends on MM_WORKINGSET
+    help
+      Number of LRU generations within which a refault triggers
+      immediate activation. Lower values are more aggressive.
+
 config MM_ZMM
     bool "Anonymous Page Compression (ZMM)"
     default y
     help
       Enables a compressed in-memory pool for anonymous pages. This allows
       the kernel to "reclaim" anonymous memory without a swap device by
-      compressing cold pages.
+      compressing cold pages. Fast and efficient for most workloads.
+
+config MM_SWAP
+    bool "Swap Device Support"
+    default y
+    help
+      Enable swapping anonymous pages to block devices. Pages that don't
+      compress well with ZMM fall back to swap. Essential for systems
+      without sufficient RAM for peak workloads.
+
+menu "swap tuning"
+    depends on MM_SWAP
+
+config MM_SWAP_SLOTS_CACHE
+    bool "Per-CPU Swap Slot Caching"
+    default y
+    help
+      Cache free swap slots per-CPU to reduce lock contention during
+      heavy swapping workloads.
+
+config MM_SWAP_READAHEAD
+    int "Swap Readahead Cluster Size"
+    default 8
+    range 1 64
+    help
+      Number of contiguous swap pages to read ahead on fault. Higher
+      values improve sequential access patterns but waste bandwidth
+      for random access.
+
+endmenu
 
 config MM_SPF
     bool "Speculative Page Faults (SPF)"
@@ -35,7 +103,38 @@ config MM_SPF
     help
       Allows handling page faults without holding the mmap_lock by using
       VMA sequence counters. Dramatically improves scalability on multi-core
-      systems.
+      systems for fault-heavy workloads.
+
+config MM_SPF_STATS
+    bool "Speculative Fault Statistics"
+    depends on MM_SPF
+    default n
+    help
+      Track success/failure rates of speculative faults. Useful for tuning
+      but adds minor overhead to the fault path.
+
+config MM_SPECULATIVE_ALLOC
+    bool "Speculative Page Allocation"
+    depends on MM_SPF
+    default y
+    help
+      Allow allocating and inserting new pages during a speculative fault
+      if the VMA lock is held. Further reduces mmap_lock contention.
+
+config MM_COMPACTION
+    bool "Memory Compaction"
+    default y
+    help
+      Enables background memory defragmentation (kcompactd). Essential for
+      Transparent Huge Page (THP) performance in long-running systems.
+
+config MM_NUMA_BALANCING
+    bool "Automatic NUMA Balancing"
+    default y
+    depends on MAX_NUMNODES > 1
+    help
+      Enables automatic migration of pages to the NUMA node where the
+      accessing thread is running, reducing memory latency.
 
 config MM_HARDENING
     bool "Enable MM poisoning and redzones"
@@ -43,9 +142,101 @@ config MM_HARDENING
     help
       Enables additional memory manager hardening features such as page
       poisoning and redzone checks. Highly affects performance, use only for
-      testing purposes
+      testing purposes.
 
-menu "SLUB Allocator Tuning"
+menu "shadow chain tuning"
+
+config MM_SHADOW_COLLAPSE
+    bool "Aggressive Shadow Chain Collapsing"
+    default y
+    help
+      Enable aggressive collapsing of shadow object chains during page faults.
+      Reduces memory overhead and improves lookup performance for deeply
+      nested COW hierarchies (common after many fork() calls).
+
+config MM_SHADOW_DEPTH_LIMIT
+    int "Maximum Shadow Chain Depth"
+    default 8
+    range 2 32
+    depends on MM_SHADOW_COLLAPSE
+    help
+      Maximum depth of shadow chains before forcing synchronous collapse.
+      Lower values reduce lookup latency but may increase collapse overhead.
+
+config MM_SHADOW_ASYNC_COLLAPSE
+    bool "Asynchronous Shadow Chain Collapse"
+    default y
+    depends on MM_SHADOW_COLLAPSE
+    help
+      Collapse deep shadow chains in a background workqueue instead of
+      inline during page faults. Reduces fault latency at the cost of
+      slightly delayed memory reclamation.
+
+config MM_SHADOW_BYPASS
+    bool "Enable Shadow Object Bypass Optimization"
+    default y
+    depends on MM_SHADOW_COLLAPSE
+    help
+      Skip empty shadow objects in the lookup chain. Improves performance
+      for workloads with high fork() frequency but low memory modification.
+
+endmenu
+
+menu "ubc & readahead tuning"
+
+config MM_UBC_CLUSTERING
+    bool "Enable Clustered Writeback (Dirty Clustering)"
+    default y
+    help
+      Group contiguous dirty pages into a single write operation.
+      Significantly improves I/O throughput for sequential writes.
+
+config MM_READAHEAD
+    bool "Adaptive Page Cache Readahead"
+    default y
+    help
+      Enable proactive readahead of file data into the page cache.
+      Significantly improves sequential read performance.
+
+config MM_READAHEAD_PAGES
+    int "Max Readahead Window Size (Pages)"
+    depends on MM_READAHEAD
+    default 32
+    range 1 512
+    help
+      Maximum number of pages to read ahead on sequential access.
+
+config MM_READAHEAD_THRASH_PROTECTION
+    bool "Readahead Thrash Protection"
+    default y
+    depends on MM_READAHEAD
+    help
+      Shrink readahead window dynamically if the kernel detects that
+      readahead pages are being evicted before use (thrashing).
+
+endmenu
+
+menu "fault tuning"
+
+config MM_VMA_LOCKING
+    bool "Per-VMA Locking"
+    default y
+    help
+      Use fine-grained locking per VMA instead of a global address space
+      lock during page faults. Enables high concurrency for multi-threaded
+      workloads on large systems.
+
+config MM_RESDOMAIN_DIRECT_RECLAIM
+    bool "Direct Reclaim on ResDomain Exhaustion"
+    default y
+    depends on RESDOMAINS
+    help
+      Synchronously attempt to reclaim memory when a resource domain's
+      hard limit is reached, before failing an allocation.
+
+endmenu
+
+menu "slub tuning"
 
 config SLAB_MAG_SIZE
     int "Per-CPU Magazine Size"
@@ -75,7 +266,7 @@ config SLAB_MAX_ORDER
 
 endmenu
 
-menu "VMA Tuning"
+menu "vma tuning"
 
 config MM_VMA_CACHE_SIZE
     int "Per-Task VMA Cache Size"
@@ -84,9 +275,36 @@ config MM_VMA_CACHE_SIZE
     help
       Number of recently accessed VMAs to cache per thread for O(1) lookup.
 
+config MM_POPULATE_PREFAULT
+    bool "Enable VMA prefaulting for mm_populate"
+    default y
+    help
+      Prefault pages during mm_populate_user_range to avoid later page faults.
+      This is essential for real-time workloads and reduces latency spikes.
+      Disable only for memory-constrained embedded systems.
+
+config MM_POPULATE_BATCH_SIZE
+    int "Prefault batch size (pages)"
+    default 16
+    range 1 64
+    depends on MM_POPULATE_PREFAULT
+    help
+      Number of pages to prefault in a single batch before releasing locks.
+      Higher values improve throughput but increase lock hold time.
+      Recommended: 16 for servers, 8 for real-time systems.
+
+config MM_POPULATE_FAULT_AROUND
+    bool "Enable fault-around for mm_populate"
+    default y
+    depends on MM_POPULATE_PREFAULT
+    help
+      When prefaulting a page, also map neighboring pages if they exist
+      in the vm_object. Improves spatial locality and reduces future faults.
+      Based on Linux's filemap_map_pages.
+
 endmenu
 
-menu "Writeback Tuning"
+menu "writeback tuning"
 
 config DIRTY_THRESHOLD_WAKEUP
     int "Dirty Page Wakeup Threshold (Pages)"
@@ -100,9 +318,49 @@ config DIRTY_THRESHOLD_THROTTLE
     help
       Number of dirty pages at which processes are throttled during writes.
 
+config MM_READAHEAD
+    bool "Adaptive Page Cache Readahead"
+    default y
+    help
+      Enable proactive readahead of file data into the page cache.
+      Significantly improves sequential read performance.
+
+config MM_READAHEAD_PAGES
+    int "Max Readahead Window Size (Pages)"
+    depends on MM_READAHEAD
+    default 32
+    range 1 512
+    help
+      Maximum number of pages to read ahead on sequential access.
+
+config MM_READAHEAD_THRASH_PROTECTION
+    bool "Readahead Thrash Protection"
+    default y
+    depends on MM_READAHEAD
+    help
+      Shrink readahead window dynamically if the kernel detects that
+      readahead pages are being evicted before use (thrashing).
+
+config MM_DIRTY_THROTTLING
+    bool "Per-Task Dirty Page Throttling"
+    default y
+    help
+      Enable proportional throttling for processes that dirty memory faster
+      than it can be written back. Prevents I/O starvation and memory
+      exhaustion.
+
+config MM_THROTTLE_MAX_PAUSE_MS
+    int "Maximum Throttling Pause (ms)"
+    depends on MM_DIRTY_THROTTLING
+    default 100
+    range 10 1000
+    help
+      Maximum duration a process can be paused in balance_dirty_pages.
+
 endmenu
 
-menu "ZMM Tuning"
+menu "zmm tuning"
+    depends on MM_ZMM
 
 config ZMM_COMPRESSION_THRESHOLD
     int "Minimum Compression Percentage"
@@ -110,12 +368,12 @@ config ZMM_COMPRESSION_THRESHOLD
     range 10 95
     help
       The minimum compression ratio required to store a page in ZMM.
-      Expressed as percentage of original size.
+      Expressed as percentage of original size. Pages that don't compress
+      well enough will fall back to swap (if enabled).
 
 choice
     prompt "Compression Algorithm"
     default ZMM_ALGO_RLE
-    depends on MM_ZMM
 
 config ZMM_ALGO_RLE
     bool "Run-Length Encoding (RLE)"
@@ -138,18 +396,143 @@ endchoice
 
 endmenu
 
-menu "Kernel Memory Layout"
+menu "memory layout"
 
 config VMALLOC_SIZE_GB
-    int "Vmalloc Region Size (GB)"
-    default 64
+    int "vmalloc Region Size (GB)"
+    default 128
     range 1 512
     help
       Size of the virtual address range reserved for vmalloc and ioremap.
 
 endmenu
 
-menu "NUMA and Zones"
+menu "vmalloc Tuning"
+
+config VMALLOC_MAPLE_TREE
+    bool "Use Maple Tree for vmalloc address management"
+    default y
+    help
+      Replaces the augmented RB-tree with a Maple Tree for O(1) gap
+      finding in vmalloc address allocation. The Maple Tree provides
+      significantly better scalability under contention and enables
+      RCU-safe lockless lookups. Highly recommended for production.
+
+config VMALLOC_LOCKLESS_FAST_PATH
+    bool "Enable lock-free vmalloc fast path"
+    default y
+    depends on VMALLOC_MAPLE_TREE
+    help
+      Uses per-CPU caching and trylock-based optimistic allocation
+      to avoid global lock contention on the hot path. Allocations
+      that hit the per-CPU cache complete without taking any locks.
+
+config VMALLOC_PCP_BIN_COUNT
+    int "Per-CPU VA Cache Size Classes"
+    default 8
+    range 4 16
+    depends on VMALLOC_LOCKLESS_FAST_PATH
+    help
+      Number of size classes in the per-CPU virtual address cache.
+      Each class handles a power-of-two page count (1, 2, 4, 8, ...).
+      More classes reduce fragmentation but increase memory usage.
+      Default of 8 covers allocations from 4KB to 512KB.
+
+config VMALLOC_PCP_BIN_THRESHOLD
+    int "Per-CPU VA Cache Threshold per Bin"
+    default 64
+    range 16 256
+    depends on VMALLOC_LOCKLESS_FAST_PATH
+    help
+      Maximum number of cached virtual address ranges per size class
+      per CPU. Higher values improve cache hit rate but consume more
+      virtual address space in caches.
+
+config VMALLOC_PCP_BATCH_SIZE
+    int "Per-CPU VA Cache Batch Refill Size"
+    default 16
+    range 4 64
+    depends on VMALLOC_LOCKLESS_FAST_PATH
+    help
+      Number of virtual address ranges to allocate at once when
+      refilling an empty per-CPU cache bin. Batching amortizes the
+      cost of acquiring the global lock.
+
+config VMALLOC_LARGE_BLOCKS
+    bool "Use larger vmap_block size (1MB)"
+    default y
+    help
+      Increases vmap_block size from 256KB (64 pages) to 1MB (256 pages).
+      This improves density and reduces metadata overhead for workloads
+      with many small vmalloc allocations (e.g., kernel module loading,
+      BPF programs, network buffers).
+
+config VMALLOC_BLOCK_CLASSES
+    bool "Multiple vmap_block size classes"
+    default y
+    depends on VMALLOC_LARGE_BLOCKS
+    help
+      Instead of one-size-fits-all vmap_blocks, use multiple block
+      classes optimized for different allocation sizes. This reduces
+      internal fragmentation and improves utilization.
+
+config VMALLOC_NUMA_PARTITION
+    bool "Partition vmalloc space by NUMA node"
+    default y
+    depends on MAX_NUMNODES > 1
+    help
+      Divides the vmalloc address space into per-node regions to
+      eliminate cross-node allocation conflicts. Each node gets
+      VMALLOC_SIZE / MAX_NUMNODES of address space. Allocations
+      prefer the local node's region, falling back to remote nodes
+      only when local space is exhausted.
+
+menu "lazy tlb flushing tuning"
+
+config VMALLOC_LAZY_FLUSH
+    bool "Enable lazy TLB flush for vfree"
+    default y
+    help
+      Defers TLB shootdown for freed vmalloc regions until a threshold
+      is reached or a timeout expires. This batches multiple frees into
+      a single IPI, dramatically reducing shootdown overhead. Safe for
+      all workloads as freed addresses are not reused until flushed.
+
+config VMALLOC_LAZY_THRESHOLD_MB
+    int "Lazy flush threshold (MB)"
+    default 32
+    range 1 512
+    depends on VMALLOC_LAZY_FLUSH
+    help
+      Amount of freed virtual address space (in megabytes) to accumulate
+      before triggering a batched TLB shootdown. Higher values reduce
+      IPI frequency but delay address space reclamation.
+
+config VMALLOC_LAZY_TIMEOUT_MS
+    int "Lazy flush timeout (ms)"
+    default 100
+    range 10 1000
+    depends on VMALLOC_LAZY_FLUSH
+    help
+      Maximum time in milliseconds to defer TLB shootdown before forcing
+      a flush, even if the threshold hasn't been reached. Ensures timely
+      reclamation under light load.
+
+config VMALLOC_UNIFIED_FLUSH
+    bool "Unified flush range optimization"
+    default y
+    depends on VMALLOC_LAZY_FLUSH
+    help
+      When flushing multiple pending regions, compute a single unified
+      address range and issue one TLB shootdown instead of per-region
+      flushes. Reduces IPI count at the cost of potentially flushing
+      some still-valid entries.
+
+endmenu
+
+endmenu
+
+menu "numa and zones"
 
 config MAX_NUMNODES
     int "Maximum NUMA Nodes"
@@ -157,6 +540,456 @@ config MAX_NUMNODES
     range 1 64
     help
       Maximum number of physical NUMA nodes supported by the memory manager.
+
+config MM_PMM_NUMA_RECLAIM_MODE
+    int "NUMA Zone Reclaim Mode"
+    default 1
+    range 0 2
+    depends on MAX_NUMNODES > 1
+    help
+      Control NUMA zone reclaim behavior:
+      0 = Disabled (always allocate from remote nodes)
+      1 = Reclaim local zone before remote allocation
+      2 = Aggressive local reclaim (may cause stalls)
+      Recommended: 1 for most workloads.
+
+config MM_PMM_NUMA_INTERLEAVE_THRESHOLD
+    int "NUMA Interleave Threshold (KB)"
+    default 2048
+    range 64 16384
+    depends on MAX_NUMNODES > 1
+    help
+      Allocations larger than this threshold are interleaved across
+      NUMA nodes to balance memory bandwidth. Recommended: 2MB for
+      most workloads, 4MB for HPC applications.
+
+config MM_PMM_NUMA_CROSS_NODE_PENALTY
+    int "Cross-Node Allocation Penalty (%)"
+    default 20
+    range 0 100
+    depends on MAX_NUMNODES > 1
+    help
+      Percentage penalty applied to cross-node allocations when
+      deciding between local reclaim and remote allocation.
+      Higher values prefer local reclaim. 0 = no penalty.
+
+endmenu
+
+menu "pmm tuning"
+
+config MM_PMM_ADVANCED
+    bool "Advanced PMM Features"
+    default y
+    help
+      Enables advanced Physical Memory Manager features like watermark boosting
+      and fair zone allocation, inspired by modern enterprise kernels.
+
+config MM_PMM_PAGEBLOCK_ORDER
+    int "Pageblock Order (2^N pages per block)"
+    default 9
+    range 6 11
+    depends on MM_PMM_ADVANCED
+    help
+      Defines the size of pageblocks for migration type tracking.
+      Order 9 = 512 pages = 2MB (matches THP size on x86_64).
+      Larger blocks reduce metadata but increase fragmentation.
+
+config MM_PMM_WATERMARK_BOOST
+    bool "Watermark Boosting"
+    default y
+    depends on MM_PMM_ADVANCED
+    help
+      Proactively increase watermarks when fragmentation is detected. This
+      triggers kswapd earlier to prevent allocation failures for large
+      contiguous blocks.
+
+config MM_PMM_WATERMARK_BOOST_DECAY
+    bool "Watermark Boost Decay"
+    default y
+    depends on MM_PMM_WATERMARK_BOOST
+    help
+      Gradually reduce watermark boost over time when memory pressure subsides.
+      Prevents permanently elevated watermarks after transient fragmentation.
+
+config MM_PMM_FAIR_ALLOC
+    bool "Fair Zone Allocation Policy"
+    default y
+    depends on MM_PMM_ADVANCED
+    help
+      Ensures that allocations are spread fairly across all available zones
+      in a node, preventing premature depletion of specific zones (like
+      ZONE_NORMAL) when others have plenty of memory.
+
+config MM_PMM_HIGHATOMIC
+    bool "High-Priority Atomic Reserve"
+    default y
+    depends on MM_PMM_ADVANCED
+    help
+      Reserve a small pool of pages for emergency atomic allocations that
+      cannot fail (e.g., interrupt handlers, network RX). Prevents deadlocks
+      under extreme memory pressure.
+
+config MM_PMM_HIGHATOMIC_RESERVE_KB
+    int "High Atomic Reserve Size (KB per zone)"
+    default 256
+    range 64 4096
+    depends on MM_PMM_HIGHATOMIC
+    help
+      Amount of memory to reserve per zone for atomic allocations.
+      Larger values improve reliability but reduce available memory.
+
+config MM_PMM_CMA
+    bool "Contiguous Memory Allocator (CMA)"
+    default y
+    depends on MM_PMM_ADVANCED
+    help
+      Enable CMA for large contiguous DMA allocations. Pages in CMA regions
+      can be used for movable allocations when not needed by devices.
+      Essential for graphics and multimedia workloads.
+
+config MM_PMM_PCP_DYNAMIC
+    bool "Dynamic PCP Tuning"
+    default y
+    depends on MM_PMM_ADVANCED
+    help
+      Automatically adjust per-CPU page cache batch sizes based on allocation
+      patterns and lock contention. Improves performance under varying load.
+
+config MM_PMM_PCP_HOT_COLD
+    bool "PCP Hot/Cold Page Lists"
+    default y
+    depends on MM_PMM_ADVANCED
+    help
+      Separate recently freed (hot) pages from cold pages in PCP lists.
+      Allocating hot pages improves CPU cache hit rates significantly.
+
+config MM_PMM_PCP_EXTENDED_ORDERS
+    bool "Extended PCP Order Support"
+    default y
+    depends on MM_PMM_ADVANCED
+    help
+      Extend per-CPU page cache to support higher orders (up to 2MB).
+      This dramatically reduces lock contention for medium-sized allocations
+      at the cost of slightly higher per-CPU memory overhead.
+
+config MM_PMM_PCP_MAX_ORDER
+    int "Maximum PCP Order"
+    default 9
+    range 4 10
+    depends on MM_PMM_PCP_EXTENDED_ORDERS
+    help
+      Maximum buddy order cached in per-CPU lists. Order 9 = 2MB.
+      Higher values reduce lock contention but increase memory overhead.
+      Recommended: 9 for servers, 6 for embedded systems.
+
+config MM_PMM_PCP_CACHE_COLORING
+    bool "PCP Cache Coloring"
+    default y
+    depends on MM_PMM_PCP_HOT_COLD
+    help
+      Distribute pages across CPU cache lines to reduce false sharing.
+      Improves performance on systems with large L3 caches (>8MB).
+      Minimal overhead, recommended for all systems.
+
+config MM_PMM_DIRTY_TRACKING
+    bool "Per-Zone Dirty Page Tracking"
+    default y
+    depends on MM_PMM_ADVANCED
+    help
+      Track dirty pages per zone to throttle allocations when writeback
+      is overwhelmed. Prevents memory exhaustion from dirty page buildup.
+
+config MM_PMM_FRAGMENTATION_INDEX
+    bool "Fragmentation Index Calculation"
+    default y
+    depends on MM_PMM_ADVANCED
+    help
+      Calculate and track fragmentation indices per zone. Used to trigger
+      proactive compaction and guide allocation decisions.
+
+config MM_PMM_ASYNC_COMPACTION
+    bool "Asynchronous Compaction"
+    default y
+    depends on MM_COMPACTION && MM_PMM_ADVANCED
+    help
+      Trigger memory compaction asynchronously when fragmentation is detected,
+      rather than blocking allocations. Reduces allocation latency.
+
+config MM_PMM_STATS
+    bool "Extended PMM Statistics"
+    default n
+    help
+      Maintains detailed statistics about page allocations, fallbacks, and
+      reclaim efficiency. Useful for profiling but adds minor overhead.
+
+config MM_PMM_STATS_LATENCY
+    bool "Allocation Latency Histograms"
+    default n
+    depends on MM_PMM_STATS
+    help
+      Track allocation latency distributions per order. Useful for identifying
+      performance bottlenecks but adds measurable overhead.
+
+config MM_PMM_GUARD_PAGES
+    bool "Buddy Allocator Guard Pages"
+    default n
+    help
+      Insert guard pages around high-order allocations to detect buffer
+      overruns. Significantly impacts performance - use only for debugging.
+
+config MM_PMM_ALLOCATION_TRACING
+    bool "Allocation Stack Trace Recording"
+    default n
+    depends on MM_PMM_STATS
+    help
+      Record stack traces for all allocations. Enables leak detection and
+      allocation profiling. Very high overhead - debug builds only.
+
+config MM_PMM_PAGE_OWNER
+    bool "Page Owner Tracking"
+    default n
+    help
+      Track allocation stack traces for every page. Enables detailed
+      memory leak detection and allocation profiling. Adds ~1% RAM overhead.
+      Recommended for development builds only.
+
+config MM_PMM_MIGRATION_TRACKING
+    bool "Migration Type Tracking"
+    default y
+    depends on MM_PMM_ADVANCED
+    help
+      Track migration type conversions and pageblock stealing events.
+      Helps identify fragmentation sources. Minimal overhead.
+
+config MM_PMM_STEAL_OPTIMIZATION
+    bool "Optimized Pageblock Stealing"
+    default y
+    depends on MM_PMM_MIGRATION_TRACKING
+    help
+      Use cost-based analysis when stealing pageblocks from other
+      migration types. Prefers stealing from largest blocks to
+      minimize fragmentation. Highly recommended.
+
+config MM_PMM_WATERMARK_SCALE_FACTOR
+    int "Watermark Scale Factor (per 1000 pages)"
+    default 10
+    range 1 100
+    depends on MM_PMM_ADVANCED
+    help
+      Scale watermarks based on zone size. Higher values trigger
+      reclaim earlier but waste more memory. Lower values improve
+      memory utilization but increase allocation failure risk.
+
+config MM_PMM_KSWAPD_MULTILEVEL
+    bool "Multi-Level kswapd Wakeup"
+    default y
+    depends on MM_PMM_ADVANCED
+    help
+      Wake kswapd at different priority levels based on memory pressure.
+      Enables background (low), normal (high), and emergency (critical)
+      reclaim modes. Improves responsiveness under pressure.
+
+config MM_PMM_STALL_TRACKING
+    bool "Allocation Stall Tracking"
+    default y
+    depends on MM_PMM_STATS
+    help
+      Track allocation stalls (time spent waiting for memory).
+      Useful for identifying memory pressure bottlenecks.
+      Minimal overhead.
+
+config MM_PMM_COMPACTION_DEFER
+    bool "Compaction Deferral"
+    default y
+    depends on MM_COMPACTION
+    help
+      Defer compaction attempts after repeated failures to avoid
+      wasting CPU cycles. Compaction is retried after sufficient
+      free memory becomes available.
+
+config MM_PMM_COMPACTION_DEFER_LIMIT
+    int "Compaction Defer Limit"
+    default 64
+    range 4 256
+    depends on MM_PMM_COMPACTION_DEFER
+    help
+      Number of failed compaction attempts before deferring.
+      Higher values retry more aggressively but waste more CPU.
+
+config MM_PMM_COMPACTION_EFFICIENCY_THRESHOLD
+    int "Compaction Efficiency Threshold (%)"
+    default 50
+    range 10 90
+    depends on MM_COMPACTION
+    help
+      Minimum efficiency (pages migrated / pages scanned) required
+      to continue compaction. Lower values are more aggressive.
+      Recommended: 50% for balanced performance.
+
+config MM_PMM_BITMAP_TRACKING
+    bool "Bitmap-Based Free Block Tracking"
+    default y
+    depends on MM_PMM_ADVANCED
+    help
+      Use bitmaps to track which orders have free blocks per migration type.
+      Provides O(1) lookup instead of O(n) list traversal. Reduces cache
+      misses and improves allocation speed by 30-50%. Minimal memory overhead
+      (MAX_ORDER * MIGRATE_TYPES bits per zone = ~48 bytes).
+
+config MM_PMM_DEFERRED_COALESCING
+    bool "Deferred Buddy Coalescing"
+    default y
+    depends on MM_PMM_ADVANCED
+    help
+      Batch multiple page frees before merging buddies. Reduces zone lock
+      contention by 40-60% under heavy allocation/free workloads. Pages are
+      coalesced when batch threshold is reached or during allocation pressure.
+
+config MM_PMM_DEFERRED_BATCH_SIZE
+    int "Deferred Coalescing Batch Size"
+    default 32
+    range 8 128
+    depends on MM_PMM_DEFERRED_COALESCING
+    help
+      Number of pages to batch before triggering coalescing. Higher values
+      reduce lock contention but delay memory availability for high-order
+      allocations. Recommended: 32 for servers, 16 for desktops.
+
+config MM_PMM_PAGEBLOCK_METADATA
+    bool "Per-Pageblock Migration Type Tracking"
+    default y
+    depends on MM_PMM_ADVANCED
+    help
+      Track migration type per pageblock (2MB) instead of per-page.
+      Enables efficient pageblock stealing and reduces fragmentation.
+      Essential for high-order allocation success. Memory overhead:
+      4 bits per 2MB = 0.0002% of RAM.
+
+config MM_PMM_LOCKLESS_FASTPATH
+    bool "Lockless Allocation Fast Path"
+    default y
+    depends on MM_PMM_ADVANCED && MM_PMM_BITMAP_TRACKING
+    help
+      Use RCU-protected reads for zone metadata in allocation fast path.
+      Eliminates lock acquisition for cache-hit PCP allocations. Improves
+      throughput by 2-3x on multi-core systems. Requires bitmap tracking.
+
+config MM_PMM_SPECULATIVE_PREFETCH
+    bool "Speculative Prefetching in Allocator"
+    default y
+    depends on MM_PMM_ADVANCED
+    help
+      Prefetch buddy pages and zone metadata during allocation and coalescing.
+      Reduces cache miss latency by 20-30%. Uses __builtin_prefetch() with
+      no functional side effects. Recommended for all systems.
+
+config MM_PMM_INLINE_HOTPATH
+    bool "Aggressive Inlining of Hot Path Functions"
+    default y
+    help
+      Force inline critical buddy allocator functions. Reduces function call
+      overhead by 10-15% at the cost of slightly larger kernel image (~4KB).
+      Highly recommended for production.
+
+endmenu
+
+menu "dma and iommu"
+
+config DMA_ENGINE
+    bool "DMA Engine Support"
+    default y
+    help
+      Enable Direct Memory Access (DMA) engine support.
+
+config DMA_POOL
+    bool "DMA Pool Allocator"
+    default y
+    depends on DMA_ENGINE
+
+config DMA_POOL_DEBUG
+    bool "DMA Pool Debugging"
+    default n
+    depends on DMA_POOL
+
+config DMA_POOL_STATS
+    bool "DMA Pool Statistics"
+    default y
+    depends on DMA_POOL
+
+config DMA_SG_SUPPORT
+    bool "Scatter-Gather DMA Support"
+    default y
+    depends on DMA_ENGINE
+
+config DMA_SG_COALESCING
+    bool "Scatter-Gather List Coalescing"
+    default y
+    depends on DMA_SG_SUPPORT
+
+config DMA_SG_MAX_SEGMENTS
+    int "Maximum Scatter-Gather Segments"
+    default 128
+    range 32 512
+    depends on DMA_SG_SUPPORT
+
+config IOMMU_SUPPORT
+    bool "IOMMU Support"
+    default y
+    depends on DMA_ENGINE
+    help
+      Enable generic IOMMU abstraction and infrastructure.
+
+config INTEL_IOMMU
+    bool "Intel VT-d IOMMU Support"
+    default y
+    depends on IOMMU_SUPPORT
+    help
+      Enable hardware support for Intel VT-d.
+
+config IOMMU_DEFAULT_PASSTHROUGH
+    bool "IOMMU Passthrough Mode by Default"
+    default n
+    depends on IOMMU_SUPPORT
+
+config IOMMU_LAZY_FLUSH
+    bool "Lazy IOTLB Flushing"
+    default y
+    depends on IOMMU_SUPPORT
+
+config IOMMU_LAZY_FLUSH_THRESHOLD
+    int "Lazy Flush Threshold (pages)"
+    default 256
+    range 32 4096
+    depends on IOMMU_LAZY_FLUSH
+
+config CMA_SIZE_MB
+    int "CMA Default Size (MB)"
+    default 64
+    range 16 512
+    depends on MM_PMM_CMA
+
+config CMA_AREAS
+    int "Maximum CMA Areas"
+    default 7
+    range 1 16
+    depends on MM_PMM_CMA
+
+config CMA_MIGRATION_RETRY
+    int "CMA Migration Retry Count"
+    default 3
+    range 1 10
+    depends on MM_PMM_CMA
+
+config DMA_BOUNCE_BUFFER
+    bool "DMA Bounce Buffering"
+    default y
+    depends on DMA_ENGINE
+
+config DMA_BOUNCE_BUFFER_SIZE_KB
+    int "Bounce Buffer Pool Size (KB)"
+    default 256
+    range 64 4096
+    depends on DMA_BOUNCE_BUFFER
 
 endmenu
 

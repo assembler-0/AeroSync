@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+menu "drm"
+
+config SIMPLE_FB_SUPPORT
+    bool "Enable support for simple framebuffer"
+    default y
+    help
+      Requests a simple linear framebuffer for simple rendering
+
+endmenu

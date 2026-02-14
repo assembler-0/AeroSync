@@ -1,24 +1,5 @@
-/// SPDX-License-Identifier: GPL-2.0-only
-/**
- * AeroSync monolithic kernel
- *
- * @file crypto/sha/sha256.c
- * @brief SHA-256 implementation
- * @copyright (C) 2025-2026 assembler-0
- *
- * This file is part of the AeroSync kernel.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- */
-
 #include <crypto/sha/sha256.h>
+#include <aerosync/crypto.h>
 #include <lib/string.h>
 
 #define ROTR(x, n) (((x) >> (n)) | ((x) << (32 - (n))))
@@ -140,4 +121,38 @@ void sha256_final(SHA256_CTX *ctx, uint8_t hash[]) {
     hash[i + 24] = (ctx->state[6] >> (24 - i * 8)) & 0xff;
     hash[i + 28] = (ctx->state[7] >> (24 - i * 8)) & 0xff;
   }
+}
+
+static int crypto_sha256_init(void *ctx) {
+  sha256_init(ctx);
+  return 0;
+}
+
+static int crypto_sha256_update(void *ctx, const uint8_t *data, size_t len) {
+  sha256_update(ctx, data, len);
+  return 0;
+}
+
+static int crypto_sha256_final(void *ctx, uint8_t *out) {
+  sha256_final(ctx, out);
+  return 0;
+}
+
+static struct crypto_alg sha256_alg = {
+  .name = "sha256",
+  .driver_name = "sha256-generic",
+  .priority = 100,
+  .type = CRYPTO_ALG_TYPE_SHASH,
+  .ctx_size = sizeof(SHA256_CTX),
+  .init = crypto_sha256_init,
+  .shash = {
+    .digestsize = 32,
+    .blocksize = 64,
+    .update = crypto_sha256_update,
+    .final = crypto_sha256_final,
+  },
+};
+
+int sha256_generic_init(void) {
+  return crypto_register_alg(&sha256_alg);
 }

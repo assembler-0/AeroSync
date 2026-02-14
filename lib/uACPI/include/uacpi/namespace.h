@@ -114,7 +114,7 @@ uacpi_status uacpi_namespace_for_each_child_simple(
  * 'descending_callback' is invoked the first time a node is visited when
  * walking down. 'ascending_callback' is invoked the second time a node is
  * visited after we reach the leaf node without children and start walking up.
- * Either of the callbacks may be NULL, but not both at the same time.
+ * Either of the callbacks may be nullptr, but not both at the same time.
  *
  * Only nodes matching 'type_mask' are passed to the callbacks.
  *

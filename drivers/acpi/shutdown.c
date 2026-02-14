@@ -25,6 +25,7 @@
 #include <aerosync/classes.h>
 #include <aerosync/panic.h>
 #include <aerosync/sysintf/ic.h>
+#include <aerosync/sysintf/udm.h>
 
 void acpi_shutdown(void) {
   printk(POWER_CLASS "Preparing for S5 Soft Off...\n");
@@ -38,7 +39,11 @@ void acpi_shutdown(void) {
 #ifdef ACPI_POWER_KERNEL_DEINITIALIZE
   irq_flags_t flags = save_irq_flags();
   cpu_cli();
-  ic_shutdown_controller();
+  const int k_ret = udm_shutdown_all();
+  if (k_ret != 0) {
+    printk(KERN_ERR POWER_CLASS "Failed to shutdown devices: %d\n", k_ret)
+    return;
+  }
 
   printk_disable();
 #endif
@@ -53,13 +58,9 @@ void acpi_shutdown(void) {
   }
 
 #ifdef ACPI_POWER_KERNEL_DEINITIALIZE
-  printk_enable();
-#endif
-
-#ifdef ACPI_POWER_KERNEL_DEINITIALIZE
 rollback:
   /* if we reached here, ACPI sleep failed */
-  ic_install();
+  udm_restart_all();
   restore_irq_flags(flags);
 #endif
 }
@@ -70,7 +71,11 @@ void acpi_reboot(void) {
 #ifdef ACPI_POWER_KERNEL_DEINITIALIZE
   irq_flags_t flags = save_irq_flags();
   cpu_cli();
-  ic_shutdown_controller();
+  const int k_ret = udm_shutdown_all();
+  if (k_ret != 0) {
+    printk(KERN_ERR POWER_CLASS "Failed to shutdown devices: %d\n", k_ret)
+    return;
+  }
 
   printk_disable();
 #endif
@@ -90,7 +95,7 @@ void acpi_reboot(void) {
 
 rollback:
   /* if we reached here, ACPI sleep failed */
-  ic_install();
+  udm_restart_all();
   restore_irq_flags(flags);
 #endif
 }

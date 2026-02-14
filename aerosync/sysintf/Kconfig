@@ -1,0 +1,108 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+menu "system interface (sysintf) & driver model (udm)"
+
+config SYSINTF
+    bool "System Interface Layer"
+    default y
+    help
+      Core system interface layer for AeroSync.
+      Provides the Unified Driver Model (UDM), handling devices,
+      drivers, buses, and classes.
+
+config UDM_BLOCK
+    bool "Block Device Subsystem"
+    depends on SYSINTF
+    default y
+    help
+      Enable support for block devices (disks, partitions).
+
+config UDM_CHAR
+    bool "Character Device Subsystem"
+    depends on SYSINTF
+    default y
+    help
+      Enable support for character devices (terminals, serial, etc.).
+
+config UDM_PCI
+    bool "PCI Bus Support"
+    depends on SYSINTF
+    default y
+    help
+      Enable UDM support for the PCI bus.
+
+config UDM_ACPI
+    bool "ACPI Device Support"
+    depends on SYSINTF
+    default y
+    help
+      Enable UDM support for ACPI-enumerated devices.
+
+config UDM_PLATFORM
+    bool "Platform Bus Support"
+    depends on SYSINTF
+    default y
+    help
+      Enable support for the Platform Bus, used for non-discoverable
+      hardware components.
+
+config UDM_MANAGED_RESOURCES
+    bool "Managed Device Resources (devres)"
+    depends on SYSINTF
+    default y
+    help
+      Enable support for managed resources (devm_* API). This allows
+      drivers to allocate resources that are automatically freed when
+      the driver is detached from the device.
+
+config DEBUG_DRIVER_MODEL
+    bool "Driver Model Debugging"
+    depends on SYSINTF
+    default n
+    help
+      Enable verbose logging for device/driver registration,
+      binding, and lifecycle events.
+
+config SYS_BUS_DEBUG
+    bool "Bus Debugging"
+    depends on SYSINTF
+    default n
+    help
+      Enable specific debugging for bus registration and enumeration.
+
+config UDM_ORCHESTRATION
+    bool "Unified Driver Management (UDM) Orchestration"
+    depends on SYSINTF
+    default y
+    help
+      Enable high-level driver orchestration APIs for system-wide
+      driver lifecycle management. Provides functions like
+      udm_suspend_all(), udm_stop_all(), udm_shutdown_all().
+
+config DEBUG_UDM
+    bool "UDM Debugging"
+    depends on UDM_ORCHESTRATION
+    default n
+    help
+      Enable verbose logging for UDM operations including
+      suspend, resume, stop, and restart events.
+
+config UDM_EMERGENCY_STOP
+    bool "UDM Emergency Stop Support"
+    depends on UDM_ORCHESTRATION
+    default y
+    help
+      Enable emergency stop functionality for critical system
+      failures. This allows immediate driver halt without
+      error checking.
+
+config UDM_SUSPEND_TIMEOUT_MS
+    int "UDM Suspend Timeout (milliseconds)"
+    depends on UDM_ORCHESTRATION
+    default 5000
+    range 1000 30000
+    help
+      Maximum time to wait for a driver to suspend before
+      considering it failed.
+
+endmenu

@@ -174,7 +174,7 @@ static inline bool xa_is_internal(const void *entry)
  * xa_is_zero() - Is the entry a zero entry?
  * @entry: Entry retrieved from the XArray
  *
- * The normal API will return NULL as the contents of a slot containing
+ * The normal API will return nullptr as the contents of a slot containing
  * a zero entry.  You can only see zero entries by using the advanced API.
  *
  * Return: %true if the entry is a zero entry.
@@ -285,9 +285,9 @@ enum xa_lock_type {
  * You may use the xa_lock to protect your own data structures as well.
  */
 /*
- * If all of the entries in the array are NULL, @xa_head is a NULL pointer.
- * If the only non-NULL entry in the array is at index 0, @xa_head is that
- * entry.  If any other entry in the array is non-NULL, @xa_head points
+ * If all of the entries in the array are nullptr, @xa_head is a nullptr pointer.
+ * If the only non-nullptr entry in the array is at index 0, @xa_head is that
+ * entry.  If any other entry in the array is non-nullptr, @xa_head points
  * to an @xa_node.
  */
 struct xarray {
@@ -300,7 +300,7 @@ struct xarray {
 #define XARRAY_INIT(name, flags) {				\
 	.xa_lock = __SPIN_LOCK_UNLOCKED(name.xa_lock),		\
 	.xa_flags = flags,					\
-	.xa_head = NULL,					\
+	.xa_head = nullptr,					\
 }
 
 /**
@@ -376,14 +376,14 @@ static inline void xa_init_flags(struct xarray *xa, gfp_t flags)
 {
 	spinlock_init(&xa->xa_lock);
 	xa->xa_flags = flags;
-	xa->xa_head = NULL;
+	xa->xa_head = nullptr;
 }
 
 /**
  * xa_init() - Initialise an empty XArray.
  * @xa: XArray.
  *
- * An empty XArray is full of NULL entries.
+ * An empty XArray is full of nullptr entries.
  *
  * Context: Any context.
  */
@@ -397,11 +397,11 @@ static inline void xa_init(struct xarray *xa)
  * @xa: XArray.
  *
  * Context: Any context.
- * Return: %true if the array contains only NULL pointers.
+ * Return: %true if the array contains only nullptr pointers.
  */
 static inline bool xa_empty(const struct xarray *xa)
 {
-	return xa->xa_head == NULL;
+	return xa->xa_head == nullptr;
 }
 
 /**
@@ -429,7 +429,7 @@ static inline bool xa_marked(const struct xarray *xa, xa_mark_t mark)
  * in @xa at @index.  You may modify @index during the iteration if you
  * want to skip or reprocess indices.  It is safe to modify the array
  * during the iteration.  At the end of the iteration, @entry will be set
- * to NULL and @index will have a value less than or equal to max.
+ * to nullptr and @index will have a value less than or equal to max.
  *
  * xa_for_each_range() is O(n.log(n)) while xas_for_each() is O(n).  You have
  * to handle your own locking with xas_for_each(), and if you have to unlock
@@ -458,7 +458,7 @@ static inline bool xa_marked(const struct xarray *xa, xa_mark_t mark)
  * in @xa at @index.  You may modify @index during the iteration if you
  * want to skip or reprocess indices.  It is safe to modify the array
  * during the iteration.  At the end of the iteration, @entry will be set
- * to NULL and @index will have a value less than or equal to max.
+ * to nullptr and @index will have a value less than or equal to max.
  *
  * xa_for_each_start() is O(n.log(n)) while xas_for_each() is O(n).  You have
  * to handle your own locking with xas_for_each(), and if you have to unlock
@@ -482,7 +482,7 @@ static inline bool xa_marked(const struct xarray *xa, xa_mark_t mark)
  * During the iteration, @entry will have the value of the entry stored
  * in @xa at @index.  You may modify @index during the iteration if you want
  * to skip or reprocess indices.  It is safe to modify the array during the
- * iteration.  At the end of the iteration, @entry will be set to NULL and
+ * iteration.  At the end of the iteration, @entry will be set to nullptr and
  * @index will have a value less than or equal to max.
  *
  * xa_for_each() is O(n.log(n)) while xas_for_each() is O(n).  You have
@@ -509,7 +509,7 @@ static inline bool xa_marked(const struct xarray *xa, xa_mark_t mark)
  * which do not match @filter.  You may modify @index during the iteration
  * if you want to skip or reprocess indices.  It is safe to modify the array
  * during the iteration.  At the end of the iteration, @entry will be set to
- * NULL and @index will have a value less than or equal to max.
+ * nullptr and @index will have a value less than or equal to max.
  *
  * xa_for_each_marked() is O(n.log(n)) while xas_for_each_marked() is O(n).
  * You have to handle your own locking with xas_for_each(), and if you have
@@ -623,7 +623,7 @@ static inline void *xa_store_irq(struct xarray *xa, unsigned long index,
  * @xa: XArray.
  * @index: Index of entry.
  *
- * After this function returns, loading from @index will return %NULL.
+ * After this function returns, loading from @index will return %nullptr.
  * If the index is part of a multi-index entry, all indices will be erased
  * and none of the entries will be part of a multi-index entry.
  *
@@ -647,7 +647,7 @@ static inline void *xa_erase_bh(struct xarray *xa, unsigned long index)
  * @xa: XArray.
  * @index: Index of entry.
  *
- * After this function returns, loading from @index will return %NULL.
+ * After this function returns, loading from @index will return %nullptr.
  * If the index is part of a multi-index entry, all indices will be erased
  * and none of the entries will be part of a multi-index entry.
  *
@@ -758,9 +758,9 @@ static inline void *xa_cmpxchg_irq(struct xarray *xa, unsigned long index,
  * @entry: New entry.
  * @gfp: Memory allocation flags.
  *
- * Inserting a NULL entry will store a reserved entry (like xa_reserve())
+ * Inserting a nullptr entry will store a reserved entry (like xa_reserve())
  * if no entry is present.  Inserting will fail if a reserved entry is
- * present, even though loading from this index will return NULL.
+ * present, even though loading from this index will return nullptr.
  *
  * Context: Any context.  Takes and releases the xa_lock.  May sleep if
  * the @gfp flags permit.
@@ -788,9 +788,9 @@ static inline int  xa_insert(struct xarray *xa,
  * @entry: New entry.
  * @gfp: Memory allocation flags.
  *
- * Inserting a NULL entry will store a reserved entry (like xa_reserve())
+ * Inserting a nullptr entry will store a reserved entry (like xa_reserve())
  * if no entry is present.  Inserting will fail if a reserved entry is
- * present, even though loading from this index will return NULL.
+ * present, even though loading from this index will return nullptr.
  *
  * Context: Any context.  Takes and releases the xa_lock while
  * disabling softirqs.  May sleep if the @gfp flags permit.
@@ -818,9 +818,9 @@ static inline int  xa_insert_bh(struct xarray *xa,
  * @entry: New entry.
  * @gfp: Memory allocation flags.
  *
- * Inserting a NULL entry will store a reserved entry (like xa_reserve())
+ * Inserting a nullptr entry will store a reserved entry (like xa_reserve())
  * if no entry is present.  Inserting will fail if a reserved entry is
- * present, even though loading from this index will return NULL.
+ * present, even though loading from this index will return nullptr.
  *
  * Context: Process context.  Takes and releases the xa_lock while
  * disabling interrupts.  May sleep if the @gfp flags permit.
@@ -1064,7 +1064,7 @@ static inline int xa_alloc_cyclic_irq(struct xarray *xa, uint32_t *id, void *ent
  * Ensures there is somewhere to store an entry at @index in the array.
  * If there is already something stored at @index, this function does
  * nothing.  If there was nothing there, the entry is marked as reserved.
- * Loading from a reserved entry returns a %NULL pointer.
+ * Loading from a reserved entry returns a %nullptr pointer.
  *
  * If you do not use the entry that you have reserved, call xa_release()
  * or xa_erase() to free any unnecessary memory.
@@ -1076,7 +1076,7 @@ static inline int xa_alloc_cyclic_irq(struct xarray *xa, uint32_t *id, void *ent
 static inline 
 int xa_reserve(struct xarray *xa, unsigned long index, gfp_t gfp)
 {
-	return xa_err(xa_cmpxchg(xa, index, NULL, XA_ZERO_ENTRY, gfp));
+	return xa_err(xa_cmpxchg(xa, index, nullptr, XA_ZERO_ENTRY, gfp));
 }
 
 /**
@@ -1094,7 +1094,7 @@ int xa_reserve(struct xarray *xa, unsigned long index, gfp_t gfp)
 static inline 
 int xa_reserve_bh(struct xarray *xa, unsigned long index, gfp_t gfp)
 {
-	return xa_err(xa_cmpxchg_bh(xa, index, NULL, XA_ZERO_ENTRY, gfp));
+	return xa_err(xa_cmpxchg_bh(xa, index, nullptr, XA_ZERO_ENTRY, gfp));
 }
 
 /**
@@ -1112,7 +1112,7 @@ int xa_reserve_bh(struct xarray *xa, unsigned long index, gfp_t gfp)
 static inline
 int xa_reserve_irq(struct xarray *xa, unsigned long index, gfp_t gfp)
 {
-	return xa_err(xa_cmpxchg_irq(xa, index, NULL, XA_ZERO_ENTRY, gfp));
+	return xa_err(xa_cmpxchg_irq(xa, index, nullptr, XA_ZERO_ENTRY, gfp));
 }
 
 /**
@@ -1126,7 +1126,7 @@ int xa_reserve_irq(struct xarray *xa, unsigned long index, gfp_t gfp)
  */
 static inline void xa_release(struct xarray *xa, unsigned long index)
 {
-	xa_cmpxchg(xa, index, XA_ZERO_ENTRY, NULL, 0);
+	xa_cmpxchg(xa, index, XA_ZERO_ENTRY, nullptr, 0);
 }
 
 /* Everything below here is the Advanced API.  Proceed with caution. */
@@ -1150,7 +1150,7 @@ static inline void xa_release(struct xarray *xa, unsigned long index)
 #define XA_MARK_LONGS		BITS_TO_LONGS(XA_CHUNK_SIZE)
 
 /*
- * @count is the count of every non-NULL element in the ->slots array
+ * @count is the count of every non-nullptr element in the ->slots array
  * whether that is a value entry, a retry entry, a user pointer,
  * a sibling entry or a pointer to the next level of the tree.
  * @nr_values is the count of every element in ->slots which is
@@ -1161,7 +1161,7 @@ struct xa_node {
 	unsigned char	offset;		/* Slot offset in parent */
 	unsigned char	count;		/* Total entry count */
 	unsigned char	nr_values;	/* Value entry count */
-	struct xa_node __rcu *parent;	/* NULL at top of tree */
+	struct xa_node __rcu *parent;	/* nullptr at top of tree */
 	struct xarray	*array;		/* The array we belong to */
 	union {
 		struct list_head private_list;	/* For tree user */
@@ -1315,7 +1315,7 @@ void xa_delete_node(struct xa_node *, xa_update_node_t);
  * @xa_node usually points to the xa_node containing the slot we're operating
  * on (and @xa_offset is the offset in the slots array).  If there is a
  * single entry in the array at index 0, there are no allocated xa_nodes to
- * point to, and so we store %NULL in @xa_node.  @xa_node is set to
+ * point to, and so we store %nullptr in @xa_node.  @xa_node is set to
  * the value %XAS_RESTART if the xa_state is not walked to the correct
  * position in the tree of nodes for this operation.  If an error occurs
  * during an operation, it is set to an %XAS_ERROR value.  If we run off the
@@ -1350,9 +1350,9 @@ struct xa_state {
 	.xa_offset = 0,					\
 	.xa_pad = 0,					\
 	.xa_node = XAS_RESTART,				\
-	.xa_alloc = NULL,				\
-	.xa_update = NULL,				\
-	.xa_lru = NULL,					\
+	.xa_alloc = nullptr,				\
+	.xa_update = nullptr,				\
+	.xa_lru = nullptr,					\
 }
 
 /**
@@ -1713,7 +1713,7 @@ static inline void *xas_next_marked(struct xa_state *xas, unsigned long max,
 	xas->xa_offset = offset;
 	xas->xa_index = (xas->xa_index & ~XA_CHUNK_MASK) + offset;
 	if (xas->xa_index > max)
-		return NULL;
+		return nullptr;
 	if (offset == XA_CHUNK_SIZE)
 		return xas_find_marked(xas, max, mark);
 	entry = xa_entry(xas->xa, node, offset);
@@ -1772,7 +1772,7 @@ enum {
  *
  * The loop body will be executed for each entry in the XArray that
  * lies within the range specified by @xas.  If the loop terminates
- * normally, @entry will be %NULL.  The user may break out of the loop,
+ * normally, @entry will be %nullptr.  The user may break out of the loop,
  * which will leave @entry set to the conflicting entry.  The caller
  * may also call xa_set_err() to exit the loop while setting an error
  * to record the reason.
@@ -1788,7 +1788,7 @@ void *__xas_prev(struct xa_state *);
  * @xas: XArray operation state.
  *
  * If the @xas was in an error state, it will remain in an error state
- * and this function will return %NULL.  If the @xas has never been walked,
+ * and this function will return %nullptr.  If the @xas has never been walked,
  * it will have the effect of calling xas_load().  Otherwise one will be
  * subtracted from the index and the state will be walked to the correct
  * location in the array for the next operation.
@@ -1796,7 +1796,7 @@ void *__xas_prev(struct xa_state *);
  * If the iterator was referencing index 0, this function wraps
  * around to %ULONG_MAX.
  *
- * Return: The entry at the new index.  This may be %NULL or an internal
+ * Return: The entry at the new index.  This may be %nullptr or an internal
  * entry.
  */
 static inline void *xas_prev(struct xa_state *xas)
@@ -1817,7 +1817,7 @@ static inline void *xas_prev(struct xa_state *xas)
  * @xas: XArray operation state.
  *
  * If the @xas was in an error state, it will remain in an error state
- * and this function will return %NULL.  If the @xas has never been walked,
+ * and this function will return %nullptr.  If the @xas has never been walked,
  * it will have the effect of calling xas_load().  Otherwise one will be
  * added to the index and the state will be walked to the correct
  * location in the array for the next operation.
@@ -1825,7 +1825,7 @@ static inline void *xas_prev(struct xa_state *xas)
  * If the iterator was referencing index %ULONG_MAX, this function wraps
  * around to 0.
  *
- * Return: The entry at the new index.  This may be %NULL or an internal
+ * Return: The entry at the new index.  This may be %nullptr or an internal
  * entry.
  */
 static inline void *xas_next(struct xa_state *xas)

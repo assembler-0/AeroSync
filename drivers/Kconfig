@@ -2,4 +2,91 @@
 
 menu "drivers"
 
+menu "device naming policy"
+
+config SERIAL_NAME_PREFIX
+    string "Serial device name prefix"
+    default "ttyS"
+    help
+      The base name for serial UART devices. For example, "ttyS" results in "ttyS0", "ttyS1", etc.
+      Change this if your target FHS prefers different naming (e.g. "com", "uart").
+
+config PTY_SLAVE_PREFIX
+    string "PTY slave device name prefix"
+    default "pts"
+    help
+      The base name for pseudo-terminal slave devices (e.g. "pts", "pty").
+      This will be used for nodes in devfs.
+
+config FB_NAME_PREFIX
+    string "Framebuffer device name prefix"
+    default "fb"
+    help
+      The base name for framebuffer devices. For example, "fb" results in "fb0", "fb1", etc.
+
+config IDE_NAME_PREFIX
+    string "IDE/PATA block device name prefix"
+    default "hd"
+    help
+      The base name for legacy IDE/PATA disks. Default is "hd" (e.g., "hda", "hdb" or "hd0").
+
+config CDROM_NAME_PREFIX
+    string "ATAPI/CDROM block device name prefix"
+    default "cdrom"
+    help
+      The base name for ATAPI CD/DVD-ROM devices.
+
+config SATA_NAME_PREFIX
+    string "SATA/SCSI block device name prefix"
+    default "sd"
+    help
+      The base name for SATA, SCSI, or VirtIO disks. Default is "sd" (e.g., "sda", "sdb" or "sd0").
+
+config NVME_NAME_PREFIX
+    string "NVMe block device name prefix"
+    default "nvme"
+    help
+      The base name for NVMe storage devices (e.g., "nvme0").
+
+config IC_NAME_PREFIX
+    string "Interrupt Controller name prefix"
+    default "ic"
+    help
+      The base name for interrupt controllers (e.g., "ic0").
+
+config TIME_NAME_PREFIX
+    string "Time Source name prefix"
+    default "timer"
+    help
+      The base name for time sources (e.g., "timer0").
+
+config PCI_NAME_PREFIX
+    string "PCI device name prefix"
+    default "pci"
+    help
+      The prefix for PCI devices. If empty, the bus address format is used directly.
+
+config ACPI_NAME_PREFIX
+    string "ACPI device name prefix"
+    default "acpi"
+    help
+      The prefix for ACPI devices discovered in the namespace.
+
+endmenu
+
+config LOG_DEVICE_TREE
+    bool "Log device tree on boot"
+    default y
+    help
+      If enabled, the kernel will print the entire unified device tree
+      at the end of the initialization process.
+
+source "drivers/block/Kconfig"
+
+source "drivers/graphics/Kconfig"
+
+source "drivers/iommu/Kconfig"
+
+
+
 endmenu

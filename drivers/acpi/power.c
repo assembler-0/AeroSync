@@ -43,7 +43,7 @@ void acpi_power_init(void) {
 #ifdef ACPI_POWER_BUTTON
   uacpi_clear_fixed_event(UACPI_FIXED_EVENT_POWER_BUTTON);
   // Install Power Button Handler
-  ret = uacpi_install_fixed_event_handler(UACPI_FIXED_EVENT_POWER_BUTTON, handle_power_button, NULL);
+  ret = uacpi_install_fixed_event_handler(UACPI_FIXED_EVENT_POWER_BUTTON, handle_power_button, nullptr);
   if (uacpi_unlikely_error(ret)) {
     printk(KERN_ERR ACPI_BUTTON_CLASS "Failed to install Power Button handler: %s (%d)\n", uacpi_status_to_string(ret), ret);
   } else {
@@ -60,7 +60,7 @@ void acpi_power_init(void) {
 #ifdef ACPI_SLEEP_BUTTON
   uacpi_clear_fixed_event(UACPI_FIXED_EVENT_SLEEP_BUTTON);
   // Install Sleep Button Handler (Optional, just logging for now)
-  ret = uacpi_install_fixed_event_handler(UACPI_FIXED_EVENT_SLEEP_BUTTON, handle_sleep_button, NULL);
+  ret = uacpi_install_fixed_event_handler(UACPI_FIXED_EVENT_SLEEP_BUTTON, handle_sleep_button, nullptr);
   if (uacpi_unlikely_error(ret)) {
     printk(KERN_WARNING ACPI_BUTTON_CLASS "Failed to install Sleep Button handler: %s (%d)\n", uacpi_status_to_string(ret), ret);
   } else {

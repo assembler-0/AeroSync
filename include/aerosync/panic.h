@@ -33,6 +33,9 @@ __aerosync_chk_fail_warn(
   printk( KERN_WARNING KERN_CLASS "__aerosync_chk_fail_warn: %s at %s:%d\n", expr, file, line);
 }
 
+#define unmet_function_deprecation(__f) \
+  ({  __aerosync_chk_fail_warn(#__f, __FILE__, __LINE__); })
+
 #define unmet_cond_crit(cond) \
   do { if (cond) __aerosync_chk_fail_crit(#cond, __FILE__, __LINE__); } while (0)
 

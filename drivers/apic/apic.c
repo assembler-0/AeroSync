@@ -38,7 +38,7 @@ struct apic_timer_regs {
 };
 
 // --- Global Variables ---
-static const struct apic_ops *current_ops = NULL;
+static const struct apic_ops *current_ops = nullptr;
 static uint32_t apic_calibrated_ticks = 0;
 
 // --- Forward Declarations ---

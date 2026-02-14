@@ -11,6 +11,8 @@ typedef struct printk_backend {
   fn(int, init, void *payload);
   fn(void, cleanup, void);
   fn(int, is_active, void);
+  fn(int, suspend, void);
+  fn(int, resume, void);
 } printk_backend_t;
 
 static int generic_backend_init(void *payload) { (void)payload; return 0; }
@@ -24,11 +26,13 @@ static int generic_backend_init(void *payload) { (void)payload; return 0; }
 #define KERN_INFO "$6$"
 #define KERN_DEBUG "$7$"
 
-// Print functions
+// Print functions (*ln functions implicitlt adds a newline)
 int printk(const char *fmt, ...);
+int printkln(const char *fmt, ...);
 int vprintk(const char *fmt, va_list args);
+int vprintkln(const char *fmt, va_list args);
 
-#define PRINTK_BACKEND_NAME(b) (b ? b->name : NULL)
+#define PRINTK_BACKEND_NAME(b) (b ? b->name : nullptr)
 
 // Initialize printing subsystem
 void printk_register_backend(const printk_backend_t *backend);
@@ -40,12 +44,14 @@ void printk_register_backend(const printk_backend_t *backend);
  */
 void printk_auto_configure(void *payload, int reinit);
 
-#define printk_init_early() printk_auto_configure(NULL, 0)
-#define printk_init_late() printk_auto_configure(NULL, 1)
+/* configure printk - select and init */
+#define printk_init_early() printk_auto_configure(nullptr, 0)
+/* configure printk - select and swap */
+#define printk_init_late() printk_auto_configure(nullptr, 1)
 
 /**
  * @function printk_set_sink(1) - change printk backend
- * @param backend_name backend name, disable printk if recived NULL
+ * @param backend_name backend name, disable printk if recived nullptr
  * @param cleanup clean up status
  */
 int printk_set_sink(const char *backend_name, bool cleanup);

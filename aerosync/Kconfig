@@ -13,4 +13,272 @@ config MAX_CPUS
     int "Maximum # supported of logical processor(s)"
     default 512
 
+menu "cpu topology"
+
+config RDPID_SUPPORT
+    bool "Support RDPID instruction"
+    default y
+    help
+      Enables detection and support for the RDPID instruction, which
+      allows fast retrieval of the logical CPU ID.
+
+config RDPID_CPU_ID
+    bool "Use RDPID for logical CPU ID"
+    depends on RDPID_SUPPORT
+    default n
+    help
+      Use the RDPID instruction to retrieve the logical CPU ID.
+      This is faster than reading from the per-CPU area via GS.
+      Requires RDPID_SUPPORT and hardware support.
+
+endmenu
+
+menu "synchronization"
+
+config TICKET_SPINLOCKS
+    bool "Ticket Spinlocks"
+    default y
+    help
+      Use fair ticket-based spinlocks instead of simple test-and-set locks.
+      This ensures FIFO order and prevents CPU starvation under contention.
+
+config MCS_SPINLOCKS
+    bool "MCS Spinlocks"
+    default y
+    help
+      Enable support for MCS (Mellor-Crummey and Scott) locks.
+      MCS locks are highly scalable and perform well under high contention
+      by having each CPU spin on its own local variable.
+
+config DEBUG_SPINLOCK
+    bool "Spinlock debugging"
+    default n
+    help
+      Enable extra checks and debugging information for spinlocks,
+      including owner tracking and deadlock detection.
+
+menu "rcu subsystem"
+
+config TREE_RCU
+    bool "Tree-based RCU (Scalable SMP RCU)"
+    default y if MAX_CPUS > 1
+    help
+      This option selects a hierarchical RCU implementation that is
+      scalable for systems with many CPUs.
+
+config TINY_RCU
+    bool "Tiny RCU (Non-preemptible single-CPU RCU)"
+    default n
+    depends on MAX_CPUS = 1
+    help
+      This option selects a very small RCU implementation for
+      single-CPU systems.
+
+config RCU_FANOUT
+    int "Tree-based RCU leaf-level fanout"
+    depends on TREE_RCU
+    default 16
+    help
+      This option controls the number of CPUs per leaf rcu_node.
+      Smaller values increase tree depth and lock contention for
+      reporting quiescent states, while larger values increase
+      lock contention on the leaf nodes themselves.
+
+config RCU_BOOST
+    bool "Enable RCU priority boosting"
+    depends on TREE_RCU
+    default y
+    help
+      This option enables RCU priority boosting, which allows
+      low-priority RCU read-side critical sections to be
+      preempted and then boosted to a higher priority to avoid
+      holding up grace periods.
+
+config RCU_KTHREAD_PRIO
+    int "RCU kthread priority"
+    depends on TREE_RCU
+    default 1
+    help
+      Set the priority of the RCU kthreads.
+
+config SRCU
+    bool "Sleepable Read-Copy-Update (SRCU)"
+    default y
+    help
+      This option enables Sleepable RCU, which allows readers to sleep
+      within their read-side critical sections.
+
+config RCU_PERCPU_TEST
+    bool "Enable RCU and Per-CPU dynamic allocation tests"
+    default n
+    help
+      Enables RCU and Per-CPU dynamic allocation smoke tests during boot.
+
+endmenu # rcu subsystem
+
+endmenu # synchronization
+
+menu "per-cpu subsystem"
+
+config DYNAMIC_PER_CPU
+    bool "Support for dynamic per-CPU allocation"
+    default y
+    help
+      Enables alloc_percpu() and free_percpu() APIs for allocating
+      per-CPU variables at runtime.
+
+config PER_CPU_CHUNK_SIZE
+    int "Size of each dynamic per-CPU chunk (KB)"
+    depends on DYNAMIC_PER_CPU
+    default 64
+    help
+      Determines the size of each chunk used for dynamic per-CPU
+      allocations. Each CPU will have this much space reserved.
+
+endmenu
+
+menu "panic"
+
+config PANIC_STACKTRACE
+    bool "Enable stacktrace on panic"
+    default y
+    help
+      Enables kernel stack unwinding and symbol resolution when a
+      kernel panic occurs.
+
+
+config PANIC_DUMP_REGISTERS
+    bool "Always dump registers on panic"
+    default y
+    help
+      Dump CPU general purpose and control registers on all panics,
+      not just exceptions.
+
+config PANIC_TIMEOUT
+    int "Panic timeout (seconds)"
+    default -1
+    help
+      Number of seconds to wait before rebooting after a panic.
+      Set to -1 to wait indefinitely, or 0 to reboot immediately.
+
+config PANIC_VERBOSE
+    bool "Verbose panic messages"
+    default y
+    help
+      Display extra information like CPU ID, current task name,
+      and kernel version on panic.
+
+endmenu
+
+menu "cmdline"
+
+config COMMAND_LINE_SIZE
+    int "Command line buffer size"
+    default 4096
+    help
+      Maximum size of the command line string that can be parsed.
+
+endmenu
+
+menu "system fusion"
+
+config FUSION_UBC
+    bool "Unified Buffer Cache (UBC)"
+    default y
+    help
+      Enables full fusion between the page cache (VM objects) and
+      the VFS layer. mmap, read, and write will share the same pages.
+
+config FUSION_RESDOMAIN_MM
+    bool "ResDomain Memory Accounting"
+    depends on RESDOMAIN_MEM
+    default y
+    help
+      Enables automatic memory accounting in the VM system using
+      Resource Domains. Memory mapped or allocated via mmap will
+      be charged to the process's domain.
+
+config FUSION_BLOCKING_IO
+    bool "Unified Blocking I/O"
+    default y
+    help
+      Integrates VFS wait queues with the scheduler for efficient
+      blocking I/O operations.
+
+config FUSION_POSIX_SYSCALLS
+    bool "Enhanced POSIX Syscall Layer"
+    default y
+    help
+      Enables a more comprehensive and compliant POSIX system call
+      layer, including advanced FD management and signals.
+
+endmenu
+
+source "aerosync/sysintf/Kconfig"
+
+menu "module management"
+
+config LIMINE_MODULE_MANAGER
+    bool "Enable Limine Module Manager (LMM)"
+    default y
+    help
+      Enable the centralized Limine Module Manager to manage and probe
+      bootloader-provided modules.
+
+config LMM_PROBE_EXTENSION_FIRST
+    bool "Biased probing: check file extensions first"
+    depends on LIMINE_MODULE_MANAGER
+    default y
+    help
+      If enabled, the LMM will check file extensions before running
+      registered probers. This can speed up boot if many modules are present.
+
+config LMM_SORT_BY_PRIORITY
+    bool "Enable priority-based module sorting"
+    depends on LIMINE_MODULE_MANAGER
+    default n
+    help
+      Enable sorting modules by priority before processing.
+
+endmenu
+
+menu "resource management"
+
+config RESDOMAINS
+    bool "Hierarchical Resource Domains (ResDomains)"
+    default y
+    help
+      Enables grouping of processes into hierarchical domains for
+      resource accounting and control (similar to cgroup v2).
+
+config RESDOMAIN_CPU
+    bool "CPU Controller"
+    depends on RESDOMAINS
+    default y
+    help
+      Provides CPU bandwidth and weight control for domains.
+
+config RESDOMAIN_MEM
+    bool "Memory Controller"
+    depends on RESDOMAINS
+    default y
+    help
+      Provides memory limits and accounting for domains.
+
+config RESFS_MOUNT
+    bool "Mount resfs automatically during boot"
+    depends on RESDOMAINS
+    default y
+    help
+      Automatically mount the resource filesystem (resfs) during boot.
+
+config RESFS_MOUNT_PATH
+    string "Default mount path for resfs"
+    depends on RESFS_MOUNT
+    default "/runtime/res"
+    help
+      The path where resfs should be mounted automatically.
+
+endmenu
+
 endmenu

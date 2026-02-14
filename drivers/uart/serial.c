@@ -18,9 +18,14 @@
  * GNU General Public License for more details.
  */
 
+#include <aerosync/errno.h>
 #include <aerosync/fkx/fkx.h>
 #include <drivers/uart/serial.h>
 #include <arch/x86_64/io.h>
+#include <aerosync/sysintf/char.h>
+#include <fs/devfs.h>
+#include <aerosync/sysintf/device.h>
+#include <aerosync/sysintf/tty.h>
 
 // Serial port register offsets
 #define SERIAL_DATA_REG     0
@@ -53,13 +58,39 @@
 static uint16_t serial_port = COM1;
 static int serial_initialized = 0;
 
+/* Character Device Implementation */
+static int serial_char_open(struct char_device *cdev) {
+  (void) cdev;
+  return 0;
+}
+
+static ssize_t serial_char_write(struct char_device *cdev, const void *buf, size_t count, vfs_loff_t *ppos) {
+  (void) cdev;
+  (void) ppos;
+  const char *data = buf;
+  for (size_t i = 0; i < count; i++) {
+    serial_write_char(data[i]);
+  }
+  return count;
+}
+
+static struct char_operations serial_char_ops = {
+  .open = serial_char_open,
+  .write = serial_char_write,
+};
+
 int serial_init_standard(void *unused) {
   (void) unused;
+
   if (serial_init() != 0)
     if (serial_init_port(COM2) != 0 || serial_init_port(COM3) != 0 ||
         serial_init_port(COM4) != 0)
-      return -1;
+      return -ENODEV;
   serial_initialized = 1;
+
+  /* Register using unified TTY interface */
+  tty_register_device(&serial_char_ops, nullptr);
+
   return 0;
 }
 
@@ -67,6 +98,22 @@ static void serial_cleanup(void) {
   if (serial_initialized) {
     outb(serial_port + SERIAL_IER_REG, 0x00);
   }
+}
+
+static int serial_suspend(void) {
+  if (serial_initialized) {
+    outb(serial_port + SERIAL_IER_REG, 0x00);
+    outb(serial_port + SERIAL_MCR_REG, 0x00);
+  }
+  return 0;
+}
+
+static int serial_resume(void) {
+  if (serial_initialized) {
+    outb(serial_port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2);
+    outb(serial_port + SERIAL_IER_REG, 0x00);
+  }
+  return 0;
 }
 
 int serial_is_initialized(void) {
@@ -80,7 +127,9 @@ static printk_backend_t serial_backend = {
   .probe = serial_probe,
   .init = serial_init_standard,
   .cleanup = serial_cleanup,
-  .is_active = serial_is_initialized
+  .is_active = serial_is_initialized,
+  .suspend = serial_suspend,
+  .resume = serial_resume,
 };
 
 const printk_backend_t *serial_get_backend(void) {
@@ -169,5 +218,5 @@ FKX_MODULE_DEFINE(
   0,
   FKX_PRINTK_CLASS,
   serial_mod_init,
-  NULL
+  nullptr
 );

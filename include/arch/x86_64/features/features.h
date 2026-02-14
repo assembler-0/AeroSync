@@ -1,8 +1,6 @@
 #pragma once
 
-#include <aerosync/types.h>
-
-typedef struct {
+typedef struct cpu_features {
   bool sse;
   bool sse2;
   bool sse3;
@@ -30,6 +28,9 @@ typedef struct {
   bool cet_ss;
   bool pke;
   bool fsgsbase;
+  bool rdpid;
+  bool erms;
+  bool fsrm;
 } cpu_features_t;
 
 void cpu_features_init(void);

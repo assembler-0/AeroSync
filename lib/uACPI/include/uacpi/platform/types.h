@@ -30,7 +30,7 @@ typedef int64_t uacpi_i64;
 #define UACPI_FALSE false
 typedef bool uacpi_bool;
 
-#define UACPI_NULL NULL
+#define UACPI_NULL nullptr
 
 typedef uintptr_t uacpi_uintptr;
 typedef uacpi_uintptr uacpi_virt_addr;

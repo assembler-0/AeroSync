@@ -37,7 +37,7 @@ extern void gdt_flush(const struct gdt_ptr *gdt_ptr_addr);
 
 extern void tss_flush(void);
 
-static volatile int gdt_lock = 0;
+static DEFINE_SPINLOCK(gdt_lock);
 
 static void set_gdt_gate(int num, uint32_t base, uint32_t limit, uint8_t access,
                          uint8_t gran) {

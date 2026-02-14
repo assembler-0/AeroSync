@@ -6,10 +6,12 @@
 #include <aerosync/types.h>
 #include <linux/list.h>
 #include <linux/rbtree.h>
+#include <aerosync/pid_ns.h>
 
 /* Forward declarations */
 struct sched_class;
 struct fpu_state;
+struct psi_group;
 
 /* Task States */
 /* Wait queue sleep states */
@@ -117,6 +119,8 @@ struct sched_avg {
   unsigned long util_avg;
 };
 
+struct cfs_rq;
+
 /**
  * struct sched_entity - CFS scheduling entity
  *
@@ -134,6 +138,11 @@ struct sched_entity {
 
   struct load_weight load; /* For CPU bandwidth distribution */
   struct sched_avg avg;    /* PELT statistics */
+
+  /* Hierarchical scheduling support */
+  struct sched_entity *parent; /* Parent group entity */
+  struct cfs_rq *cfs_rq;       /* rq on which this entity is scheduled */
+  struct cfs_rq *my_q;         /* for group entities: the rq we own */
 };
 
 /**
@@ -254,6 +263,13 @@ struct task_struct {
   uint64_t vmacache_seqnum;
 
   /*
+   * Dirty page throttling state
+   */
+  uint64_t dirty_paused_ns;
+  unsigned long nr_dirtied;
+  unsigned long nr_dirtied_pause;
+
+  /*
    * Context for context switching
    */
   struct thread_struct thread;
@@ -263,6 +279,7 @@ struct task_struct {
    */
   pid_t pid;
   pid_t tgid; /* Thread group ID */
+  int exit_code;
 
   /*
    * Family relationships
@@ -274,7 +291,19 @@ struct task_struct {
   /*
    * Filesystem information
    */
+  struct fs_struct *fs;
   struct files_struct *files;
+
+  /*
+   * Resource management
+   */
+  struct resdomain *rd;
+  struct pid_namespace *nsproxy;
+
+  /*
+   * Pressure Stall Information
+   */
+  struct psi_group *psi;
 
   /*
    * Task name and debugging
@@ -498,9 +527,12 @@ void sched_init_task(struct task_struct *initial_task);
 void sched_init_ap(void);
 void scheduler_tick(void);
 void check_preempt(void);
+void sched_move_task(struct task_struct *p);
 void schedule_tail(struct task_struct *prev);
+void idle_loop(void);
 
 void set_task_nice(struct task_struct *p, int nice);
+struct task_struct *find_task_by_pid(pid_t pid);
 
 /* Scheduling policy functions */
 int sched_setscheduler(struct task_struct *p, int policy, int priority);

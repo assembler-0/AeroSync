@@ -1,0 +1,88 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+menu "crypto"
+
+config CRYPTO
+	bool "Cryptography API"
+	default y
+	help
+	  This option provides the core Cryptography API for the kernel.
+
+if CRYPTO
+
+config CRYPTO_HASH
+	bool "Hash algorithms"
+	default y
+
+config CRYPTO_SHA256
+	bool "SHA-256"
+	depends on CRYPTO_HASH
+	default y
+
+config CRYPTO_SHA512
+	bool "SHA-512"
+	depends on CRYPTO_HASH
+	default y
+
+config CRYPTO_SHA1
+	bool "SHA-1"
+	depends on CRYPTO_HASH
+	default y
+
+config CRYPTO_BLAKE2S
+	bool "BLAKE2s"
+	depends on CRYPTO_HASH
+	default y
+
+config CRYPTO_CRC32
+	bool "CRC32"
+	depends on CRYPTO_HASH
+	default y
+
+config CRYPTO_HMAC
+	bool "HMAC support"
+	depends on CRYPTO_HASH
+	default y
+
+config CRYPTO_CIPHER
+	bool "Cipher algorithms"
+	default y
+
+config CRYPTO_AES
+	bool "AES"
+	depends on CRYPTO_CIPHER
+	default y
+
+config CRYPTO_HW
+	bool "Hardware acceleration"
+	default y
+
+config CRYPTO_AES_NI
+	bool "AES-NI (Intel/AMD)"
+	depends on CRYPTO_HW && CRYPTO_AES
+	default y
+
+config CRYPTO_SHA_NI
+	bool "SHA-NI (Intel/AMD)"
+	depends on CRYPTO_HW && CRYPTO_SHA256
+	default y
+
+config CRYPTO_RNG
+	bool "Random Number Generation"
+	default y
+
+config CRYPTO_RDRAND
+	bool "Use RDRAND/RDSEED (Intel/AMD)"
+	depends on CRYPTO_RNG && CRYPTO_HW
+	default y
+
+config CRYPTO_DEV_PATH
+	string "Crypto device path"
+	depends on CRYPTO
+	default "/runtime/devices/crypto"
+	help
+	  The path where the crypto device node will be created in devfs.
+
+endif # CRYPTO
+
+endmenu

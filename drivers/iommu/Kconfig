@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+menu "iommu support"
+
+config IOMMU_SUPPORT
+    bool "Enable IOMMU support"
+    default y
+    help
+      Enable support for I/O Memory Management Units.
+
+config INTEL_IOMMU
+    bool "Intel VT-d IOMMU support"
+    depends on IOMMU_SUPPORT
+    default y
+    help
+      Enable support for Intel VT-d (Virtualization Technology for Directed I/O).
+
+endmenu

@@ -3,7 +3,9 @@
  * AeroSync monolithic kernel
  *
  * @file aerosync/sysintf/acpi.c
- * @brief Advanced ACPI Table Parser Implementation
+ * @brief ACPI Table Parser Implementation
+ * @note  this mainly contains the smaller tables parser only
+ *        bigger tables may be implemented in a seprated source
  * @copyright (C) 2025-2026 assembler-0
  */
 
@@ -11,18 +13,19 @@
 #include <aerosync/fkx/fkx.h>
 #include <aerosync/sysintf/acpi.h>
 #include <aerosync/sysintf/madt.h>
+#include <aerosync/sysintf/dmar.h>
 #include <lib/printk.h>
 
-static struct acpi_fadt *s_fadt = NULL;
+static struct acpi_fadt *s_fadt = nullptr;
 static uacpi_u32 s_waet_flags = 0;
 static bool s_waet_present = false;
 
-static struct acpi_mcfg_allocation *s_mcfg_entries = NULL;
+static struct acpi_mcfg_allocation *s_mcfg_entries = nullptr;
 static size_t s_mcfg_count = 0;
 
-static struct acpi_spcr *s_spcr = NULL;
-static struct acpi_bgrt *s_bgrt = NULL;
-static struct acpi_hpet *s_hpet = NULL;
+static struct acpi_spcr *s_spcr = nullptr;
+static struct acpi_bgrt *s_bgrt = nullptr;
+static struct acpi_hpet *s_hpet = nullptr;
 
 /* --- Private Helpers --- */
 
@@ -105,13 +108,8 @@ static void parse_hpet(void) {
          s_hpet->address.address, s_hpet->min_clock_tick);
 }
 
-/* --- Public API --- */
-
-int acpi_tables_init(void) {
-  uacpi_status st;
-
-  // 1. FADT
-  st = uacpi_table_fadt(&s_fadt);
+static void parse_fadt(void) {
+  uacpi_status st = uacpi_table_fadt(&s_fadt);
   if (uacpi_unlikely_error(st)) {
     printk(KERN_WARNING ACPI_CLASS "failed to fetch FADT: %s\n",
            uacpi_status_to_string(st));
@@ -119,6 +117,13 @@ int acpi_tables_init(void) {
     printk(KERN_INFO ACPI_CLASS "FADT version %d initialized\n",
            s_fadt->hdr.revision);
   }
+}
+
+/* --- Public API --- */
+
+int acpi_tables_init(void) {
+  // 1. FADT
+  parse_fadt();
 
   // 2. WAET
   parse_waet();
@@ -135,8 +140,11 @@ int acpi_tables_init(void) {
   // 6. HPET
   parse_hpet();
 
-  // 7. MADT (Integration)
+  // 7. MADT
   madt_init();
+
+  // 8. DMAR
+  dmar_init();
 
   return 0;
 }

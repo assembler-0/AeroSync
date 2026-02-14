@@ -7,7 +7,7 @@ AeroSync uses CMake as its build system to create a modern, monolithic 64-bit x8
 ## Prerequisites
 
 To build AeroSync, you will need the following tools:
-
+a
 *   **CMake:** Version 3.30 or newer (or, edit the `CMakeLists.txt` file to use an older version)
 *   **LLVM**: Version 18.0.0 or newer recommended (including clang, lld, and llvm-*)
 > ⚠️ AeroSync ONLY supports LLVM-based compiler (e.g., clang, icx, aocc); GCC is not tested whatsoever (don't ask me why)
@@ -16,9 +16,9 @@ To build AeroSync, you will need the following tools:
 *   **lld:** The LLVM linker
 > ⚠️ LLD is required for LTO builds
 *   **Limine:** The Limine bootloader resources must be available on the host system.
+> CMake will automatically download them if they are not found.
 *   **Python:** The python interpreter, primarly for tools and kernel configuration generation.
 *   **Kconfiglib:** A Python library for parsing Kconfig files.
-> CMake will automatically download them if they are not found.
 
 - **optional:** either used by me and/is not needed for building AeroSync
     - mimalloc: glibc's ptmalloc2 sucks
@@ -27,31 +27,42 @@ To build AeroSync, you will need the following tools:
     - bochs: when I can't use by real computer
     - VMware & VirtualBox: extra fancy
     - ninja: faster than make (theoretically)
-    - Arch Linux: I use it
+    - Arch Linux
 
 ## Build Process
 
-### Basic Build Steps
+### Presets (recommended) 
+
+#### Available presets (cmake --list-presets): 
+- `amd64` - release kernel (fastest, less overhead, w/o debug symbols) (recommended for the lowest latency – not explicitly safe for production use)
+- `amd64-hardened` - release kernel with hardened security features (moderate performance, w/o debug symbols) (recommended for normal uses)
+- `amd64-dev` - development kernel (no optimization, w/debug symbols) (recommended for debugging)
+- `amd64-dev-hardened` - development kernel with hardened security features (slowest, no optimization, w/debug symbols) (recommended for most predictitable builds)
 
 1. **Configure the build:**
    ```bash
-   cmake -B build
+   cmake --preset <preset>
+   ```
+2. **Build the preset:**
+   ```bash
+   cmake --build --preset <preset>
    ```
 
-2. **Configure kernel options (optional):**
-   ```bash
-   cmake --build build --target menuconfig
-   ```
-   Or:
-   ```bash
-   python -m *config <SRC_DIR>
-   ```
-   Or:
-   ```bash
-   ccmake <SRC_DIR> # Cache variables ONLY!
+> note: if there is already a .config in the project's root, it will use the current config rather than the config correspond to the preset
+
+### Manual configuration (not recommended)
+
+1. **Kconfig setup: (optional)**
+    ```bash
+   cp kconfig/configs/<your desired config> .config
    ```
 
-3. **Build the kernel:**
+2. **Configure the build:**
+   ```bash
+   cmake -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain/AeroSyncClang.cmake # -DAEROSYNC_DEFONCONFIG="config here if skip step 1."
+   ```
+
+3. **Build:**
    ```bash
    cmake --build build --parallel $(nproc)
    ```
@@ -61,25 +72,18 @@ To build AeroSync, you will need the following tools:
 The build process generates:
 - `aerosync.hybrid.iso` - A hybrid bootable ISO image in the `build/` directory
 - `bootdir/` - Directory containing the kernel image, kernel extensions, and bootloader components
-
-## Build System Components
-
-### CMake Configuration Files
-
-- `CMakeLists.txt` - Main project configuration
-- `cmake/configuration.cmake` - Build configuration settings
-- `cmake/dependencies.cmake` - External dependencies management
-- `cmake/kconfig.cmake` - Kconfig integration
-- `cmake/limine.cmake` - Limine bootloader integration
-- `cmake/source.cmake` - Source file management
-- `cmake/fkx.cmake` - FKX module system
-- `cmake/vmx.cmake` - VMware VMX configuration
-
+- 
 ### Compile time options & kernel configuration
 
 There are two ways to configure the kernel:
 - **CMake (cache):** `cmake -D<OPTION>=<VALUE> <SRC_DIR>` or `cmake-gui <SRC_DIR>` or `ccmake <SRC_DIR>`
 - **Kconfig:** `python -m *config <SRC_DIR>` or `<GENERATOR> *config`
+
+#### Notable CMake options:
+- `AEROSYNC_INITRD`: Path to a CPIO archive to be used as an initial ramdisk. If provided:
+  - The file will be copied to `/module/` in the ISO.
+  - The kernel command line will be automatically appended with `initrd=<filename>`.
+  - The kernel will unpack it into the root `tmpfs` during early boot.
 
 ## ISO Generation
 
@@ -111,26 +115,6 @@ The build system creates a hybrid ISO that supports both BIOS and UEFI boot mode
 - `vmw-setup` - Setup VMware VM
 - `vmw-delete-vm` - Delete VMware VM
 
-## Supported Platforms
-
-The kernel has been tested on:
-- VMware Workstation Pro 25H2+
-- QEMU 10.1.2+
-- Bochs 3.0.devel+
-- Oracle VirtualBox 7.2.4r170995+
-- Intel Alder Lake-based computers
-- Intel Raptor Lake-based computers
-- Intel Comet Lake-based computers
-
 ## Configuration System
 
 AeroSync uses Kconfig [(more)](kconfig.md) for kernel configuration, allowing fine-grained control over features and options. The configuration system integrates with CMake to generate appropriate build definitions.
-
-Configuration files are organized hierarchically:
-- `Kconfig` - Root configuration file
-- `arch/Kconfig` - Architecture-specific options
-- `drivers/Kconfig` - Driver options
-- `lib/Kconfig` - Library options
-- `mm/Kconfig` - Memory management options
-- `aerosync/Kconfig` - Core kernel options
-- `aerosync/sched/Kconfig` - Scheduler options

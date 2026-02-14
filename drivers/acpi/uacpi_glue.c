@@ -52,15 +52,15 @@ typedef struct pending_irq_install {
   struct pending_irq_install *next;
 } pending_irq_install_t;
 
-static pending_irq_install_t *s_pending_head = NULL;
-static pending_irq_install_t *s_pending_tail = NULL;
+static pending_irq_install_t *s_pending_head = nullptr;
+static pending_irq_install_t *s_pending_tail = nullptr;
 
 int uacpi_kernel_init_early(void) {
   uacpi_status ret = uacpi_initialize(0);
   if (uacpi_unlikely_error(ret)) {
     printk(KERN_ERR ACPI_CLASS "uACPI initialization failed: %s\n",
            uacpi_status_to_string(ret));
-    return -1;
+    return -ENODEV;
   }
   printk(KERN_INFO ACPI_CLASS "uACPI initialized\n");
 
@@ -68,7 +68,7 @@ int uacpi_kernel_init_early(void) {
   if (uacpi_unlikely_error(ret)) {
     printk(KERN_ERR ACPI_CLASS "uACPI namespace load failed: %s\n",
            uacpi_status_to_string(ret));
-    return -1;
+    return -ENODEV;
   }
   printk(KERN_INFO ACPI_CLASS "uACPI namespace loaded\n");
   return 0;
@@ -79,7 +79,7 @@ int uacpi_kernel_init_late(void) {
   if (uacpi_unlikely_error(ret)) {
     printk(KERN_ERR ACPI_CLASS "uACPI namespace init failed: %s\n",
            uacpi_status_to_string(ret));
-    return -1;
+    return -ENODEV;
   }
   printk(ACPI_CLASS "uACPI namespace initialized\n");
   return 0;
@@ -465,12 +465,12 @@ uacpi_cpu_flags uacpi_kernel_lock_spinlock(uacpi_handle h) {
   // If spinlock.h doesn't have irqsave, we do it manually.
   irq_flags_t flags = save_irq_flags();
   cpu_cli();
-  spinlock_lock((spinlock_t *)h);
+  spinlock_lock(h);
   return (uacpi_cpu_flags)flags;
 }
 
 void uacpi_kernel_unlock_spinlock(uacpi_handle h, uacpi_cpu_flags flags) {
-  spinlock_unlock((spinlock_t *)h);
+  spinlock_unlock(h);
   restore_irq_flags((irq_flags_t)flags);
 }
 
@@ -484,11 +484,11 @@ typedef struct irq_mapping {
   struct irq_mapping *next;
 } irq_mapping_t;
 
-static irq_mapping_t *irq_map_head = NULL;
-static spinlock_t irq_map_lock = 0;
+static irq_mapping_t *irq_map_head = nullptr;
+static DEFINE_SPINLOCK(irq_map_lock);
 
 // Generic trampoline
-static void acpi_irq_trampoline(cpu_regs *regs) {
+static void __no_cfi acpi_irq_trampoline(cpu_regs *regs) {
   uint32_t vector = regs->interrupt_number;
 
   irq_flags_t flags = spinlock_lock_irqsave(&irq_map_lock);
@@ -533,7 +533,7 @@ void uacpi_notify_ic_ready(void) {
     kfree(p);
     p = next;
   }
-  s_pending_head = s_pending_tail = NULL;
+  s_pending_head = s_pending_tail = nullptr;
 }
 
 uacpi_status uacpi_kernel_install_interrupt_handler(
@@ -547,7 +547,7 @@ uacpi_status uacpi_kernel_install_interrupt_handler(
     node->irq = irq;
     node->handler = handler;
     node->ctx = ctx;
-    node->next = NULL;
+    node->next = nullptr;
     if (s_pending_tail)
       s_pending_tail->next = node;
     else
@@ -621,25 +621,25 @@ typedef struct work_item {
   struct work_item *next;
 } work_item_t;
 
-static work_item_t *work_head = NULL;
-static work_item_t *work_tail = NULL;
-static spinlock_t work_lock;
+static work_item_t *work_head = nullptr;
+static work_item_t *work_tail = nullptr;
+static DEFINE_SPINLOCK(work_lock);
 static wait_queue_head_t work_wait_q;
 
-static int acpi_worker_thread(void *data) {
+static int __no_cfi acpi_worker_thread(void *data) {
   (void)data;
   wait_queue_entry_t wait;
   init_wait(&wait);
 
   while (1) {
-    work_item_t *work = NULL;
+    work_item_t *work = nullptr;
 
     spinlock_lock(&work_lock);
     if (work_head) {
       work = work_head;
       work_head = work->next;
       if (!work_head)
-        work_tail = NULL;
+        work_tail = nullptr;
     }
     spinlock_unlock(&work_lock);
 
@@ -675,7 +675,7 @@ uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type,
 
   work->handler = handler;
   work->ctx = ctx;
-  work->next = NULL;
+  work->next = nullptr;
 
   spinlock_lock(&work_lock);
   if (work_tail) {
@@ -706,17 +706,17 @@ uacpi_status uacpi_kernel_wait_for_work_completion(void) {
   return UACPI_STATUS_OK;
 }
 
-static struct task_struct *worker = NULL;
+static struct task_struct *worker = nullptr;
 
 /*
  * Initialization
  */
-uacpi_status uacpi_kernel_initialize(uacpi_init_level current_init_lvl) {
+uacpi_status __no_cfi uacpi_kernel_initialize(uacpi_init_level current_init_lvl) {
   if (current_init_lvl == UACPI_INIT_LEVEL_SUBSYSTEM_INITIALIZED) {
     spinlock_init(&work_lock);
     init_waitqueue_head(&work_wait_q);
     // Start worker thread
-    worker = kthread_create(acpi_worker_thread, NULL, "acpi_worker");
+    worker = kthread_create(acpi_worker_thread, nullptr, "acpi_worker");
     kthread_run(worker);
   }
   return UACPI_STATUS_OK;

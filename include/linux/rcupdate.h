@@ -1,7 +1,7 @@
 #pragma once
 
 #include <aerosync/sched/sched.h>
-#include <compiler.h>
+#include <aerosync/panic.h>
 
 /**
  * struct rcu_head - callback structure for call_rcu()
@@ -27,14 +27,29 @@ static inline void rcu_read_unlock(void) {
  * Barriers and pointer accessors.
  */
 #define rcu_dereference(p) ({\
-    typeof(p) _________p1 = READ_ONCE(p); \
-    cbarrier(); \
+    typeof(p) _________p1 = smp_load_acquire(&(p)); \
     _________p1; \
 })
 
+#define rcu_dereference_raw(p) ({ \
+    typeof(p) _________p1 = READ_ONCE(p); \
+    _________p1; \
+})
+
+#define rcu_dereference_check(p, c) ({ \
+    unmet_cond_warn(!(c)) \
+    rcu_dereference(p); \
+})
+
+#define rcu_dereference_protected(p, c) ({ \
+    unmet_cond_warn(!(c)); \
+    rcu_dereference_raw(p); \
+})
+
+#define rcu_dereference_raw_check(p) rcu_dereference_raw(p)
+
 #define rcu_assign_pointer(p, v) do { \
-    cbarrier(); \
-    WRITE_ONCE(p, v); \
+    smp_store_release(&(p), (v)); \
 } while (0)
 
 /*

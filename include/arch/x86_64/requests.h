@@ -5,6 +5,7 @@
 volatile uint64_t *get_limine_base_revision();
 volatile struct limine_bootinfo_request *get_bootinfo_request(void);
 volatile struct limine_executable_cmdline_request *get_cmdline_request(void);
+volatile struct limine_executable_file_request *get_executable_file_request(void);
 volatile struct limine_firmware_type_request *get_fw_request(void);
 volatile struct limine_date_at_boot_request *get_date_at_boot_request(void);
 volatile struct limine_module_request *get_module_request(void);
@@ -16,3 +17,7 @@ volatile struct limine_paging_mode_request *get_paging_request(void);
 volatile struct limine_memmap_request *get_memmap_request(void);
 volatile struct limine_framebuffer_request *get_framebuffer_request(void);
 volatile struct limine_rsdp_request *get_rsdp_request(void);
+volatile struct limine_executable_address_request *get_executable_address_request(void);
+volatile struct limine_efi_system_table_request *get_efi_system_table_request(void);
+
+#define current_cmdline get_cmdline_request()->response->cmdline

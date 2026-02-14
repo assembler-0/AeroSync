@@ -1,0 +1,104 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 30,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_TOOLCHAIN_FILE": "cmake/toolchain/AeroSyncClang.cmake"
+      }
+    },
+    {
+      "name": "amd64-hardened",
+      "displayName": "AeroSync (R) hardened release build for amd64",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "AEROSYNC_DEFCONFIG": "amd64-hardened",
+        "OPT_LEVEL": "2",
+        "DSYM_LEVEL": "0",
+        "STACK_PROTECTION": "OFF",
+        "STACK_PROTECTION_ALL": "ON",
+        "SANITIZER": "ON",
+        "LTO": "ON",
+        "CFI_ENABLE": "ON",
+        "STRIP": "ON"
+      }
+    },
+    {
+      "name": "amd64",
+      "displayName": "AeroSync (R) release build for amd64",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "AEROSYNC_DEFCONFIG": "amd64",
+        "OPT_LEVEL": "2",
+        "DSYM_LEVEL": "0",
+        "STACK_PROTECTION": "ON",
+        "STACK_PROTECTION_ALL": "OFF",
+        "SANITIZER": "OFF",
+        "LTO": "ON",
+        "CFI_ENABLE": "OFF",
+        "STRIP": "ON"
+      }
+    },
+    {
+      "name": "amd64-dev-hardened",
+      "displayName": "AeroSync (R) hardened development build for amd64",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "AEROSYNC_DEFCONFIG": "amd64-hardened",
+        "OPT_LEVEL": "2",
+        "DSYM_LEVEL": "3",
+        "STACK_PROTECTION": "OFF",
+        "STACK_PROTECTION_ALL": "ON",
+        "SANITIZER": "ON",
+        "LTO": "ON",
+        "CFI_ENABLE": "ON",
+        "STRIP": "OFF"
+      }
+    },
+    {
+      "name": "amd64-dev",
+      "displayName": "AeroSync (R) development build for amd64",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "AEROSYNC_DEFCONFIG": "amd64-hardened",
+        "OPT_LEVEL": "2",
+        "DSYM_LEVEL": "3",
+        "STACK_PROTECTION": "ON",
+        "STACK_PROTECTION_ALL": "OFF",
+        "CFI_ENABLE": "ON",
+        "STRIP": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "amd64-hardened",
+      "configurePreset": "amd64-hardened"
+    },
+    {
+      "name": "amd64",
+      "configurePreset": "amd64"
+    },
+    {
+      "name": "amd64-dev-hardened",
+      "configurePreset": "amd64-dev-hardened"
+    },
+    {
+      "name": "amd64-dev",
+      "configurePreset": "amd64-dev"
+    }
+  ]
+}

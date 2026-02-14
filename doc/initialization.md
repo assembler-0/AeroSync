@@ -1,5 +1,8 @@
 # AeroSync Initialization Documentation
 
+> i am a very lazy person (at least in terms of documentation), what you are reading right now may not be entirely true,
+> please refer to the actual implementation for accurate information 
+
 ## Overview
 
 The AeroSync kernel initialization process begins in `start_kernel()` and proceeds through several distinct phases to bring up the system. The initialization sequence is carefully orchestrated to ensure that each subsystem is ready before dependent components are initialized.
@@ -80,7 +83,7 @@ This is a critical phase that initializes the memory management subsystem:
 #### Physical Memory Manager (PMM)
 ```c
 pmm_init(get_memmap_request()->response, get_hhdm_request()->response->offset,
-         get_rsdp_request()->response ? get_rsdp_request()->response->address : NULL);
+         get_rsdp_request()->response ? get_rsdp_request()->response->address : nullptr);
 ```
 
 - Initializes the physical memory manager using the memory map provided by the bootloader
@@ -279,7 +282,7 @@ Enables asynchronous printk if the feature is compiled in.
 ### 21. Final Kernel Thread Creation
 
 ```c
-struct task_struct *init_task = kthread_create(kernel_init, NULL, "kernel_init");
+struct task_struct *init_task = kthread_create(kernel_init, nullptr, "kernel_init");
 if (!init_task)
     panic(KERN_CLASS "Failed to create kernel_init thread");
 kthread_run(init_task);

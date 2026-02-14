@@ -18,7 +18,7 @@ int ic_mod_init(void) {
   return 0;
 }
 
-static const char *ic_deps[] = {"timer", NULL};
+static const char *ic_deps[] = {"timer", nullptr};
 
 FKX_MODULE_DEFINE(
   ic,

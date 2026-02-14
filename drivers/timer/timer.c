@@ -26,5 +26,5 @@ FKX_MODULE_DEFINE(
   0,
   FKX_TIMER_CLASS,
   timer_mod_init,
-  NULL
+  nullptr
 );

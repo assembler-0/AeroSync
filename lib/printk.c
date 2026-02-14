@@ -21,6 +21,8 @@
 #include <arch/x86_64/io.h>
 #include <lib/log.h>
 #include <aerosync/classes.h>
+#include <aerosync/errno.h>
+#include <aerosync/timer.h>
 #include <aerosync/types.h>
 #include <lib/printk.h>
 #include <lib/vsprintf.h>
@@ -31,8 +33,8 @@
 
 static const printk_backend_t *registered_backends[MAX_PRINTK_BACKENDS];
 static int num_registered_backends = 0;
-static const printk_backend_t *active_backend = NULL;
-static const printk_backend_t *last_active_backend = NULL;
+static const printk_backend_t *active_backend = nullptr;
+static const printk_backend_t *last_active_backend = nullptr;
 static bool printk_disabled = false;
 
 void printk_register_backend(const printk_backend_t *backend) {
@@ -43,8 +45,8 @@ void printk_register_backend(const printk_backend_t *backend) {
 }
 EXPORT_SYMBOL(printk_register_backend);
 
-void printk_auto_configure(void *payload, const int reinit) {
-  const printk_backend_t *best = NULL;
+void __no_cfi printk_auto_configure(void *payload, const int reinit) {
+  const printk_backend_t *best = nullptr;
 
   for (int i = 0; i < num_registered_backends; i++) {
     const printk_backend_t *b = registered_backends[i];
@@ -63,11 +65,11 @@ void printk_auto_configure(void *payload, const int reinit) {
 
   if (!best) {
     // Fallback to internal ringbuffer only
-    if (reinit) log_set_console_sink(NULL);
-    else log_init(NULL);
+    if (reinit) log_set_console_sink(nullptr);
+    else log_init(nullptr);
     
     // We can still printk, it will go to ringbuffer
-    active_backend = NULL;
+    active_backend = nullptr;
     printk(KERN_ERR KERN_CLASS "no active printk backend, logging to ringbuffer only\n");
     return;
   }
@@ -88,9 +90,9 @@ void printk_auto_configure(void *payload, const int reinit) {
             best->name, best->priority);
   } else {
     if (reinit) {
-      log_set_console_sink(NULL);
+      log_set_console_sink(nullptr);
     } else {
-      log_init(NULL);
+      log_init(nullptr);
     }
   }
 }
@@ -102,7 +104,7 @@ void printk_init_async(void) {
 }
 #endif
 
-int printk_set_sink(const char *backend_name, bool cleanup) {
+int __no_cfi printk_set_sink(const char *backend_name, bool cleanup) {
   if (!backend_name) {
     printk_shutdown();
     return 0;
@@ -119,12 +121,12 @@ int printk_set_sink(const char *backend_name, bool cleanup) {
         int needs_init = 1;
         if (b->is_active) needs_init = !b->is_active();
         
-        if (needs_init && b->init(NULL) != 0) {
+        if (needs_init && b->init(nullptr) != 0) {
           printk(KERN_ERR KERN_CLASS "failed to reinit printk backend %s\n", backend_name);
           // Fallback to auto select if preferred backend failed
           const printk_backend_t *fallback = printk_auto_select_backend(backend_name);
           if (fallback) return printk_set_sink(fallback->name, false);
-          return -1;
+          return -ENODEV;
         }
       }
 
@@ -142,8 +144,8 @@ int printk_set_sink(const char *backend_name, bool cleanup) {
   printk(KERN_ERR KERN_CLASS "printk backend %s not found, falling back\n", backend_name);
   const printk_backend_t *fallback = printk_auto_select_backend(backend_name);
   if (fallback) return printk_set_sink(fallback->name, false);
-  
-  return -1;
+
+  return -ENODEV;
 }
 EXPORT_SYMBOL(printk_set_sink);
 
@@ -152,8 +154,8 @@ void printk_disable(void) {
   
   printk_disabled = true;
   last_active_backend = active_backend;
-  active_backend = NULL;
-  log_set_console_sink(NULL);
+  active_backend = nullptr;
+  log_set_console_sink(nullptr);
 }
 EXPORT_SYMBOL(printk_disable);
 
@@ -168,12 +170,12 @@ void printk_enable(void) {
   }
   
   // Restore failed or none saved, re-configure
-  printk_auto_configure(NULL, 1);
+  printk_auto_configure(nullptr, 1);
 }
 EXPORT_SYMBOL(printk_enable);
 
 const printk_backend_t *printk_auto_select_backend(const char *not) {
-  const printk_backend_t *best = NULL;
+  const printk_backend_t *best = nullptr;
   for (int i = 0; i < num_registered_backends; i++) {
     const printk_backend_t *b = registered_backends[i];
     if (!b) continue;
@@ -188,13 +190,13 @@ const printk_backend_t *printk_auto_select_backend(const char *not) {
 }
 EXPORT_SYMBOL(printk_auto_select_backend);
 
-void printk_shutdown(void) {
+void __no_cfi printk_shutdown(void) {
   if (active_backend && active_backend->cleanup) {
     active_backend->cleanup();
   }
-  active_backend = NULL;
-  last_active_backend = NULL;
-  log_set_console_sink(NULL);
+  active_backend = nullptr;
+  last_active_backend = nullptr;
+  log_set_console_sink(nullptr);
 }
 EXPORT_SYMBOL(printk_shutdown);
 
@@ -215,7 +217,7 @@ static const char *parse_level_prefix(const char *fmt, int *level_io) {
 
 int vprintk(const char *fmt, va_list args) {
   if (!fmt)
-    return -1;
+    return -EINVAL;
 
   int level = KLOG_INFO; // Default log level
   // Parse optional level prefix (e.g. "$3$")
@@ -229,6 +231,26 @@ int vprintk(const char *fmt, va_list args) {
 
   return count;
 }
+EXPORT_SYMBOL(vprintk);
+
+int vprintkln(const char *fmt, va_list args) {
+  if (!fmt)
+    return -EINVAL;
+
+  int level = KLOG_INFO; // Default log level
+  // Parse optional level prefix (e.g. "$3$")
+  const char *real_fmt = parse_level_prefix(fmt, &level);
+
+  char local_buf[256];
+  int count = vsnprintf(local_buf, sizeof(local_buf), real_fmt, args);
+  strcat(local_buf, "\n");
+
+  // Write to log subsystem
+  log_write_str(level, local_buf);
+
+  return count;
+}
+EXPORT_SYMBOL(vprintkln);
 
 int printk(const char *fmt, ...) {
   va_list args;
@@ -238,6 +260,15 @@ int printk(const char *fmt, ...) {
   return ret;
 }
 EXPORT_SYMBOL(printk);
+
+int printkln(const char *fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  int ret = vprintkln(fmt, args);
+  va_end(args);
+  return ret;
+}
+EXPORT_SYMBOL(printkln);
 
 int ___ratelimit(ratelimit_state_t *rs, const char *func) {
   if (!rs) return 1;

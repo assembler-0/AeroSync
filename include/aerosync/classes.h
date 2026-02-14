@@ -21,8 +21,8 @@
 #define ISR_CLASS "[sys::irq::isr] "   // Interrupt Service Routines
 #define IRQ_CLASS "[sys::irq] "   // Hardware Interrupt Requests
 #define APIC_CLASS "[sys::ic::apic] " // IOAPIC / LAPIC configuration
-#define PIC_CLASS "[sys::ic::PIC] "   // Legacy PIC configuration
-#define PIT_CLASS "[sys::timer::PIT] "   // Programmable Interval Timer
+#define PIC_CLASS "[sys::ic::pic] "   // Legacy PIC configuration
+#define PIT_CLASS "[sys::timer::pit] "   // Programmable Interval Timer
 #define IC_CLASS "[sys::sysintf::ic] "     // Interrupt Controller (APIC/PIC switching)
 #define SMP_CLASS "[sys::cpu::smp] " // Symmetric Multi-Processing (Multicore startup)
 #define TSC_CLASS "[sys::timer::tsc] " // Time Stamp Counter / CPU timing
@@ -34,20 +34,26 @@
 
 ///@section Core Kernel
 #define KERN_CLASS "[sys::core] "         // Generic kernel core messages
-#define PANIC_CLASS "[SYS::core::panic] "       // Kernel panics (Fatal errors)
+#define PANIC_CLASS "[sys::core::panic] "       // Kernel panics (Fatal errors)
 #define FAULT_CLASS "[sys::core::panic::fault] "
 #define SYSCALL_CLASS "[sys::core::syscall] "      // System call entry/exit tracing
 #define ATOMIC_CLASS "[sys::core::atomic] "     // Atomic operations
 #define FW_CLASS "[sys::core::fw] "           // Firmware interfaces (BIOS/UEFI)
+#define NVRAM_CLASS "[sys::core::fw::nvram] "
 #define SMBIOS_CLASS "[sys::core::fw::smbios] " // SMBIOS parsing
 #define FKX_CLASS "[sys::sysintf::fkx] "         // FKX Module Loader
 #define SYNC_CLASS "[sys::core::sync] " // Synchronization (Mutex, Semaphores, Spinlocks)
 #define NUMA_CLASS "[sys::core::numa] "
+#define STACKTRACE_CLASS "[sys::core::stacktrace] "
+#define LMM_CLASS "[sys::core::lmm] "
 
 ///@section Crypto
 #define RNG_CLASS "[crypto::rng] " // Random Number Generator
 #define CRC_CLASS "[crypto::crc] " // CRC32
 #define SHA_CLASS "[crypto::sha] " // SHA*
+#define AES_CLASS "[crypto::aes] "
+#define RSA_CLASS "[crypto::rsa] "
+#define CRYPTO_CLASS "[crypto::core] "
 
 /* =========================================================================
  *  SANITIZER
@@ -57,19 +63,22 @@
 #define TSAN_CLASS "[sys::san::tsan] "   // Thread Sanitizer
 #define MSAN_CLASS "[sys::san::msan] "   // Memory Sanitizer
 #define LSAN_CLASS "[sys::san::lsan] "   // Leak Sanitizer
+#define CFI_CLASS  "[sys::san::cfi] "    // Control Flow Integrity
 
 /* =========================================================================
  *  MEMORY MANAGEMENT
  * ========================================================================= */
 ///@section Physical & Virtual Memory
-#define PMM_CLASS "[sys::mm::pmm] "   // Physical Memory Manager (Bitmap/Buddy)
-#define VMM_CLASS "[sys::mm::vmm] "   // Virtual Memory Manager (Paging, PDE/PTE)
-#define SWAP_CLASS "[sys::mm::swap] " // Swap space / Paging to disk
-#define MMIO_CLASS "[sys::mm::mmio] " // MMIO Virtual Address Allocator
-#define VMA_CLASS "[sys::mm::vma] " // Virtual Memory Area
+#define PMM_CLASS "[sys::mm::pm] "   // Physical Memory Manager (Bitmap/Buddy)
+#define VMM_CLASS "[sys::mm::vm] "    // Virtual Memory
+#define SWAP_CLASS "[sys::mm::vm::swap] " // Swap space / Paging to disk
+#define MMIO_CLASS "[sys::mm::vm::mmio] " // MMIO Virtual Address Allocator
+#define IOMMU_CLASS "[sys::mm::vm::iommu] "
+#define VMA_CLASS "[sys::mm::vm::vma] " // Virtual Memory Area
 #define FOLIO_CLASS "[sys::mm::folio] " // Linux struct folio
-#define WRITEBACK_CLASS "[sys::mm::writeback] "
-#define THP_CLASS "[sys::mm::thp] "
+#define WRITEBACK_CLASS "[sys::mm::vm::writeback] "
+#define THP_CLASS "[sys::mm::vm::thp] "
+#define DMA_CLASS "[sys::mm::pm::dma] "
 
 ///@section Heaps & Allocators
 #define SLAB_CLASS "[sys::mm::slab] " // Slab allocator specific
@@ -96,6 +105,7 @@
 
 ///@section Storage Drivers
 #define BLOCK_CLASS "[sys::driver::storage] "
+#define CHAR_CLASS "[sys::driver::char] "
 #define ATA_CLASS "[sys::driver::storage::ata] "      // IDE/PATA support
 #define AHCI_CLASS "[sys::driver::storage::ahci] "    // SATA support
 #define NVME_CLASS "[sys::driver::storage::nvme] "    // NVMe SSD support
@@ -126,11 +136,14 @@
 #define ISO_CLASS "[sys::fs::iso] "   // ISO9660 (CD-ROM)
 #define DEVFS_CLASS "[sys::fs::dev] " // /dev filesystem
 #define TMPFS_CLASS "[sys::fs::tmp] "
+#define SYSFS_CLASS "[sys::fs::sysfs] "
 #define NTFS_CLASS "[sys::fs::ntfs] "
 #define USTAR_CLASS "[sys::fs::ustar] "
 #define INITRD_CLASS "[sys::fs::initrd] "
 #define NEWC_CLASS "[sys::fs::newc] "
 #define CPIO_CLASS "[sys::fs::cpio] "
+#define PROCFS_CLASS "[sys::fs::proc] "
+#define RESFS_CLASS "[sys::fs::res] "
 
 /* =========================================================================
  *  NETWORKING STACK

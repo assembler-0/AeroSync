@@ -89,7 +89,7 @@ void build_sched_domains(void) {
 
   for (int i = 0; i < nr_cpus; i++) {
     struct rq *rq = per_cpu_ptr(runqueues, i);
-    struct sched_domain *sd_child = NULL;
+    struct sched_domain *sd_child = nullptr;
     struct cpuinfo_x86 *ci = per_cpu_ptr(cpu_info, i);
 
 #ifdef CONFIG_SCHED_SMT
@@ -99,7 +99,7 @@ void build_sched_domains(void) {
       struct sched_domain *sd_smt = alloc_sd("SMT");
       cpumask_copy(&sd_smt->span, sib_mask);
 
-      struct sched_group *head = NULL, *prev = NULL;
+      struct sched_group *head = nullptr, *prev = nullptr;
       int cpu;
       for_each_cpu(cpu, sib_mask) {
         struct sched_group *sg = alloc_sg();
@@ -126,7 +126,7 @@ void build_sched_domains(void) {
     struct sched_domain *sd_mc = alloc_sd("MC");
     cpumask_copy(&sd_mc->span, core_mask);
 
-    struct sched_group *head = NULL, *prev = NULL;
+    struct sched_group *head = nullptr, *prev = nullptr;
     int cpu;
     for_each_cpu(cpu, core_mask) {
       /* Group is an SMT sibling set */
@@ -189,7 +189,7 @@ void build_sched_domains(void) {
       struct sched_domain *sd_numa = alloc_sd("NUMA");
       cpumask_setall(&sd_numa->span);
 
-      struct sched_group *n_head = NULL, *n_prev = NULL;
+      struct sched_group *n_head = nullptr, *n_prev = nullptr;
       for (int n = 0; n < nr_node_ids; n++) {
         struct sched_group *sg = alloc_sg();
         const struct cpumask *nm = cpumask_of_node(n);

@@ -26,15 +26,55 @@
 #include <lib/string.h>
 #include <aerosync/classes.h>
 #include <aerosync/ksymtab.h>
-#include <crypto/hmac.h>
+#include <aerosync/crypto.h>
+#include <aerosync/limine_modules.h>
 #include "fkx_key.h"
 
 struct fkx_signature_footer {
-    uint8_t signature[64];
-    uint32_t magic; // 'SIG!'
+  uint8_t signature[64];
+  uint32_t magic; // 'SIG!'
 };
 
 #define SIG_MAGIC 0x21474953 // 'SIG!'
+
+int lmm_fkx_prober(const struct limine_file *file, lmm_type_t *out_type) {
+  /* 1. Basic size and ELF verification */
+  if (file->size < sizeof(Elf64_Ehdr) + sizeof(struct fkx_signature_footer)) {
+    return 0;
+  }
+
+  if (!elf_verify(file->address, file->size)) {
+    return 0;
+  }
+
+  /* 2. Verify FKX Signature Magic at the end of the file */
+  struct fkx_signature_footer *footer = (struct fkx_signature_footer *)
+      ((uint8_t *)file->address + file->size - sizeof(struct fkx_signature_footer));
+
+  if (footer->magic != SIG_MAGIC) {
+    return 0;
+  }
+
+  /* 3. Check for the .fkx_info section which contains the module metadata */
+  if (elf_get_section(file->address, ".fkx_info") != nullptr) {
+    *out_type = LMM_TYPE_FKX;
+    return 100; /* Definite match */
+  }
+
+  /* If it has the signature but no info section, it's suspicious or malformed */
+  return 0;
+}
+
+void __init
+lmm_load_fkx_callback(struct lmm_entry *entry, void *data) {
+  (void)data;
+  const struct limine_file *m = entry->file;
+  printk(KERN_DEBUG FKX_CLASS "  %s @ %p (%lu bytes)\n", m->path,
+         m->address, m->size);
+  if (fkx_load_image(m->address, m->size) == 0) {
+    printk(FKX_CLASS "Successfully loaded module: %s\n", m->path);
+  }
+}
 
 // Structure to represent a loaded module image
 struct fkx_loaded_image {
@@ -53,10 +93,10 @@ struct fkx_loaded_image {
 };
 
 // Array to hold heads of linked lists for each module class (linked modules)
-static struct fkx_loaded_image *g_module_class_heads[FKX_MAX_CLASS] = {NULL};
+static struct fkx_loaded_image *g_module_class_heads[FKX_MAX_CLASS] = {nullptr};
 
 // List of modules that are mapped but not yet linked
-static struct fkx_loaded_image *g_unlinked_modules = NULL;
+static struct fkx_loaded_image *g_unlinked_modules = nullptr;
 
 static int fkx_relocate_module(struct fkx_loaded_image *img);
 
@@ -64,7 +104,7 @@ int fkx_load_image(void *data, size_t size) {
   // 0. Verify Signature
   if (size < sizeof(struct fkx_signature_footer)) {
     printk(KERN_ERR FKX_CLASS "Module too small for signature\n");
-    return -1;
+    return -EINVAL;
   }
 
   size_t data_size = size - sizeof(struct fkx_signature_footer);
@@ -72,20 +112,20 @@ int fkx_load_image(void *data, size_t size) {
 
   if (footer->magic != SIG_MAGIC) {
     printk(KERN_ERR FKX_CLASS "Module is NOT signed!\n");
-    return -1;
+    return -EPERM;
   }
 
   uint8_t calculated_mac[64];
-  hmac_sha512(g_fkx_root_key, FKX_KEY_SIZE, data, data_size, calculated_mac);
+  crypto_hmac("sha512", g_fkx_root_key, FKX_KEY_SIZE, data, data_size, calculated_mac);
 
   if (memcmp(calculated_mac, footer->signature, 64) != 0) {
     printk(KERN_ERR FKX_CLASS "Module signature verification failed\n");
-    return -1;
+    return -EPERM;
   }
 
   if (!elf_verify(data, data_size)) {
     printk(KERN_ERR FKX_CLASS "Invalid ELF magic or architecture\n");
-    return -1;
+    return -ENOEXEC;
   }
 
   Elf64_Ehdr *hdr = (Elf64_Ehdr *) data;
@@ -93,7 +133,7 @@ int fkx_load_image(void *data, size_t size) {
   // We only support ET_DYN (Shared Object) for now
   if (hdr->e_type != ET_DYN) {
     printk(KERN_ERR FKX_CLASS "Module must be ET_DYN (PIE/Shared Object)\n");
-    return -1;
+    return -EINVAL;
   }
 
   // 1. Calculate memory requirements
@@ -112,14 +152,14 @@ int fkx_load_image(void *data, size_t size) {
   size_t total_size = max_vaddr - min_vaddr;
   if (total_size == 0) {
     printk(KERN_ERR FKX_CLASS "No loadable segments found\n");
-    return -1;
+    return -EINVAL;
   }
 
   // 2. Allocate memory
   void *base = vmalloc_exec(total_size);
   if (!base) {
     printk(KERN_ERR FKX_CLASS "Failed to allocate memory for module\n");
-    return -1;
+    return -ENOMEM;
   }
 
   uint64_t base_addr = (uint64_t) base;
@@ -147,10 +187,10 @@ int fkx_load_image(void *data, size_t size) {
   if (!info_sec) {
     printk(KERN_ERR FKX_CLASS ".fkx_info section not found\n");
     vfree(base);
-    return -1;
+    return -ENOENT;
   }
 
-  struct fkx_module_info *info = NULL;
+  struct fkx_module_info *info = nullptr;
 
   if (info_sec->sh_flags & SHF_ALLOC) {
     info = (struct fkx_module_info *) (base_addr + (info_sec->sh_addr - min_vaddr));
@@ -161,7 +201,7 @@ int fkx_load_image(void *data, size_t size) {
   if (info->magic != FKX_MAGIC) {
     printk(KERN_ERR FKX_CLASS "Invalid module magic: %x\n", info->magic);
     vfree(base);
-    return -1;
+    return -EINVAL;
   }
 
   // 5. Create loaded image structure and add to unlinked list
@@ -169,7 +209,7 @@ int fkx_load_image(void *data, size_t size) {
   if (!loaded_img) {
     printk(KERN_ERR FKX_CLASS "Failed to allocate memory for loaded image structure\n");
     vfree(base);
-    return -1;
+    return -ENOMEM;
   }
 
   loaded_img->info = info;
@@ -242,7 +282,7 @@ static int fkx_relocate_module(struct fkx_loaded_image *img) {
                 sym_name = strtab + sym->st_name;
               }
               printk(KERN_ERR FKX_CLASS "Undefined symbol '%s' in R_X86_64_64 relocation\n", sym_name);
-              return -1;
+              return -ENOENT;
             }
             *target = S + addend;
             break;
@@ -257,7 +297,7 @@ static int fkx_relocate_module(struct fkx_loaded_image *img) {
                 sym_name = strtab + sym->st_name;
               }
               printk(KERN_ERR FKX_CLASS "Undefined symbol '%s' in PLT/GOT relocation\n", sym_name);
-              return -1;
+              return -ENOENT;
             }
             *target = S;
             break;
@@ -279,13 +319,40 @@ static int fkx_relocate_module(struct fkx_loaded_image *img) {
     }
   }
 
-  // Register module symbols
+  // Register all module symbols for stack traces and lookups
+  for (int i = 0; i < hdr->e_shnum; i++) {
+    if (sections[i].sh_type == SHT_SYMTAB) {
+      Elf64_Sym *symtab = (Elf64_Sym *) ((uint8_t *) data + sections[i].sh_offset);
+      size_t count = sections[i].sh_size / sizeof(Elf64_Sym);
+      Elf64_Shdr *strtab_sec = &sections[sections[i].sh_link];
+      const char *strtab = (const char *) ((uint8_t *) data + strtab_sec->sh_offset);
+
+      for (size_t j = 0; j < count; j++) {
+        unsigned char type = ELF64_ST_TYPE(symtab[j].st_info);
+        if ((type == STT_FUNC || type == STT_OBJECT) && symtab[j].st_value != 0 &&
+            symtab[j].st_shndx != SHN_UNDEF) {
+          uintptr_t addr = base_addr + (symtab[j].st_value - min_vaddr);
+          const char *name = strtab + symtab[j].st_name;
+          // We only register if name is not empty
+          if (name[0] != '\0') {
+            register_ksymbol(addr, name);
+          }
+        }
+      }
+    }
+  }
+
+  // Register module symbols (exported via ksymtab section)
   const Elf64_Shdr *ksymtab_sec = elf_get_section(data, "ksymtab");
   if (ksymtab_sec) {
     struct ksymbol *syms = (struct ksymbol *) (base_addr + (ksymtab_sec->sh_addr - min_vaddr));
     size_t count = ksymtab_sec->sh_size / sizeof(struct ksymbol);
 
     for (size_t i = 0; i < count; i++) {
+      // Avoid duplicate registration if already registered from symtab
+      // However, ksymtab symbols are specifically for EXPORT_SYMBOL, 
+      // they might have different name or just be a subset.
+      // register_ksymbol currently doesn't check for duplicates.
       register_ksymbol(syms[i].addr, syms[i].name);
     }
   }
@@ -300,7 +367,7 @@ static struct fkx_loaded_image *find_unlinked_by_name(const char *name) {
     if (strcmp(curr->info->name, name) == 0) return curr;
     curr = curr->next;
   }
-  return NULL;
+  return nullptr;
 }
 
 static struct fkx_loaded_image *find_linked_by_name(const char *name) {
@@ -311,8 +378,9 @@ static struct fkx_loaded_image *find_linked_by_name(const char *name) {
       curr = curr->next;
     }
   }
-  return NULL;
+  return nullptr;
 }
+
 
 int fkx_finalize_loading(void) {
   int total_to_link = 0;
@@ -329,13 +397,13 @@ int fkx_finalize_loading(void) {
   int linked_in_this_pass;
   do {
     linked_in_this_pass = 0;
-    struct fkx_loaded_image *prev = NULL;
+    struct fkx_loaded_image *prev = nullptr;
     curr = g_unlinked_modules;
 
     while (curr) {
       int deps_satisfied = 1;
       if (curr->info->depends) {
-        for (int i = 0; curr->info->depends[i] != NULL; i++) {
+        for (int i = 0; curr->info->depends[i] != nullptr; i++) {
           const char *dep_name = curr->info->depends[i];
           if (!find_linked_by_name(dep_name)) {
             // Dependency not yet linked. Check if it's even in our unlinked list.
@@ -390,16 +458,16 @@ int fkx_finalize_loading(void) {
              curr->info->name);
       curr = curr->next;
     }
-    return -1;
+    return -ENODEV;
   }
 
   return 0;
 }
 
-int fkx_init_module_class(fkx_module_class_t module_class) {
+int __no_cfi fkx_init_module_class(fkx_module_class_t module_class) {
   if (module_class >= FKX_MAX_CLASS) {
     printk(KERN_ERR FKX_CLASS "Invalid module class: %d\n", module_class);
-    return -1;
+    return -EINVAL;
   }
 
   struct fkx_loaded_image *current_mod = g_module_class_heads[module_class];
@@ -443,5 +511,5 @@ int fkx_init_module_class(fkx_module_class_t module_class) {
   printk(KERN_DEBUG FKX_CLASS "%d/%d modules in class %d initialized successfully\n",
          initialized_count, count, module_class);
 
-  return (error_count == 0) ? 0 : -1;
+  return (error_count == 0) ? 0 : -ENODEV;
 }

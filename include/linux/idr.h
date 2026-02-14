@@ -127,7 +127,7 @@ struct __class_idr {
 	int id;
 };
 
-#define idr_null ((struct __class_idr){ NULL, -1 })
+#define idr_null ((struct __class_idr){ nullptr, -1 })
 #define take_idr_id(id) __get_and_null(id, idr_null)
 
 // DEFINE_CLASS(idr_alloc, struct __class_idr,
@@ -195,11 +195,11 @@ static inline void idr_preload_end(void)
  * @id: Entry ID.
  *
  * @entry and @id do not need to be initialized before the loop, and
- * after normal termination @entry is left with the value NULL.  This
+ * after normal termination @entry is left with the value nullptr.  This
  * is convenient for a "not found" value.
  */
 #define idr_for_each_entry(idr, entry, id)			\
-	for (id = 0; ((entry) = idr_get_next(idr, &(id))) != NULL; id += 1U)
+	for (id = 0; ((entry) = idr_get_next(idr, &(id))) != nullptr; id += 1U)
 
 /**
  * idr_for_each_entry_ul() - Iterate over an IDR's elements of a given type.
@@ -209,12 +209,12 @@ static inline void idr_preload_end(void)
  * @id: Entry ID.
  *
  * @entry and @id do not need to be initialized before the loop, and
- * after normal termination @entry is left with the value NULL.  This
+ * after normal termination @entry is left with the value nullptr.  This
  * is convenient for a "not found" value.
  */
 #define idr_for_each_entry_ul(idr, entry, tmp, id)			\
 	for (tmp = 0, id = 0;						\
-	     ((entry) = tmp <= id ? idr_get_next_ul(idr, &(id)) : NULL) != NULL; \
+	     ((entry) = tmp <= id ? idr_get_next_ul(idr, &(id)) : nullptr) != nullptr; \
 	     tmp = id, ++id)
 
 /**
@@ -238,111 +238,12 @@ static inline void idr_preload_end(void)
  * @id: Entry ID.
  *
  * Continue to iterate over entries, continuing after the current position.
- * After normal termination @entry is left with the value NULL.  This
+ * After normal termination @entry is left with the value nullptr.  This
  * is convenient for a "not found" value.
  */
 #define idr_for_each_entry_continue_ul(idr, entry, tmp, id)		\
 	for (tmp = id;							\
-	     ((entry) = tmp <= id ? idr_get_next_ul(idr, &(id)) : NULL) != NULL; \
+	     ((entry) = tmp <= id ? idr_get_next_ul(idr, &(id)) : nullptr) != nullptr; \
 	     tmp = id, ++id)
 
-/*
- * IDA - ID Allocator, use when translation from id to pointer isn't necessary.
- */
-#define IDA_CHUNK_SIZE		128	/* 128 bytes per chunk */
-#define IDA_BITMAP_LONGS	(IDA_CHUNK_SIZE / sizeof(long))
-#define IDA_BITMAP_BITS 	(IDA_BITMAP_LONGS * sizeof(long) * 8)
-
-struct ida_bitmap {
-	unsigned long		bitmap[IDA_BITMAP_LONGS];
-};
-
-struct ida {
-	struct xarray xa;
-};
-
-#define IDA_INIT_FLAGS	(XA_FLAGS_LOCK_IRQ | XA_FLAGS_ALLOC)
-
-#define IDA_INIT(name)	{						\
-	.xa = XARRAY_INIT(name, IDA_INIT_FLAGS)				\
-}
-#define DEFINE_IDA(name)	struct ida name = IDA_INIT(name)
-
-int ida_alloc_range(struct ida *, unsigned int min, unsigned int max, gfp_t);
-void ida_free(struct ida *, unsigned int id);
-void ida_destroy(struct ida *ida);
-int ida_find_first_range(struct ida *ida, unsigned int min, unsigned int max);
-
-/**
- * ida_alloc() - Allocate an unused ID.
- * @ida: IDA handle.
- * @gfp: Memory allocation flags.
- *
- * Allocate an ID between 0 and %INT_MAX, inclusive.
- *
- * Context: Any context. It is safe to call this function without
- * locking in your code.
- * Return: The allocated ID, or %-ENOMEM if memory could not be allocated,
- * or %-ENOSPC if there are no free IDs.
- */
-static inline int ida_alloc(struct ida *ida, gfp_t gfp)
-{
-	return ida_alloc_range(ida, 0, ~0, gfp);
-}
-
-/**
- * ida_alloc_min() - Allocate an unused ID.
- * @ida: IDA handle.
- * @min: Lowest ID to allocate.
- * @gfp: Memory allocation flags.
- *
- * Allocate an ID between @min and %INT_MAX, inclusive.
- *
- * Context: Any context. It is safe to call this function without
- * locking in your code.
- * Return: The allocated ID, or %-ENOMEM if memory could not be allocated,
- * or %-ENOSPC if there are no free IDs.
- */
-static inline int ida_alloc_min(struct ida *ida, unsigned int min, gfp_t gfp)
-{
-	return ida_alloc_range(ida, min, ~0, gfp);
-}
-
-/**
- * ida_alloc_max() - Allocate an unused ID.
- * @ida: IDA handle.
- * @max: Highest ID to allocate.
- * @gfp: Memory allocation flags.
- *
- * Allocate an ID between 0 and @max, inclusive.
- *
- * Context: Any context. It is safe to call this function without
- * locking in your code.
- * Return: The allocated ID, or %-ENOMEM if memory could not be allocated,
- * or %-ENOSPC if there are no free IDs.
- */
-static inline int ida_alloc_max(struct ida *ida, unsigned int max, gfp_t gfp)
-{
-	return ida_alloc_range(ida, 0, max, gfp);
-}
-
-static inline void ida_init(struct ida *ida)
-{
-	xa_init_flags(&ida->xa, IDA_INIT_FLAGS);
-}
-
-static inline bool ida_is_empty(const struct ida *ida)
-{
-	return xa_empty(&ida->xa);
-}
-
-static inline bool ida_exists(struct ida *ida, unsigned int id)
-{
-	return ida_find_first_range(ida, id, id) == id;
-}
-
-static inline int ida_find_first(struct ida *ida)
-{
-	return ida_find_first_range(ida, 0, ~0);
-}
 #endif /* __IDR_H__ */

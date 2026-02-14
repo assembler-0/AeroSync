@@ -14,12 +14,70 @@
 		- [x] **Batched PCP Draining**: Optimize `free_pcp_pages` to bulk-return pages to the buddy system, amortizing lock contention.
 		- [x] **Node-Local Allocation**: Enforce strict node locality policies by default, falling back only when necessary.
 		- [x] **Lockless Fastpaths**: Verify and harden `cmpxchg` usage in PCP and SLUB hotpaths.
+	- [x] **Phase 1.5: Workingset + Shadow Chain Hardening**
+		- [x] **Workingset Refault Detection**: Shadow entry encoding in XArray for detecting thrashing
+		- [x] **Shadow Chain Depth Tracking**: `shadow_depth`, `collapse_threshold`, `shadow_children` in vm_object
+		- [x] **Async Shadow Collapse**: Background collapse via `vm_object_try_collapse_async()`
+		- [x] **XArray Entry Type Encoding**: Unified encoding for folio/ZMM/swap/shadow entries (bits [1:0])
+	- [x] **Phase 1.6: Swap Subsystem**
+		- [x] **swp_entry_t Encoding**: Type (bits 63-58) + offset for swap slot identification
+		- [x] **Swap Slot Allocation**: Cluster-based allocation with `swap_info_struct`
+		- [x] **Swap Cache**: XArray-based cache for in-flight swap pages
+		- [x] **Swap Readahead**: Configurable cluster readahead (MM_SWAP_READAHEAD)
+	- [x] **Phase 1.7: Enhanced MGLRU**
+		- [x] **Bloom Filters**: Per-generation bloom filters for efficient page table scanning
+		- [x] **Per-Gen Statistics**: `lru_gen_stats` with refaults/scanned/reclaimed/promoted counters
+		- [x] **Tiered Reclaim**: Enhanced `scan_control` with may_writepage/may_unmap/may_swap flags
+		- [x] **ZMM-first Reclaim**: Try compression before swap in `folio_reclaim()`
+	- [x] **Phase 1.8: VM Performance Hardening (Microsecond-Class)**
+		- [x] **Lockless A/D Bit Reading**: `vmm_is_accessed()`/`vmm_is_dirty()` use atomic loads, no PTL
+		- [x] **Batched TLB Shootdowns**: `vmm_clear_accessed_no_flush()` + single flush in `folio_referenced()`
+		- [x] **Per-CPU LRU Batching**: `lru_batch` (15 folios) reduces `pgdat->lru_lock` contention ~15x
+		- [x] **Pre-Zeroed Page Table Cache**: Per-CPU `pgt_cache` (4 pages) eliminates memset from hot path
+		- [x] **Optimized VMA Verification**: Branch-prediction-friendly `vma_verify()` with `unlikely()` hints
+		- [x] **Streamlined Fault Path**: Removed redundant VMA magic checks (already done in `vma_find()`)
 	- [x] **Phase 2: Cache-Efficient Structures (Maple Tree & XArray)**
 		- [x] **Maple Tree**: Replace VMA RB-tree with Maple Tree (Linux-style) for cache-aligned, multi-element nodes and O(1) interval lookups.
-		- [ ] **XArray (Radix Tree 2.0)**: Replace `vm_object` page RB-trees with XArray for better cache locality and faster large-file/SHM mapping.
+		- [x] **XArray (Radix Tree 2.0)**: Replace `vm_object` page RB-trees with XArray for better cache locality and faster large-file/SHM mapping.
 		- [x] **Aggressive Fault-Around**: Expand fault-around window (currently +/- 1 page) to dynamic windows (16-64KB) for better spatial locality.
-	- [ ] **Phase 3: Robustness & Advanced Features**
-		- [ ] **OOM Killer 2.0**: Implement a "Reaper" thread to asynchronously reclaim memory from killed tasks, preventing deadlocks.
+	- [x] **Phase 2.5: Deep Shadow Compaction & UBC Hardening**
+		- [x] **Aggressive Shadow Collapsing**: Flatten deep COW chains during faults to maintain O(1) lookup.
+		- [x] **Iterative Shadow Lookup**: Replaced recursive faulting with safe iterative chain walking to prevent kernel stack overflow.
+		- [x] **Clustered Writeback**: Group contiguous dirty pages in UBC for high-throughput disk I/O.
+		- [x] **Thrash-Aware Readahead**: Adaptive readahead window that shrinks under memory pressure and detects thrashing.
+	- [x] **Phase 2.6: Production-Grade Fault Scaling**
+		- [x] **Per-VMA Locking**: Fine-grained fault serialization using `vma_lock` to eliminate `mmap_lock` contention.
+		- [x] **Direct Reclaim Integration**: Enforce hard memory limits in ResDomain by triggering synchronous reclaim on charge failure.
+		- [x] **Proportional Writeback Throttling**: Throttled dirty page creation based on system-wide writeback speed.
+	- [ ] **Phase 4: Userspace & Device Infrastructure (Production Grade)**
+		- [x] **Recursive Path Lookup**: Implement robust `vfs_path_lookup` in `namei.c` with support for `..`, `.`, symlinks, and mount point crossing.
+		- [ ] **Unified Device Model (UDM) Integration**: 
+			- [x] **Char Device Layer**: `register_chrdev` API with major/minor number management.
+			- [x] **Block Device Layer**: Refine block I/O request queues and bio-like structures.
+			- [x] **DevFS**: Pseudo-filesystem for automatic device node exposure in `/dev`.
+		- [x] **Advanced VFS Integration**:
+			- [x] **fs_struct**: Implement per-process root and working directory.
+			- [x] **Mount Management**: Implement a global mount tree and `sys_mount`/`sys_umount`.
+			- [x] **File-backed mmap**: Complete the link between `inode->i_ubc` and `vm_area_struct`.
+			- [x] **Everything-is-a-file**: Unified `devfs` linkage where UDM `struct device` automatically appears in `/dev`.
+		- [x] **Terminal & TTY Subsystem**:
+			- [x] **TTY Core**: Generic TTY driver with line discipline support (N_TTY).
+			- [ ] **Virtual Consoles**: Support for multiple TTYs on the same display/serial.
+			- [ ] **PTY (Pseudo-Terminals)**: Support for terminal emulators and SSH.
+		- [ ] **Initial RAM Disk (Initrd)**:
+			- [ x **USTAR/CPIO Parser**: Support for loading early userspace from bootloader-provided modules.
+			- [ ] **Rootfs Pivot**: Mechanism to switch from initrd to a persistent root filesystem.
+		- [ ] **POSIX System Call Bridge**:
+			- [x] Complete `open`, `close`, `read`, `write`, `ioctl`, `lseek`, `fstat`, `poll`, `select`.
+			- [x] **VFS Event System**: Robust bitmask-based notification system with per-dentry subscriber lists.
+			- [ ] Implement `pipe()` and `dup2()` for shell support.
+	- [ ] **Phase 5: Advanced FS & Performance**
+		- [x] **Unified Buffer Cache (UBC)**: Integrate page cache with block layer for zero-copy file I/O.
+		- [x] **Kernel UBC API**: Implemented `ubc_map_page` and `ubc_unmap_page` for safe kernel-side buffer access.
+		- [x] **Writeback Engine**: Dedicated threads for flushing dirty pages to disk.
+	- [x] **vmalloc**: use maple tree for vmalloc
+	- [x] **Phase 3: Robustness & Advanced Features**
+		- [x] **OOM Killer 2.0**: Implement a "Reaper" thread to asynchronously reclaim memory from killed tasks, preventing deadlocks.
 		- [x] **Hardened Usercopy**: Rigorous bounds checking for `copy_from_user`/`copy_to_user` based on VMA limits.
 		- [x] **Kernel Guard Pages**: Unmapped guard pages between vmalloc stacks.
 		- [x] **Transparent Huge Pages (THP)**: Background promotion of contiguous 4KB pages to 2MB pages using a dedicated `khugepaged` daemon.
@@ -27,26 +85,26 @@
 	- [x] Finish RMAP for all subsystems
 	- [ ] Advance ANON object fault
 	- [ ] SHM (SHared Memory) management +IPC)
-	- [x] Use XArray/Radix tree for `vm_object`
+	- [x] Use XArray/Radix tree for `vm_object` (with entry type encoding)
 	- [x] Selective lazy allocation/free for kernel `vmalloc()
 	- [ ] Fix subtle, logic bugs
-	- [ ] True memory reclaimation
-	- [ ] Integrate with VFS
+	- [x] True memory reclamation
+	- [x] Integrate with VFS
 	- [x] working `mmap`/`munmap`/`mprotect`/`mremap`
 	- [ ] add `brk` and `sbrk` for compatibility
-	- [ ] Cache *everywhere*, (UBC - Unified Buffer Cache)
+	- [x] Cache *everywhere*, (UBC - Unified Buffer Cache)
 	- [x] Magazines integration for SLUB
 	- [x] Faster SLUB
 	- [x] More sophisticated PMM system (buddy `page_alloc`)
-	- [ ] Streamline the use of `struct folio` rather than `struct page` for high-level mm
-	- [x] KASLR
+	- [x] Streamline the use of `struct folio` rather than `struct page` for high-level mm
+	- [x] KASLR (PIC/PIE)
 	- [x] ASLR
 	- [x] Guard pages where possible
-	- [ ] Proper DMA support for legacy devices
+	- [x] Proper DMA support for legacy devices
 	- [ ] IOMMU
 	- [ ] more rigid MMIO
 	- [x] Stack management
-	- [ ] handle user MM faults gracully
+	- [x] handle user MM faults gracully
 - scheduling
 	- [x] PI (Priority Inheritance)
 	- [x] Per-Entity Load Tracking (PELT) - 32ms half-life decaying averages
@@ -59,7 +117,7 @@
 	- [x] vruntime normalization/denormalization on migration
 	- [x] Aggressive multi-task load balancing (move load, not just tasks)
 	- [x] Cross-CPU wake-up preemption (IPI)
-	- [ ] XNU-inspired deadline inheritence (idk what's it called)
+	- [ ] XNU-inspired priority inheritance (idk what's it called)
 - VFS
 	- [x] FD allocation
 	- [ ] proper FD table
@@ -69,7 +127,10 @@
 	- [ ] *everything-is-a-file*
 	- [ ] permission (Unix or ACL?)
 	- [ ] Linux-like
-	- [ ] block device abstraction
+	- [x] **Block Device Abstraction**
+		- [x] Standardized naming (`hd a-z`, `sd a-z`)
+		- [x] MBR Partition Scanning & Support
+		- [x] Transparent Partition I/O redirection
 	- [ ] FAT32
 	- [ ] EXT4 (RO)
 	- [ ] XFS (RO)
@@ -79,11 +140,11 @@
 	- [ ] overlayfs
 	- [ ] USTAR
 	- [ ] ISOFS (ISO9660 + RockRidge extension)
-	- [ ] NEWC CPIO
+	- [x] NEWC CPIO
 	- [ ] File systems as a module
 - POSIX-compliant
-	- [ ] `open()`/`close()`
-	- [ ] pipes
+	- [x] `open()`/`close()`
+	- [x] pipes
 	- [ ] sockets
 	- [ ] mman
 	- [x] System V ABI (implicit!!)
@@ -94,16 +155,28 @@
 	- [ ] rFKX (runtime Fused Kernel eXtension) (FKX modules that can be loaded at any time, not early boot)
 	- [ ] ASRX (AeroSync Runtime eXtension)
 	- [ ] generic interface for *everything* (Linux-inspired)
-	- [ ] UDM (Unified Driver Model) layer
-	- [ ] more capable sysintf for lower level FKX
+	- [x] **Full Unified Driver Model (UDM)**
+		- [x] `struct device` with `kref` reference counting
+		- [x] Generic Attribute System (`struct attribute`, `sysfs` foundation)
+		- [x] Platform Bus for non-discoverable devices
+		- [x] Topology hardening (Attribute groups, race-free creation)
+	- [ ] **UDM Hardening & Driver Unification (Production Grade)**
+		- [x] **Managed Resources (devres)**: Implement base `devres` API and `devm_kzalloc`.
+		- [ ] **Unified Resource Management**: Implement `devm_ioremap` and `devm_request_irq` for automatic cleanup.
+		- [ ] **Global Resource Tree**: Standardize `struct resource` and implement a global tree for I/O and Memory tracking.
+		- [x] **Standardized Driver Lifecycle**: Enforce `probe`/`remove`/`shutdown`/`suspend`/`resume` symmetry across all subsystems.
+		- [x] **Hierarchical Device Tree**: Ensure proper parent-child relationships (e.g., PCI -> AHCI -> SATA).
+		- [ ] **Generic IRQ Mapping**: Abstract IRQ allocation and routing behind UDM to support MSI/MSI-X transparently.
+		- [x] **SysFS-like Attributes**: Expand `struct attribute` for runtime device introspection.
+	- [x] **Enhanced SYSINTF**
+		- [x] Configurable via Kconfig
 	- [ ] skeleton kernel
 	- [ ] don't be like XNU
 - features (quality of life)
-	- [ ] backtrace (builtin)
-	- [ ] stack trace (builtin)
-	- [ ] linux-compatible spinlock 
+	- [x] backtrace (builtin)
+	- [x] stack trace (builtin)
+	- [x] linux-compatible spinlock 
 	- [ ] kbdg embeded
-	- [ ] arch-based system
 	- [ ] automatic rollback
 	- [ ] should not panic
 	- [ ] true asynchronous printk (that doesnt blow up)
@@ -119,22 +192,22 @@
 - drivers
 	- [ ] NVMe driver (for my pc)
 	- [ ] AHCI driver
-	- [ ] PIO/DMA IDE (ATA) driver
+	- [x] PIO/DMA IDE (ATA) driver (Basic read/write + identification)
 	- [ ] ATAPI driver
 	- [ ] virtio-block driver
 	- [ ] USB mass storage device
 	- [ ] xHCI controller stack (usable for OHCI & EHCI)
 	- [ ] PCIe with MSI and MSI-X
 	- [ ] ACPICA
-	- [ ] SMBIOS
+	- [x] SMBIOS
 	- [ ] True time counting
 	- [ ] Software timer
 	- [ ] Unified input stack
 	- [ ] PS2 keyboard and mouse
 	- [ ] USB keyboard and mouse
-	- [ ] proper APIC stack (enhance for more features)
-	- [ ] Oneshot mode support
-	- [ ] EFI RT table support
+	- [x] proper APIC stack (enhance for more features)
+	- [x] Oneshot mode support
+	- [x] EFI RT table support
 	- [ ] ARP/ICMP Stack
 	- [ ] UDP stack
 	- [ ] TCP/IP (v4 and v6) support
@@ -156,5 +229,5 @@
 	- [ ] C-states support
 	- [ ] Hybrid architecture handling
 	- [ ] CPU microcode loading
-	- [ ] PTY & TTY drivers
+	- [x] PTY & TTY drivers
 	- [ ] CSPRNG using a TRNG

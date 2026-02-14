@@ -1,6 +1,6 @@
 # AeroSync
 
-**Version:** r0c2-3.2.5
+**Version:** r0c3-4.3.7
 
 <p align="center">
   <img src="https://img.shields.io/github/languages/top/assembler-0/AeroSync?style=for-the-badge&color=blueviolet" />
@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/compiler-Clang/LLVM-9C27B0?style=for-the-badge&logo=llvm" />
 </p>
 
-AeroSync is a monolithic, higher-half, 64-bit x86_64 kernel (a KERNEL!, NOT AN OS!) built for modern systems. It is designed with a focus on a clean architecture and draws inspiration from the Linux kernel for many of its subsystems.
+AeroSync is a (modular) monolithic, amd64 kernel built for modern systems.
 
 ## Contributors
 
@@ -35,11 +35,16 @@ AeroSync leverages several excellent open-source projects:
 *   **[uACPI](https://github.com/uacpi/uacpi):** A lightweight, portable ACPI implementation.
 *   **[linearfb](lib/linearfb/README.md):** A simple linear framebuffer library.
 *   **[Linux](https://github.com/torvalds/linux):** Serves as a major architectural inspiration, with 'some' data structures adapted from it.
+*   **[XNU](https://github.com/apple-oss-distributions/xnu):** another major architectural inspiration.
 
 ## Building and Running (and Prerequisites)
 
-- Please refer to the [build_system.md](doc/build_system.md) file for more information.
+- Please refer to the [build_system.md](doc/build_system.md) for more information.
+
+## Contributing
+
+- Please refer to the [CONTRIBUTING.md](CONTRIBUTING.md) for more information.
 
 ## License
 
-AeroSync is licensed under the **GNU General Public License v2.0**. See the [LICENSE](LICENSE) file for more details.
+AeroSync is licensed under the **GNU General Public License v2.0**. See the [LICENSE](LICENSE) for more details.

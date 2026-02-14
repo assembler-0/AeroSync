@@ -28,14 +28,18 @@
 #include <arch/x86_64/percpu.h>
 #include <arch/x86_64/smp.h>
 #include <aerosync/classes.h>
+#include <aerosync/errno.h>
 #include <aerosync/sysintf/ic.h>
 #include <aerosync/wait.h>
 #include <aerosync/sysintf/panic.h>
+#include <aerosync/export.h>
 #include <lib/printk.h>
 #include <limine/limine.h>
 #include <mm/slub.h>
 #include <aerosync/timer.h>
 #include <linux/container_of.h>
+#include <aerosync/errno.h>
+#include <arch/x86_64/requests.h>
 
 // SMP Request
 __attribute__((
@@ -67,6 +71,9 @@ void smp_init_cpu(int cpu) {
   spinlock_init(&q->lock);
 }
 
+/* topology.c */
+extern void detect_cpu_topology(void);
+
 // The entry point for Application Processors (APs)
 static void smp_ap_entry(struct limine_mp_info *info) {
   // Switch to kernel page table
@@ -92,6 +99,12 @@ static void smp_ap_entry(struct limine_mp_info *info) {
   // Initialize call queue
   smp_init_cpu(cpu_id);
 
+#ifdef CONFIG_RDPID_SUPPORT
+  if (get_cpu_features()->rdpid) {
+    wrmsr(MSR_IA32_TSC_AUX, cpu_id);
+  }
+#endif
+
   // Initialize APIC for this AP IMMEDIATELY so we can get our CPU ID
   // and use per-CPU caches in kmalloc()
   ic_ap_init();
@@ -100,7 +113,6 @@ static void smp_ap_entry(struct limine_mp_info *info) {
   cpu_features_init_ap();
 
   // Detect topology for this CPU
-  extern void detect_cpu_topology(void);
   detect_cpu_topology();
 
   ic_set_timer(IC_DEFAULT_TICK);
@@ -135,10 +147,7 @@ static void smp_ap_entry(struct limine_mp_info *info) {
   cpu_sti();
 
   // Scheduler Loop
-  while (1) {
-    check_preempt();
-    cpu_hlt();
-  }
+  idle_loop();
 }
 
 void smp_parse_topology(void) {
@@ -264,6 +273,12 @@ void smp_call_function(smp_call_func_t func, void *info, bool wait) {
 
 void smp_init(void) {
 #ifdef SYMMETRIC_MP
+  if (cmdline_find_option_bool(current_cmdline, "nosmp")) {
+    printk(KERN_WARNING SMP_CLASS "nosmp found in cmdline, single-core mode\n");
+    cpu_count = 1;
+    return;
+  }
+
   if (cpu_count == 0) {
     smp_parse_topology();
   }
@@ -318,7 +333,7 @@ void smp_init(void) {
 
   printk(SMP_CLASS "%d APs online.\n", cpus_online);
 #else
-  printk(KERN_WARNING SMP_CLASS "SYMMETRIC_MP is not enabled, single core mode only\n");
+  printk(KERN_NOTICE SMP_CLASS "SYMMETRIC_MP is not enabled, single core mode only\n");
   cpu_count = 1;
 #endif
 }
@@ -328,19 +343,26 @@ void smp_prepare_boot_cpu(void) {
   this_cpu_write(cpu_number, 0);
   cpumask_set_cpu(0, &cpu_online_mask);
 
-  extern void detect_cpu_topology(void);
   detect_cpu_topology();
 }
 
 uint64_t smp_get_cpu_count(void) { return cpu_count; }
+EXPORT_SYMBOL(smp_get_cpu_count);
 
 int smp_is_active() { return smp_initialized; }
+EXPORT_SYMBOL(smp_is_active);
 
-uint64_t smp_get_id(void) {
+uint32_t smp_get_id(void) {
+#ifdef CONFIG_RDPID_CPU_ID
+  if (get_cpu_features()->rdpid) {
+    return rdpid();
+  }
+#endif
   // If GS is set up, this is fast O(1)
   // We assume GS is set up early enough (in setup_per_cpu_areas for BSP)
-  return this_cpu_read(cpu_number);
+  return (uint32_t)this_cpu_read(cpu_number);
 }
+EXPORT_SYMBOL(smp_get_id);
 
 int lapic_to_cpu(uint8_t lapic_id) {
   for (int i = 0; i < smp_get_cpu_count(); i++) {
@@ -348,7 +370,7 @@ int lapic_to_cpu(uint8_t lapic_id) {
       return i;
     }
   }
-  return -1;
+  return -ENODEV;
 }
 
 uint8_t lapic_get_id_for_cpu(int cpu) {

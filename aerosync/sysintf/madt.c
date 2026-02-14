@@ -20,11 +20,13 @@
 
 #include <aerosync/sysintf/madt.h>
 #include <aerosync/classes.h>
+#include <aerosync/errno.h>
 #include <aerosync/fkx/fkx.h>
 #include <lib/printk.h>
 #include <uacpi/uacpi.h>
 #include <uacpi/platform/types.h>
 #include <uacpi/tables.h>
+#include <aerosync/errno.h>
 
 static uint64_t s_lapic_address = 0xfee00000; // Default x86 base
 static madt_ioapic_t s_ioapics[MADT_MAX_IOAPICS];
@@ -90,7 +92,7 @@ int madt_init(void) {
   uacpi_status st = uacpi_table_find_by_signature(ACPI_MADT_SIGNATURE, &tbl);
   if (uacpi_unlikely_error(st)) {
     printk(KERN_WARNING ACPI_CLASS "MADT not found, using defaults\n");
-    return -1;
+    return -ENODEV;
   }
 
   // First, get the standard LAPIC address from the MADT header
@@ -98,7 +100,7 @@ int madt_init(void) {
   s_lapic_address = madt_hdr->local_interrupt_controller_address;
 
   // Iterate subtables for overrides and IOAPICs
-  uacpi_for_each_subtable(tbl.hdr, sizeof(struct acpi_madt), madt_iter_cb, NULL);
+  uacpi_for_each_subtable(tbl.hdr, sizeof(struct acpi_madt), madt_iter_cb, nullptr);
 
   uacpi_table_unref(&tbl);
 

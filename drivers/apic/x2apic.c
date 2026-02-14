@@ -41,7 +41,7 @@
 #define APIC_BASE_MSR_ENABLE 0x800
 #define APIC_BASE_MSR_X2APIC_ENABLE (1ULL << 10)
 
-static spinlock_t x2apic_ipi_lock = 0;
+static DEFINE_SPINLOCK(x2apic_ipi_lock);
 
 static void x2apic_write(uint32_t msr, uint64_t value) {
   wrmsr(msr, value);

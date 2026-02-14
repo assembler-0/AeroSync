@@ -27,6 +27,7 @@
 #include <drivers/apic/apic.h>
 #include <aerosync/classes.h>
 #include <aerosync/panic.h>
+#include <aerosync/export.h>
 #include <aerosync/sched/cpumask.h>
 #include <aerosync/sched/process.h>
 #include <aerosync/sched/sched.h>
@@ -40,6 +41,7 @@
 #include <mm/vma.h>
 #include <aerosync/timer.h>
 #include <vsprintf.h>
+#include <aerosync/resdomain.h>
 #include <arch/x86_64/gdt/gdt.h>
 
 static int idle_balance(struct rq *this_rq);
@@ -97,13 +99,13 @@ void set_task_cpu(struct task_struct *task, int cpu) { task->cpu = cpu; }
  * Core Scheduler Operations
  */
 
-void activate_task(struct rq *rq, struct task_struct *p, int flags) {
+void __no_cfi activate_task(struct rq *rq, struct task_struct *p, int flags) {
   if (p->sched_class && p->sched_class->enqueue_task) {
     p->sched_class->enqueue_task(rq, p, flags);
   }
 }
 
-void deactivate_task(struct rq *rq, struct task_struct *p, int flags) {
+void __no_cfi deactivate_task(struct rq *rq, struct task_struct *p, int flags) {
   if (p->sched_class && p->sched_class->dequeue_task) {
     p->sched_class->dequeue_task(rq, p, flags);
   }
@@ -112,7 +114,7 @@ void deactivate_task(struct rq *rq, struct task_struct *p, int flags) {
 /*
  * Internal migration helper - caller must hold __rq_lock
  */
-static void __move_task_to_rq_locked(struct task_struct *task, int dest_cpu) {
+static void __no_cfi __move_task_to_rq_locked(struct task_struct *task, int dest_cpu) {
   struct rq *src_rq = per_cpu_ptr(runqueues, task->cpu);
   struct rq *dest_rq = per_cpu_ptr(runqueues, dest_cpu);
 
@@ -156,6 +158,41 @@ void move_task_to_rq(struct task_struct *task, int dest_cpu) {
   restore_irq_flags(flags);
 }
 
+/*
+ * sched_move_task - Moves a task from its current scheduling group to a new one.
+ * Used when a task is attached to a different ResDomain.
+ */
+void __no_cfi sched_move_task(struct task_struct *p) {
+  struct rq *rq = per_cpu_ptr(runqueues, p->cpu);
+  irq_flags_t flags = spinlock_lock_irqsave(&rq->lock);
+
+  bool queued = (p->se.on_rq != 0);
+  if (queued) {
+    deactivate_task(rq, p, DEQUEUE_SAVE);
+  }
+
+  /* 
+   * This is where we update the hierarchy linkage.
+   * We use the CPU controller state from the ResDomain.
+   */
+  struct cpu_rd_state *cs = p->rd ? (struct cpu_rd_state *)p->rd->subsys[RD_SUBSYS_CPU] : nullptr;
+  if (cs && cs->cfs_rq) {
+      p->se.cfs_rq = cs->cfs_rq[p->cpu];
+      p->se.parent = cs->se ? cs->se[p->cpu] : nullptr;
+  } else {
+      p->se.cfs_rq = &rq->cfs;
+      p->se.parent = nullptr;
+  }
+
+  if (queued) {
+    activate_task(rq, p, ENQUEUE_RESTORE);
+  }
+
+  spinlock_unlock_irqrestore(&rq->lock, flags);
+}
+
+EXPORT_SYMBOL(sched_move_task);
+
 static void switch_mm(struct mm_struct *prev, struct mm_struct *next,
                       struct task_struct *tsk) {
   int cpu = smp_get_id();
@@ -177,7 +214,7 @@ static void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 /*
  * Pick the next task to run by iterating through scheduler classes
  */
-static struct task_struct *pick_next_task(struct rq *rq) {
+static struct task_struct * __no_cfi pick_next_task(struct rq *rq) {
   struct task_struct *p;
   const struct sched_class *class;
 
@@ -195,13 +232,13 @@ static struct task_struct *pick_next_task(struct rq *rq) {
   }
 
   /* Failure to pick any task (shouldn't happen if idle class exists) */
-  return NULL;
+  return nullptr;
 }
 
 /*
  * Context Switch
  */
-extern struct task_struct *switch_to(struct task_struct *prev,
+extern struct task_struct * __no_cfi switch_to(struct task_struct *prev,
                                      struct task_struct *next);
 
 /*
@@ -232,7 +269,7 @@ static inline int task_on_rq(struct task_struct *p) {
  * __update_task_prio - update the effective priority of a task
  * Must be called with p->pi_lock held.
  */
-void __update_task_prio(struct task_struct *p) {
+void __no_cfi __update_task_prio(struct task_struct *p) {
   int old_prio = p->prio;
   int top_pi = task_top_pi_prio(p);
   const struct sched_class *old_class = p->sched_class;
@@ -335,7 +372,7 @@ void pi_restore_prio(struct task_struct *owner, struct task_struct *waiter) {
  * Task state management functions
  */
 
-void task_sleep(void) {
+void __no_cfi task_sleep(void) {
   struct task_struct *curr = get_current();
   struct rq *rq = this_rq();
 
@@ -384,7 +421,7 @@ long schedule_timeout(uint64_t ns) {
   return remaining < 0 ? 0 : remaining;
 }
 
-void task_wake_up(struct task_struct *task) {
+void __no_cfi task_wake_up(struct task_struct *task) {
   int cpu = smp_get_id();
   int target_cpu;
   struct rq *rq;
@@ -452,7 +489,6 @@ void schedule_tail(struct task_struct *prev) {
 
   /* Release the runqueue lock held since schedule() */
   spinlock_unlock(&rq->lock);
-  cpu_sti(); // Matches spinlock_lock_irqsave behavior
 
   /* Restore FPU state for the current task */
   if (current->thread.fpu) {
@@ -470,7 +506,7 @@ void schedule_tail(struct task_struct *prev) {
   }
 }
 
-void set_task_nice(struct task_struct *p, int nice) {
+void __no_cfi set_task_nice(struct task_struct *p, int nice) {
   if (nice < MIN_NICE)
     nice = MIN_NICE;
   if (nice > MAX_NICE)
@@ -514,7 +550,7 @@ void set_task_nice(struct task_struct *p, int nice) {
 /*
  * The main schedule function
  */
-void schedule(void) {
+void __no_cfi schedule(void) {
   struct task_struct *prev_task, *next_task;
   struct rq *rq = this_rq();
 
@@ -594,10 +630,19 @@ void schedule(void) {
     prev_task = switch_to(prev_task, next_task);
 
     schedule_tail(prev_task);
+
+    restore_irq_flags(flags);
     return;
   }
 
   spinlock_unlock_irqrestore(&rq->lock, flags);
+}
+
+void __noreturn idle_loop(void) {
+  while (1) {
+    check_preempt();
+    cpu_hlt();
+  }
 }
 
 /*
@@ -619,10 +664,10 @@ static inline bool task_can_run_on(struct task_struct *p, int cpu) {
  * find_busiest_group - Find the group with highest load in a domain
  */
 static struct sched_group *find_busiest_group(struct sched_domain *sd, int this_cpu) {
-  struct sched_group *busiest = NULL, *sg = sd->groups;
+  struct sched_group *busiest = nullptr, *sg = sd->groups;
   unsigned long max_load = 0;
 
-  if (!sg) return NULL;
+  if (!sg) return nullptr;
 
   do {
     if (cpumask_test_cpu(this_cpu, &sg->cpumask)) {
@@ -650,7 +695,7 @@ static struct sched_group *find_busiest_group(struct sched_domain *sd, int this_
  * find_busiest_queue - Find the busiest runqueue in a group
  */
 static struct rq *find_busiest_queue(struct sched_group *group, int this_cpu) {
-  struct rq *busiest = NULL;
+  struct rq *busiest = nullptr;
   unsigned long max_load = 0;
   int cpu;
 
@@ -854,11 +899,11 @@ static void run_rebalance_domains(struct softirq_action *h) {
 }
 #endif
 
-void __hot scheduler_tick(void) {
+void __hot __no_cfi scheduler_tick(void) {
   struct rq *rq = this_rq();
   struct task_struct *curr = rq->curr;
 
-  spinlock_lock((volatile int *) &rq->lock);
+  spinlock_lock(&rq->lock);
 
   rq->clock++;
   rq->clock_task = get_time_ns(); // Update task clock
@@ -867,7 +912,7 @@ void __hot scheduler_tick(void) {
     curr->sched_class->task_tick(rq, curr, 1 /* queued status? */);
   }
 
-  spinlock_unlock((volatile int *) &rq->lock);
+  spinlock_unlock(&rq->lock);
 
 #ifdef CONFIG_SCHED_AUTO_BALANCE
   int cpu = smp_get_id();
@@ -957,10 +1002,15 @@ void sched_init_task(struct task_struct *initial_task) {
   initial_task->se.load.weight = prio_to_weight[initial_task->nice + 20];
   initial_task->se.on_rq = 0;
   initial_task->se.exec_start_ns = get_time_ns();
+  initial_task->se.cfs_rq = &rq->cfs;
+  initial_task->se.parent = nullptr;
+  
+  extern struct pid_namespace init_pid_ns;
+  initial_task->nsproxy = &init_pid_ns;
 
   /* PI initialization */
   spinlock_init(&initial_task->pi_lock);
-  initial_task->pi_blocked_on = NULL;
+  initial_task->pi_blocked_on = nullptr;
   INIT_LIST_HEAD(&initial_task->pi_waiters);
   INIT_LIST_HEAD(&initial_task->pi_list);
 
@@ -1026,7 +1076,7 @@ void sched_init_ap(void) {
 
   /* PI initialization */
   spinlock_init(&idle->pi_lock);
-  idle->pi_blocked_on = NULL;
+  idle->pi_blocked_on = nullptr;
   INIT_LIST_HEAD(&idle->pi_waiters);
   INIT_LIST_HEAD(&idle->pi_list);
 

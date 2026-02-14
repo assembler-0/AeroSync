@@ -11,17 +11,18 @@
 #define PG_slab (1 << 3)
 #define PG_referenced (1 << 4)
 #define PG_lru (1 << 5)
-#define PG_head (1 << 6)   /* Page is the head of a compound page (folio) */
-#define PG_tail (1 << 7)   /* Page is a tail of a compound page */
-#define PG_dirty (1 << 8)  /* Page has been modified and needs writeback */
-#define PG_locked (1 << 9) /* Page is locked (bit-spinlock for SLUB) */
+#define PG_head (1 << 6)      /* Page is the head of a compound page (folio) */
+#define PG_tail (1 << 7)      /* Page is a tail of a compound page */
+#define PG_dirty (1 << 8)     /* Page has been modified and needs writeback */
+#define PG_locked (1 << 9)    /* Page is locked (bit-spinlock for SLUB) */
+#define PG_poisoned (1 << 10) /* Page has been poisoned by kernel */
 
 /* MGLRU flags (bits 50-53) */
-#define LRU_GEN_MASK      0x7ULL
-#define LRU_GEN_SHIFT     50
-#define LRU_REFS_MASK     0x3ULL
-#define LRU_REFS_SHIFT    53
-#define LRU_REFS_FLAGS    (LRU_REFS_MASK << LRU_REFS_SHIFT)
+#define LRU_GEN_MASK 0x7ULL
+#define LRU_GEN_SHIFT 50
+#define LRU_REFS_MASK 0x3ULL
+#define LRU_REFS_SHIFT 53
+#define LRU_REFS_FLAGS (LRU_REFS_MASK << LRU_REFS_SHIFT)
 
 struct kmem_cache;
 
@@ -71,6 +72,8 @@ struct page {
   uint32_t zone;        /* Memory zone (if any) */
   uint32_t node;        /* NUMA node ID */
   atomic_t _refcount;   /* Reference count */
+
+  struct resdomain *rd; /* Resource domain that owns this page */
 
   /* Split page table lock */
   spinlock_t ptl;
@@ -125,7 +128,11 @@ struct folio {
 #define SetPageTail(page) ((page)->flags |= PG_tail)
 #define ClearPageTail(page) ((page)->flags &= ~PG_tail)
 
-#define PageLocked(page)     ((page)->flags & PG_locked)
+#define PageLocked(page) ((page)->flags & PG_locked)
+
+#define PagePoisoned(page) ((page)->flags & PG_poisoned)
+#define SetPagePoisoned(page) ((page)->flags |= PG_poisoned)
+#define ClearPagePoisoned(page) ((page)->flags &= ~PG_poisoned)
 
 #define offset_in_page(p) (((unsigned long)p) % PAGE_SIZE)
 
@@ -134,21 +141,23 @@ struct folio {
  * These provide lockless synchronization at page granularity.
  */
 static inline void lock_page_slab(struct page *page) {
-  while (__atomic_test_and_set((volatile void *)&page->flags + (PG_locked / 8), 
-                                __ATOMIC_ACQUIRE)) {
-    /* Spin with pause instruction to reduce contention */
+  /* Use bit-level atomic OR to lock without overwriting other flags */
+  while (__atomic_fetch_or(&page->flags, PG_locked, __ATOMIC_ACQUIRE) &
+         PG_locked) {
     cpu_relax();
   }
 }
 
 static inline void unlock_page_slab(struct page *page) {
-  __atomic_clear((volatile void *)&page->flags + (PG_locked / 8), 
-                 __ATOMIC_RELEASE);
+  /* Clear the bit atomically */
+  __atomic_fetch_and(&page->flags, ~((unsigned long)PG_locked),
+                     __ATOMIC_RELEASE);
 }
 
 static inline int trylock_page_slab(struct page *page) {
-  return !__atomic_test_and_set((volatile void *)&page->flags + (PG_locked / 8), 
-                                 __ATOMIC_ACQUIRE);
+  /* Return 1 on success (previous bit was 0) */
+  return !(__atomic_fetch_or(&page->flags, PG_locked, __ATOMIC_ACQUIRE) &
+           PG_locked);
 }
 
 /* Reference counting */
@@ -162,6 +171,10 @@ static inline int page_ref_count(struct page *page) {
 /* Folio-based reference counting */
 static inline void folio_get(struct folio *folio) {
   atomic_inc(&folio->page._refcount);
+}
+
+static inline bool folio_try_get(struct folio *folio) {
+  return atomic_inc_not_zero(&folio->page._refcount);
 }
 
 static inline void folio_put(struct folio *folio) { put_page(&folio->page); }
@@ -181,7 +194,8 @@ static inline struct folio *page_folio(struct page *page) {
 }
 
 static inline void get_page(struct page *page) {
-  if (unlikely(!page)) return;
+  if (unlikely(!page))
+    return;
   struct folio *folio = page_folio(page);
   atomic_inc(&folio->page._refcount);
 }
@@ -229,3 +243,7 @@ static inline uint64_t page_to_phys(struct page *page) {
   uint64_t pfn = (uint64_t)(page - mem_map);
   return pfn << 12;
 }
+
+/* LRU management */
+void folio_add_lru(struct folio *folio);
+void lru_batch_flush_cpu(void);

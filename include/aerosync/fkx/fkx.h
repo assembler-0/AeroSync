@@ -119,7 +119,16 @@ struct fkx_module_info {
 /**
  * FKX_NO_DEPENDENCIES - Use when module has no dependencies
  */
-#define FKX_NO_DEPENDENCIES NULL
+#define FKX_NO_DEPENDENCIES nullptr
+
+#include <limine/limine.h>
+#include <aerosync/limine_modules.h>
+
+/**
+ * LMM Prober and Callbacks for FKX modules
+ */
+int lmm_fkx_prober(const struct limine_file *file, lmm_type_t *out_type);
+void __init lmm_load_fkx_callback(struct lmm_entry *entry, void *data);
 
 /**
  * Load an FKX module image into memory without calling init
@@ -129,6 +138,7 @@ struct fkx_module_info {
  * @return FKX_SUCCESS on success, error code otherwise
  */
 int fkx_load_image(void *data, size_t size);
+
 
 /**
  * Initialize all modules of a specific class

@@ -10,6 +10,8 @@
 #pragma once
 
 #include <aerosync/types.h>
+#include <aerosync/sysintf/device.h>
+#include <aerosync/sysintf/bus.h>
 #include <linux/list.h>
 
 /* PCI Configuration space offsets */
@@ -64,26 +66,29 @@ struct pci_device_id {
 };
 
 struct pci_driver {
-    struct list_head node;
-    const char *name;
+    struct device_driver driver;
     const struct pci_device_id *id_table;
     int (*probe)(struct pci_dev *dev, const struct pci_device_id *id);
     void (*remove)(struct pci_dev *dev);
 };
 
+#define to_pci_driver(drv) container_of(drv, struct pci_driver, driver)
+
 struct pci_bus {
-    struct list_head node;
-    struct list_head devices;
-    struct list_head children;
+    struct bus_type bus_type;
     struct pci_bus *parent;
     uint16_t segment;
     uint8_t number;
+
+    struct list_head devices;
+    struct list_head children;
+    struct list_head node;
 };
 
 struct pci_dev {
-    struct list_head bus_list;
-    struct list_head global_list;
-    struct pci_bus *bus;
+    struct device dev;
+    struct pci_bus *pbus;
+    struct list_head bus_list; /* Node for bus->devices list */
     uint16_t devfn;
     uint16_t vendor;
     uint16_t device;
@@ -93,12 +98,13 @@ struct pci_dev {
     uint8_t revision;
     uint8_t hdr_type;
 
-    struct pci_driver *driver;
     pci_handle_t handle;
 
     uint32_t bars[6];
     uint32_t bar_sizes[6];
 };
+
+#define to_pci_dev(d) container_of(d, struct pci_dev, dev)
 
 /* Hardware Access Ops */
 typedef struct {

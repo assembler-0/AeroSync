@@ -112,7 +112,9 @@ static void sys_write(struct syscall_regs *regs) {
   const char *buf = (const char *) regs->rsi;
   size_t count = (size_t) regs->rdx;
 
+#ifdef IMPLICIT_FD12_STDOUT_STDERR
   if (fd == 1 || fd == 2) {
+#ifdef IMPLICIT_FD12_STDOUT_STDERR_PRINTK
     // stdout or stderr
     char kbuf[256];
     size_t total = 0;
@@ -134,7 +136,9 @@ static void sys_write(struct syscall_regs *regs) {
     }
     REGS_RETURN_VAL(regs, total);
     return;
+#endif
   }
+#endif
 
   struct file *file = fget(fd);
   if (!file) {
@@ -239,7 +243,7 @@ static void sys_close(struct syscall_regs *regs) {
   }
 
   struct file *file = files->fdtab.fd[fd];
-  files->fdtab.fd[fd] = NULL;
+  files->fdtab.fd[fd] = nullptr;
   clear_bit(fd, files->fdtab.open_fds);
   if (fd < files->next_fd) {
     files->next_fd = fd;
@@ -265,6 +269,69 @@ static void sys_lseek(struct syscall_regs *regs) {
 
   vfs_loff_t ret = vfs_llseek(file, offset, whence);
   fput(file);
+  REGS_RETURN_VAL(regs, ret);
+}
+
+static void sys_dup_handler(struct syscall_regs *regs) {
+  int oldfd = (int) regs->rdi;
+  extern int sys_dup(int oldfd);
+  REGS_RETURN_VAL(regs, sys_dup(oldfd));
+}
+
+static void sys_dup2_handler(struct syscall_regs *regs) {
+  int oldfd = (int) regs->rdi;
+  int newfd = (int) regs->rsi;
+  extern int sys_dup2(int oldfd, int newfd);
+  REGS_RETURN_VAL(regs, sys_dup2(oldfd, newfd));
+}
+
+static void sys_fcntl_handler(struct syscall_regs *regs) {
+  int fd = (int) regs->rdi;
+  unsigned int cmd = (unsigned int) regs->rsi;
+  unsigned long arg = (unsigned long) regs->rdx;
+
+  extern int sys_fcntl(int fd, unsigned int cmd, unsigned long arg);
+  int ret = sys_fcntl(fd, cmd, arg);
+  REGS_RETURN_VAL(regs, ret);
+}
+
+static void sys_execve(struct syscall_regs *regs) {
+  const char *filename_user = (const char *) regs->rdi;
+  char **argv_user = (char **) regs->rsi;
+  char **envp_user = (char **) regs->rdx;
+
+  char *filename = kmalloc(4096);
+  if (!filename) {
+    REGS_RETURN_VAL(regs, -ENOMEM);
+    return;
+  }
+
+  if (copy_from_user(filename, filename_user, 4096) != 0) {
+    kfree(filename);
+    REGS_RETURN_VAL(regs, -EFAULT);
+    return;
+  }
+
+  int ret = do_execve(filename, argv_user, envp_user);
+  kfree(filename);
+
+  REGS_RETURN_VAL(regs, ret);
+}
+
+static void sys_ioctl(struct syscall_regs *regs) {
+  int fd = (int) regs->rdi;
+  unsigned int cmd = (unsigned int) regs->rsi;
+  unsigned long arg = (unsigned long) regs->rdx;
+
+  struct file *file = fget(fd);
+  if (!file) {
+    REGS_RETURN_VAL(regs, -EBADF);
+    return;
+  }
+
+  int ret = vfs_ioctl(file, cmd, arg);
+  fput(file);
+
   REGS_RETURN_VAL(regs, ret);
 }
 
@@ -302,20 +369,21 @@ static void sys_mmap(struct syscall_regs *regs) {
     return;
   }
 
-  struct file *file = NULL;
+  struct file *file = nullptr;
   if (!(flags & MAP_ANON)) {
-      file = fget(fd);
-      if (!file) {
-          REGS_RETURN_VAL(regs, -EBADF);
-          return;
-      }
-      /* TODO: Get vm_object from file/inode */
-      fput(file);
-      REGS_RETURN_VAL(regs, -ENODEV); // Not yet fully supported for files
+    file = fget(fd);
+    if (!file) {
+      REGS_RETURN_VAL(regs, -EBADF);
       return;
+    }
   }
 
-  uint64_t ret = do_mmap(mm, addr, len, prot, flags, file, NULL, off >> PAGE_SHIFT);
+  uint64_t ret = do_mmap(mm, addr, len, prot, flags, file, nullptr, off >> PAGE_SHIFT);
+
+  if (file) {
+    fput(file);
+  }
+
   REGS_RETURN_VAL(regs, ret);
 }
 
@@ -361,8 +429,210 @@ static void sys_mremap(struct syscall_regs *regs) {
     return;
   }
 
-  /* TODO: Implement do_mremap logic in vma.c */
-  REGS_RETURN_VAL(regs, -ENOSYS);
+  uint64_t ret = do_mremap(mm, old_addr, old_len, new_len, flags, new_addr_hint);
+  REGS_RETURN_VAL(regs, ret);
+}
+
+static void sys_stat(struct syscall_regs *regs) {
+  const char *path_user = (const char *) regs->rdi;
+  struct stat *statbuf_user = (struct stat *) regs->rsi;
+
+  char *path = kmalloc(4096);
+  if (!path) {
+    REGS_RETURN_VAL(regs, -ENOMEM);
+    return;
+  }
+
+  if (copy_from_user(path, path_user, 4096) != 0) {
+    kfree(path);
+    REGS_RETURN_VAL(regs, -EFAULT);
+    return;
+  }
+
+  struct stat st;
+  int ret = vfs_stat(path, &st);
+  kfree(path);
+
+  if (ret == 0) {
+    if (copy_to_user(statbuf_user, &st, sizeof(struct stat)) != 0) {
+      REGS_RETURN_VAL(regs, -EFAULT);
+      return;
+    }
+  }
+
+  REGS_RETURN_VAL(regs, ret);
+}
+
+static void sys_fstat(struct syscall_regs *regs) {
+  int fd = (int) regs->rdi;
+  struct stat *statbuf_user = (struct stat *) regs->rsi;
+
+  struct file *file = fget(fd);
+  if (!file) {
+    REGS_RETURN_VAL(regs, -EBADF);
+    return;
+  }
+
+  struct stat st;
+  int ret = vfs_fstat(file, &st);
+  fput(file);
+
+  if (ret == 0) {
+    if (copy_to_user(statbuf_user, &st, sizeof(struct stat)) != 0) {
+      REGS_RETURN_VAL(regs, -EFAULT);
+      return;
+    }
+  }
+
+  REGS_RETURN_VAL(regs, ret);
+}
+
+static void sys_poll(struct syscall_regs *regs) {
+  struct pollfd *fds_user = (struct pollfd *) regs->rdi;
+  unsigned int nfds = (unsigned int) regs->rsi;
+  int timeout_ms = (int) regs->rdx;
+
+  if (nfds > 1024) {
+    REGS_RETURN_VAL(regs, -EINVAL);
+    return;
+  }
+
+  struct pollfd *fds = kmalloc(nfds * sizeof(struct pollfd));
+  if (!fds) {
+    REGS_RETURN_VAL(regs, -ENOMEM);
+    return;
+  }
+
+  if (copy_from_user(fds, fds_user, nfds * sizeof(struct pollfd)) != 0) {
+    kfree(fds);
+    REGS_RETURN_VAL(regs, -EFAULT);
+    return;
+  }
+
+  uint64_t timeout_ns = (uint64_t)-1;
+  if (timeout_ms >= 0) {
+      timeout_ns = (uint64_t)timeout_ms * 1000000ULL;
+  }
+
+  extern int do_poll(struct pollfd *fds, unsigned int nfds, uint64_t timeout_ns);
+  int count = do_poll(fds, nfds, timeout_ns);
+
+  if (count >= 0) {
+    if (copy_to_user(fds_user, fds, nfds * sizeof(struct pollfd)) != 0) {
+      kfree(fds);
+      REGS_RETURN_VAL(regs, -EFAULT);
+      return;
+    }
+  }
+
+  kfree(fds);
+  REGS_RETURN_VAL(regs, count);
+}
+
+static void sys_pipe(struct syscall_regs *regs) {
+  int *pipefd_user = (int *) regs->rdi;
+  int pipefd[2];
+
+  extern int do_pipe(int pipefd[2]);
+  int ret = do_pipe(pipefd);
+
+  if (ret == 0) {
+    if (copy_to_user(pipefd_user, pipefd, sizeof(pipefd)) != 0) {
+      /* In a real kernel, we would close the FDs on failure */
+      REGS_RETURN_VAL(regs, -EFAULT);
+      return;
+    }
+  }
+
+  REGS_RETURN_VAL(regs, ret);
+}
+
+static void sys_mkdir_handler(struct syscall_regs *regs) {
+  const char *path = (const char *) regs->rdi;
+  vfs_mode_t mode = (vfs_mode_t) regs->rsi;
+  REGS_RETURN_VAL(regs, sys_mkdir(path, mode));
+}
+
+static void sys_mknod_handler(struct syscall_regs *regs) {
+  const char *path = (const char *) regs->rdi;
+  vfs_mode_t mode = (vfs_mode_t) regs->rsi;
+  dev_t dev = (dev_t) regs->rdx;
+  REGS_RETURN_VAL(regs, sys_mknod(path, mode, dev));
+}
+
+static void sys_chdir_handler(struct syscall_regs *regs) {
+  const char *path = (const char *) regs->rdi;
+  REGS_RETURN_VAL(regs, sys_chdir(path));
+}
+
+static void sys_getcwd_handler(struct syscall_regs *regs) {
+  char *buf = (char *) regs->rdi;
+  size_t size = (size_t) regs->rsi;
+  char *ret = sys_getcwd(buf, size);
+  REGS_RETURN_VAL(regs, (uint64_t)ret);
+}
+
+static void sys_unlink_handler(struct syscall_regs *regs) {
+  const char *path = (const char *) regs->rdi;
+  REGS_RETURN_VAL(regs, sys_unlink(path));
+}
+
+static void sys_rmdir_handler(struct syscall_regs *regs) {
+  const char *path = (const char *) regs->rdi;
+  REGS_RETURN_VAL(regs, sys_rmdir(path));
+}
+
+static void sys_rename_handler(struct syscall_regs *regs) {
+  const char *oldpath = (const char *) regs->rdi;
+  const char *newpath = (const char *) regs->rsi;
+  REGS_RETURN_VAL(regs, sys_rename(oldpath, newpath));
+}
+
+static void sys_symlink_handler(struct syscall_regs *regs) {
+  const char *oldpath = (const char *) regs->rdi;
+  const char *newpath = (const char *) regs->rsi;
+  REGS_RETURN_VAL(regs, sys_symlink(oldpath, newpath));
+}
+
+static void sys_readlink_handler(struct syscall_regs *regs) {
+  const char *path = (const char *) regs->rdi;
+  char *buf = (char *) regs->rsi;
+  size_t bufsiz = (size_t) regs->rdx;
+  REGS_RETURN_VAL(regs, sys_readlink(path, buf, bufsiz));
+}
+
+static void sys_chmod_handler(struct syscall_regs *regs) {
+  const char *path = (const char *) regs->rdi;
+  vfs_mode_t mode = (vfs_mode_t) regs->rsi;
+  REGS_RETURN_VAL(regs, sys_chmod(path, mode));
+}
+
+static void sys_chown_handler(struct syscall_regs *regs) {
+  const char *path = (const char *) regs->rdi;
+  uid_t owner = (uid_t) regs->rsi;
+  gid_t group = (gid_t) regs->rdx;
+  REGS_RETURN_VAL(regs, sys_chown(path, owner, group));
+}
+
+static void sys_truncate_handler(struct syscall_regs *regs) {
+  const char *path = (const char *) regs->rdi;
+  vfs_loff_t length = (vfs_loff_t) regs->rsi;
+  REGS_RETURN_VAL(regs, sys_truncate(path, length));
+}
+
+static void sys_ftruncate_handler(struct syscall_regs *regs) {
+  int fd = (int) regs->rdi;
+  vfs_loff_t length = (vfs_loff_t) regs->rsi;
+  REGS_RETURN_VAL(regs, sys_ftruncate(fd, length));
+}
+
+static void sys_mount_handler(struct syscall_regs *regs) {
+  const char *dev_name = (const char *) regs->rdi;
+  const char *dir_name = (const char *) regs->rsi;
+  const char *type = (const char *) regs->rdx;
+  unsigned long flags = (unsigned long) regs->r10;
+  void *data = (void *) regs->r8;
+  REGS_RETURN_VAL(regs, sys_mount(dev_name, dir_name, type, flags, data));
 }
 
 static sys_call_ptr_t syscall_table[] = {
@@ -370,6 +640,9 @@ static sys_call_ptr_t syscall_table[] = {
   [1] = sys_write,
   [2] = sys_open,
   [3] = sys_close,
+  [4] = sys_stat,
+  [5] = sys_fstat,
+  [7] = sys_poll,
   [8] = sys_lseek,
   [9] = sys_mmap,
   [10] = sys_mprotect,
@@ -377,12 +650,32 @@ static sys_call_ptr_t syscall_table[] = {
   [13] = sys_rt_sigaction,
   [14] = sys_rt_sigprocmask,
   [15] = sys_rt_sigreturn,
+  [16] = sys_ioctl,
+  [32] = sys_dup_handler,
+  [33] = sys_dup2_handler,
+  [72] = sys_fcntl_handler,
+  [22] = sys_pipe,
   [25] = sys_mremap,
   [39] = sys_getpid_handler,
   [56] = sys_clone_handler,
   [57] = sys_fork_handler,
+  [59] = sys_execve,
   [60] = sys_exit_handler,
   [62] = sys_kill,
+  [76] = sys_truncate_handler,
+  [77] = sys_ftruncate_handler,
+  [79] = sys_getcwd_handler,
+  [80] = sys_chdir_handler,
+  [82] = sys_rename_handler,
+  [83] = sys_mkdir_handler,
+  [84] = sys_rmdir_handler,
+  [87] = sys_unlink_handler,
+  [88] = sys_symlink_handler,
+  [89] = sys_readlink_handler,
+  [90] = sys_chmod_handler,
+  [92] = sys_chown_handler,
+  [133] = sys_mknod_handler,
+  [165] = sys_mount_handler,
   [200] = sys_tkill,
   [234] = sys_tgkill,
 };

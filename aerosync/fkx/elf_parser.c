@@ -26,7 +26,7 @@ const Elf64_Shdr *elf_get_section(void *data, const char *name) {
     Elf64_Shdr *sections = (Elf64_Shdr *)((uint8_t *)data + hdr->e_shoff);
     
     // Validate string table index
-    if (hdr->e_shstrndx == 0 || hdr->e_shstrndx >= hdr->e_shnum) return NULL;
+    if (hdr->e_shstrndx == 0 || hdr->e_shstrndx >= hdr->e_shnum) return nullptr;
     
     Elf64_Shdr *strtab_sec = &sections[hdr->e_shstrndx];
     const char *strtab = (const char *)((uint8_t *)data + strtab_sec->sh_offset);
@@ -38,7 +38,7 @@ const Elf64_Shdr *elf_get_section(void *data, const char *name) {
         }
     }
     
-    return NULL;
+    return nullptr;
 }
 
 const Elf64_Sym *elf_get_symbol(void *data, const char *name) {
@@ -66,5 +66,5 @@ const Elf64_Sym *elf_get_symbol(void *data, const char *name) {
         }
     }
     
-    return NULL;
+    return nullptr;
 }

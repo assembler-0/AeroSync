@@ -38,7 +38,7 @@ static __finline uint32_t inl(uint16_t port) {
 }
 
 static __finline void outsb(uint16_t port, void* buf, size_t len) {
-    __asm__ volatile ("cld; rep outsb" : "+D"(buf), "+c"(len) : "d"(port) : "memory");
+    __asm__ volatile ("cld; rep outsb" : "+S"(buf), "+c"(len) : "d"(port) : "memory");
 }
 
 static __finline void insb(uint16_t port, void* buf, size_t len) {
@@ -46,7 +46,7 @@ static __finline void insb(uint16_t port, void* buf, size_t len) {
 }
 
 static __finline void outsl(uint16_t port, void* buf, size_t len) {
-    __asm__ volatile ("cld; rep outsl" : "+D"(buf), "+c"(len) : "d"(port) : "memory");
+    __asm__ volatile ("cld; rep outsl" : "+S"(buf), "+c"(len) : "d"(port) : "memory");
 }
 
 static __finline void insl(uint16_t port, void* buf, size_t len) {
@@ -54,7 +54,7 @@ static __finline void insl(uint16_t port, void* buf, size_t len) {
 }
 
 static __finline void outsw(uint16_t port, void* buf, size_t len) {
-    __asm__ volatile ("cld; rep outsw" : "+D"(buf), "+c"(len) : "d"(port) : "memory");
+    __asm__ volatile ("cld; rep outsw" : "+S"(buf), "+c"(len) : "d"(port) : "memory");
 }
 
 static __finline void insw(uint16_t port, void* buf, size_t len) {

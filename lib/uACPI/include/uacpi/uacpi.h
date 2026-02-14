@@ -128,7 +128,7 @@ uacpi_init_level uacpi_get_current_init_level(void);
 /*
  * Evaluate an object within the namespace and get back its value.
  * Either root or path must be valid.
- * A value of NULL for 'parent' implies uacpi_namespace_root() relative
+ * A value of nullptr for 'parent' implies uacpi_namespace_root() relative
  * lookups, unless 'path' is already absolute.
  */
 uacpi_status uacpi_eval(

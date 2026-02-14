@@ -4,24 +4,25 @@
 #include <aerosync/types.h>
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/mm/pmm.h>
+#include <mm/gfp.h>
 #include <mm/page.h>
 
 #ifndef SLAB_MAX_ORDER
-  #ifndef CONFIG_SLAB_MAX_ORDER
-    #define SLAB_MAX_ORDER 11
-  #else
-    #define SLAB_MAX_ORDER CONFIG_SLAB_MAX_ORDER
-  #endif
+#ifndef CONFIG_SLAB_MAX_ORDER
+#define SLAB_MAX_ORDER 11
+#else
+#define SLAB_MAX_ORDER CONFIG_SLAB_MAX_ORDER
+#endif
 #endif
 
 #define SLAB_MAX_SIZE (128 * 1024)
 
 #ifndef SLAB_MAG_SIZE
-  #ifndef CONFIG_SLAB_MAG_SIZE
-    #define SLAB_MAG_SIZE 16
-  #else
-    #define SLAB_MAG_SIZE CONFIG_SLAB_MAG_SIZE
-  #endif
+#ifndef CONFIG_SLAB_MAG_SIZE
+#define SLAB_MAG_SIZE 16
+#else
+#define SLAB_MAG_SIZE CONFIG_SLAB_MAG_SIZE
+#endif
 #endif
 
 #define CACHE_LINE_SIZE 64
@@ -32,7 +33,7 @@
 #define SLAB_HWCACHE_ALIGN 0x00008000UL
 #define SLAB_TYPESAFE_BY_RCU 0x00080000UL /* RCU-free slabs */
 
-struct kmem_cache_cpu {
+alignas(CACHE_LINE_SIZE) struct kmem_cache_cpu {
   void *freelist;    /* Pointer to next available object */
   unsigned long tid; /* Transaction ID for lockless cmpxchg */
   struct page *page; /* The slab from which we are allocating */
@@ -40,7 +41,7 @@ struct kmem_cache_cpu {
   /* Magazine Layer (BSD/XNU Hybrid) */
   void *mag[SLAB_MAG_SIZE];
   int mag_count;
-} __aligned(CACHE_LINE_SIZE);
+};
 
 struct kmem_cache_node {
   spinlock_t list_lock;

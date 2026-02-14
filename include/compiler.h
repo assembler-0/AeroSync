@@ -1,4 +1,5 @@
 #pragma once
+#include <aerosync/types.h>
 
 /* ========================
  * BASIC PLATFORM DETECTION
@@ -32,6 +33,11 @@
 #define __nonnull(x)    __attribute__((nonnull(x)))
 #define __finline        __attribute__((always_inline))
 #define __optimize(x)   __attribute__((optimize(x)))
+#define __deprecated    __attribute__((deprecated))
+/* include/linux/compiler_attributes.h:368 */
+#define __must_check    __attribute__((__warn_unused_result__))
+#define __no_sanitize   __attribute__((no_sanitize("undefined", "address", "integer", "null", "bounds", "vla-bound", "object-size")))
+#define __no_cfi        __attribute__((no_sanitize("cfi")))
 
 /* ========================
  * MEMORY / LAYOUT ATTRIBUTES
@@ -74,6 +80,7 @@
  * ======================== */
 
 #define __fallthrough   __attribute__((fallthrough))
+#define fallthrough
 #define __unreachable() __builtin_unreachable()
 #define __trap()        __builtin_trap()
 #define __likely(x)     __builtin_expect(!!(x), 1)
@@ -93,7 +100,7 @@
  * barrier(): Prevents the compiler from reordering instructions across this point.
  *            It does NOT prevent the CPU from reordering.
  */
-#define cbarrier()      asm volatile("" ::: "memory")
+#define cbarrier()      __asm__ volatile("" ::: "memory")
 
 /*
  * READ_ONCE / WRITE_ONCE
@@ -123,8 +130,31 @@ do { \
 #define ALIGN_DOWN(x, a)        ((x) & ~((a) - 1))
 #define ALIGN_UP(x, a)          ALIGN(x, a)
 
+#define __STRINGIFY(x) #x
+#define STRINGIFY(x) __STRINGIFY(x)
+
 /* ETC. */
 #define static_assert _Static_assert
 #define __percpu
 #define __rcu
 #define __force
+
+#ifdef COMPILER_CLANG
+
+/*
+ * useful for clang sanitizers
+ */
+
+struct SourceLocation {
+  const char *file;
+  uint32_t line;
+  uint32_t column;
+};
+
+struct TypeDescriptor {
+  uint16_t type_kind;
+  uint16_t type_info;
+  char type_name[];
+};
+
+#endif

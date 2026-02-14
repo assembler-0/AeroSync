@@ -233,7 +233,7 @@ static inline void hlist_del_init_rcu(struct hlist_node *n)
 {
 	if (!hlist_unhashed(n)) {
 		__hlist_del(n);
-		WRITE_ONCE(n->pprev, NULL);
+		WRITE_ONCE(n->pprev, nullptr);
 	}
 }
 
@@ -394,7 +394,7 @@ static inline void list_splice_tail_init_rcu(struct list_head *list,
  * @type:       the type of the struct this is embedded in.
  * @member:     the name of the list_head within the struct.
  *
- * Note that if the list is empty, it returns NULL.
+ * Note that if the list is empty, it returns nullptr.
  *
  * This primitive may safely run concurrently with the _rcu list-mutation
  * primitives such as list_add_rcu() as long as it's guarded by rcu_read_lock().
@@ -403,7 +403,7 @@ static inline void list_splice_tail_init_rcu(struct list_head *list,
 ({ \
 	struct list_head *__ptr = (ptr); \
 	struct list_head *__next = READ_ONCE(__ptr->next); \
-	likely(__ptr != __next) ? list_entry_rcu(__next, type, member) : NULL; \
+	likely(__ptr != __next) ? list_entry_rcu(__next, type, member) : nullptr; \
 })
 
 /**
@@ -413,7 +413,7 @@ static inline void list_splice_tail_init_rcu(struct list_head *list,
  * @type:       the type of the struct this is embedded in.
  * @member:     the name of the list_head within the struct.
  *
- * Note that if the ptr is at the end of the list, NULL is returned.
+ * Note that if the ptr is at the end of the list, nullptr is returned.
  *
  * This primitive may safely run concurrently with the _rcu list-mutation
  * primitives such as list_add_rcu() as long as it's guarded by rcu_read_lock().
@@ -424,7 +424,7 @@ static inline void list_splice_tail_init_rcu(struct list_head *list,
 	struct list_head *__ptr = (ptr); \
 	struct list_head *__next = READ_ONCE(__ptr->next); \
 	likely(__next != __head) ? list_entry_rcu(__next, type, \
-						  member) : NULL; \
+						  member) : nullptr; \
 })
 
 /**
@@ -669,7 +669,7 @@ static inline void hlist_add_head_rcu(struct hlist_node *n,
 static inline void hlist_add_tail_rcu(struct hlist_node *n,
 				      struct hlist_head *h)
 {
-	struct hlist_node *i, *last = NULL;
+	struct hlist_node *i, *last = nullptr;
 
 	/* Note: write side code, so rcu accessors are not needed. */
 	for (i = h->first; i; i = i->next)

@@ -2,13 +2,21 @@
 
 #include <mm/mm_types.h>
 #include <aerosync/rw_semaphore.h>
+#include <aerosync/atomic.h>
 
 typedef enum {
   VM_OBJECT_ANON,
-  VM_OBJECT_FILE,
+  VM_OBJECT_VNODE,
   VM_OBJECT_DEVICE,
   VM_OBJECT_PHYS,
 } vm_object_type_t;
+
+/* Object flags */
+#define VM_OBJECT_DIRTY         0x01
+#define VM_OBJECT_SHADOW        0x02  /* This is a shadow object (has backing) */
+#define VM_OBJECT_COLLAPSING    0x04  /* Collapse in progress */
+#define VM_OBJECT_DEAD          0x08  /* Object is being destroyed */
+#define VM_OBJECT_SWAP_BACKED   0x10  /* Has pages swapped out */
 
 /**
  * vm_object_operations - Operations on a VM object
@@ -20,6 +28,7 @@ struct vm_object_operations {
   int (*page_mkwrite)(struct vm_object *obj, struct vm_area_struct *vma, struct vm_fault *vmf);
   int (*read_folio)(struct vm_object *obj, struct folio *folio);
   int (*write_folio)(struct vm_object *obj, struct folio *folio);
+  int (*write_folios)(struct vm_object *obj, struct folio **folios, uint32_t count);
   void (*free)(struct vm_object *obj);
 };
 
@@ -28,6 +37,22 @@ struct vm_object_operations {
 /**
  * struct vm_object - The "Page Cache" anchor.
  * Connects an object (file, anon, device) to its physical pages.
+ *
+ * Shadow Chain Architecture (BSD/XNU-style COW):
+ * ───────────────────────────────────────────────
+ * When a process forks, both parent and child get shadow objects
+ * that point to the original backing object. On write, the shadow
+ * copies the page from backing to itself (COW).
+ *
+ *     Original Object (backing_object)
+ *            ↑
+ *    ┌───────┴───────┐
+ *    │               │
+ * Shadow A       Shadow B
+ * (parent)       (child)
+ *
+ * Shadow chains can grow deep with nested forks. We track depth
+ * and collapse chains when a shadow's backing has refcount=1.
  */
 struct vm_object {
   vm_object_type_t type;
@@ -40,15 +65,48 @@ struct vm_object {
   atomic_t refcount;
   uint32_t flags;
   size_t size;
+
+  /* UBC / Writeback State */
+  atomic_long_t nr_dirty;           /* Number of dirty pages in this object */
+  unsigned long last_writeback;     /* Timestamp of last writeback pass */
+  uint64_t writeback_threshold;     /* Trigger writeback after this many dirty pages */
+
+  /* Shadowing and COW support */
   struct vm_object *backing_object; /* For Shadow Objects / COW */
   uint64_t shadow_offset;           /* Offset into the backing object */
 
+  /* Shadow chain management */
+  uint16_t shadow_depth;            /* Current depth in shadow chain */
+  uint16_t collapse_threshold;      /* Auto-collapse at this depth (default: 8) */
+  atomic_t shadow_children;         /* Number of shadows pointing to us */
+
+  /* Readahead / UBC State */
+  struct {
+    unsigned long start;            /* Current readahead window start */
+    unsigned int size;              /* Current readahead window size (pages) */
+    unsigned int async_size;        /* How many pages to read ahead of the current fault */
+    unsigned long ra_pages;         /* Max readahead window size */
+    unsigned int thrash_count;      /* Number of recent readahead-evict-refault events */
+  } readahead;
+
+  /* NUMA affinity */
+  int preferred_node;               /* Preferred NUMA node for allocations (-1 = none) */
+
+  /* Storage backend properties */
   uint64_t phys_addr; /* For VM_OBJECT_DEVICE and VM_OBJECT_PHYS */
+  struct inode *vnode;  /* For VM_OBJECT_VNODE */
+
+  /* Statistics */
+  atomic_long_t nr_pages;           /* Number of pages in page_tree */
+  atomic_long_t nr_swap;            /* Number of pages swapped out */
+  
+  struct resdomain *rd;             /* Resource domain charging context */
 };
 
-#define VM_OBJECT_DIRTY 0x01
+#define VM_OBJECT_DIRTY         0x01
 
 /* API */
+extern atomic_long_t nr_shadow_objects;
 struct vm_object *vm_object_alloc(vm_object_type_t type);
 void vm_object_free(struct vm_object *obj);
 void vm_object_get(struct vm_object *obj);
@@ -61,6 +119,7 @@ void balance_dirty_pages(struct vm_object *obj);
 void wakeup_writeback(void);
 void account_page_dirtied(void);
 void account_page_cleaned(void);
+void balance_dirty_pages_ratelimited(struct vm_object *obj);
 
 /* Page/Folio management */
 int vm_object_add_folio(struct vm_object *obj, uint64_t pgoff, struct folio *folio);
@@ -77,3 +136,25 @@ struct vm_object *vm_object_anon_create(size_t size);
 struct vm_object *vm_object_device_create(uint64_t phys_addr, size_t size);
 struct vm_object *vm_object_shadow_create(struct vm_object *backing, uint64_t offset, size_t size);
 int vm_object_cow_prepare(struct vm_area_struct *vma, struct vm_area_struct *new_vma);
+
+/* Shadow chain management */
+void vm_object_collapse(struct vm_object *obj);
+int vm_object_try_collapse_async(struct vm_object *obj);
+int vm_object_shadow_depth(struct vm_object *obj);
+
+/* a bit of stress test */
+void vm_obj_stress_test(void);
+
+/**
+ * vm_object_is_shadow - Check if object is a shadow
+ */
+static inline bool vm_object_is_shadow(struct vm_object *obj) {
+    return obj && (obj->flags & VM_OBJECT_SHADOW);
+}
+
+/**
+ * vm_object_has_swap - Check if object has swapped pages
+ */
+static inline bool vm_object_has_swap(struct vm_object *obj) {
+    return obj && (obj->flags & VM_OBJECT_SWAP_BACKED);
+}

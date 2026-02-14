@@ -118,7 +118,7 @@ struct vm_fault {
  * Represents a contiguous range of virtual memory with consistent permissions.
  * Managed effectively by a Maple Tree.
  */
-struct __aligned(sizeof(long)) vm_area_struct {
+alignas(sizeof(long)) struct vm_area_struct {
   uint64_t vma_magic;      /* Integrity check */
   struct mm_struct *vm_mm; /* The address space we belong to */
 
@@ -174,6 +174,7 @@ struct mm_struct {
 
   /* Accounting */
   size_t total_vm;  /* Total number of pages mapped */
+  atomic64_t rss;   /* Resident Set Size (actually in memory) */
   size_t locked_vm; /* Number of locked pages */
   size_t pinned_vm; /* Refcount permanently increased */
   size_t data_vm;   /* VM_WRITE & ~VM_SHARED & ~VM_STACK */
@@ -187,4 +188,5 @@ struct mm_struct {
   int preferred_node; /* Default NUMA node for this address space */
 
   struct cpumask cpu_mask; /* CPUs currently using this mm */
+  struct resdomain *rd;    /* Resource domain for this address space */
 };
