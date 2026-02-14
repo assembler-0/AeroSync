@@ -50,7 +50,6 @@ CONFIG_SIMPLE_FB_SUPPORT=y
 #
 CONFIG_VFS=y
 CONFIG_VFS_UBC=y
-CONFIG_VFS_POSIX_ACL=y
 CONFIG_VFS_RESCONTROL=y
 CONFIG_VFS_DEBUG_EVENTS=y
 CONFIG_VFS_RENAME_OVERWRITE=y
@@ -69,7 +68,7 @@ CONFIG_INITRD_NAME_MAX_SIZE=128
 #
 # lib
 #
-CONFIG_CONFIG_LIST_HARDENED=y
+# CONFIG_CONFIG_LIST_HARDENED is not set
 CONFIG_CONFIG_OPTIMIZED_STRING=y
 CONFIG_CONFIG_LIBC_STRING_FULL=y
 CONFIG_CONFIG_KSTRTO_ERRORS=y
@@ -99,59 +98,78 @@ CONFIG_MM_ZMM=y
 CONFIG_MM_SWAP=y
 
 #
-# Swap Tuning
+# swap tuning
 #
 CONFIG_MM_SWAP_SLOTS_CACHE=y
 CONFIG_MM_SWAP_READAHEAD=8
-# end of Swap Tuning
+# end of swap tuning
 
 CONFIG_MM_SPF=y
+CONFIG_MM_SPF_STATS=y
+CONFIG_MM_SPECULATIVE_ALLOC=y
 CONFIG_MM_COMPACTION=y
 CONFIG_MM_NUMA_BALANCING=y
 CONFIG_MM_HARDENING=y
 
 #
-# Shadow Chain Tuning
+# shadow chain tuning
 #
 CONFIG_MM_SHADOW_COLLAPSE=y
 CONFIG_MM_SHADOW_DEPTH_LIMIT=8
 CONFIG_MM_SHADOW_ASYNC_COLLAPSE=y
-# end of Shadow Chain Tuning
+CONFIG_MM_SHADOW_BYPASS=y
+# end of shadow chain tuning
 
 #
-# SLUB Allocator Tuning
+# ubc & readahead tuning
+#
+CONFIG_MM_UBC_CLUSTERING=y
+CONFIG_MM_READAHEAD=y
+CONFIG_MM_READAHEAD_PAGES=32
+CONFIG_MM_READAHEAD_THRASH_PROTECTION=y
+# end of ubc & readahead tuning
+
+#
+# fault tuning
+#
+CONFIG_MM_VMA_LOCKING=y
+CONFIG_MM_RESDOMAIN_DIRECT_RECLAIM=y
+# end of fault tuning
+
+#
+# slub tuning
 #
 CONFIG_SLAB_MAG_SIZE=16
 CONFIG_SLAB_MIN_PARTIAL=5
 CONFIG_SLAB_MAX_ORDER=5
-# end of SLUB Allocator Tuning
+# end of slub tuning
 
 #
-# VMA Tuning
+# vma tuning
 #
 CONFIG_MM_VMA_CACHE_SIZE=4
 CONFIG_MM_POPULATE_PREFAULT=y
 CONFIG_MM_POPULATE_BATCH_SIZE=16
 CONFIG_MM_POPULATE_FAULT_AROUND=y
-# end of VMA Tuning
+# end of vma tuning
 
 #
-# Writeback Tuning
+# writeback tuning
 #
 CONFIG_DIRTY_THRESHOLD_WAKEUP=1024
 CONFIG_DIRTY_THRESHOLD_THROTTLE=8192
-CONFIG_MM_READAHEAD=y
-CONFIG_MM_READAHEAD_PAGES=16
-# end of Writeback Tuning
+CONFIG_MM_DIRTY_THROTTLING=y
+CONFIG_MM_THROTTLE_MAX_PAUSE_MS=100
+# end of writeback tuning
 
 #
-# ZMM Tuning
+# zmm tuning
 #
 CONFIG_ZMM_COMPRESSION_THRESHOLD=75
 CONFIG_ZMM_ALGO_RLE=y
 # CONFIG_ZMM_ALGO_LZ4 is not set
 # CONFIG_ZMM_ALGO_NONE is not set
-# end of ZMM Tuning
+# end of zmm tuning
 
 #
 # memory layout
@@ -172,26 +190,26 @@ CONFIG_VMALLOC_BLOCK_CLASSES=y
 CONFIG_VMALLOC_NUMA_PARTITION=y
 
 #
-# Lazy TLB Flush Tuning
+# lazy tlb flushing tuning
 #
 CONFIG_VMALLOC_LAZY_FLUSH=y
 CONFIG_VMALLOC_LAZY_THRESHOLD_MB=32
 CONFIG_VMALLOC_LAZY_TIMEOUT_MS=100
 CONFIG_VMALLOC_UNIFIED_FLUSH=y
-# end of Lazy TLB Flush Tuning
+# end of lazy tlb flushing tuning
 # end of vmalloc Tuning
 
 #
-# NUMA and Zones
+# numa and zones
 #
 CONFIG_MAX_NUMNODES=8
 CONFIG_MM_PMM_NUMA_RECLAIM_MODE=1
 CONFIG_MM_PMM_NUMA_INTERLEAVE_THRESHOLD=2048
 CONFIG_MM_PMM_NUMA_CROSS_NODE_PENALTY=20
-# end of NUMA and Zones
+# end of numa and zones
 
 #
-# PMM tuning
+# pmm tuning
 #
 CONFIG_MM_PMM_ADVANCED=y
 CONFIG_MM_PMM_PAGEBLOCK_ORDER=9
@@ -200,7 +218,7 @@ CONFIG_MM_PMM_WATERMARK_BOOST_DECAY=y
 CONFIG_MM_PMM_FAIR_ALLOC=y
 CONFIG_MM_PMM_HIGHATOMIC=y
 CONFIG_MM_PMM_HIGHATOMIC_RESERVE_KB=256
-# CONFIG_MM_PMM_CMA is not set
+CONFIG_MM_PMM_CMA=y
 CONFIG_MM_PMM_PCP_DYNAMIC=y
 CONFIG_MM_PMM_PCP_HOT_COLD=y
 CONFIG_MM_PMM_PCP_EXTENDED_ORDERS=y
@@ -229,27 +247,51 @@ CONFIG_MM_PMM_PAGEBLOCK_METADATA=y
 CONFIG_MM_PMM_LOCKLESS_FASTPATH=y
 CONFIG_MM_PMM_SPECULATIVE_PREFETCH=y
 CONFIG_MM_PMM_INLINE_HOTPATH=y
-# end of PMM tuning
+# end of pmm tuning
 
 #
-# DMA and IOMMU
+# dma and iommu
 #
 CONFIG_DMA_ENGINE=y
 CONFIG_DMA_POOL=y
-# CONFIG_DMA_POOL_DEBUG is not set
+CONFIG_DMA_POOL_DEBUG=y
 CONFIG_DMA_POOL_STATS=y
 CONFIG_DMA_SG_SUPPORT=y
 CONFIG_DMA_SG_COALESCING=y
 CONFIG_DMA_SG_MAX_SEGMENTS=128
 CONFIG_IOMMU_SUPPORT=y
 CONFIG_INTEL_IOMMU=y
-# CONFIG_IOMMU_DEFAULT_PASSTHROUGH is not set
+CONFIG_IOMMU_DEFAULT_PASSTHROUGH=y
 CONFIG_IOMMU_LAZY_FLUSH=y
 CONFIG_IOMMU_LAZY_FLUSH_THRESHOLD=256
+CONFIG_CMA_SIZE_MB=64
+CONFIG_CMA_AREAS=7
+CONFIG_CMA_MIGRATION_RETRY=3
 CONFIG_DMA_BOUNCE_BUFFER=y
 CONFIG_DMA_BOUNCE_BUFFER_SIZE_KB=256
-# end of DMA and IOMMU
+# end of dma and iommu
 # end of memory
+
+#
+# crypto
+#
+CONFIG_CRYPTO=y
+CONFIG_CRYPTO_HASH=y
+CONFIG_CRYPTO_SHA256=y
+CONFIG_CRYPTO_SHA512=y
+CONFIG_CRYPTO_SHA1=y
+CONFIG_CRYPTO_BLAKE2S=y
+CONFIG_CRYPTO_CRC32=y
+CONFIG_CRYPTO_HMAC=y
+CONFIG_CRYPTO_CIPHER=y
+CONFIG_CRYPTO_AES=y
+CONFIG_CRYPTO_HW=y
+CONFIG_CRYPTO_AES_NI=y
+CONFIG_CRYPTO_SHA_NI=y
+CONFIG_CRYPTO_RNG=y
+CONFIG_CRYPTO_RDRAND=y
+CONFIG_CRYPTO_DEV_PATH="/runtime/devices/crypto"
+# end of crypto
 
 #
 # system
@@ -258,22 +300,21 @@ CONFIG_ASYNC_PRINTK=y
 CONFIG_MAX_CPUS=512
 
 #
-# CPU topology
+# cpu topology
 #
 CONFIG_RDPID_SUPPORT=y
 # CONFIG_RDPID_CPU_ID is not set
-# end of CPU topology
+# end of cpu topology
 
 #
-# Synchronization Primitives
+# synchronization
 #
 CONFIG_TICKET_SPINLOCKS=y
 CONFIG_MCS_SPINLOCKS=y
 CONFIG_DEBUG_SPINLOCK=y
-# end of Synchronization Primitives
 
 #
-# RCU Subsystem
+# rcu subsystem
 #
 CONFIG_TREE_RCU=y
 CONFIG_RCU_FANOUT=16
@@ -281,41 +322,42 @@ CONFIG_RCU_BOOST=y
 CONFIG_RCU_KTHREAD_PRIO=1
 CONFIG_SRCU=y
 # CONFIG_RCU_PERCPU_TEST is not set
-# end of RCU Subsystem
+# end of rcu subsystem
+# end of synchronization
 
 #
-# Per-CPU Subsystem
+# per-cpu subsystem
 #
 CONFIG_DYNAMIC_PER_CPU=y
 CONFIG_PER_CPU_CHUNK_SIZE=64
-# end of Per-CPU Subsystem
+# end of per-cpu subsystem
 
 #
-# Panic Configuration
+# panic
 #
 CONFIG_PANIC_STACKTRACE=y
 CONFIG_PANIC_DUMP_REGISTERS=y
 CONFIG_PANIC_TIMEOUT=-1
 CONFIG_PANIC_VERBOSE=y
-# end of Panic Configuration
+# end of panic
 
 #
-# Command Line
+# cmdline
 #
 CONFIG_COMMAND_LINE_SIZE=4096
-# end of Command Line
+# end of cmdline
 
 #
-# System Fusion
+# system fusion
 #
 CONFIG_FUSION_UBC=y
 CONFIG_FUSION_RESDOMAIN_MM=y
 CONFIG_FUSION_BLOCKING_IO=y
 CONFIG_FUSION_POSIX_SYSCALLS=y
-# end of System Fusion
+# end of system fusion
 
 #
-# System Interface (SYSINTF) & Driver Model
+# system interface (sysintf) & driver model (udm)
 #
 CONFIG_SYSINTF=y
 CONFIG_UDM_BLOCK=y
@@ -330,25 +372,25 @@ CONFIG_UDM_ORCHESTRATION=y
 # CONFIG_DEBUG_UDM is not set
 CONFIG_UDM_EMERGENCY_STOP=y
 CONFIG_UDM_SUSPEND_TIMEOUT_MS=5000
-# end of System Interface (SYSINTF) & Driver Model
+# end of system interface (sysintf) & driver model (udm)
 
 #
-# Module Management
+# module management
 #
 CONFIG_LIMINE_MODULE_MANAGER=y
 CONFIG_LMM_PROBE_EXTENSION_FIRST=y
 # CONFIG_LMM_SORT_BY_PRIORITY is not set
-# end of Module Management
+# end of module management
 
 #
-# Resource Management
+# resource management
 #
 CONFIG_RESDOMAINS=y
 CONFIG_RESDOMAIN_CPU=y
 CONFIG_RESDOMAIN_MEM=y
 CONFIG_RESFS_MOUNT=y
 CONFIG_RESFS_MOUNT_PATH="/runtime/res"
-# end of Resource Management
+# end of resource management
 # end of system
 
 #

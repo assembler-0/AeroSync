@@ -24,11 +24,6 @@ target_compile_options(aerosync.krnl PRIVATE
 
         -msoft-float
         -mno-implicit-float
-        -mno-mmx
-        -mno-sse
-        -mno-sse2
-        -mno-3dnow
-        -mno-avx
         -mno-80387
 
         -fPIE

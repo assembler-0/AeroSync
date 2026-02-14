@@ -13,7 +13,7 @@ config MAX_CPUS
     int "Maximum # supported of logical processor(s)"
     default 512
 
-menu "CPU topology"
+menu "cpu topology"
 
 config RDPID_SUPPORT
     bool "Support RDPID instruction"
@@ -33,7 +33,7 @@ config RDPID_CPU_ID
 
 endmenu
 
-menu "Synchronization Primitives"
+menu "synchronization"
 
 config TICKET_SPINLOCKS
     bool "Ticket Spinlocks"
@@ -57,9 +57,7 @@ config DEBUG_SPINLOCK
       Enable extra checks and debugging information for spinlocks,
       including owner tracking and deadlock detection.
 
-endmenu
-
-menu "RCU Subsystem"
+menu "rcu subsystem"
 
 config TREE_RCU
     bool "Tree-based RCU (Scalable SMP RCU)"
@@ -116,9 +114,11 @@ config RCU_PERCPU_TEST
     help
       Enables RCU and Per-CPU dynamic allocation smoke tests during boot.
 
-endmenu
+endmenu # rcu subsystem
 
-menu "Per-CPU Subsystem"
+endmenu # synchronization
+
+menu "per-cpu subsystem"
 
 config DYNAMIC_PER_CPU
     bool "Support for dynamic per-CPU allocation"
@@ -137,7 +137,7 @@ config PER_CPU_CHUNK_SIZE
 
 endmenu
 
-menu "Panic Configuration"
+menu "panic"
 
 config PANIC_STACKTRACE
     bool "Enable stacktrace on panic"
@@ -170,7 +170,7 @@ config PANIC_VERBOSE
 
 endmenu
 
-menu "Command Line"
+menu "cmdline"
 
 config COMMAND_LINE_SIZE
     int "Command line buffer size"
@@ -180,7 +180,7 @@ config COMMAND_LINE_SIZE
 
 endmenu
 
-menu "System Fusion"
+menu "system fusion"
 
 config FUSION_UBC
     bool "Unified Buffer Cache (UBC)"
@@ -216,7 +216,7 @@ endmenu
 
 source "aerosync/sysintf/Kconfig"
 
-menu "Module Management"
+menu "module management"
 
 config LIMINE_MODULE_MANAGER
     bool "Enable Limine Module Manager (LMM)"
@@ -242,7 +242,7 @@ config LMM_SORT_BY_PRIORITY
 
 endmenu
 
-menu "Resource Management"
+menu "resource management"
 
 config RESDOMAINS
     bool "Hierarchical Resource Domains (ResDomains)"

@@ -34,7 +34,7 @@
 #include <mm/slub.h>
 #include <mm/vmalloc.h>
 #include <mm/zone.h>
-#include <crypto/rng.h>
+#include <aerosync/crypto.h>
 #include <mm/ssp.h>
 
 static LIST_HEAD(slab_caches);
@@ -956,7 +956,16 @@ void slab_verify_all(void) {
 }
 
 void slab_init(void) {
-  slab_secret = xoroshiro128plus();
+  struct crypto_tfm *tfm = crypto_alloc_tfm("hw_rng", CRYPTO_ALG_TYPE_RNG);
+  if (!tfm) tfm = crypto_alloc_tfm("sw_rng", CRYPTO_ALG_TYPE_RNG);
+
+  if (tfm) {
+    crypto_rng_generate(tfm, (uint8_t *)&slab_secret, sizeof(slab_secret));
+    crypto_free_tfm(tfm);
+  } else {
+    slab_secret = 0xdeadbeef12345678ULL;
+  }
+
   char *names[] = {"kmalloc-8",   "kmalloc-16",  "kmalloc-32",  "kmalloc-64",
                    "kmalloc-128", "kmalloc-256", "kmalloc-512", "kmalloc-1k",
                    "kmalloc-2k",  "kmalloc-4k",  "kmalloc-8k",  "kmalloc-16k",

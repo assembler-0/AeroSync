@@ -26,7 +26,7 @@
 #include <lib/string.h>
 #include <aerosync/classes.h>
 #include <aerosync/ksymtab.h>
-#include <crypto/hmac.h>
+#include <aerosync/crypto.h>
 #include <aerosync/limine_modules.h>
 #include "fkx_key.h"
 
@@ -116,7 +116,7 @@ int fkx_load_image(void *data, size_t size) {
   }
 
   uint8_t calculated_mac[64];
-  hmac_sha512(g_fkx_root_key, FKX_KEY_SIZE, data, data_size, calculated_mac);
+  crypto_hmac("sha512", g_fkx_root_key, FKX_KEY_SIZE, data, data_size, calculated_mac);
 
   if (memcmp(calculated_mac, footer->signature, 64) != 0) {
     printk(KERN_ERR FKX_CLASS "Module signature verification failed\n");

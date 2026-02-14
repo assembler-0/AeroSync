@@ -20,13 +20,13 @@
 
 #include <compiler.h>
 #include <crypto/crc32.h>
+#include <aerosync/crypto.h>
 #include <lib/printk.h>
 #include <aerosync/classes.h>
 
 static alignas(16) uint32_t crc32_table[256];
 
 void crc32_init() {
-    printk(CRC_CLASS "Initializing CRC32\n");
     uint32_t polynomial = 0xEDB88320;
     for (uint32_t i = 0; i < 256; i++) {
         uint32_t c = i;
@@ -39,16 +39,9 @@ void crc32_init() {
         }
         crc32_table[i] = c;
     }
-    printk(CRC_CLASS "CRC32 initialized\n");
 }
 
 uint32_t crc32(const void* data, size_t length) {
-    static int table_generated = 0;
-    if (!table_generated) {
-        crc32_init();
-        table_generated = 1;
-    }
-
     uint32_t crc = 0xFFFFFFFF;
     const uint8_t* p = (const uint8_t*)data;
 
@@ -57,4 +50,42 @@ uint32_t crc32(const void* data, size_t length) {
     }
 
     return crc ^ 0xFFFFFFFF;
+}
+
+static int crypto_crc32_init(void *ctx) {
+    *(uint32_t *)ctx = 0xFFFFFFFF;
+    return 0;
+}
+
+static int crypto_crc32_update(void *ctx, const uint8_t *data, size_t len) {
+    uint32_t *crc = ctx;
+    for (size_t i = 0; i < len; i++) {
+        *crc = crc32_table[(*crc ^ data[i]) & 0xFF] ^ (*crc >> 8);
+    }
+    return 0;
+}
+
+static int crypto_crc32_final(void *ctx, uint8_t *out) {
+    uint32_t *crc = ctx;
+    *(uint32_t *)out = *crc ^ 0xFFFFFFFF;
+    return 0;
+}
+
+static struct crypto_alg crc32_alg = {
+    .name = "crc32",
+    .driver_name = "crc32-generic",
+    .priority = 100,
+      .type = CRYPTO_ALG_TYPE_SHASH,
+      .ctx_size = sizeof(uint32_t),
+      .init = crypto_crc32_init,
+      .shash = {
+        .digestsize = 4,
+        .blocksize = 1,
+        .update = crypto_crc32_update,
+        .final = crypto_crc32_final,
+      },
+    };
+    int __init crc32_generic_init(void) {
+    crc32_init();
+    return crypto_register_alg(&crc32_alg);
 }

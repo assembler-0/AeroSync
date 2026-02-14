@@ -119,3 +119,17 @@ uint32_t fpu_get_xstate_size(void);
  * Returns: Bitmask of supported XSAVE features
  */
 uint64_t fpu_get_xstate_mask(void);
+
+/**
+ * kernel_fpu_begin - Prepare for using FPU/SSE/AVX in kernel
+ *
+ * Disables preemption and saves the current task's FPU state.
+ */
+void kernel_fpu_begin(void);
+
+/**
+ * kernel_fpu_end - Finish using FPU/SSE/AVX in kernel
+ *
+ * Restores the current task's FPU state and enables preemption.
+ */
+void kernel_fpu_end(void);

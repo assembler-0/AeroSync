@@ -51,6 +51,9 @@
 #define RNG_CLASS "[crypto::rng] " // Random Number Generator
 #define CRC_CLASS "[crypto::crc] " // CRC32
 #define SHA_CLASS "[crypto::sha] " // SHA*
+#define AES_CLASS "[crypto::aes] "
+#define RSA_CLASS "[crypto::rsa] "
+#define CRYPTO_CLASS "[crypto::core] "
 
 /* =========================================================================
  *  SANITIZER

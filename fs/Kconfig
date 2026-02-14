@@ -17,13 +17,6 @@ config VFS_UBC
       Memory Management layers share the same physical pages for file
       data. All buffered I/O goes through the Page Cache.
 
-config VFS_POSIX_ACL
-    bool "VFS POSIX Access Control Lists (ACL)"
-    depends on VFS
-    default n
-    help
-      Enable support for POSIX Access Control Lists.
-
 config VFS_RESCONTROL
     bool "Resource Domain Control (ResDomain) VFS integration"
     depends on VFS && RESDOMAINS

@@ -45,9 +45,9 @@
 #include <arch/x86_64/requests.h>
 #include <arch/x86_64/smp.h>
 #include <compiler.h>
+#include <aerosync/crypto.h>
 #include <aerosync/sysintf/device.h>
 #include <arch/x86_64/tsc.h>
-#include <crypto/crc32.h>
 #include <drivers/acpi/power.h>
 #include <drivers/qemu/debugcon/debugcon.h>
 #include <fs/vfs.h>
@@ -278,6 +278,7 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
 #endif
 
   fw_init();
+  crypto_init();
 
   /* load all FKX images */
   system_load_extensions();
@@ -318,7 +319,6 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   if (ic_type == INTC_APIC)
     smp_init();
-  crc32_init();
   softirq_init();
 
 #ifdef ASYNC_PRINTK

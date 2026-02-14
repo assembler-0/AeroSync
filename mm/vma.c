@@ -21,7 +21,7 @@
 #include <arch/x86_64/mm/paging.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/mm/vmm.h>
-#include <crypto/rng.h>
+#include <aerosync/crypto.h>
 #include <aerosync/classes.h>
 #include <aerosync/errno.h>
 #include <aerosync/panic.h>
@@ -1587,13 +1587,18 @@ uint64_t vma_find_free_region_aligned(struct mm_struct *mm, size_t size,
   if ((range_end - range_start) > (total_needed + 0x1000000)) {
     // 16MB threshold
     uint64_t offset;
-    if (rdrand64_safe(&offset)) {
-      /*
-       * Use RDRAND for ASLR. On systems without hardware RNG,
-       * this would fall back to a software PRNG seeded by boot entropy.
-       */
-      uint64_t max_offset = range_end - range_start - total_needed;
-      range_start += ALIGN(offset % max_offset, alignment);
+    struct crypto_tfm *tfm = crypto_alloc_tfm("hw_rng", CRYPTO_ALG_TYPE_RNG);
+    if (!tfm) tfm = crypto_alloc_tfm("sw_rng", CRYPTO_ALG_TYPE_RNG);
+
+    if (tfm) {
+      if (crypto_rng_generate(tfm, (uint8_t *)&offset, sizeof(offset)) == 0) {
+        /*
+         * Use the best available RNG for ASLR.
+         */
+        uint64_t max_offset = range_end - range_start - total_needed;
+        range_start += ALIGN(offset % max_offset, alignment);
+      }
+      crypto_free_tfm(tfm);
     }
   }
 

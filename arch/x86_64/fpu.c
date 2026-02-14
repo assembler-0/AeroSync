@@ -18,6 +18,7 @@
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <mm/slub.h>
+#include <aerosync/sched/sched.h>
 
 
 /* CPU capability flags */
@@ -81,39 +82,39 @@ static inline void xsetbv(uint32_t index, uint64_t value) {
   __asm__ volatile("xsetbv" : : "a"(eax), "d"(edx), "c"(index));
 }
 
-static inline void fxsave(void *state) {
+static inline void fxsave(void* state) {
   __asm__ volatile("fxsave64 (%0)" : : "r"(state) : "memory");
 }
 
-static inline void fxrstor(const void *state) {
+static inline void fxrstor(const void* state) {
   __asm__ volatile("fxrstor64 (%0)" : : "r"(state) : "memory");
 }
 
-static inline void xsave(void *state, uint64_t mask) {
+static inline void xsave(void* state, uint64_t mask) {
   uint32_t eax = (uint32_t)mask;
   uint32_t edx = (uint32_t)(mask >> 32);
   __asm__ volatile("xsave64 (%0)"
-                   :
-                   : "r"(state), "a"(eax), "d"(edx)
-                   : "memory");
+    :
+    : "r"(state), "a"(eax), "d"(edx)
+    : "memory");
 }
 
-static inline void xrstor(const void *state, uint64_t mask) {
+static inline void xrstor(const void* state, uint64_t mask) {
   uint32_t eax = (uint32_t)mask;
   uint32_t edx = (uint32_t)(mask >> 32);
   __asm__ volatile("xrstor64 (%0)"
-                   :
-                   : "r"(state), "a"(eax), "d"(edx)
-                   : "memory");
+    :
+    : "r"(state), "a"(eax), "d"(edx)
+    : "memory");
 }
 
-static inline void xsaveopt(void *state, uint64_t mask) {
+static inline void xsaveopt(void* state, uint64_t mask) {
   uint32_t eax = (uint32_t)mask;
   uint32_t edx = (uint32_t)(mask >> 32);
   __asm__ volatile("xsaveopt64 (%0)"
-                   :
-                   : "r"(state), "a"(eax), "d"(edx)
-                   : "memory");
+    :
+    : "r"(state), "a"(eax), "d"(edx)
+    : "memory");
 }
 
 void fpu_init(void) {
@@ -123,7 +124,7 @@ void fpu_init(void) {
   /* Enable FPU and SSE in CR0 */
   cr0 = read_cr0();
   cr0 &= ~CR0_EM; /* Clear emulation */
-  cr0 |= CR0_MP;  /* Set monitor coprocessor */
+  cr0 |= CR0_MP; /* Set monitor coprocessor */
   cr0 &= ~CR0_TS; /* Clear task switched (for now) */
   write_cr0(cr0);
 
@@ -168,7 +169,8 @@ void fpu_init(void) {
     printk(KERN_DEBUG FPU_CLASS
            "XSAVE enabled, features=0x%llx size=%u xsaveopt=%s\n",
            xstate_mask, xstate_size, has_xsaveopt ? "yes" : "no");
-  } else {
+  }
+  else {
     write_cr4(cr4);
     printk(KERN_DEBUG FPU_CLASS "Using FXSAVE (no XSAVE support)\n");
   }
@@ -177,7 +179,7 @@ void fpu_init(void) {
   __asm__ volatile("fninit");
 }
 
-void fpu_init_task(struct fpu_state *fpu) {
+void fpu_init_task(struct fpu_state* fpu) {
   if (!fpu)
     return;
 
@@ -186,62 +188,65 @@ void fpu_init_task(struct fpu_state *fpu) {
   /* Set up default x87 FPU control word (double precision, all exceptions
    * masked) */
   /* FXSAVE format: offset 0 = FCW (FPU Control Word) */
-  uint16_t *fcw = (uint16_t *)&fpu->state[0];
+  uint16_t* fcw = (uint16_t*)&fpu->state[0];
   *fcw = 0x037F; /* All exceptions masked, double precision */
 
   /* MXCSR at offset 24 in FXSAVE area */
-  uint32_t *mxcsr = (uint32_t *)&fpu->state[24];
+  uint32_t* mxcsr = (uint32_t*)&fpu->state[24];
   *mxcsr = 0x1F80; /* Default MXCSR: all exceptions masked */
 
   if (has_xsave) {
     /* XSAVE header at offset 512 */
-    uint64_t *xstate_bv = (uint64_t *)&fpu->state[512];
+    uint64_t* xstate_bv = (uint64_t*)&fpu->state[512];
     *xstate_bv = XFEATURE_MASK_FPSSE; /* Mark FP and SSE as valid */
   }
 }
 
-struct fpu_state *fpu_alloc(void) {
+struct fpu_state* fpu_alloc(void) {
   /* Allocate 64-byte aligned memory */
-  struct fpu_state *fpu = kmalloc(sizeof(struct fpu_state));
+  struct fpu_state* fpu = kmalloc(sizeof(struct fpu_state));
   if (fpu) {
     fpu_init_task(fpu);
   }
   return fpu;
 }
 
-void fpu_free(struct fpu_state *fpu) {
+void fpu_free(struct fpu_state* fpu) {
   if (fpu) {
     kfree(fpu);
   }
 }
 
-void fpu_save(struct fpu_state *fpu) {
+void fpu_save(struct fpu_state* fpu) {
   if (!fpu)
     return;
 
   if (has_xsave) {
     if (has_xsaveopt) {
       xsaveopt(fpu->state, xstate_mask);
-    } else {
+    }
+    else {
       xsave(fpu->state, xstate_mask);
     }
-  } else {
+  }
+  else {
     fxsave(fpu->state);
   }
 }
 
-void fpu_restore(struct fpu_state *fpu) {
+void fpu_restore(struct fpu_state* fpu) {
   if (!fpu)
     return;
 
   if (has_xsave) {
     xrstor(fpu->state, xstate_mask);
-  } else {
+  }
+  else {
     fxrstor(fpu->state);
   }
 }
 
-void fpu_copy(struct fpu_state *dst, const struct fpu_state *src) {
+void fpu_copy(struct fpu_state* dst, const struct fpu_state* src) {
   if (!dst || !src)
     return;
 
@@ -255,3 +260,19 @@ bool cpu_has_fxsr(void) { return has_fxsr; }
 uint32_t fpu_get_xstate_size(void) { return xstate_size; }
 
 uint64_t fpu_get_xstate_mask(void) { return xstate_mask; }
+
+void kernel_fpu_begin(void) {
+  preempt_disable();
+  struct task_struct* curr = current;
+  if (curr && curr->thread.fpu && curr->thread.fpu_used) {
+    fpu_save(curr->thread.fpu);
+  }
+}
+
+void kernel_fpu_end(void) {
+  struct task_struct* curr = current;
+  if (curr && curr->thread.fpu && curr->thread.fpu_used) {
+    fpu_restore(curr->thread.fpu);
+  }
+  preempt_enable();
+}

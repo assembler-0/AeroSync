@@ -130,6 +130,9 @@ do { \
 #define ALIGN_DOWN(x, a)        ((x) & ~((a) - 1))
 #define ALIGN_UP(x, a)          ALIGN(x, a)
 
+#define __STRINGIFY(x) #x
+#define STRINGIFY(x) __STRINGIFY(x)
+
 /* ETC. */
 #define static_assert _Static_assert
 #define __percpu
