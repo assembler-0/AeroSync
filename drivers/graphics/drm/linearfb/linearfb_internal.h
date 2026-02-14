@@ -34,6 +34,8 @@ struct linearfb_device {
   uint32_t dirty_x0, dirty_y0, dirty_x1, dirty_y1;
   bool is_dirty;
 
+  linearfb_color_format_t format;
+
   spinlock_t lock;
   struct list_head list;
 };

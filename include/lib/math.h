@@ -55,6 +55,22 @@ static inline int abs(const int x) {
     return x < 0 ? -x : x;
 }
 
+static inline uint32_t isqrt(uint32_t n) {
+    uint32_t res = 0;
+    uint32_t bit = 1U << 30;
+    while (bit > n) bit >>= 2;
+    while (bit != 0) {
+        if (n >= res + bit) {
+            n -= res + bit;
+            res = (res >> 1) + bit;
+        } else {
+            res >>= 1;
+        }
+        bit >>= 2;
+    }
+    return res;
+}
+
 /* Fast absolute value using bit manipulation */
 static inline double fabs(double x) {
     union { double d; uint64_t i; } u = { x };

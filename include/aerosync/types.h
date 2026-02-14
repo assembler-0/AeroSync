@@ -19,6 +19,9 @@ typedef uint16_t char16_t;
 #define INT_MAX   ((int)(UINT_MAX >> 1))
 #define LONG_MAX  ((long)(ULONG_MAX >> 1))
 
+#define IDX_COUNT(arr) (sizeof(arr) / sizeof(arr[0]))
+#define IDX_COUNT_HALF(arr) (IDX_COUNT(arr) / 2)
+
 #define __STRINGIFY(x) #x
 #define STRINGIFY(x) __STRINGIFY(x)
 

@@ -91,9 +91,13 @@ void double_rq_unlock(struct rq *rq1, struct rq *rq2) {
  */
 
 struct rq *this_rq(void) { return this_cpu_ptr(runqueues); }
+EXPORT_SYMBOL(this_rq);
 struct task_struct *get_current(void) { return this_cpu_read(current_task); }
+EXPORT_SYMBOL(get_current);
 void set_current(struct task_struct *t) { this_cpu_write(current_task, t); }
+EXPORT_SYMBOL(set_current);
 void set_task_cpu(struct task_struct *task, int cpu) { task->cpu = cpu; }
+EXPORT_SYMBOL(set_task_cpu);
 
 /*
  * Core Scheduler Operations

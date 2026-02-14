@@ -44,7 +44,20 @@ void linearfb_draw_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t
 void linearfb_draw_circle(uint32_t xc, uint32_t yc, uint32_t r, uint32_t color);
 void linearfb_fill_circle(uint32_t xc, uint32_t yc, uint32_t r, uint32_t color);
 
+typedef struct {
+    uint8_t red_mask_size, red_mask_shift;
+    uint8_t green_mask_size, green_mask_shift;
+    uint8_t blue_mask_size, blue_mask_shift;
+    uint8_t alpha_mask_size, alpha_mask_shift;
+    uint16_t bpp;
+} linearfb_color_format_t;
+
 // Color utility
+uint32_t linearfb_encode_color(const linearfb_color_format_t *fmt, uint8_t r, uint8_t g, uint8_t b);
+uint32_t linearfb_encode_color_rgba(const linearfb_color_format_t *fmt, uint8_t r, uint8_t g, uint8_t b, uint8_t a);
+void linearfb_decode_color(const linearfb_color_format_t *fmt, uint32_t color, uint8_t *r, uint8_t *g, uint8_t *b);
+void linearfb_decode_color_rgba(const linearfb_color_format_t *fmt, uint32_t color, uint8_t *r, uint8_t *g, uint8_t *b, uint8_t *a);
+
 uint32_t linearfb_make_color(uint8_t r, uint8_t g, uint8_t b);
 uint32_t linearfb_make_color_rgba(uint8_t r, uint8_t g, uint8_t b, uint8_t a);
 uint32_t linearfb_color_lerp(uint32_t c1, uint32_t c2, float t);
@@ -53,6 +66,7 @@ uint32_t linearfb_color_brightness(uint32_t color, float amount);
 // Get resolution
 void linearfb_get_resolution(uint32_t *width, uint32_t *height);
 void linearfb_get_screen_surface(linearfb_surface_t *surface);
+void linearfb_get_color_format(linearfb_color_format_t *fmt);
 
 // Advanced Graphics Primitives
 void linearfb_put_pixel_blend(uint32_t x, uint32_t y, uint32_t color);

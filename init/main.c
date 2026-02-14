@@ -284,7 +284,10 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
   system_load_extensions();
 
   fkx_init_module_class(FKX_PRINTK_CLASS);
+  fkx_init_module_class(FKX_PANIC_HANDLER_CLASS);
+
   printk_init_late();
+  panic_handler_install();
 
   fkx_init_module_class(FKX_IC_CLASS);
   ic_register_lapic_get_id_early();

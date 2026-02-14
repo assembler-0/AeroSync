@@ -1,5 +1,6 @@
 #include <aerosync/stacktrace.h>
 #include <aerosync/ksymtab.h>
+#include <aerosync/export.h>
 #include <lib/printk.h>
 #include <aerosync/classes.h>
 #include <arch/x86_64/mm/vmm.h>
@@ -72,8 +73,9 @@ void dump_stack_from(uint64_t rbp, uint64_t rip) {
     depth++;
   }
 }
+EXPORT_SYMBOL(dump_stack_from);
 
-void dump_stack(void) {
+void __no_cfi dump_stack(void) {
   // Get the frame pointer of the current function (dump_stack)
   uintptr_t rbp = (uintptr_t)__builtin_frame_address(0);
 
@@ -90,5 +92,6 @@ void dump_stack(void) {
 
   dump_stack_from(caller_rbp, caller_rip);
 }
+EXPORT_SYMBOL(dump_stack);
 
 

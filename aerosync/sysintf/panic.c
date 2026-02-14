@@ -31,15 +31,16 @@ static const panic_ops_t *registered_backends[MAX_PANIC_HANDLERS];
 static int num_registered_backends = 0;
 static const panic_ops_t *active_backend = nullptr;
 
-void panic_register_handler(const panic_ops_t *ops) {
+void __no_cfi panic_register_handler(const panic_ops_t *ops) {
   if (num_registered_backends >= MAX_PANIC_HANDLERS) {
     // Can't printk here safely maybe?
     return;
   }
   registered_backends[num_registered_backends++] = ops;
 }
+EXPORT_SYMBOL(panic_register_handler);
 
-void panic_handler_install() {
+void __no_cfi panic_handler_install() {
   const panic_ops_t *best = nullptr;
 
   for (int i = 0; i < num_registered_backends; i++) {
@@ -57,6 +58,7 @@ void panic_handler_install() {
   }
   active_backend = best;
 }
+EXPORT_SYMBOL(panic_handler_install);
 
 void __no_cfi panic_switch_handler(const char *name) {
   if (!name) return;
@@ -87,11 +89,14 @@ void __no_cfi __exit __noinline __noreturn __sysv_abi panic(const char *msg, ...
   active_backend->panic(buff);
   va_end(va);
 }
+EXPORT_SYMBOL(panic);
 
 void __no_cfi __exit __noinline __noreturn __sysv_abi panic_exception(cpu_regs *regs) {
   active_backend->panic_exception(regs);
 }
+EXPORT_SYMBOL(panic_exception);
 
 void __no_cfi __exit __noinline __noreturn __sysv_abi panic_early() {
   active_backend->panic_early();
 }
+EXPORT_SYMBOL(panic_early);

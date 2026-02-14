@@ -24,8 +24,8 @@
 #include <aerosync/sched/sched.h>
 #include <aerosync/spinlock.h>
 #include <aerosync/wait.h>
+#include <aerosync/export.h>
 #include <lib/log.h>
-#include <lib/printk.h>
 #include <lib/ringbuf.h>
 #include <lib/vsprintf.h>
 
@@ -78,6 +78,7 @@ static volatile int panic_in_progress = 0;
 static DECLARE_WAIT_QUEUE_HEAD(klogd_wait);
 
 void log_mark_panic(void) { panic_in_progress = 1; }
+EXPORT_SYMBOL(log_mark_panic);
 
 // klogd drain budgeting to avoid monopolizing CPU on slow sinks (e.g.,
 // linearfb)

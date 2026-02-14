@@ -16,6 +16,7 @@
 #include <mm/vmalloc.h>
 #include <lib/printk.h>
 #include <aerosync/elf.h>
+#include <aerosync/export.h>
 #include <aerosync/spinlock.h>
 
 extern const struct ksymbol _ksymtab_start[];
@@ -176,6 +177,7 @@ uintptr_t lookup_ksymbol(const char *name) {
 
   return 0;
 }
+EXPORT_SYMBOL(lookup_ksymbol);
 
 const char *lookup_ksymbol_by_addr(uintptr_t addr, uintptr_t *offset) {
   // 1. Try optimized index first (Binary Search)
@@ -248,6 +250,7 @@ const char *lookup_ksymbol_by_addr(uintptr_t addr, uintptr_t *offset) {
 
   return nullptr;
 }
+EXPORT_SYMBOL(lookup_ksymbol_by_addr);
 
 int register_ksymbol(uintptr_t addr, const char *name) {
   if (!name) return -EINVAL;

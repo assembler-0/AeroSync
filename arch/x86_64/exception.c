@@ -19,6 +19,7 @@
  */
 
 #include <arch/x86_64/exception.h>
+#include <aerosync/export.h>
 #include <lib/string.h>
 
 void get_exception_as_str(char *buff, uint32_t num) {
@@ -110,6 +111,7 @@ void get_exception_as_str(char *buff, uint32_t num) {
       break;
   }
 }
+EXPORT_SYMBOL(get_exception_as_str);
 
 uint64_t search_exception_table(uint64_t addr) {
   struct exception_table_entry *entry;
@@ -123,3 +125,4 @@ uint64_t search_exception_table(uint64_t addr) {
 
   return 0;
 }
+EXPORT_SYMBOL(search_exception_table);
