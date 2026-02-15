@@ -25,7 +25,7 @@
 #include <aerosync/timer.h>
 #include <aerosync/types.h>
 #include <lib/printk.h>
-#include <lib/vsprintf.h>
+#include <lib/string.h>
 #include <lib/string.h>
 #include <aerosync/fkx/fkx.h>
 

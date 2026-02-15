@@ -21,7 +21,7 @@
 #define MAX_PANIC_HANDLERS 8
 
 #include <lib/string.h>
-#include <vsprintf.h>
+#include <lib/string.h>
 #include <aerosync/classes.h>
 #include <aerosync/fkx/fkx.h>
 #include <aerosync/sysintf/panic.h>

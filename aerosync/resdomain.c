@@ -16,7 +16,7 @@
 #include <lib/string.h>
 #include <lib/printk.h>
 #include <lib/uaccess.h>
-#include <lib/vsprintf.h>
+#include <lib/string.h>
 #include <fs/pseudo_fs.h>
 #include <arch/x86_64/smp.h>
 #include <linux/rbtree.h>
@@ -338,7 +338,7 @@ static ssize_t resfs_pid_max_write(struct file *file, const char *buf, size_t co
   if (strncmp(kbuf, "max", 3) == 0) {
     val = -1;
   } else {
-    if (kstrtoint(kbuf, 10, &val)) return -EINVAL;
+    if (kstrtos(kbuf, 10, &val)) return -EINVAL;
   }
   ps->max = val;
   return (ssize_t) count;

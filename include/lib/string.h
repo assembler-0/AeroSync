@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 #pragma once
 
+#include <compiler.h>
 #include <aerosync/types.h>
 #include <aerosync/stdarg.h>
 
@@ -61,22 +62,41 @@ unsigned long long simple_strtoull(const char *cp, char **endp, unsigned int bas
 long long simple_strtoll(const char *cp, char **endp, unsigned int base);
 unsigned long simple_strtoul(const char *cp, char **endp, unsigned int base);
 long simple_strtol(const char *cp, char **endp, unsigned int base);
+unsigned long long simple_strntoull(const char* startp, char** endp, unsigned int base, size_t max_chars);
+long long simple_strntoll(const char* cp, char** endp, unsigned int base, size_t max_chars);
 
-uint64_t strtoul(const char *nptr, char **endptr, int base);
-long strtol(const char *cp, char **endp, unsigned int base);
+#define strtol simple_strtol
+#define strtoul simple_strtoul
+#define strtoll simple_strtoll
+#define strtoull simple_strtoull
+#define strntoll simple_strntoll
+#define strntoull simple_strntoull
 
+/* kstrtox.c */
 int kstrtoul(const char *s, unsigned int base, unsigned long *res);
 int kstrtol(const char *s, unsigned int base, long *res);
 int kstrtoull(const char *s, unsigned int base, unsigned long long *res);
 int kstrtoll(const char *s, unsigned int base, long long *res);
-int kstrtouint(const char *s, unsigned int base, unsigned int *res);
-int kstrtoint(const char *s, unsigned int base, int *res);
+int kstrtou(const char *s, unsigned int base, unsigned int *res);
+int kstrtos(const char *s, unsigned int base, int *res);
 int kstrtou8(const char *s, unsigned int base, uint8_t *res);
 int kstrtos8(const char *s, unsigned int base, int8_t *res);
 int kstrtou16(const char *s, unsigned int base, uint16_t *res);
 int kstrtos16(const char *s, unsigned int base, int16_t *res);
 int kstrtou32(const char *s, unsigned int base, uint32_t *res);
 int kstrtos32(const char *s, unsigned int base, int32_t *res);
+
+/* vsprintf.c */
+int vsnprintf(char *buf, size_t size, const char *fmt, va_list args);
+int vscnprintf(char *buf, size_t size, const char *fmt, va_list args);
+int snprintf(char *buf, size_t size, const char *fmt, ...);
+int scnprintf(char *buf, size_t size, const char *fmt, ...);
+int vsprintf(char *buf, const char *fmt, va_list args);
+int sprintf(char *buf, const char *fmt, ...);
+char *kvasprintf(const char *fmt, va_list args);
+char *kasprintf(const char *fmt, ...);
+int vsscanf(const char *buf, const char *fmt, va_list args);
+int sscanf(const char *buf, const char *fmt, ...);
 
 long long atoll(const char *s);
 long atol(const char *s);
@@ -101,8 +121,9 @@ bool find(const char* buff, const char* pattern);
 bool is_word_boundary(char c);
 
 /* Error handling */
-int errno_to_str(char *restrict buff, const int err);
-char *errno_to_str_in_place(const int err); /* MUST free! */
+int errno_to_str(char *restrict buff, int err);
+char * __must_check errno_to_str_in_place(int err); /* MUST free! */
+const char *errname(int err);
 
 /* lib/cmdline.c */
 int get_option(char **str, int *pint);

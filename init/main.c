@@ -105,7 +105,7 @@ static int __late_init __noreturn __noinline __sysv_abi kernel_init(void *unused
   printk(KERN_DEBUG KERN_CLASS "attempting to run init process: %s\n", STRINGIFY(CONFIG_INIT_PATH));
   const int ret = run_init_process(STRINGIFY(CONFIG_INIT_PATH));
   if (ret < 0) {
-    printk(KERN_ERR KERN_CLASS "failed to execute %s. (%d)\n", STRINGIFY(CONFIG_INIT_PATH), ret);
+    printk(KERN_ERR KERN_CLASS "failed to execute %s. (%s)\n", STRINGIFY(CONFIG_INIT_PATH), errname(ret));
     printkln(KERN_ERR KERN_CLASS "attempted to kill init.");
   }
 

@@ -18,7 +18,7 @@
 #include <aerosync/version.h>
 #include <aerosync/sched/sched.h>
 #include <lib/log.h>
-#include <lib/vsprintf.h>
+#include <lib/string.h>
 
 static DEFINE_SPINLOCK(panic_lock);
 

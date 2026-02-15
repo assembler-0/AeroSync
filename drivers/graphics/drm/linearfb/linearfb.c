@@ -36,7 +36,7 @@
 #include <lib/string.h>
 #include <lib/uaccess.h>
 #include <lib/log.h>
-#include <lib/vsprintf.h>
+#include <lib/string.h>
 #include <aerosync/fkx/fkx.h>
 #include <mm/slub.h>
 #include <mm/vmalloc.h>

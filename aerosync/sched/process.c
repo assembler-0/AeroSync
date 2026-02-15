@@ -34,7 +34,7 @@
 #include <mm/slub.h>
 #include <mm/vma.h>
 #include <mm/vmalloc.h>
-#include <lib/vsprintf.h>
+#include <lib/string.h>
 #include <fs/file.h>
 #include <aerosync/signal.h>
 #include <aerosync/errno.h>

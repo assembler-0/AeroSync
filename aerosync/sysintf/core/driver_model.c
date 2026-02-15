@@ -16,7 +16,7 @@
 #include <aerosync/sysintf/char.h>
 #include <aerosync/sysintf/block.h>
 #include <lib/printk.h>
-#include <lib/vsprintf.h>
+#include <lib/string.h>
 #include <lib/string.h>
 #include <linux/container_of.h>
 #include <aerosync/kref.h>

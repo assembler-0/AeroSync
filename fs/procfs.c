@@ -11,7 +11,7 @@
 #include <aerosync/classes.h>
 #include <fs/pseudo_fs.h>
 #include <aerosync/sched/process.h>
-#include <lib/vsprintf.h>
+#include <lib/string.h>
 #include <aerosync/timer.h>
 #include <mm/vm_object.h>
 #include <arch/x86_64/mm/pmm.h>

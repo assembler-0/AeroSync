@@ -9,6 +9,7 @@
 
 #include <lib/bitmap.h>
 #include <aerosync/bitops.h>
+#include <aerosync/export.h>
 
 unsigned long bitmap_find_next_bit(const unsigned long *addr, unsigned long nbits, unsigned long start) {
     if (start >= nbits)
@@ -125,6 +126,42 @@ void bitmap_clear(unsigned long *map, unsigned int start, int len) {
     }
 }
 
+void bitmap_complement(unsigned long *dst, const unsigned long *src, unsigned int nbits) {
+    unsigned int words = nbits / BITS_PER_LONG;
+    for (unsigned int i = 0; i < words; i++)
+        dst[i] = ~src[i];
+
+    if (nbits % BITS_PER_LONG) {
+        unsigned int left = nbits % BITS_PER_LONG;
+        unsigned long mask = (1UL << left) - 1;
+        dst[words] = (~src[words]) & mask;
+    }
+}
+
+void bitmap_and(unsigned long *dst, const unsigned long *src1, const unsigned long *src2, unsigned int nbits) {
+    unsigned int words = (nbits + BITS_PER_LONG - 1) / BITS_PER_LONG;
+    for (unsigned int i = 0; i < words; i++)
+        dst[i] = src1[i] & src2[i];
+}
+
+void bitmap_or(unsigned long *dst, const unsigned long *src1, const unsigned long *src2, unsigned int nbits) {
+    unsigned int words = (nbits + BITS_PER_LONG - 1) / BITS_PER_LONG;
+    for (unsigned int i = 0; i < words; i++)
+        dst[i] = src1[i] | src2[i];
+}
+
+void bitmap_xor(unsigned long *dst, const unsigned long *src1, const unsigned long *src2, unsigned int nbits) {
+    unsigned int words = (nbits + BITS_PER_LONG - 1) / BITS_PER_LONG;
+    for (unsigned int i = 0; i < words; i++)
+        dst[i] = src1[i] ^ src2[i];
+}
+
+void bitmap_andnot(unsigned long *dst, const unsigned long *src1, const unsigned long *src2, unsigned int nbits) {
+    unsigned int words = (nbits + BITS_PER_LONG - 1) / BITS_PER_LONG;
+    for (unsigned int i = 0; i < words; i++)
+        dst[i] = src1[i] & ~src2[i];
+}
+
 bool bitmap_full(const unsigned long *src, unsigned int nbits) {
     unsigned int words = nbits / BITS_PER_LONG;
     unsigned int left = nbits % BITS_PER_LONG;
@@ -173,3 +210,17 @@ unsigned int bitmap_weight(const unsigned long *src, unsigned int nbits) {
 
     return weight;
 }
+
+EXPORT_SYMBOL(bitmap_find_next_bit);
+EXPORT_SYMBOL(bitmap_find_next_zero_bit);
+EXPORT_SYMBOL(bitmap_find_next_zero_area);
+EXPORT_SYMBOL(bitmap_set);
+EXPORT_SYMBOL(bitmap_clear);
+EXPORT_SYMBOL(bitmap_complement);
+EXPORT_SYMBOL(bitmap_and);
+EXPORT_SYMBOL(bitmap_or);
+EXPORT_SYMBOL(bitmap_xor);
+EXPORT_SYMBOL(bitmap_andnot);
+EXPORT_SYMBOL(bitmap_full);
+EXPORT_SYMBOL(bitmap_empty);
+EXPORT_SYMBOL(bitmap_weight);

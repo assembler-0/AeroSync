@@ -17,7 +17,7 @@
 
 #include <aerosync/sysintf/class.h>
 #include <mm/slub.h>
-#include <lib/vsprintf.h> /* For snprintf */
+#include <lib/string.h> /* For snprintf */
 #include <aerosync/resdomain.h>
 #include <aerosync/sched/process.h>
 

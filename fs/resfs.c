@@ -12,7 +12,7 @@
 #include <aerosync/errno.h>
 #include <lib/printk.h>
 #include <lib/string.h>
-#include <lib/vsprintf.h>
+#include <lib/string.h>
 #include <mm/slub.h>
 #include <aerosync/sched/process.h>
 #include <lib/uaccess.h>
@@ -140,7 +140,7 @@ static ssize_t resfs_procs_write(struct file *file, const char *buf, size_t coun
   kbuf[count] = 0;
 
   int pid;
-  if (kstrtoint(kbuf, 10, &pid)) return -EINVAL;
+  if (kstrtos(kbuf, 10, &pid)) return -EINVAL;
 
   struct task_struct *task = find_task_by_pid((pid_t) pid);
   if (!task) return -ESRCH;

@@ -40,7 +40,7 @@
 #include <mm/slub.h>
 #include <mm/vma.h>
 #include <aerosync/timer.h>
-#include <vsprintf.h>
+#include <lib/string.h>
 #include <aerosync/resdomain.h>
 #include <arch/x86_64/gdt/gdt.h>
 #include <linux/rculist.h>

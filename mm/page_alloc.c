@@ -27,7 +27,7 @@
 #include <lib/math.h>
 #include <lib/printk.h>
 #include <lib/string.h>
-#include <lib/vsprintf.h>
+#include <lib/string.h>
 #include <linux/container_of.h>
 #include <linux/list.h>
 #include <mm/gfp.h>

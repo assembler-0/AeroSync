@@ -35,7 +35,7 @@
 #include <linux/container_of.h>
 #include <linux/list.h>
 #include <lib/printk.h>
-#include <lib/vsprintf.h>
+#include <lib/string.h>
 #include <aerosync/wait.h>
 #include <aerosync/sched/process.h>
 #include <aerosync/sched/sched.h>

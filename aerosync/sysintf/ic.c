@@ -28,7 +28,7 @@
 #include <drivers/apic/apic.h>
 #include <lib/printk.h>
 #include <lib/string.h>
-#include <lib/vsprintf.h>
+#include <lib/string.h>
 #include <mm/slub.h>
 
 static struct class ic_class = {

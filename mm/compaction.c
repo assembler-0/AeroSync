@@ -14,7 +14,7 @@
 #include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/mm/vmm.h>
 #include <lib/printk.h>
-#include <lib/vsprintf.h>
+#include <lib/string.h>
 #include <linux/list.h>
 #include <aerosync/classes.h>
 #include <aerosync/sched/process.h>

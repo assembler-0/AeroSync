@@ -19,7 +19,7 @@
 #include <lib/string.h>
 #include <aerosync/classes.h>
 #include <mm/slub.h>
-#include <vsprintf.h>
+#include <lib/string.h>
 
 struct rcu_state rcu_state;
 DEFINE_PER_CPU(struct rcu_data, rcu_data);

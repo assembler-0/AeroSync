@@ -30,7 +30,7 @@
 #include <aerosync/sysintf/class.h>
 #include <aerosync/sysintf/device.h>
 #include <lib/string.h>
-#include <lib/vsprintf.h>
+#include <lib/string.h>
 #include <mm/slub.h>
 #include <aerosync/errno.h>
 

@@ -71,6 +71,15 @@ static inline void bitmap_copy(unsigned long *dst, const unsigned long *src, uns
 }
 
 /*
+ * Bitwise operations
+ */
+void bitmap_complement(unsigned long *dst, const unsigned long *src, unsigned int nbits);
+void bitmap_and(unsigned long *dst, const unsigned long *src1, const unsigned long *src2, unsigned int nbits);
+void bitmap_or(unsigned long *dst, const unsigned long *src1, const unsigned long *src2, unsigned int nbits);
+void bitmap_xor(unsigned long *dst, const unsigned long *src1, const unsigned long *src2, unsigned int nbits);
+void bitmap_andnot(unsigned long *dst, const unsigned long *src1, const unsigned long *src2, unsigned int nbits);
+
+/*
  * Testing
  */
 bool bitmap_full(const unsigned long *src, unsigned int nbits);

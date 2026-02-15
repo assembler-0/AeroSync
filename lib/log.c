@@ -27,7 +27,7 @@
 #include <aerosync/export.h>
 #include <lib/log.h>
 #include <lib/ringbuf.h>
-#include <lib/vsprintf.h>
+#include <lib/string.h>
 
 // Simple global ring buffer for log messages, Linux-like but minimal
 

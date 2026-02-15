@@ -22,18 +22,19 @@
  * FUNCTION ATTRIBUTES
  * ======================== */
 
-#define __noreturn      __attribute__((noreturn))
-#define __noinline      __attribute__((noinline))
-#define __always_inline __attribute__((always_inline))
-#define __flatten       __attribute__((flatten))
-#define __hot           __attribute__((hot))
-#define __cold          __attribute__((cold))
-#define __unused        __attribute__((unused))
-#define __used          __attribute__((used))
-#define __nonnull(x)    __attribute__((nonnull(x)))
-#define __finline        __attribute__((always_inline))
-#define __optimize(x)   __attribute__((optimize(x)))
-#define __deprecated    __attribute__((deprecated))
+#define __noreturn      __attribute__((__noreturn__))
+#define __noinline      __attribute__((__noinline__))
+#define noinline        __noinline
+#define __always_inline __attribute__((__always_inline__))
+#define __flatten       __attribute__((__flatten__))
+#define __hot           __attribute__((__hot__))
+#define __cold          __attribute__((__cold__))
+#define __unused        __attribute__((__unused__))
+#define __used          __attribute__((__used__))
+#define __nonnull(x)    __attribute__((__nonnull__(x)))
+#define __finline        __attribute__((__always_inline__))
+#define __optimize(x)   __attribute__((__optimize__(x)))
+#define __deprecated    __attribute__((__deprecated__))
 /* include/linux/compiler_attributes.h:368 */
 #define __must_check    __attribute__((__warn_unused_result__))
 #define __no_sanitize   __attribute__((no_sanitize("undefined", "address", "integer", "null", "bounds", "vla-bound", "object-size")))
@@ -43,12 +44,12 @@
  * MEMORY / LAYOUT ATTRIBUTES
  * ======================== */
 
-#define __aligned(x)    __attribute__((aligned(x)))
-#define __packed        __attribute__((packed))
-#define __weak          __attribute__((weak))
-#define __alias(x)      __attribute__((alias(x)))
-#define __section(x)    __attribute__((section(x)))
-#define __visibility(x) __attribute__((visibility(x)))
+#define __aligned(x)    __attribute__((__aligned__(x)))
+#define __packed        __attribute__((__packed__))
+#define __weak          __attribute__((__weak__))
+#define __alias(x)      __attribute__((__alias__(x)))
+#define __section(x)    __attribute__((__section__(x)))
+#define __visibility(x) __attribute__((__visibility__(x)))
 #define __attrib(x)     __attribute__((x))
 
 /* ========================
@@ -138,6 +139,8 @@ do { \
 #define __percpu
 #define __rcu
 #define __force
+
+#define BUILD_BUG_ON_ZERO(e) (sizeof(struct { int:-!!(e); }))
 
 #ifdef COMPILER_CLANG
 
