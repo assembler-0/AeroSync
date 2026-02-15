@@ -101,6 +101,9 @@ static struct fkx_loaded_image *g_unlinked_modules = nullptr;
 // Bitmask of currently available subclasses (from linked modules)
 static uint64_t g_available_subclasses = 0;
 
+// Bitmask of currently initialized subclasses
+static uint64_t g_initialized_subclasses = 0;
+
 static int fkx_relocate_module(struct fkx_loaded_image *img);
 
 int fkx_load_image(void *data, size_t size) {
@@ -442,46 +445,80 @@ int __no_cfi fkx_init_module_class(fkx_module_class_t module_class) {
     return -EINVAL;
   }
 
-  struct fkx_loaded_image *current_mod = g_module_class_heads[module_class];
-  int count = 0;
-
-  // First pass: count total modules in this class
-  struct fkx_loaded_image *temp = current_mod;
+  int total_count = 0;
+  struct fkx_loaded_image *temp = g_module_class_heads[module_class];
   while (temp) {
-    count++;
+    total_count++;
     temp = temp->next;
   }
 
-  if (count == 0) {
-    return 0;
-  }
+  if (total_count == 0) return 0;
 
-  printk(KERN_DEBUG FKX_CLASS "Initializing %d modules in class %d\n", count, module_class);
+  printk(KERN_DEBUG FKX_CLASS "Initializing %d modules in class %d\n", total_count, module_class);
 
-  // Second pass: initialize all modules in this class
-  current_mod = g_module_class_heads[module_class];
-  int initialized_count = 0;
+  int initialized_in_class = 0;
+  int initialized_this_pass;
   int error_count = 0;
 
-  while (current_mod) {
-    if (!current_mod->initialized && current_mod->info->init) {
-      printk(KERN_DEBUG FKX_CLASS "Initializing module '%s' in class %d\n", current_mod->info->name, module_class);
+  do {
+    initialized_this_pass = 0;
+    struct fkx_loaded_image *current_mod = g_module_class_heads[module_class];
 
-      int ret = current_mod->info->init();
-      if (ret != 0) {
-        printk(KERN_ERR FKX_CLASS "Module '%s' init failed: %d\n", current_mod->info->name, ret);
-        error_count++;
-        // Continue with other modules even if one fails
-      } else {
-        current_mod->initialized = 1;
-        initialized_count++;
+    while (current_mod) {
+      if (!current_mod->initialized) {
+        /* 
+         * Check if requirements are satisfied.
+         * Requirements are satisfied if all bits are set in g_initialized_subclasses.
+         */
+        bool reqs_satisfied = (current_mod->info->requirements & g_initialized_subclasses) == 
+                               current_mod->info->requirements;
+
+        if (reqs_satisfied) {
+          if (current_mod->info->init) {
+            printk(KERN_DEBUG FKX_CLASS "Initializing module '%s' in class %d\n", 
+                   current_mod->info->name, module_class);
+
+            int ret = current_mod->info->init();
+            if (ret != 0) {
+              printk(KERN_ERR FKX_CLASS "Module '%s' init failed: %d\n", current_mod->info->name, ret);
+              error_count++;
+              /* Mark as initialized to avoid re-trying and potential infinite loop */
+              current_mod->initialized = -1; 
+            } else {
+              current_mod->initialized = 1;
+              g_initialized_subclasses |= current_mod->info->subclass;
+              initialized_in_class++;
+              initialized_this_pass++;
+            }
+          } else {
+            /* No init function, consider it successful */
+            current_mod->initialized = 1;
+            g_initialized_subclasses |= current_mod->info->subclass;
+            initialized_in_class++;
+            initialized_this_pass++;
+          }
+        }
       }
+      current_mod = current_mod->next;
     }
-    current_mod = current_mod->next;
+  } while (initialized_this_pass > 0);
+
+  /* Check for uninitialized modules (circular dependencies or missing requirements) */
+  if (initialized_in_class < total_count) {
+    struct fkx_loaded_image *current_mod = g_module_class_heads[module_class];
+    while (current_mod) {
+      if (!current_mod->initialized) {
+        printk(KERN_ERR FKX_CLASS "Module '%s' in class %d skipped due to unmet requirements (0x%llx, available: 0x%llx)\n",
+               current_mod->info->name, module_class, 
+               current_mod->info->requirements & ~g_initialized_subclasses, g_initialized_subclasses);
+        error_count++;
+      }
+      current_mod = current_mod->next;
+    }
   }
 
   printk(KERN_DEBUG FKX_CLASS "%d/%d modules in class %d initialized successfully\n",
-         initialized_count, count, module_class);
+         initialized_in_class, total_count, module_class);
 
   return (error_count == 0) ? 0 : -ENODEV;
 }

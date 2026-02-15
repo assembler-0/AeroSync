@@ -81,17 +81,18 @@ static struct char_operations serial_char_ops = {
 
 int serial_init_standard(void *unused) {
   (void) unused;
+  uint16_t ports[] = {COM1, COM2, COM3, COM4};
 
-  if (serial_init() != 0)
-    if (serial_init_port(COM2) != 0 || serial_init_port(COM3) != 0 ||
-        serial_init_port(COM4) != 0)
-      return -ENODEV;
-  serial_initialized = 1;
+  for (int i = 0; i < 4; i++) {
+    if (serial_init_port(ports[i]) == 0) {
+      serial_initialized = 1;
+      /* Register using unified TTY interface */
+      tty_register_device(&serial_char_ops, nullptr);
+      return 0;
+    }
+  }
 
-  /* Register using unified TTY interface */
-  tty_register_device(&serial_char_ops, nullptr);
-
-  return 0;
+  return -ENODEV;
 }
 
 static void serial_cleanup(void) {
@@ -177,10 +178,29 @@ int serial_init_port(uint16_t port) {
   outb(port + SERIAL_LCR_REG, SERIAL_LCR_8BITS | SERIAL_LCR_NOPARITY | SERIAL_LCR_1STOP);
   outb(port + SERIAL_FIFO_REG,
        SERIAL_FIFO_ENABLE | SERIAL_FIFO_CLEAR_RX | SERIAL_FIFO_CLEAR_TX | SERIAL_FIFO_TRIGGER_14);
+  
+  /* Initial MCR state */
   outb(port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2);
+  
+  /* 
+   * Loopback test: bit 4 of MCR enables internal loopback.
+   * We write a pattern and expect it back. Some hardware needs a moment.
+   */
   outb(port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2 | 0x10);
   outb(port + SERIAL_DATA_REG, 0xAE);
-  if (inb(port + SERIAL_DATA_REG) != 0xAE) return -2;
+  
+  bool success = false;
+  for (int i = 0; i < 100; i++) {
+    if (inb(port + SERIAL_DATA_REG) == 0xAE) {
+      success = true;
+      break;
+    }
+    io_wait();
+  }
+
+  if (!success) return -ENODEV;
+
+  /* Restore normal mode (disable loopback) */
   outb(port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2);
   serial_initialized = 1;
   return 0;

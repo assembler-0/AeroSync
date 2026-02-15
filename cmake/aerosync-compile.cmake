@@ -75,7 +75,7 @@ if(STACK_PROTECTION_ALL)
         >
     )
 elseif(STACK_PROTECTION)
-    target_compile_options(aerosync.krnl PRIVATE
+    target_compile_options(aerosync.krnl PRIVATE1
         $<$<COMPILE_LANGUAGE:C>:
             -fstack-protector-strong
         >

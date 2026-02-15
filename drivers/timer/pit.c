@@ -23,10 +23,6 @@
 static uint32_t global_pit_frequency = IC_DEFAULT_TICK; 
 static uint16_t pit_reload_value = 0;
 
-static void pit_io_wait(void) {
-    outb(0x80, 0);
-}
-
 void pit_set_frequency(uint32_t frequency) {
   if (frequency == 0)
     frequency = 100;
@@ -44,9 +40,9 @@ void pit_set_frequency(uint32_t frequency) {
   irq_flags_t flags = save_irq_flags();
 
   outb(PIT_CMD_PORT, 0x34);
-  pit_io_wait();
+  io_wait();
   outb(PIT_CH0_PORT, divisor & 0xFF);
-  pit_io_wait();
+  io_wait();
   outb(PIT_CH0_PORT, (divisor >> 8) & 0xFF);
 
   restore_irq_flags(flags);
@@ -63,16 +59,16 @@ static void pit_wait_internal(uint32_t ms) {
     uint16_t count = (uint16_t)((PIT_FREQUENCY_BASE * chunk_ms) / 1000);
 
     outb(PIT_CMD_PORT, 0x30);
-    pit_io_wait();
+    io_wait();
     outb(PIT_CH0_PORT, count & 0xFF);
-    pit_io_wait();
+    io_wait();
     outb(PIT_CH0_PORT, (count >> 8) & 0xFF);
 
     while (1) {
       outb(PIT_CMD_PORT, 0x00);
-      pit_io_wait();
+      io_wait();
       uint8_t lo = inb(PIT_CH0_PORT);
-      pit_io_wait();
+      io_wait();
       uint8_t hi = inb(PIT_CH0_PORT);
       uint16_t current_val = ((uint16_t)hi << 8) | lo;
 

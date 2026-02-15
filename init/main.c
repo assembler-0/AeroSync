@@ -69,12 +69,6 @@
 
 static alignas(16) struct task_struct bsp_task;
 
-static int __noreturn __init test(void *u) {
-  while (1) {
-
-  }
-}
-
 static int __late_init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
   (void) unused;
 

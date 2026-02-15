@@ -27,6 +27,12 @@
 #define DMAR_IQA_REG            0x90    /* Invalidation Queue Address Register */
 #define DMAR_ICS_REG            0x9c    /* Invalidation Completion Status Register */
 #define DMAR_IRTA_REG           0xb8    /* Interrupt Remapping Table Address Register */
+#define DMAR_FSTS_REG           0x34    /* Fault Status Register */
+#define DMAR_FECTL_REG          0x38    /* Fault Event Control Register */
+#define DMAR_FEDATA_REG         0x3c    /* Fault Event Data Register */
+#define DMAR_FEADDR_REG         0x40    /* Fault Event Address Register */
+#define DMAR_FEUADDR_REG        0x44    /* Fault Event Upper Address Register */
+#define DMAR_FRCD_REG           0x400   /* Fault Recording Circuit (base) */
 #define DMAR_IOTLB_REG          0x08    /* IOTLB Invalidation Register (relative to ECAP_REG_IRO) */
 
 #define DMAR_GCMD_TE            (1U << 31) /* Translation Enable */
@@ -37,11 +43,14 @@
 /* CAP_REG fields */
 #define CAP_ND(c)               ((c) & 0x7ULL)
 #define CAP_SAGAW(c)            (((c) >> 8) & 0x1fULL)
+#define CAP_SPS(c)              (((c) >> 34) & 1ULL)
+#define CAP_FL1GP(c)            (((c) >> 35) & 1ULL)
 #define CAP_FRO(c)              (((c) >> 24) & 0x3ffULL)
 #define CAP_NFR(c)              (((c) >> 40) & 0xffULL)
 
 /* ECAP_REG fields */
 #define ECAP_IRO(e)             (((e) >> 8) & 0x3ffULL)
+#define ECAP_PT(e)              (((e) >> 6) & 1ULL)
 
 /* Root Entry */
 struct root_entry {
@@ -63,8 +72,8 @@ struct context_entry {
 #define CONTEXT_TT_PASSTHROUGH  (2ULL << 2)
 #define CONTEXT_DID(d)          ((uint64_t)(d) << 8)
 #define CONTEXT_ADDR_MASK       (~0xfffULL)
-#define CONTEXT_AW_3LEVEL       (0ULL << 0)
-#define CONTEXT_AW_4LEVEL       (1ULL << 0)
+#define CONTEXT_AW_3LEVEL       (1ULL << 0)
+#define CONTEXT_AW_4LEVEL       (2ULL << 0)
 
 /* Page Table Entry */
 #define VTD_PTE_R               (1ULL << 0)
@@ -78,10 +87,12 @@ struct intel_iommu {
   uint64_t cap;
   uint64_t ecap;
   uint32_t gcmd;
+  uint8_t flags;
 
   spinlock_t lock;
   struct root_entry *root_entry;
   struct list_head node;
+  struct list_head devices; /* List of dmar_dev_t */
 };
 
 struct dmar_domain {

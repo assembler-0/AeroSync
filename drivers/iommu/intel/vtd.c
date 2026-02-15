@@ -44,15 +44,51 @@ static inline uint32_t vtd_read32(struct intel_iommu *iommu, uint32_t reg) {
   return *(volatile uint32_t *)((uintptr_t)iommu->reg_virt + reg);
 }
 
+static inline void vtd_write64(struct intel_iommu *iommu, uint32_t reg, uint64_t val) {
+  *(volatile uint64_t *)((uintptr_t)iommu->reg_virt + reg) = val;
+}
+
 static inline uint64_t vtd_read64(struct intel_iommu *iommu, uint32_t reg) {
   return *(volatile uint64_t *)((uintptr_t)iommu->reg_virt + reg);
+}
+
+#define CAP_C(c)                (((c) >> 25) & 1ULL)
+
+static inline void vtd_flush_cache(struct intel_iommu *iommu, void *addr, size_t size) {
+  if (CAP_C(iommu->cap)) return;
+  
+  uintptr_t start = (uintptr_t)addr & ~(64UL - 1);
+  uintptr_t end = (uintptr_t)addr + size;
+  
+  for (; start < end; start += 64) {
+    __asm__ volatile("clflush (%0)" :: "r"(start) : "memory");
+  }
+}
+
+static int vtd_wait_status(struct intel_iommu *iommu, uint32_t reg, uint32_t mask, bool set) {
+  int timeout = 1000000; // 1s approx
+  while (timeout--) {
+    uint32_t val = vtd_read32(iommu, reg);
+    if (!!(val & mask) == set) return 0;
+    cpu_relax();
+  }
+  return -ETIMEDOUT;
 }
 
 struct intel_iommu *find_iommu_for_device(uint16_t segment, uint8_t bus, uint8_t devfn) {
   struct intel_iommu *iommu;
   list_for_each_entry(iommu, &s_iommus, node) {
-    if (iommu->segment == segment) {
-       return iommu;
+    if (iommu->segment != segment) continue;
+
+    /* Check explicit device list */
+    dmar_dev_t *dev;
+    list_for_each_entry(dev, &iommu->devices, node) {
+      if (dev->bus == bus && dev->devfn == devfn) return iommu;
+    }
+
+    /* If it has INCLUDE_ALL, it's the fallback for this segment */
+    if (iommu->flags & 1) { // bit 0 is INCLUDE_PCI_ALL
+      return iommu;
     }
   }
   return nullptr;
@@ -122,6 +158,43 @@ static const struct iommu_ops vtd_iommu_ops = {
   .map = vtd_map,
 };
 
+static int vtd_invalidate_context_global(struct intel_iommu *iommu) {
+  vtd_write64(iommu, DMAR_CCMD_REG, (1ULL << 61) | (1ULL << 63)); // Global Invalidation + Submit
+  return vtd_wait_status(iommu, DMAR_CCMD_REG + 4, (1U << 31), false); // Wait for ICC bit (63 - 32 = 31)
+}
+
+static int vtd_invalidate_iotlb_global(struct intel_iommu *iommu) {
+  uint32_t offset = (uint32_t)ECAP_IRO(iommu->ecap) << 4;
+  vtd_write64(iommu, offset + 8, (1ULL << 60) | (1ULL << 63) | (1ULL << 57)); // Global Invalidation + Submit + IVT
+  return vtd_wait_status(iommu, offset + 8 + 4, (1U << 31), false); // Wait for IVT bit (63 - 32 = 31)
+}
+
+static void vtd_set_gcmd(struct intel_iommu *iommu, uint32_t bit, bool enable) {
+  uint32_t status = vtd_read32(iommu, DMAR_GSTS_REG);
+  if (enable) status |= bit;
+  else status &= ~bit;
+  vtd_write32(iommu, DMAR_GCMD_REG, status);
+}
+
+static void vtd_check_faults(struct intel_iommu *iommu) {
+  uint32_t fsts = vtd_read32(iommu, DMAR_FSTS_REG);
+  if (fsts & 0xff) {
+    uint32_t fri = (fsts >> 8) & 0xff;
+    uint64_t frcd_lo = vtd_read64(iommu, DMAR_FRCD_REG + fri * 16);
+    uint64_t frcd_hi = vtd_read64(iommu, DMAR_FRCD_REG + fri * 16 + 8);
+    
+    printk(KERN_ERR IOMMU_CLASS "IOMMU Fault! FSTS: 0x%x, FRCD: 0x%llx 0x%llx\n",
+           fsts, frcd_hi, frcd_lo);
+    
+    /* Clear fault bits */
+    vtd_write32(iommu, DMAR_FSTS_REG, fsts);
+  }
+}
+
+/* Forward declarations */
+static void vtd_setup_passthrough(struct intel_iommu *iommu, uint8_t bus, uint8_t devfn);
+static void vtd_setup_bus_passthrough(struct intel_iommu *iommu, uint8_t bus);
+
 /**
  * @brief Initialize a single IOMMU hardware unit
  */
@@ -129,25 +202,116 @@ static int iommu_init_unit(struct intel_iommu *iommu) {
   iommu->reg_virt = ioremap(iommu->reg_phys, PAGE_SIZE);
   if (!iommu->reg_virt) return -ENOMEM;
 
+  uint32_t ver = vtd_read32(iommu, DMAR_VER_REG);
   iommu->cap = vtd_read64(iommu, DMAR_CAP_REG);
   iommu->ecap = vtd_read64(iommu, DMAR_ECAP_REG);
 
+  printk(KERN_INFO IOMMU_CLASS "Intel IOMMU v%d.%d (cap: 0x%llx, ecap: 0x%llx)\n",
+         ver >> 4, ver & 0xf, iommu->cap, iommu->ecap);
+
   auto folio = alloc_pages(GFP_KERNEL | ___GFP_ZERO, 0);
-  if (!folio) return -ENOMEM;
+  if (!folio) {
+    iounmap(iommu->reg_virt);
+    return -ENOMEM;
+  }
 
   iommu->root_entry = (struct root_entry *)page_address(&folio->page);
+  
+  /* 
+   * Pre-populate tables before enabling IOMMU 
+   */
+  if (iommu->flags & 1) { // INCLUDE_PCI_ALL
+    for (int b = 0; b < 256; b++) {
+      vtd_setup_bus_passthrough(iommu, b);
+    }
+  } else {
+    dmar_dev_t *ddev;
+    list_for_each_entry(ddev, &iommu->devices, node) {
+      vtd_setup_passthrough(iommu, ddev->bus, ddev->devfn);
+    }
+  }
+
   auto root_phys = folio_to_phys(folio);
 
-  vtd_write32(iommu, DMAR_RTADDR_REG, (uint32_t)root_phys);
-  vtd_write32(iommu, DMAR_RTADDR_REG + 4, (uint32_t)(root_phys >> 32));
-  vtd_write32(iommu, DMAR_GCMD_REG, DMAR_GCMD_SRTP);
+  /* Set root table pointer */
+  vtd_write64(iommu, DMAR_RTADDR_REG, root_phys);
+  vtd_flush_cache(iommu, iommu->root_entry, PAGE_SIZE);
+  vtd_set_gcmd(iommu, DMAR_GCMD_SRTP, true);
+  
+  if (vtd_wait_status(iommu, DMAR_GSTS_REG, DMAR_GSTS_RTPS, true) < 0) {
+    printk(KERN_ERR IOMMU_CLASS "Failed to set root table pointer\n");
+    __free_pages(&folio->page, 0);
+    iounmap(iommu->reg_virt);
+    return -ETIMEDOUT;
+  }
 
-  while (!(vtd_read32(iommu, DMAR_GSTS_REG) & DMAR_GSTS_RTPS)) cpu_relax();
+  /* Invalidate caches before enabling */
+  vtd_invalidate_context_global(iommu);
+  vtd_invalidate_iotlb_global(iommu);
 
-  vtd_write32(iommu, DMAR_GCMD_REG, DMAR_GCMD_TE);
-  while (!(vtd_read32(iommu, DMAR_GSTS_REG) & DMAR_GSTS_TES)) cpu_relax();
+  /* Enable translation */
+  vtd_set_gcmd(iommu, DMAR_GCMD_TE, true);
+  if (vtd_wait_status(iommu, DMAR_GSTS_REG, DMAR_GSTS_TES, true) < 0) {
+    printk(KERN_ERR IOMMU_CLASS "Failed to enable IOMMU translation\n");
+    vtd_check_faults(iommu);
+    __free_pages(&folio->page, 0);
+    iounmap(iommu->reg_virt);
+    return -ETIMEDOUT;
+  }
 
   return 0;
+}
+
+static struct context_entry *vtd_get_context_entry(struct intel_iommu *iommu, uint8_t bus, uint8_t devfn) {
+  struct root_entry *re = &iommu->root_entry[bus];
+  if (!(re->lo & ROOT_PRESENT)) {
+    auto folio = alloc_pages(GFP_KERNEL | ___GFP_ZERO, 0);
+    if (!folio) return nullptr;
+    re->lo = folio_to_phys(folio) | ROOT_PRESENT;
+    vtd_flush_cache(iommu, re, sizeof(*re));
+    vtd_invalidate_context_global(iommu);
+  }
+  struct context_entry *ce = (struct context_entry *)pmm_phys_to_virt(re->lo & PAGE_MASK);
+  return &ce[devfn];
+}
+
+static void vtd_setup_passthrough(struct intel_iommu *iommu, uint8_t bus, uint8_t devfn) {
+  auto ce = vtd_get_context_entry(iommu, bus, devfn);
+  if (!ce) return;
+
+  if (ECAP_PT(iommu->ecap)) {
+    ce->lo = CONTEXT_PRESENT | CONTEXT_TT_PASSTHROUGH;
+    ce->hi = CONTEXT_DID(0) | CONTEXT_AW_4LEVEL; // Set supported AW even for PT
+    vtd_flush_cache(iommu, ce, sizeof(*ce));
+    printk(KERN_DEBUG IOMMU_CLASS "device %02x:%02x.%x set to passthrough\n",
+           bus, devfn >> 3, devfn & 7);
+  } else {
+    printk(KERN_WARNING IOMMU_CLASS "Hardware does not support passthrough for %02x:%02x.%x\n",
+           bus, devfn >> 3, devfn & 7);
+  }
+}
+
+static void vtd_setup_bus_passthrough(struct intel_iommu *iommu, uint8_t bus) {
+  struct root_entry *re = &iommu->root_entry[bus];
+  if (!(re->lo & ROOT_PRESENT)) {
+    auto folio = alloc_pages(GFP_KERNEL | ___GFP_ZERO, 0);
+    if (!folio) {
+      printk(KERN_ERR IOMMU_CLASS "Failed to allocate context table for bus %02x\n", bus);
+      return;
+    }
+    re->lo = folio_to_phys(folio) | ROOT_PRESENT;
+    vtd_flush_cache(iommu, re, sizeof(*re));
+    
+    struct context_entry *ce = (struct context_entry *)pmm_phys_to_virt(re->lo & PAGE_MASK);
+    if (ECAP_PT(iommu->ecap)) {
+      for (int i = 0; i < 256; i++) {
+        ce[i].lo = CONTEXT_PRESENT | CONTEXT_TT_PASSTHROUGH;
+        ce[i].hi = CONTEXT_DID(0) | CONTEXT_AW_4LEVEL;
+      }
+      vtd_flush_cache(iommu, ce, PAGE_SIZE);
+    }
+    vtd_invalidate_context_global(iommu);
+  }
 }
 
 static int vtd_mod_init(void) {
@@ -165,12 +329,31 @@ static int vtd_mod_init(void) {
     memset(iommu, 0, sizeof(*iommu));
     iommu->reg_phys = dmar_unit->address;
     iommu->segment = dmar_unit->segment;
+    iommu->flags = dmar_unit->flags;
     spinlock_init(&iommu->lock);
+    INIT_LIST_HEAD(&iommu->devices);
+
+    /* Copy device list */
+    dmar_dev_t *ddev;
+    list_for_each_entry(ddev, &dmar_unit->devices, node) {
+      auto new_dev = (dmar_dev_t *)kmalloc(sizeof(dmar_dev_t));
+      if (new_dev) {
+        new_dev->bus = ddev->bus;
+        new_dev->devfn = ddev->devfn;
+        list_add_tail(&new_dev->node, &iommu->devices);
+      }
+    }
 
     if (iommu_init_unit(iommu) == 0) {
       list_add_tail(&iommu->node, &s_iommus);
       printk(KERN_INFO IOMMU_CLASS "Intel VT-d Unit @ 0x%llx initialized\n", iommu->reg_phys);
     } else {
+      /* Clean up devices list */
+      dmar_dev_t *tmp_dev, *n;
+      list_for_each_entry_safe(tmp_dev, n, &iommu->devices, node) {
+        list_del(&tmp_dev->node);
+        kfree(tmp_dev);
+      }
       kfree(iommu);
     }
   }
@@ -190,6 +373,6 @@ FKX_MODULE_DEFINE(
   0,
   FKX_DRIVER_CLASS,
   FKX_SUBCLASS_IOMMU,
-  FKX_NO_REQUIREMENTS,
+  FKX_SUBCLASS_PCI,
   vtd_mod_init
 );

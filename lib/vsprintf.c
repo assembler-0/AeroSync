@@ -12,7 +12,7 @@
  * Stripped of Linux-specific subsystem dependencies (DT, FW, Clocks, etc.)
  */
 
-#include <bitmap.h>
+#include <lib/bitmap.h>
 #include <aerosync/types.h>
 #include <aerosync/ctype.h>
 #include <aerosync/export.h>
@@ -23,7 +23,6 @@
 #include <mm/slub.h>
 #include <linux/math64.h>
 #include <aerosync/ksymtab.h>
-#include "kstrtox.h"
 
 #define SIGN	1		/* unsigned/signed */
 #define LEFT	2		/* left justified */
