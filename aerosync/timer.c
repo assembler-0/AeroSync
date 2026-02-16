@@ -15,10 +15,11 @@ static struct {
   .lock = SPINLOCK_INIT,
 };
 
-void timekeeping_init(uint64_t boot_timestamp_sec) {
+int timekeeping_init(uint64_t boot_timestamp_sec) {
   spinlock_lock(&timekeeper.lock);
   timekeeper.boot_timestamp_ns = boot_timestamp_sec * NSEC_PER_SEC;
   spinlock_unlock(&timekeeper.lock);
+  return 0;
 }
 
 uint64_t ktime_get_real_ns(void) {
@@ -38,12 +39,13 @@ struct timer_cpu_base {
 
 DEFINE_PER_CPU(struct timer_cpu_base, timer_bases);
 
-void timer_init_subsystem(void) {
+int timer_init_subsystem(void) {
   for (int i = 0; i < MAX_CPUS; i++) {
     struct timer_cpu_base *base = per_cpu_ptr(timer_bases, i);
     INIT_LIST_HEAD(&base->active_timers);
     spinlock_init(&base->lock);
   }
+  return 0;
 }
 
 static void __timer_reprogram(struct timer_cpu_base *base) {

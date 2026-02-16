@@ -14,14 +14,19 @@ struct timer_list {
 
 struct timespec;
 
-void timer_init_subsystem(void);
+int __must_check timer_init_subsystem(void);
 void timer_setup(struct timer_list *timer, void (*function)(struct timer_list *), void *data);
 void timer_add(struct timer_list *timer, uint64_t expires_ns);
 void timer_del(struct timer_list *timer);
 int timer_pending(const struct timer_list *timer);
 
 // Wall-clock timekeeping
-void timekeeping_init(uint64_t boot_timestamp_sec);
+/**
+ * @brief Initialize the timekeeping subsystem
+ * @param boot_timestamp_sec The UNIX timestamp at boot
+ * @return 0 on success, negative error code on failure
+ */
+int timekeeping_init(uint64_t boot_timestamp_sec);
 void ktime_get_real_ts64(struct timespec *ts);
 uint64_t ktime_get_real_ns(void);
 

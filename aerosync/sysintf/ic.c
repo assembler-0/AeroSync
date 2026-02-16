@@ -25,11 +25,14 @@
 #include <aerosync/sysintf/device.h>
 #include <aerosync/sysintf/ic.h>
 #include <aerosync/types.h>
+#include <asm-generic/errno-base.h>
 #include <drivers/apic/apic.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <lib/string.h>
 #include <mm/slub.h>
+
+#include "aerosync/errno.h"
 
 static struct class ic_class = {
     .name = "interrupt_controller",
@@ -102,7 +105,7 @@ static int __no_cfi ic_find_best(struct device *dev, void *data) {
   return 0; // continue calling for all
 }
 
-interrupt_controller_t __no_cfi ic_install(void) {
+interrupt_controller_t __no_cfi ic_install(int *status) {
   const interrupt_controller_interface_t *selected = nullptr;
 
   // 1. Find best controller using class iteration
@@ -110,17 +113,19 @@ interrupt_controller_t __no_cfi ic_install(void) {
     (class_iter_fn)ic_find_best);
 
   if (!selected) {
-    panic(
+    printk(KERN_ERR
         IC_CLASS
         "No interrupt controller could be installed (probe failed for all)\n");
+    *status = -ENODEV;
   }
 
   // 2. Install
   if (!selected->install()) {
     // Simple fallback logic is harder with iterator, for now panic if best
     // fails In a real UDM, we might retry the next best.
-    panic(IC_CLASS "Selected controller type %d install failed\n",
+    printk(KERN_ERR IC_CLASS "Selected controller type %d install failed\n",
           selected->type);
+    *status = -EFAULT;
   }
 
   printk(KERN_DEBUG IC_CLASS "Configuring timer to %u Hz...\n",
@@ -132,24 +137,22 @@ interrupt_controller_t __no_cfi ic_install(void) {
   // Set current controller ops
   current_ops = (interrupt_controller_interface_t *)selected;
 
-  if (current_ops->type == INTC_APIC) {
-    printk(KERN_INFO APIC_CLASS "APIC initialized successfully\n");
-  } else {
-    printk(KERN_INFO PIC_CLASS "PIC initialized successfully\n");
-  }
   return current_ops->type;
 }
 
-void __no_cfi ic_ap_init(void) {
+int __no_cfi ic_ap_init(void) {
   if (!current_ops) {
-    panic(IC_CLASS "IC not initialized on BSP before AP init");
+    printk(KERN_ERR IC_CLASS "IC not initialized on BSP before AP init");
+    return -ENOSYS;
   }
 
   if (current_ops->init_ap) {
     if (!current_ops->init_ap()) {
-      panic(IC_CLASS "Failed to initialize interrupt controller on AP");
+      printk(KERN_ERR IC_CLASS "Failed to initialize interrupt controller on AP");
+      return -EFAULT;
     }
   }
+  return 0;
 }
 EXPORT_SYMBOL(ic_ap_init);
 
@@ -207,13 +210,14 @@ interrupt_controller_t ic_get_controller_type(void) {
 }
 EXPORT_SYMBOL(ic_get_controller_type);
 
-void __no_cfi ic_set_timer(const uint32_t frequency_hz) {
+int __no_cfi ic_set_timer(const uint32_t frequency_hz) {
   if (!current_ops)
-    return;
+    return -ENOSYS;
   if (current_ops->timer_set) {
     current_ops->timer_set(frequency_hz);
     timer_frequency_hz = frequency_hz;
   }
+  return 0;
 }
 EXPORT_SYMBOL(ic_set_timer);
 
@@ -263,13 +267,14 @@ static int __no_cfi ic_find_get_id(struct device *dev, void *data) {
   return 0;
 }
 
-void ic_register_lapic_get_id_early() {
+int ic_register_lapic_get_id_early() {
   class_for_each_dev(&ic_class, nullptr, nullptr,
     (class_iter_fn)ic_find_get_id);
 
   if (!get_id) {
     get_id = ic_get_id_non_smp;
   }
+  return 0;
 }
 
 uint8_t __no_cfi ic_lapic_get_id(void) {

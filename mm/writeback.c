@@ -267,9 +267,10 @@ static int kwritebackd(void *data) {
   return 0;
 }
 
-void vm_writeback_init(void) {
+int vm_writeback_init(void) {
   struct task_struct *t = kthread_create(kwritebackd, nullptr, "kwritebackd");
-  if (t) {
-    kthread_run(t);
-  }
+  if (!t)
+    return -ENOMEM;
+  kthread_run(t);
+  return 0;
 }

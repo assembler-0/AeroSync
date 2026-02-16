@@ -695,7 +695,7 @@ void do_syscall(struct syscall_regs *regs) {
   do_signal(regs, true);
 }
 
-void syscall_init(void) {
+int syscall_init(void) {
   // 1. Enable SCE (Syscall Extensions) in EFER
   uint64_t efer = rdmsr(MSR_EFER);
   efer |= EFER_SCE;
@@ -719,4 +719,5 @@ void syscall_init(void) {
   // 5. Initialize KERNEL_GS_BASE with current GS_BASE
   // This ensures that the first swapgs in enter_ring3 has a valid kernel GS to swap back.
   wrmsr(MSR_KERNEL_GS_BASE, rdmsr(MSR_GS_BASE));
+  return 0;
 }

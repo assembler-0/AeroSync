@@ -136,7 +136,10 @@ static int khugepaged_thread(void *unused) {
   return 0;
 }
 
-void khugepaged_init(void) {
+int khugepaged_init(void) {
   struct task_struct *k = kthread_create(khugepaged_thread, nullptr, "khugepaged");
-  if (k) kthread_run(k);
+  if (!k)
+    return -ENOMEM;
+  kthread_run(k);
+  return 0;
 }

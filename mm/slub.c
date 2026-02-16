@@ -965,7 +965,7 @@ void slab_verify_all(void) {
   spinlock_unlock_irqrestore(&slab_lock, flags);
 }
 
-void slab_init(void) {
+int slab_init(void) {
   struct crypto_tfm *tfm = crypto_alloc_tfm("hw_rng", CRYPTO_ALG_TYPE_RNG);
   if (!tfm) tfm = crypto_alloc_tfm("sw_rng", CRYPTO_ALG_TYPE_RNG);
 
@@ -991,6 +991,7 @@ void slab_init(void) {
 
   printk(SLAB_CLASS "SLUB Hybrid initialized (%d caches, Magazine size %d)\n",
          15, SLAB_MAG_SIZE);
+  return 0;
 }
 
 void *kmalloc_node(size_t size, int node) {

@@ -5611,12 +5611,15 @@ bool mas_nomem(struct ma_state *mas, gfp_t gfp) {
   return true;
 }
 
-void __init maple_tree_init(void) {
+int __init maple_tree_init(void) {
   maple_node_cache = kmem_cache_create(
     "maple_node",
     sizeof(struct maple_node), 0, 0
   );
+  if (!maple_node_cache)
+    return -ENOMEM;
   printk(KERN_CLASS "maple_tree cache pool initialized\n");
+  return 0;
 }
 
 /**

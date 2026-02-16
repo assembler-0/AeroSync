@@ -485,7 +485,7 @@ static int __no_cfi resdomain_init_subsys(struct resdomain *rd, int subsys_id) {
   return 0;
 }
 
-void resdomain_init(void) {
+int resdomain_init(void) {
   memset(&root_resdomain, 0, sizeof(root_resdomain));
   strncpy(root_resdomain.name, "root", sizeof(root_resdomain.name));
   atomic_set(&root_resdomain.refcount, 1);
@@ -496,10 +496,12 @@ void resdomain_init(void) {
                                      1 << RD_SUBSYS_IO);
   root_resdomain.child_subsys_mask = root_resdomain.subtree_control;
   for (int i = 0; i < RD_SUBSYS_COUNT; i++) {
-    resdomain_init_subsys(&root_resdomain, i);
+    int ret = resdomain_init_subsys(&root_resdomain, i);
+    if (ret < 0) return ret;
   }
   resfs_init();
   printk(KERN_INFO SCHED_CLASS "Advanced Resource Domains (ResDomain) v2 initialized\n");
+  return 0;
 }
 
 struct resdomain *resdomain_create(struct resdomain *parent, const char *name) {

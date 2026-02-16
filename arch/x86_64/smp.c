@@ -94,7 +94,7 @@ static void smp_ap_entry(struct limine_mp_info *info) {
   this_cpu_write(cpu_number, cpu_id);
 
   // Initialize per-cpu PMM cache
-  pmm_init_cpu();
+  aerosync_core_init(pmm_init_cpu);
 
   // Initialize call queue
   smp_init_cpu(cpu_id);
@@ -107,24 +107,24 @@ static void smp_ap_entry(struct limine_mp_info *info) {
 
   // Initialize APIC for this AP IMMEDIATELY so we can get our CPU ID
   // and use per-CPU caches in kmalloc()
-  ic_ap_init();
+  aerosync_core_init(ic_ap_init);
 
   // Enable per-CPU features (SSE, AVX, etc.)
-  cpu_features_init_ap();
+  aerosync_core_init(cpu_features_init_ap);
 
   // Detect topology for this CPU
   detect_cpu_topology();
 
-  ic_set_timer(IC_DEFAULT_TICK);
+  aerosync_extra_init(ic_set_timer, IC_DEFAULT_TICK);
 
   // Initialize GDT and TSS for this AP
-  gdt_init_ap();
+  aerosync_core_init(gdt_init_ap);
 
   // Load IDT for this CPU
   idt_load(&g_IdtPtr);
 
   // Initialize Syscall MSRs
-  syscall_init();
+  aerosync_core_init(syscall_init);
 
   // Also increment the atomic counter for consistency with other code
   __atomic_fetch_add(&cpus_online, 1, __ATOMIC_RELEASE);
@@ -141,7 +141,7 @@ static void smp_ap_entry(struct limine_mp_info *info) {
   printk(KERN_DEBUG SMP_CLASS "CPU LAPIC ID %u online.\n", info->lapic_id);
 
   // Initialize scheduler for this AP
-  sched_init_ap();
+  aerosync_core_init(sched_init_ap);
 
   // Enable interrupts for this CPU
   cpu_sti();
@@ -343,12 +343,13 @@ int smp_init(const interrupt_controller_t ic_type) {
   return 0;
 }
 
-void smp_prepare_boot_cpu(void) {
+int smp_prepare_boot_cpu(void) {
   // BSP is always CPU 0
   this_cpu_write(cpu_number, 0);
   cpumask_set_cpu(0, &cpu_online_mask);
 
   detect_cpu_topology();
+  return 0;
 }
 
 uint64_t smp_get_cpu_count(void) { return cpu_count; }

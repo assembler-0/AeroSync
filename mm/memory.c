@@ -1118,7 +1118,7 @@ size_t try_to_free_pages(struct pglist_data *pgdat, size_t nr_to_reclaim, gfp_t 
   return sc.nr_reclaimed;
 }
 
-void kswapd_init(void) {
+int kswapd_init(void) {
   for (int n = 0; n < MAX_NUMNODES; n++) {
     if (node_data[n] && node_data[n]->node_spanned_pages > 0) {
       char name[16];
@@ -1127,12 +1127,15 @@ void kswapd_init(void) {
       if (k) {
         node_data[n]->kswapd_task = k;
         kthread_run(k);
+      } else {
+        return -ENOMEM;
       }
     }
   }
+  return 0;
 }
 
-void lru_init(void) {
+int lru_init(void) {
 #ifdef CONFIG_MM_LRU
   int cpu;
   for_each_possible_cpu(cpu) {
@@ -1145,6 +1148,7 @@ void lru_init(void) {
     spinlock_init(lock);
   }
 #endif
+  return 0;
 }
 
 /**

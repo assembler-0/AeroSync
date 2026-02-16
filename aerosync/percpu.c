@@ -15,6 +15,7 @@
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <mm/slub.h>
+#include <aerosync/errno.h>
 
 #ifndef CONFIG_PER_CPU_CHUNK_SIZE
 #define CONFIG_PER_CPU_CHUNK_SIZE 64
@@ -35,7 +36,7 @@ static unsigned long pcpu_start_offset; /* Offset where dynamic area starts */
 int percpu_ready(void) { return g_percpu_ready; }
 EXPORT_SYMBOL(percpu_ready);
 
-void setup_per_cpu_areas(void) {
+int setup_per_cpu_areas(void) {
   unsigned long static_size;
   unsigned long i;
   unsigned long count;
@@ -70,7 +71,7 @@ void setup_per_cpu_areas(void) {
       printk(KERN_ERR PERCPU_CLASS
              "Failed to allocate per-cpu area for CPU %lu\n",
              i);
-      panic("Per-CPU allocation failed");
+      return -ENOMEM;
     }
     ptr = pmm_phys_to_virt(phys);
 
@@ -97,12 +98,12 @@ void setup_per_cpu_areas(void) {
   pcpu_nr_bits = (PCPU_CHUNK_SIZE - pcpu_start_offset) / 16;
   pcpu_bitmap = kzalloc(BITMAP_SIZE(pcpu_nr_bits));
   if (!pcpu_bitmap) {
-    panic("Failed to allocate per-cpu bitmap");
+    return -ENOMEM;
   }
 
   pcpu_unit_counts = kzalloc(sizeof(uint16_t) * pcpu_nr_bits);
   if (!pcpu_unit_counts) {
-    panic("Failed to allocate per-cpu unit counts array");
+    return -ENOMEM;
   }
 
   wrmsr(MSR_GS_BASE, __per_cpu_offset[0]);
@@ -111,6 +112,7 @@ void setup_per_cpu_areas(void) {
   printk(KERN_INFO PERCPU_CLASS
          "Full per-cpu setup done. Dynamic area: %d bytes\n",
          PCPU_CHUNK_SIZE - (int)pcpu_start_offset);
+  return 0;
 }
 
 void *pcpu_alloc(size_t size, size_t align) {

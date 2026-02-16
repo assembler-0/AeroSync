@@ -15,6 +15,7 @@
 #include <mm/vma.h>
 #include <aerosync/sched/process.h>
 #include <aerosync/sysintf/time.h>
+#include <aerosync/errno.h>
 
 #define SCRUB_INTERVAL_MS 5000
 
@@ -46,9 +47,10 @@ static int mm_scrubberd(void *data) {
   return 0;
 }
 
-void mm_scrubber_init(void) {
+int mm_scrubber_init(void) {
   struct task_struct *t = kthread_create(mm_scrubberd, nullptr, "mm_scrubberd");
-  if (t) {
-    kthread_run(t);
-  }
+  if (!t)
+    return -ENOMEM;
+  kthread_run(t);
+  return 0;
 }

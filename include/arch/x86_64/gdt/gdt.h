@@ -61,6 +61,6 @@ struct tss_entry {
   uint16_t iomap_base;
 } __packed;
 
-void gdt_init(void);
-void gdt_init_ap(void);
+int gdt_init(void);
+int gdt_init_ap(void);
 void set_tss_rsp0(uint64_t rsp0);

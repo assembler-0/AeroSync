@@ -27,7 +27,7 @@
 static uint64_t tsc_freq = 0;
 static uint64_t tsc_boot_offset = 0;
 
-void tsc_calibrate_early(void) {
+int tsc_calibrate_early(void) {
   uint32_t eax, ebx, ecx, edx;
 
   /* ---------- Tier 1: CPUID 0x15 ---------- */
@@ -50,7 +50,7 @@ void tsc_calibrate_early(void) {
 
     uint64_t tsc_hz = (crystal_hz * ebx) / eax;
     tsc_freq = tsc_hz;
-    return;
+    return 0;
   }
 
   /* ---------- Tier 2: CPUID 0x16 ---------- */
@@ -59,12 +59,13 @@ void tsc_calibrate_early(void) {
   if (eax) {
     /* eax = base frequency in MHz */
     tsc_freq = (uint64_t)eax * 1000000;
-    return;
+    return 0;
   }
 
   /* ---------- Tier 3: Trust me bro fallback ---------- */
   /* Assume ~3GHz */
   tsc_freq = 3000000000;
+  return 0;
 }
 
 uint64_t tsc_freq_get() {

@@ -73,7 +73,7 @@ static void set_tss_gate(int num, uint64_t base, uint64_t limit) {
   spinlock_unlock_irqrestore(&gdt_lock, flags);
 }
 
-void gdt_init(void) {
+int gdt_init(void) {
   struct gdt_ptr gdt_ptr;
   gdt_ptr.limit = (sizeof(struct gdt_entry) * 7) - 1;
   gdt_ptr.base = (uint64_t) (struct gdt_entry *) this_cpu_ptr(gdt_entries);
@@ -101,10 +101,11 @@ void gdt_init(void) {
 
   gdt_flush(&gdt_ptr);
   tss_flush();
+  return 0;
 }
 
-void gdt_init_ap(void) {
-  gdt_init();
+int gdt_init_ap(void) {
+  return gdt_init();
 }
 
 void set_tss_rsp0(uint64_t rsp0) { this_cpu_write(tss_entry.rsp0, rsp0); }

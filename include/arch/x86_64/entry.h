@@ -12,4 +12,4 @@ struct syscall_regs {
 /**
  * Initializes syscall MSRs (STAR, LSTAR, FMASK, EFER.SCE).
  */
-void syscall_init(void);
+int syscall_init(void);

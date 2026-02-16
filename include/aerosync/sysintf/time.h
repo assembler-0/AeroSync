@@ -60,7 +60,7 @@ void time_register_source(const time_source_t *source);
  * @brief Initialize the Time Subsystem, selecting the best available source.
  * @return 0 on success, -1 if no source could be initialized.
  */
-int time_init(void);
+int __must_check time_init(void);
 
 /**
  * @brief Get the name of the currently active time source.
@@ -92,6 +92,6 @@ static __always_inline void delay_s(uint64_t s) { time_wait_ns(s * 1000000000ULL
 
 /**
  * @brief Calibrate the TSC using the currently active time source.
- * @return 0 on success, -1 on failure.
+ * @return 0 on success, errno on failure.
  */
-int time_calibrate_tsc_system(void);
+int __must_check time_calibrate_tsc_system(void);

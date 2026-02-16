@@ -168,9 +168,24 @@
 #define ENOGRACE	531	/* NFS file lock reclaim refused */
 
 #define MAX_ERRNO	4095
+
 #include <compiler.h>
 
 #define IS_ERR_VALUE(x) unlikely((unsigned long)(void *)(x) >= (unsigned long)-MAX_ERRNO)
+
+/**
+ * INIT_ERR_PTR - Init a const error pointer.
+ * @error: A negative error code.
+ *
+ * Like ERR_PTR(), but usable to initialize static variables.
+ */
+#define INIT_ERR_PTR(error) ((void *)(error))
+
+/* Return the pointer in the percpu address space. */
+#define ERR_PTR_PCPU(error) ((void __percpu *)(unsigned long)ERR_PTR(error))
+
+/* Cast an error pointer to __iomem. */
+#define IOMEM_ERR_PTR(error) (__force void __iomem *)ERR_PTR(error)
 
 static inline void* ERR_PTR(long error) {
   return (void*)error;
@@ -184,6 +199,8 @@ static inline bool __must_check IS_ERR(__force const void* ptr) {
   return IS_ERR_VALUE((unsigned long)ptr);
 }
 
+#define IS_ERR_INT(x) ((x) < 0 && (x) <= MAX_ERRNO)
+
 static inline bool __must_check IS_ERR_OR_NULL(__force const void* ptr) {
   return unlikely(!ptr) || IS_ERR_VALUE((unsigned long)ptr);
 }
@@ -191,8 +208,87 @@ static inline bool __must_check IS_ERR_OR_NULL(__force const void* ptr) {
 static inline int __must_check PTR_ERR_OR_ZERO(__force const void* ptr) {
   if (IS_ERR(ptr))
     return PTR_ERR(ptr);
-  else
-    return 0;
+  return 0;
 }
+
+/* panic on fail */
+#define aerosync_core_init(init_f, ...)                            \
+do {                                                               \
+  const int __ret_##init_f = init_f(__VA_ARGS__);                  \
+  if (IS_ERR_INT(__ret_##init_f))                                  \
+    panic(KERN_CLASS #init_f " failed with error: %d aka %s\n",    \
+    __ret_##init_f, errname(__ret_##init_f));                      \
+} while (0)
+
+/* panic on fail - call the expression directly */
+#define aerosync_core_init_exprcall(expr, name)                    \
+do {                                                               \
+  const int __ret_##name = (expr);                                 \
+  if (IS_ERR_INT(__ret_##name))                                    \
+    panic(KERN_CLASS #name " failed with error: %d aka %s\n",      \
+    __ret_##name, errname(__ret_##name));                          \
+} while (0)
+
+/* panic on fail using a return status passed by reference as the first argument */
+#define aerosync_core_init_status(init_f, ...)                     \
+do {                                                               \
+  static int __status_##init_f = 0;                                \
+  init_f(&__status_##init_f, ##__VA_ARGS__ );                      \
+  if (IS_ERR_INT(__status_##init_f))                               \
+    panic(KERN_CLASS #init_f " failed with error: %d aka %s\n",    \
+    __status_##init_f, errname(__status_##init_f));                \
+} while (0)
+
+/* same as aerosync_core_init_status but also captures return vaule and assigns to ret */
+#define aerosync_core_init_status_ret(init_f, ret, ...)            \
+do {                                                               \
+  static int __status_##init_f = 0;                                \
+  (ret) = init_f(&__status_##init_f, ##__VA_ARGS__ );              \
+  if (IS_ERR_INT(__status_##init_f))                               \
+    panic(KERN_CLASS #init_f " failed with error: %d aka %s\n",    \
+    __status_##init_f, errname(__status_##init_f));                \
+} while (0)
+
+/* warn on fail */
+#define aerosync_extra_init(init_f, ...)                           \
+do {                                                               \
+  const int __ret_##init_f = init_f(__VA_ARGS__);                  \
+  if (IS_ERR_INT(__ret_##init_f))                                  \
+    printk(KERN_ERR KERN_CLASS #init_f                             \
+    " failed with error: %d aka %s\n",                             \
+    __ret_##init_f, errname(__ret_##init_f));                      \
+} while (0)
+
+/* warn on fail - call the expression directly */
+#define aerosync_extra_init_exprcall(expr, name)                   \
+do {                                                               \
+  const int __ret_##name = (expr);                                 \
+  if (IS_ERR_INT(__ret_##name))                                    \
+    printk(KERN_ERR KERN_CLASS #name                               \
+    " failed with error: %d aka %s\n",                             \
+    __ret_##name, errname(__ret_##name));                          \
+} while (0)
+
+/* warn on fail using a return status passed by reference as the first argument */
+#define aerosync_extra_init_status(init_f, ...)                    \
+do {                                                               \
+  static int __status_##init_f = 0;                                \
+  init_f(&__status_##init_f, ##__VA_ARGS__ );                      \
+  if (IS_ERR_INT(__ret_##init_f))                                  \
+    printk(KERN_ERR KERN_CLASS #init_f                             \
+    " failed with error: %d aka %s\n",                             \
+    __ret_##init_f, errname(__ret_##init_f));                      \
+} while (0)
+
+/* same as aerosync_extra_init_status but also captures return vaule and assigns to ret */
+#define aerosync_extra_init_status_ret(init_f, ret, ...)           \
+do {                                                               \
+  static int __status_##init_f = 0;                                \
+  (ret) = init_f(&__status_##init_f, ##__VA_ARGS__ );              \
+  if (IS_ERR_INT(__ret_##init_f))                                  \
+    printk(KERN_ERR KERN_CLASS #init_f                             \
+    " failed with error: %d aka %s\n",                             \
+    __ret_##init_f, errname(__ret_##init_f));                      \
+} while (0)
 
 #endif /* _KERNEL_ERRNO_H */

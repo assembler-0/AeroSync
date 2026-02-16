@@ -121,7 +121,7 @@ extern struct class fw_class;
 /**
  * fw_init - Initialize firmware subsystem
  */
-void fw_init(void);
+int __must_check fw_init(void);
 
 /**
  * fw_dump_hardware_info - Dump hardware information to log

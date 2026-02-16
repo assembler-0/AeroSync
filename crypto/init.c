@@ -24,7 +24,7 @@ int hw_rng_init(void);
 int sw_rng_init(void);
 int crypto_sysintf_init(void);
 
-void crypto_init(void) {
+int crypto_init(void) {
   sha256_generic_init();
   sha256_ni_init();
   sha512_generic_init();
@@ -41,4 +41,5 @@ void crypto_init(void) {
          crypto_has_aes_ni() ? "yes" : "no",
          crypto_has_sha_ni() ? "yes" : "no",
          crypto_has_rdrand() ? "yes" : "no");
+  return 0;
 }

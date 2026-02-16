@@ -75,7 +75,7 @@ static int __late_init __noreturn __noinline __sysv_abi kernel_init(void *unused
   printk(KERN_INFO KERN_CLASS "finishing system initialization\n");
   fkx_init_module_class(FKX_GENERIC_CLASS);
 
-  rcu_spawn_kthreads();
+  aerosync_core_init(rcu_spawn_kthreads);
 
 #ifdef CONFIG_RCU_PERCPU_TEST
   if (cmdline_get_flag("rcutest")) {
@@ -84,16 +84,16 @@ static int __late_init __noreturn __noinline __sysv_abi kernel_init(void *unused
   }
 #endif
 
-  zmm_init();
-  shm_init();
-  kswapd_init();
-  kcompactd_init();
-  khugepaged_init();
-  vm_writeback_init();
-  kvmap_purged_init();
+  aerosync_core_init(zmm_init);
+  aerosync_core_init(shm_init);
+  aerosync_core_init(kswapd_init);
+  aerosync_core_init(kcompactd_init);
+  aerosync_core_init(khugepaged_init);
+  aerosync_core_init(vm_writeback_init);
+  aerosync_core_init(kvmap_purged_init);
 
 #ifdef MM_HARDENING
-  mm_scrubber_init();
+  aerosync_core_init(mm_scrubber_init);
 #endif
 
   printk(KERN_DEBUG KERN_CLASS "attempting to run init process: %s\n", STRINGIFY(CONFIG_INIT_PATH));
@@ -147,7 +147,7 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
   }
 
   printk_register_backend(debugcon_get_backend());
-  printk_init_early();
+  aerosync_core_init_exprcall(printk_init_early(), printk_early);
   tsc_calibrate_early();
 
   /* parse cmdline before any stuff get prints */
@@ -166,7 +166,7 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   if (get_executable_file_request()->response &&
       get_executable_file_request()->response->executable_file) {
-    ksymtab_init(get_executable_file_request()->response->executable_file->address);
+    aerosync_core_init(ksymtab_init, get_executable_file_request()->response->executable_file->address);
   }
 
   if (get_cmdline_request()->response) {
@@ -217,7 +217,7 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
   if (get_date_at_boot_request()->response) {
     uint64_t boot_ts = get_date_at_boot_request()->response->timestamp;
     printk(KERN_CLASS "unix timestamp: %lld\n", boot_ts);
-    timekeeping_init(boot_ts);
+    aerosync_core_init(timekeeping_init, boot_ts);
   }
 
   // Initialize Physical Memory Manager
@@ -225,47 +225,45 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
     panic(KERN_CLASS "memmap/HHDM not available");
   }
 
-  cpu_features_init();
-  if (pmm_init(get_memmap_request()->response, get_hhdm_request()->response->offset,
+  aerosync_core_init(cpu_features_init);
+  aerosync_core_init(pmm_init, get_memmap_request()->response, get_hhdm_request()->response->offset,
                get_rsdp_request()->response
                  ? get_rsdp_request()->response->address
-                 : nullptr) < 0) {
-    panic(PMM_CLASS "Failed to initialize PMM");
-  }
-  lru_init();
-  vmm_init();
-  slab_init();
-  maple_tree_init();
-  vma_cache_init();
-  radix_tree_init();
+                 : nullptr);
+  aerosync_core_init(lru_init);
+  aerosync_core_init(vmm_init);
+  aerosync_core_init(slab_init);
+  aerosync_core_init(maple_tree_init);
+  aerosync_core_init(vma_cache_init);
+  aerosync_core_init(radix_tree_init);
 
-  setup_per_cpu_areas();
-  rcu_init();
+  aerosync_core_init(setup_per_cpu_areas);
+  aerosync_core_init(rcu_init);
 
-  smp_prepare_boot_cpu();
-  pmm_init_cpu();
-  vmalloc_init();
+  aerosync_core_init(smp_prepare_boot_cpu);
+  aerosync_core_init(pmm_init_cpu);
+  aerosync_core_init(vmalloc_init);
 
-  ksymtab_finalize();
+  aerosync_extra_init(ksymtab_finalize);
 
-  gdt_init();
-  idt_install();
-  syscall_init();
+  aerosync_core_init(gdt_init);
+  aerosync_core_init(idt_install);
+  aerosync_core_init(syscall_init);
 
-  fpu_init();
-  pid_allocator_init();
-  sched_init();
+  aerosync_core_init(fpu_init);
+  aerosync_core_init(pid_allocator_init);
+  aerosync_core_init(sched_init);
   bsp_task.active_mm = &init_mm;
-  sched_init_task(&bsp_task);
+  aerosync_core_init(sched_init_task, &bsp_task);
 
 #ifdef CONFIG_LIMINE_MODULE_MANAGER
-  lmm_register_prober(initramfs_cpio_prober);
-  lmm_register_prober(lmm_fkx_prober);
-  lmm_init(get_module_request()->response);
+  aerosync_core_init(lmm_register_prober, initramfs_cpio_prober);
+  aerosync_core_init(lmm_register_prober, lmm_fkx_prober);
+  aerosync_core_init(lmm_init, get_module_request()->response);
 #endif
 
-  vfs_init();
-  resdomain_init();
+  aerosync_core_init(vfs_init);
+  aerosync_core_init(resdomain_init);
 
 #ifdef INCLUDE_MM_TESTS
   if (cmdline_find_option_bool(current_cmdline, "mtest")) {
@@ -279,42 +277,43 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
   }
 #endif
 
-  fw_init();
-  crypto_init();
+  aerosync_core_init(fw_init);
+  aerosync_core_init(crypto_init);
 
   /* load all FKX images */
-  system_load_extensions();
+  aerosync_core_init(system_load_extensions);
 
   fkx_init_module_class(FKX_PRINTK_CLASS);
   fkx_init_module_class(FKX_PANIC_HANDLER_CLASS);
 
-  printk_init_late();
+  aerosync_core_init_exprcall(printk_init_late(), printk_late);
   panic_handler_install();
 
   fkx_init_module_class(FKX_IC_CLASS);
-  ic_register_lapic_get_id_early();
+  aerosync_core_init(ic_register_lapic_get_id_early);
 
-  uacpi_kernel_init_early();
+  aerosync_core_init(uacpi_kernel_init_early);
 
-  acpi_tables_init();
+  aerosync_core_init(acpi_tables_init);
 
-  const interrupt_controller_t ic_type =
-    ic_install();
+  interrupt_controller_t ic_type;
+  aerosync_core_init_status_ret(ic_install, ic_type);
+
   uacpi_notify_ic_ready();
 
   // --- Time Subsystem Initialization ---
   fkx_init_module_class(FKX_TIMER_CLASS);
-  time_init();
+  aerosync_core_init(time_init);
 
   // Recalibrate TSC
-  time_calibrate_tsc_system();
+  aerosync_core_init(time_calibrate_tsc_system);
 
-  timer_init_subsystem();
+  aerosync_core_init(timer_init_subsystem);
 
   // -- initialize the rest of uACPI ---
-  uacpi_kernel_init_late();
-  acpi_power_init();
-  acpi_bus_enumerate();
+  aerosync_core_init(uacpi_kernel_init_late);
+  aerosync_extra_init(acpi_power_init);
+  aerosync_core_init(acpi_bus_enumerate);
 
   fkx_init_module_class(FKX_DRIVER_CLASS);
 
@@ -323,14 +322,11 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
     dump_device_tree();
 #endif
 
-  int smp_status;
-  if ((smp_status = smp_init(ic_type)) < 0) {
-    printk(KERN_ERR KERN_CLASS "SMP init failed: %d\n", smp_status);
-  }
-  softirq_init();
+  aerosync_core_init(smp_init, ic_type);
+  aerosync_core_init(softirq_init);
 
 #ifdef ASYNC_PRINTK
-  printk_init_async();
+  aerosync_core_init(printk_init_async);
 #endif
 
   // Start kernel_init thread (do the rest of the kernel init)

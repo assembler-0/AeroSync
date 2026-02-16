@@ -1,7 +1,8 @@
 #pragma once
+#include <compiler.h>
 
 // Initialize ACPI power management (Power Button, etc.)
-void acpi_power_init(void);
+int __must_check acpi_power_init(void);
 
 // Perform a system shutdown (S5)
 void acpi_shutdown(void);

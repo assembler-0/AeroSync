@@ -117,7 +117,7 @@ static inline void xsaveopt(void* state, uint64_t mask) {
     : "memory");
 }
 
-void fpu_init(void) {
+int fpu_init(void) {
   uint32_t eax, ebx, ecx, edx;
   uint64_t cr0, cr4;
 
@@ -177,6 +177,7 @@ void fpu_init(void) {
 
   /* Initialize FPU */
   __asm__ volatile("fninit");
+  return 0;
 }
 
 void fpu_init_task(struct fpu_state* fpu) {

@@ -19,13 +19,16 @@ if(LIMINE_EXECUTABLE)
     # We still need the resource files (limine.sys, etc.)
     # Usually in /usr/share/limine
     set(DEFAULT_LIMINE_DIR "/usr/share/limine")
+    set(DEFAULT_LIMINE_DIR2 "/usr/local/share/limine")
     if(EXISTS "${DEFAULT_LIMINE_DIR}/limine-bios.sys")
         set(LIMINE_RESOURCE_DIR "${DEFAULT_LIMINE_DIR}" CACHE PATH "Path to Limine resource files")
+    elseif(EXISTS "${DEFAULT_LIMINE_DIR2}/limine-bios.sys")
+        set(LIMINE_RESOURCE_DIR "${DEFAULT_LIMINE_DIR2}" CACHE PATH "Path to Limine resource files")
     endif()
 endif()
 
 # 2. If resources not found, fetch them
-if(NOT DEFINED LIMINE_RESOURCE_DIR OR NOT EXISTS "${LIMINE_RESOURCE_DIR}/limine-bios.sys")
+if(NOT DEFINED LIMINE_RESOURCE_DIR)
     message(STATUS "Limine resources not found on system. Fetching ${LIMINE_VERSION}...")
     
     FetchContent_Declare(

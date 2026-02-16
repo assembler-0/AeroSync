@@ -1,5 +1,6 @@
 #pragma once
 
+#include <compiler.h>
 #include <aerosync/types.h>
 #include <arch/x86_64/percpu.h>
 
@@ -62,12 +63,12 @@ bool in_softirq(void);
 /**
  * softirq_init - Initialize the softirq system
  */
-void softirq_init(void);
+int __must_check softirq_init(void);
 
 /**
  * softirq_init_ap - Initialize softirq on APs
  */
-void softirq_init_ap(void);
+int __must_check softirq_init_ap(void);
 
 /* Per-CPU softirq pending mask */
 DECLARE_PER_CPU(uint32_t, softirq_pending);

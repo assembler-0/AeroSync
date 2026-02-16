@@ -23,6 +23,7 @@
 #include <lib/printk.h>
 #include <uacpi/event.h>
 #include <uacpi/uacpi.h>
+#include <aerosync/errno.h>
 
 static uacpi_interrupt_ret handle_power_button(uacpi_handle ctx) {
   (void)ctx;
@@ -35,8 +36,9 @@ static uacpi_interrupt_ret handle_sleep_button(uacpi_handle ctx) {
   return UACPI_INTERRUPT_HANDLED;
 }
 
-void acpi_power_init(void) {
+int acpi_power_init(void) {
   uacpi_status ret;
+  int status = 0;
 
   printk(ACPI_BUTTON_CLASS "Installing Fixed Event Handlers...\n");
 
@@ -46,11 +48,13 @@ void acpi_power_init(void) {
   ret = uacpi_install_fixed_event_handler(UACPI_FIXED_EVENT_POWER_BUTTON, handle_power_button, nullptr);
   if (uacpi_unlikely_error(ret)) {
     printk(KERN_ERR ACPI_BUTTON_CLASS "Failed to install Power Button handler: %s (%d)\n", uacpi_status_to_string(ret), ret);
+    status = -EIO;
   } else {
     // Enable the event
     ret = uacpi_enable_fixed_event(UACPI_FIXED_EVENT_POWER_BUTTON);
     if (uacpi_unlikely_error(ret)) {
       printk(KERN_ERR ACPI_BUTTON_CLASS "Failed to enable Power Button event: %s (%d)\n", uacpi_status_to_string(ret), ret);
+      status = -EIO;
     } else {
       printk(ACPI_BUTTON_CLASS "Power Button enabled.\n");
     }
@@ -63,6 +67,7 @@ void acpi_power_init(void) {
   ret = uacpi_install_fixed_event_handler(UACPI_FIXED_EVENT_SLEEP_BUTTON, handle_sleep_button, nullptr);
   if (uacpi_unlikely_error(ret)) {
     printk(KERN_WARNING ACPI_BUTTON_CLASS "Failed to install Sleep Button handler: %s (%d)\n", uacpi_status_to_string(ret), ret);
+    status = -EIO;
   } else {
     // Enable the event
     ret = uacpi_enable_fixed_event(UACPI_FIXED_EVENT_SLEEP_BUTTON);
@@ -70,7 +75,9 @@ void acpi_power_init(void) {
       printk(ACPI_BUTTON_CLASS "Sleep Button enabled.\n");
     } else {
       printk(KERN_WARNING ACPI_BUTTON_CLASS "Failed to enable Sleep Button event: %s (%d)\n", uacpi_status_to_string(ret), ret);
+      status = -EIO;
     }
   }
 #endif
+  return status;
 }

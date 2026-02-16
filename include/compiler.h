@@ -134,12 +134,21 @@ do { \
 #define __STRINGIFY(x) #x
 #define STRINGIFY(x) __STRINGIFY(x)
 
-/* ETC. */
-#define static_assert _Static_assert
-#define __percpu
-#define __rcu
-#define __force
-
+/* address spaces */
+# define __kernel	__attribute__((address_space(0)))
+# define __user		__attribute__((noderef))
+# define __iomem	__attribute__((noderef))
+# define __percpu
+# define __rcu
+static inline void __chk_user_ptr(const volatile void __user *ptr) { }
+static inline void __chk_io_ptr(const volatile void __iomem *ptr) { }
+/* other */
+# define __preserve_most notrace __attribute__((__preserve_most__))
+# define __force
+# define __nocast	__attribute__((nocast))
+# define __safe		__attribute__((safe))
+# define __private	__attribute__((noderef))
+# define ACCESS_PRIVATE(p, member) (*((typeof((p)->member) __force *) &(p)->member))
 #define BUILD_BUG_ON_ZERO(e) (sizeof(struct { int:-!!(e); }))
 
 #ifdef COMPILER_CLANG

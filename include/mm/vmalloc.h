@@ -282,9 +282,8 @@ void *vmap(struct page **pages, unsigned int count, unsigned long flags, uint64_
 void vunmap(void *addr);
 
 /* Subsystem Initialization */
-void vmalloc_init(void);
-
-void kvmap_purged_init(void);
+int vmalloc_init(void);
+int kvmap_purged_init(void);
 
 /* Diagnostics */
 void vmalloc_test(void);

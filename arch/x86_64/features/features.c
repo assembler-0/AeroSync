@@ -108,7 +108,7 @@ static void pat_init(void) {
   wrmsr(MSR_IA32_PAT, pat);
 }
 
-void cpu_features_init_ap(void) {
+int cpu_features_init_ap(void) {
   // Enable NX
   if (g_cpu_features.nx) {
     uint64_t efer = rdmsr(MSR_IA32_EFER);
@@ -196,9 +196,10 @@ void cpu_features_init_ap(void) {
 #endif
 
   pat_init();
+  return 0;
 }
 
-void cpu_features_init(void) {
+int cpu_features_init(void) {
   uint32_t eax, ebx, ecx, edx;
 
   // Check max leaf
@@ -376,6 +377,7 @@ void cpu_features_init(void) {
   pat_init();
 
   cpu_features_dump(&g_cpu_features);
+  return 0;
 }
 
 void cpu_features_dump(cpu_features_t *features) {

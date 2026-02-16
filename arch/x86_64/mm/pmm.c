@@ -583,7 +583,7 @@ uint64_t pmm_get_max_pfn(void) { return pmm_max_pages; }
 
 EXPORT_SYMBOL(pmm_get_max_pfn);
 
-void pmm_init_cpu(void) {
+int pmm_init_cpu(void) {
   int cpu = (int)smp_get_id();
   for (int n = 0; n < MAX_NUMNODES; n++) {
     if (!node_data[n])
@@ -621,6 +621,7 @@ void pmm_init_cpu(void) {
 #endif
     }
   }
+  return 0;
 }
 
 pmm_stats_t *pmm_get_stats(void) { return &pmm_stats; }

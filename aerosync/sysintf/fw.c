@@ -125,13 +125,14 @@ void __no_cfi fw_dump_hardware_info(void) {
   put_device(dev);
 }
 
-void fw_init(void) {
+int fw_init(void) {
   int ret = class_register(&fw_class);
   if (ret) {
     printk(KERN_ERR FW_CLASS "failed to register firmware class: %d\n", ret);
-    return;
+    return -EFAULT;
   }
   printk(KERN_INFO FW_CLASS "firmware subsystem initialized\n");
+  return 0;
 }
 
 int firmware_device_register(struct firmware_device *fw_dev) {

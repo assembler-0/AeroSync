@@ -50,7 +50,7 @@ struct fpu_state {
  * Detects XSAVE support and available features.
  * Called once during kernel boot.
  */
-void fpu_init(void);
+int fpu_init(void);
 
 /**
  * fpu_init_task - Initialize FPU state for a new task

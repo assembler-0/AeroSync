@@ -137,14 +137,14 @@ int __no_cfi time_init(void) {
     if (candidate->init() == 0) {
       selected = candidate;
       break;
-    } else {
-      printk(KERN_WARNING TIME_CLASS "Failed to init %s\n",
-             candidate->name);
     }
+    printk(KERN_WARNING TIME_CLASS "Failed to init %s\n",
+           candidate->name);
   }
 
   if (!selected) {
-    panic(TIME_CLASS "No suitable time source found");
+    printk(KERN_ERR TIME_CLASS "No suitable time source found");
+    return -ENODEV;
   }
 
   current_time_source = selected;

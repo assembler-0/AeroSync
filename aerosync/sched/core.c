@@ -964,7 +964,7 @@ static_assert(MAX_RT_PRIO == 100, "MAX_RT_PRIO != 100");
 /*
  * Scheduler Initialization
  */
-void sched_init(void) {
+int sched_init(void) {
   pid_allocator_init();
   extern void kthread_init(void);
   kthread_init();
@@ -997,9 +997,10 @@ void sched_init(void) {
   /* Build topology domains */
   extern void build_sched_domains(void);
   build_sched_domains();
+  return 0;
 }
 
-void sched_init_task(struct task_struct *initial_task) {
+int sched_init_task(struct task_struct *initial_task) {
   struct rq *rq = this_rq();
   initial_task->mm = &init_mm;
   initial_task->active_mm = &init_mm;
@@ -1075,9 +1076,10 @@ void sched_init_task(struct task_struct *initial_task) {
 
   /* Point rq->idle to the permanent storage */
   rq->idle = idle;
+  return 0;
 }
 
-void sched_init_ap(void) {
+int sched_init_ap(void) {
   int cpu = smp_get_id();
   struct task_struct *idle = per_cpu_ptr(idle_task, cpu);
 
@@ -1124,4 +1126,5 @@ void sched_init_ap(void) {
   idle->active_mm = &init_mm;
   cpumask_set_cpu(cpu, &init_mm.cpu_mask);
   set_current(idle);
+  return 0;
 }

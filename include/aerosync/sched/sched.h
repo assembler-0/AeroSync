@@ -537,9 +537,9 @@ void update_load_avg(struct rq *rq, struct sched_entity *se, int flags);
 /* Global scheduler functions */
 void schedule(void);
 void set_need_resched(void);
-void sched_init(void);
-void sched_init_task(struct task_struct *initial_task);
-void sched_init_ap(void);
+int sched_init(void);
+int sched_init_task(struct task_struct *initial_task);
+int sched_init_ap(void);
 void scheduler_tick(void);
 void check_preempt(void);
 void sched_move_task(struct task_struct *p);

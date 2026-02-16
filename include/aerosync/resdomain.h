@@ -81,7 +81,7 @@ extern struct rd_subsys *rd_subsys_list[RD_SUBSYS_COUNT];
 /**
  * resdomain_init - Initialize the ResDomain subsystem
  */
-void resdomain_init(void);
+int resdomain_init(void);
 
 /**
  * resdomain_create - Create a new sub-domain

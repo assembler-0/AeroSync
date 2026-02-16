@@ -151,12 +151,12 @@ int anon_vma_prepare(struct vm_area_struct *vma);
 int anon_vma_chain_link(struct vm_area_struct *vma, struct anon_vma *av);
 
 /* Reclamation */
-void lru_init(void);
-void kswapd_init(void);
-void khugepaged_init(void);
+int lru_init(void);
+int kswapd_init(void);
+int khugepaged_init(void);
 
 /* Compaction */
-void kcompactd_init(void);
+int kcompactd_init(void);
 
 struct folio;
 struct vm_object;
@@ -180,12 +180,12 @@ extern struct mm_struct init_mm;
 void vma_test(void);
 
 /* VMA Cache for performance */
-void vma_cache_init(void);
+int vma_cache_init(void);
 struct vm_area_struct *vma_cache_alloc(void);
 void vma_cache_free(struct vm_area_struct *vma);
 
 /* MM Scrubber */
-void mm_scrubber_init(void);
+int mm_scrubber_init(void);
 
 /* Helper macros */
 #define vma_pages(vma) (((vma)->vm_end - (vma)->vm_start) >> PAGE_SHIFT)

@@ -45,7 +45,7 @@ void printk_register_backend(const printk_backend_t *backend) {
 }
 EXPORT_SYMBOL(printk_register_backend);
 
-void __no_cfi printk_auto_configure(void *payload, const int reinit) {
+int __no_cfi printk_auto_configure(void *payload, const int reinit) {
   const printk_backend_t *best = nullptr;
 
   for (int i = 0; i < num_registered_backends; i++) {
@@ -71,7 +71,7 @@ void __no_cfi printk_auto_configure(void *payload, const int reinit) {
     // We can still printk, it will go to ringbuffer
     active_backend = nullptr;
     printk(KERN_ERR KERN_CLASS "no active printk backend, logging to ringbuffer only\n");
-    return;
+    return 0;
   }
 
   if (active_backend != best) {
@@ -95,12 +95,13 @@ void __no_cfi printk_auto_configure(void *payload, const int reinit) {
       log_init(nullptr);
     }
   }
+  return 0;
 }
 
 #ifdef ASYNC_PRINTK
-void printk_init_async(void) {
+int printk_init_async(void) {
   printk(KERN_CLASS "starting asynchronous printk.\n");
-  log_init_async();
+  return log_init_async();
 }
 #endif
 
@@ -170,7 +171,7 @@ void printk_enable(void) {
   }
   
   // Restore failed or none saved, re-configure
-  printk_auto_configure(nullptr, 1);
+  (void)printk_auto_configure(nullptr, 1);
 }
 EXPORT_SYMBOL(printk_enable);
 

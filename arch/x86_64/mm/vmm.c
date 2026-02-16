@@ -1191,14 +1191,14 @@ void vmm_switch_pml_root_pcid(uint64_t pml_root_phys, uint16_t pcid, bool no_flu
 
 void vmm_switch_pml_root(uint64_t pml_root_phys) { vmm_switch_pml_root_pcid(pml_root_phys, 0, false); }
 
-void vmm_init(void) {
+int vmm_init(void) {
   printk(VMM_CLASS "Initializing VMM...\n");
   cpu_features_t *features = get_cpu_features();
   if (!features) panic(VMM_CLASS "Failed to get CPU features");
   if (!features->nx) printk(KERN_WARNING VMM_CLASS "NX bit not supported - security reduced\n");
   if (!features->pdpe1gb) printk(KERN_NOTICE VMM_CLASS "1GB pages not supported\n");
   g_kernel_pml_root = vmm_alloc_table();
-  if (!g_kernel_pml_root) panic(VMM_CLASS "Failed to allocate kernel PML root");
+  if (!g_kernel_pml_root) return -ENOMEM;
 
   g_support_1gb = features->pdpe1gb;
 
@@ -1243,6 +1243,7 @@ void vmm_init(void) {
   vmm_switch_pml_root(g_kernel_pml_root);
   printk(VMM_CLASS "VMM Initialized (%d levels active, NX:%s, 1GB:%s).\n",
          levels, features->nx ? "yes" : "no", features->pdpe1gb ? "yes" : "no");
+  return 0;
 }
 
 void vmm_test(void) {

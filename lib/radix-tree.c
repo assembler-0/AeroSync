@@ -1515,10 +1515,13 @@ static int radix_tree_cpu_dead(unsigned int cpu) {
   return 0;
 }
 
-void __init radix_tree_init(void) {
+int __init radix_tree_init(void) {
   radix_tree_node_cachep = kmem_cache_create(
     "radix_tree_node",
     sizeof(struct radix_tree_node), 0, 0
   );
+  if (!radix_tree_node_cachep)
+    return -ENOMEM;
   printk(KERN_CLASS "radix_tree cache pool initialized\n");
+  return 0;
 }

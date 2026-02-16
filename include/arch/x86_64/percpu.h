@@ -160,6 +160,6 @@ extern unsigned long __per_cpu_offset[MAX_CPUS];
   ((typeof(&(var)))((unsigned long)&(var) + __per_cpu_offset[(cpu)]))
 
 // Function prototypes for setup
-void setup_per_cpu_areas(void);
+int setup_per_cpu_areas(void);
 
 int percpu_ready(void);

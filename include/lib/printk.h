@@ -42,7 +42,7 @@ void printk_register_backend(const printk_backend_t *backend);
  * @param payload payload passed to init()
  * @param reinit status to check if should re-initialize or initialize
  */
-void printk_auto_configure(void *payload, int reinit);
+int __must_check printk_auto_configure(void *payload, int reinit);
 
 /* configure printk - select and init */
 #define printk_init_early() printk_auto_configure(nullptr, 0)
@@ -76,7 +76,7 @@ const printk_backend_t *printk_auto_select_backend(const char *not);
 
 #ifdef ASYNC_PRINTK
 /* Enables asynchronous printk logging (spawns background consumer thread). */
-void printk_init_async(void);
+int __must_check printk_init_async(void);
 #endif
 
 typedef struct ratelimit_state {

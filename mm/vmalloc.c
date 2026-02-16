@@ -928,11 +928,15 @@ void *vmalloc_exec(size_t size) {
 
 EXPORT_SYMBOL(vmalloc_exec);
 
-void vmalloc_init(void) {
+int vmalloc_init(void) {
   vmap_area_cachep =
       kmem_cache_create("vmap_area", sizeof(struct vmap_area), 0, 0);
+  if (!vmap_area_cachep)
+    return -ENOMEM;
   vmap_block_cachep =
       kmem_cache_create("vmap_block", sizeof(struct vmap_block), 0, 0);
+  if (!vmap_block_cachep)
+    return -ENOMEM;
 
   for (int i = 0; i < MAX_NUMNODES; i++) {
     spinlock_init(&vmap_nodes[i].lock);
@@ -984,14 +988,17 @@ void vmalloc_init(void) {
 #else
   printk(KERN_INFO VMM_CLASS "vmalloc: rbtree vmalloc initialized\n");
 #endif
+  return 0;
 }
 
-void kvmap_purged_init(void) {
+int kvmap_purged_init(void) {
   struct task_struct *t =
       kthread_create(kvmap_purged_thread, nullptr, "kvmap_purged");
-  if (t)
-    kthread_run(t);
+  if (!t)
+    return -ENOMEM;
+  kthread_run(t);
   printk(KERN_INFO VMM_CLASS "kvmap_purged started\n");
+  return 0;
 }
 
 void *ioremap_prot(uint64_t phys_addr, size_t size, uint64_t pgprot) {

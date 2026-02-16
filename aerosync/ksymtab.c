@@ -46,8 +46,8 @@ struct ksym_idx_entry {
 static struct ksym_idx_entry *ksym_index = nullptr;
 static size_t ksym_index_count = 0;
 
-void ksymtab_init(void *kernel_base_addr) {
-  if (!kernel_base_addr) return;
+int ksymtab_init(void *kernel_base_addr) {
+  if (!kernel_base_addr) return -EINVAL;
 
   Elf64_Ehdr *hdr = (Elf64_Ehdr *) kernel_base_addr;
 
@@ -55,7 +55,7 @@ void ksymtab_init(void *kernel_base_addr) {
   if (hdr->e_ident[EI_MAG0] != ELFMAG0 || hdr->e_ident[EI_MAG1] != ELFMAG1 ||
       hdr->e_ident[EI_MAG2] != ELFMAG2 || hdr->e_ident[EI_MAG3] != ELFMAG3) {
     printk(KERN_WARNING KERN_CLASS "ksymtab: Invalid ELF magic\n");
-    return;
+    return -EBADF;
   }
 
   Elf64_Shdr *sections = (Elf64_Shdr *) ((uint8_t *) kernel_base_addr + hdr->e_shoff);
@@ -95,6 +95,7 @@ void ksymtab_init(void *kernel_base_addr) {
   } else {
     printk(KERN_WARNING KERN_CLASS "ksymtab: failed to find symbol table in kernel ELF\n");
   }
+  return 0;
 }
 
 // ShellSort implementation for ksym_idx_entry
@@ -111,9 +112,9 @@ static void ksym_sort(struct ksym_idx_entry *arr, size_t n) {
   }
 }
 
-void ksymtab_finalize(void) {
-  if (!kernel_symtab || !kernel_strtab) return;
-  if (ksym_index) return; // Already finalized
+int ksymtab_finalize(void) {
+  if (!kernel_symtab || !kernel_strtab) return -EINVAL;
+  if (ksym_index) return -EALREADY; // Already finalized
 
   // 1. Count valid function symbols
   size_t valid_count = 0;
@@ -129,7 +130,7 @@ void ksymtab_finalize(void) {
   ksym_index = vmalloc(valid_count * sizeof(struct ksym_idx_entry));
   if (!ksym_index) {
     printk(KERN_ERR KERN_CLASS "ksymtab: failed to allocate index\n");
-    return;
+    return -ENOMEM;
   }
 
   // 3. Populate index
@@ -150,6 +151,7 @@ void ksymtab_finalize(void) {
   ksym_sort(ksym_index, ksym_index_count);
 
   printk(KERN_INFO KERN_CLASS "ksymtab: built optimized index with %lu symbols\n", ksym_index_count);
+  return 0;
 }
 
 uintptr_t lookup_ksymbol(const char *name) {

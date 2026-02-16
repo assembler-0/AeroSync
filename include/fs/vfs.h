@@ -271,7 +271,7 @@ struct pollfd {
 #define POLLNVAL    0x0020
 
 int vfs_mount(const char *dev_name, const char *dir_name, const char *type, unsigned long flags, void *data);
-void vfs_init(void);
+int vfs_init(void);
 int register_filesystem(struct file_system_type *fs_type);
 int unregister_filesystem(struct file_system_type *fs_type);
 

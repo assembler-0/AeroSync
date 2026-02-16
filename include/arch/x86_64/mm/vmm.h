@@ -64,7 +64,7 @@ uint64_t vmm_get_max_user_address(void);
  * Initialize the Virtual Memory Manager.
  * Creates a new PML4, maps the kernel and HHDM, and loads CR3.
  */
-void vmm_init(void);
+int vmm_init(void);
 
 /**
  * Allocate a zeroed page table frame on a specific NUMA node.

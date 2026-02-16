@@ -1,5 +1,6 @@
 #pragma once
 
+#include <compiler.h>
 #include <uacpi/types.h>
 #include <uacpi/status.h>
 #include <uacpi/kernel_api.h>
@@ -33,8 +34,8 @@ extern "C" {
 #endif
 
 // initializes full uacpi stack, called from start_kernel
-int uacpi_kernel_init_early(void);
-int uacpi_kernel_init_late(void);
+int __must_check uacpi_kernel_init_early(void);
+int __must_check uacpi_kernel_init_late(void);
 void uacpi_notify_ic_ready(void);
 
 /*

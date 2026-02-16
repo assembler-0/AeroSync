@@ -57,10 +57,10 @@ void unregister_ksymbols_in_range(uintptr_t start_addr, uintptr_t end_addr);
  *
  * @param kernel_base_addr Address of the loaded kernel ELF file
  */
-void ksymtab_init(void *kernel_base_addr);
+int ksymtab_init(void *kernel_base_addr);
 
 /**
  * Finalize kernel symbol table (build optimized index).
  * Must be called after memory allocator (vmalloc) is initialized.
  */
-void ksymtab_finalize(void);
+int ksymtab_finalize(void);

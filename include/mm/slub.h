@@ -97,7 +97,7 @@ typedef struct kmem_cache {
 } kmem_cache_t;
 
 /* API */
-void slab_init(void);
+int slab_init(void);
 
 void slab_test(void);
 void slab_verify_all(void);

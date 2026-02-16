@@ -55,7 +55,6 @@ void rcu_barrier(void);
 #define rcu_read_lock_held() (preempt_count() > 0)
 
 /* Internal init */
-void rcu_init(void);
 void rcu_check_callbacks(void);
 
 #define RCU_INIT_POINTER(p, v)	do { (p) = (v); } while (0)

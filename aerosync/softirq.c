@@ -13,6 +13,7 @@
 #include <lib/printk.h>
 #include <aerosync/classes.h>
 #include <aerosync/sched/process.h>
+#include <aerosync/errno.h>
 
 #define MAX_SOFTIRQ_RESTART 10
 
@@ -140,7 +141,7 @@ bool in_softirq(void) {
   return this_cpu_read(softirq_nesting) > 0;
 }
 
-void softirq_init_ap(void) {
+int softirq_init_ap(void) {
   struct task_struct *tsk = kthread_create(ksoftirqd_thread, nullptr, "ksoftirqd/%d", smp_get_id());
   if (tsk) {
     this_cpu_write(ksoftirqd_task, tsk);
@@ -148,10 +149,11 @@ void softirq_init_ap(void) {
     cpumask_clear(&tsk->cpus_allowed);
     cpumask_set_cpu(smp_get_id(), &tsk->cpus_allowed);
     kthread_run(tsk);
-  }
+  } else return -ENOMEM;
+  return 0;
 }
 
-void softirq_init(void) {
+int softirq_init(void) {
   for (int i = 0; i < MAX_CPUS; i++) {
     *per_cpu_ptr(softirq_pending, i) = 0;
     *per_cpu_ptr(softirq_nesting, i) = 0;
@@ -163,7 +165,8 @@ void softirq_init(void) {
   if (tsk) {
     this_cpu_write(ksoftirqd_task, tsk);
     kthread_run(tsk);
-  }
+  } else return -ENOMEM;
 
   printk(KERN_INFO IRQ_CLASS "softirq initialized.\n");
+  return 0;
 }

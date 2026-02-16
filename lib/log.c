@@ -25,6 +25,7 @@
 #include <aerosync/spinlock.h>
 #include <aerosync/wait.h>
 #include <aerosync/export.h>
+#include <asm-generic/errno.h>
 #include <lib/log.h>
 #include <lib/ringbuf.h>
 #include <lib/string.h>
@@ -378,9 +379,9 @@ static int __no_cfi klogd_thread(void *data) {
   }
 }
 
-void log_init_async(void) {
+int log_init_async(void) {
   if (klog_async_enabled)
-    return;
+    return -EALREADY;
   // Create a low-priority kernel thread to drain the ring buffer
   // Drop any pre-existing buffered records to avoid duplicate console output
   {
@@ -394,7 +395,8 @@ void log_init_async(void) {
     kthread_run(t);
     klogd_task = t;
     klog_async_enabled = 1;
-  }
+  } else return -ENOMEM;
+  return 0;
 }
 
 int log_read(char *out_buf, int out_buf_len, int *out_level) {

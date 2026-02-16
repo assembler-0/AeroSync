@@ -198,15 +198,20 @@ static int kcompactd_thread(void *data) {
   return 0;
 }
 
-void kcompactd_init(void) {
+int kcompactd_init(void) {
   for (int n = 0; n < MAX_NUMNODES; n++) {
     if (node_data[n] && node_data[n]->node_spanned_pages > 0) {
       char name[16];
       snprintf(name, sizeof(name), "kcompactd%d", n);
       struct task_struct *k = kthread_create(kcompactd_thread, node_data[n], name);
-      if (k) kthread_run(k);
+      if (k) {
+        kthread_run(k);
+      } else {
+        return -ENOMEM;
+      }
     }
   }
+  return 0;
 }
 
 unsigned long try_to_compact_pages(gfp_t gfp_mask, unsigned int order) {

@@ -99,12 +99,13 @@ static void vma_cache_update(struct mm_struct *mm, struct vm_area_struct *vma) {
 
 static struct kmem_cache *vma_cachep;
 
-void vma_cache_init(void) {
+int vma_cache_init(void) {
   vma_cachep = kmem_cache_create("vm_area_struct", sizeof(struct vm_area_struct),
                                  0, SLAB_HWCACHE_ALIGN | SLAB_TYPESAFE_BY_RCU);
   if (!vma_cachep) {
-    panic("vma_cache_init: failed to create vma_cachep");
+    return -ENOMEM;
   }
+  return 0;
 }
 
 struct vm_area_struct *vma_cache_alloc_node(int nid) {

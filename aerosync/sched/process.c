@@ -281,7 +281,7 @@ struct pid_namespace init_pid_ns = {
   .child_reaper = nullptr,
 };
 
-void pid_allocator_init(void) {
+int pid_allocator_init(void) {
   /* Initialize global task list and its lock at runtime */
   INIT_LIST_HEAD(&task_list);
   spinlock_init(&tasklist_lock);
@@ -291,6 +291,7 @@ void pid_allocator_init(void) {
 
   ida_init(&init_pid_ns.pid_ida, 32768);
   ida_alloc(&init_pid_ns.pid_ida); /* Reserve 0 */
+  return 0;
 }
 
 struct pid_namespace *create_pid_namespace(struct pid_namespace *parent) {

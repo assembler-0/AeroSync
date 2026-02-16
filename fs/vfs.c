@@ -66,7 +66,7 @@ static struct mutex fs_type_mutex;
 extern struct dentry *root_dentry;
 extern struct file_system_type tmpfs_type;
 
-void vfs_init(void) {
+int vfs_init(void) {
   printk(VFS_CLASS "Initializing Virtual File System...\n");
 
   extern void files_init(void);
@@ -95,7 +95,7 @@ void vfs_init(void) {
   // Mount tmpfs as the base rootfs
   int mount_ret = vfs_mount(nullptr, "/", "tmpfs", 0, nullptr);
   if (mount_ret < 0) {
-    // Failed to mount root
+    return mount_ret;
   }
 
   /* Initialize current task's filesystem context */
@@ -132,6 +132,7 @@ void vfs_init(void) {
 #endif
 
   printk(VFS_CLASS "VFS initialization complete.\n");
+  return 0;
 }
 
 EXPORT_SYMBOL(vfs_init);

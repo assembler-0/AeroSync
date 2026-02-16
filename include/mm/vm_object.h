@@ -114,7 +114,7 @@ void vm_object_put(struct vm_object *obj);
 
 /* Writeback and Throttling */
 void vm_object_mark_dirty(struct vm_object *obj);
-void vm_writeback_init(void);
+int vm_writeback_init(void);
 void balance_dirty_pages(struct vm_object *obj);
 void wakeup_writeback(void);
 void account_page_dirtied(void);

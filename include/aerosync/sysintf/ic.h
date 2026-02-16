@@ -36,17 +36,17 @@ typedef struct {
 
 // Unified interrupt controller interface
 void ic_register_controller(const interrupt_controller_interface_t* controller);
-interrupt_controller_t ic_install(void); // returns initialized controller type
-void ic_ap_init(void);
+interrupt_controller_t __must_check ic_install(int *status); // returns initialized controller type
+int ic_ap_init(void);
 void ic_shutdown_controller(void);
 void ic_enable_irq(uint32_t irq_line);
 void ic_disable_irq(uint32_t irq_line);
 void ic_send_eoi(uint32_t interrupt_number);
-void ic_set_timer(uint32_t frequency_hz);
+int ic_set_timer(uint32_t frequency_hz);
 uint32_t ic_get_frequency(void);
 void ic_send_ipi(uint8_t dest_apic_id, uint8_t vector, uint32_t delivery_mode);
 uint8_t ic_lapic_get_id(void);
-void ic_register_lapic_get_id_early();
+int __must_check ic_register_lapic_get_id_early();
 
 // Query functions
 interrupt_controller_t ic_get_controller_type(void);

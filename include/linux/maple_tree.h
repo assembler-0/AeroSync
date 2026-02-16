@@ -525,7 +525,7 @@ int mas_alloc_cyclic(struct ma_state *mas, unsigned long *startp,
 
 bool mas_nomem(struct ma_state *mas, gfp_t gfp);
 void mas_pause(struct ma_state *mas);
-void maple_tree_init(void);
+int maple_tree_init(void);
 void mas_destroy(struct ma_state *mas);
 int mas_expected_entries(struct ma_state *mas, unsigned long nr_entries);
 

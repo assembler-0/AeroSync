@@ -8,7 +8,7 @@
 /* initializers */
 int smp_init(interrupt_controller_t ic_type);
 void smp_parse_topology(void);
-void smp_prepare_boot_cpu(void);
+int smp_prepare_boot_cpu(void);
 
 // Get number of CPUs found
 uint64_t smp_get_cpu_count(void);

@@ -98,4 +98,4 @@ bool crypto_has_sha_ni(void);
 bool crypto_has_rdrand(void);
 bool crypto_has_rdseed(void);
 
-void crypto_init(void);
+int __must_check crypto_init(void);

@@ -48,5 +48,5 @@ int log_try_init_async(void);
 
 /*Start asynchronous logging consumer (klogd). Safe to call once after
 scheduler is up. Subsequent calls are no-ops.*/
-void log_init_async(void);
+int __must_check log_init_async(void);
 #endif /* ASYNC_PRINTK */

@@ -18,6 +18,7 @@
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <aerosync/classes.h>
+#include <asm-generic/errno-base.h>
 #include <mm/slub.h>
 #include <lib/string.h>
 
@@ -117,8 +118,66 @@ static int rcu_cpu_kthread(void *data) {
   return 0;
 }
 
-void rcu_init(void) {
-  rcu_init_node_hierarchy();
+int rcu_init(void) {
+  int fanout = CONFIG_RCU_FANOUT;
+
+  /* Calculate tree shape */
+  int n = MAX_CPUS;
+  rcu_num_lvls = 0;
+  do {
+    rcu_lvl_cnt[rcu_num_lvls] = (n + fanout - 1) / fanout;
+    n = rcu_lvl_cnt[rcu_num_lvls];
+    rcu_num_lvls++;
+  } while (n > 1 && rcu_num_lvls < 4);
+
+  rcu_num_nodes = 0;
+  for (int i = 0; i < rcu_num_lvls; i++) {
+    rcu_state.level_offsets[i] = rcu_num_nodes;
+    rcu_num_nodes += rcu_lvl_cnt[i];
+  }
+
+  rcu_state.nodes = kzalloc(sizeof(struct rcu_node) * rcu_num_nodes);
+  if (!rcu_state.nodes) {
+    return -ENOMEM;
+  }
+
+  /* Initialize nodes and link to parents */
+  for (int i = 0; i < rcu_num_nodes; i++) {
+    struct rcu_node *rnp = &rcu_state.nodes[i];
+    spinlock_init(&rnp->lock);
+    cpumask_clear(&rnp->qs_mask);
+    rnp->gp_seq = 0;
+    rnp->completed_seq = 0;
+  }
+
+  for (int i = 0; i < rcu_num_lvls; i++) {
+    int level_start = rcu_state.level_offsets[i];
+    int n_at_lvl = rcu_lvl_cnt[i];
+
+    for (int j = 0; j < n_at_lvl; j++) {
+      struct rcu_node *rnp = &rcu_state.nodes[level_start + j];
+      rnp->level = i;
+      if (i == 0) {
+        rnp->grp_start = j * fanout;
+        rnp->grp_last = (j + 1) * fanout - 1;
+        if (rnp->grp_last >= MAX_CPUS) rnp->grp_last = MAX_CPUS - 1;
+      } else {
+        rnp->grp_start = j * fanout;
+        rnp->grp_last = (j + 1) * fanout - 1;
+      }
+
+      if (i < rcu_num_lvls - 1) {
+        int next_level_start = rcu_state.level_offsets[i + 1];
+        rnp->parent = &rcu_state.nodes[next_level_start + (j / fanout)];
+      } else {
+        rnp->parent = nullptr;
+      }
+    }
+  }
+
+  printk(KERN_INFO SYNC_CLASS "RCU Tree: %d levels, %d nodes, fanout %d\n",
+         rcu_num_lvls, rcu_num_nodes, fanout);
+
   init_waitqueue_head(&rcu_state.gp_wait);
   spinlock_init(&rcu_state.gp_lock);
 
@@ -137,9 +196,10 @@ void rcu_init(void) {
   }
 
   printk(KERN_INFO SYNC_CLASS "Tree RCU Initialized (early)\n");
+  return 0;
 }
 
-void rcu_spawn_kthreads(void) {
+int rcu_spawn_kthreads(void) {
   int cpu;
   /* Only spawn for online CPUs for now to avoid overloading the scheduler
    * during boot with 512 threads if they are not all needed.
@@ -151,9 +211,10 @@ void rcu_spawn_kthreads(void) {
     rdp->rcu_kthread = kthread_create(rcu_cpu_kthread, rdp, name);
     if (rdp->rcu_kthread) {
       kthread_run(rdp->rcu_kthread);
-    }
+    } else return -ENOMEM;
   }
   printk(KERN_INFO SYNC_CLASS "RCU kthreads spawned for online CPUs\n");
+  return 0;
 }
 
 /**

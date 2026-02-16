@@ -19,7 +19,7 @@ extern struct list_head task_list;
 extern spinlock_t tasklist_lock;
 
 /* Function prototypes */
-void pid_allocator_init(void);
+int pid_allocator_init(void);
 struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
                                    const char *namefmt, ...);
 void kthread_run(struct task_struct *k);

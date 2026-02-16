@@ -12,12 +12,13 @@
 #include <aerosync/types.h>
 #include <uacpi/acpi.h>
 #include <uacpi/tables.h>
+#include <compiler.h>
 
 /**
  * @brief Initialize all ACPI table managers.
  * Should be called after uacpi_kernel_init_early.
  */
-int acpi_tables_init(void);
+int __must_check acpi_tables_init(void);
 
 /* --- FADT (Fixed ACPI Description Table) --- */
 struct acpi_fadt *acpi_get_fadt(void);
@@ -75,7 +76,7 @@ const struct acpi_hpet *acpi_get_hpet(void);
 uacpi_status acpi_load_extras(void);
 
 /* --- Device Enumeration --- */
-int acpi_bus_enumerate(void);
+int __must_check acpi_bus_enumerate(void);
 
 /* --- Generic Helper --- */
 uacpi_status acpi_find_table(const char *signature, uacpi_table *out_table);

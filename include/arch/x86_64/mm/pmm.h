@@ -36,7 +36,7 @@ int pmm_init(void *memmap_response, uint64_t hhdm_offset, void *rsdp);
  * Initialize per-CPU PMM state (PCP list).
  * Must be called on each CPU after per-CPU area setup.
  */
-void pmm_init_cpu(void);
+int pmm_init_cpu(void);
 
 /**
  * Allocate a single physical page.

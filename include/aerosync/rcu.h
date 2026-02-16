@@ -65,8 +65,8 @@ struct rcu_data {
 extern struct rcu_state rcu_state;
 DECLARE_PER_CPU(struct rcu_data, rcu_data);
 
-void rcu_init(void);
-void rcu_spawn_kthreads(void);
+int rcu_init(void);
+int rcu_spawn_kthreads(void);
 void rcu_check_callbacks(void);
 void rcu_test(void);
 void call_rcu(struct rcu_head *head, void (*func)(struct rcu_head *head));
