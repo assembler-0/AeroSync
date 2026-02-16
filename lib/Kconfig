@@ -2,60 +2,54 @@
 
 menu "lib"
 
-config CONFIG_LIST_HARDENED
+config LIST_HARDENED
     bool "Enable hardened linked-list"
     default n
 
-config CONFIG_OPTIMIZED_STRING
+config OPTIMIZED_STRING
     bool "Enable optimized string functions"
     default y
     help
       Use architecture-specific (x86_64) optimized implementations for
       string and memory functions (memcpy, memset, etc.) using ERMS/FSRM.
 
-config CONFIG_LIBC_STRING_FULL
+config LIBC_STRING_FULL
     bool "Enable full suite of C string functions"
     default y
     help
       Include the complete set of C standard string functions (strtok,
       strcspn, etc.) in the kernel.
 
-config CONFIG_KSTRTO_ERRORS
+config KSTRTO_ERRORS
     bool "Enable detailed kstrto* error reporting"
     default y
     help
       Enable detailed error codes (EINVAL, ERANGE) for kernel string-to-number
       conversion functions.
 
-config CONFIG_STRING_FLOAT
+config STRING_FLOAT
     bool "Enable floating-point string conversions"
     default y
     help
       Include strtod, strtof and floating-point conversion functions.
       Increases kernel size significantly.
 
-config CONFIG_STRING_PATTERN
+config STRING_PATTERN
     bool "Enable pattern matching functions"
     default y
     help
       Include fnmatch, glob-style pattern matching for filesystem operations.
 
-config CONFIG_STRING_ADVANCED
+config STRING_ADVANCED
     bool "Enable advanced memory functions"
     default y
     help
       Include memrchr, memmem, memswap and other advanced memory operations.
 
-config CONFIG_STRING_CRYPTO
+config STRING_CRYPTO
     bool "Enable cryptographic string functions"
     default y
     help
       Include constant-time comparison and crypto-safe string functions.
-
-config VSNPRINTF_C_BUILTIN
-    bool "Use __builtin_vsnprintf"
-    default n
-    help
-      Uses compiler built-in __builtin_vsnprintf for vsnprintf()
 
 endmenu
