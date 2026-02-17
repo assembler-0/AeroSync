@@ -3,7 +3,7 @@
 # Run Targets
 # ============================================================================
 if(BOCHS OR QEMU_SYSTEM_X86_64)
-    set(ROM_IMAGE "/usr/share/edk2/x64/OVMF.4m.fd" CACHE STRING "UEFI/Custom rom image")
+    set(ROM_IMAGE "/usr/share/OVMF/OVMF_CODE.fd" CACHE STRING "UEFI/Custom rom image")
 endif()
 
 if (BOCHS)
