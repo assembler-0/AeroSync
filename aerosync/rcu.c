@@ -13,14 +13,12 @@
 #include <aerosync/sched/process.h>
 #include <aerosync/spinlock.h>
 #include <aerosync/wait.h>
-#include <aerosync/panic.h>
 #include <aerosync/export.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <aerosync/classes.h>
-#include <asm-generic/errno-base.h>
+#include <aerosync/errno.h>
 #include <mm/slub.h>
-#include <lib/string.h>
 
 struct rcu_state rcu_state;
 DEFINE_PER_CPU(struct rcu_data, rcu_data);
@@ -35,7 +33,7 @@ static void rcu_process_callbacks(void);
 /**
  * rcu_init_node_hierarchy - Build the RCU node tree
  */
-static void rcu_init_node_hierarchy(void) {
+static int rcu_init_node_hierarchy(void) {
   int i, j;
   int n = MAX_CPUS;
   int fanout = CONFIG_RCU_FANOUT;
@@ -56,7 +54,7 @@ static void rcu_init_node_hierarchy(void) {
 
   rcu_state.nodes = kzalloc(sizeof(struct rcu_node) * rcu_num_nodes);
   if (!rcu_state.nodes) {
-    panic("Failed to allocate RCU nodes");
+    return -ENOMEM;
   }
 
   /* Initialize nodes and link to parents */
@@ -95,6 +93,7 @@ static void rcu_init_node_hierarchy(void) {
 
   printk(KERN_INFO SYNC_CLASS "RCU Tree: %d levels, %d nodes, fanout %d\n",
          rcu_num_lvls, rcu_num_nodes, fanout);
+  return 0;
 }
 
 void rcu_check_callbacks(void) {

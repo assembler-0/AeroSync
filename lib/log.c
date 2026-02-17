@@ -23,11 +23,9 @@
 #include <aerosync/sched/process.h>
 #include <aerosync/sched/sched.h>
 #include <aerosync/spinlock.h>
-#include <aerosync/wait.h>
 #include <aerosync/export.h>
-#include <asm-generic/errno.h>
 #include <lib/log.h>
-#include <lib/ringbuf.h>
+#include <linux/kfifo.h>
 #include <lib/string.h>
 
 // Simple global ring buffer for log messages, Linux-like but minimal
@@ -56,9 +54,7 @@ DEFINE_PER_CPU(char, printk_safe_buf[PRINTK_SAFE_BUF_SIZE]);
 // Forward declaration for the klogd thread function used when creating kthreads
 static int klogd_thread(void *data);
 
-static uint8_t klog_ring_data[KLOG_RING_SIZE];
-static ringbuf_t klog_ring = {
-    .data = klog_ring_data, .size = KLOG_RING_SIZE, .head = 0, .tail = 0};
+static DEFINE_KFIFO(klog_fifo, uint8_t, KLOG_RING_SIZE);
 
 static int klog_console_level = KLOG_INFO;
 static log_sink_putc_t klog_console_sink = nullptr; // defaults to ring buffer only
@@ -76,43 +72,21 @@ static int klog_debug_enabled = 0;
 // Panic state: if non-zero, we ignore locks to ensure output
 static volatile int panic_in_progress = 0;
 
-static DECLARE_WAIT_QUEUE_HEAD(klogd_wait);
-
 void log_mark_panic(void) { panic_in_progress = 1; }
 EXPORT_SYMBOL(log_mark_panic);
 
-// klogd drain budgeting to avoid monopolizing CPU on slow sinks (e.g.,
-// linearfb)
-#ifndef KLOGD_MAX_BATCH_RECORDS
-#define KLOGD_MAX_BATCH_RECORDS 64
-#endif
-#ifndef KLOGD_MAX_BATCH_BYTES
-#define KLOGD_MAX_BATCH_BYTES 4096
-#endif
-#ifndef KLOGD_MAX_SLICE_NS
-// Time budget per active drain slice (~2 ms)
-#define KLOGD_MAX_SLICE_NS (2ULL * 1000ULL * 1000ULL)
-#endif
-
 static void drop_oldest(uint32_t need) {
-  while (ringbuf_space(&klog_ring) < need) {
+  while (kfifo_avail(&klog_fifo) < need) {
     klog_hdr_t hdr;
-    if (ringbuf_peek(&klog_ring, &hdr, sizeof(hdr)) < sizeof(hdr))
+    if (kfifo_out_peek(&klog_fifo, (void *)&hdr, sizeof(hdr)) < sizeof(hdr))
       break;
     uint32_t drop = sizeof(hdr) + hdr.len;
-    ringbuf_skip(&klog_ring, drop);
+    kfifo_skip_count(&klog_fifo, drop);
   }
 }
 
 void log_init(const log_sink_putc_t backend) {
-  // We don't re-initialize the ringbuffer here if it already has data
-  // ringbuf_init would reset head/tail.
-  // If ringbuffer was somehow not setup (shouldn't happen with static init), do
-  // it.
-  if (klog_ring.data == nullptr) {
-    ringbuf_init(&klog_ring, klog_ring_data, KLOG_RING_SIZE);
-  }
-
+  // Static initialization handles the klog_fifo.
   klog_console_sink = backend;
 }
 
@@ -199,6 +173,56 @@ static void __no_cfi console_emit_prefix_ts(int level, uint64_t ts_ns) {
   }
 }
 
+/**
+ * log_flush_fifo_locked - Drain the FIFO to the console sink
+ * MUST be called with klog_console_lock held.
+ */
+static void log_flush_fifo_locked(void) {
+  if (!klog_console_sink)
+    return;
+
+  char out_buf[512];
+  int effective_console_level = klog_console_level;
+  if (klog_debug_enabled)
+    effective_console_level = KLOG_DEBUG;
+
+  while (!kfifo_is_empty(&klog_fifo)) {
+    klog_hdr_t hdr;
+    irq_flags_t flags = spinlock_lock_irqsave(&klog_lock);
+    
+    // Peek at header
+    if (kfifo_out_peek(&klog_fifo, (void *)&hdr, sizeof(hdr)) < sizeof(hdr)) {
+      spinlock_unlock_irqrestore(&klog_lock, flags);
+      break;
+    }
+
+    if (hdr.flags & KLOGF_SYNC_EMITTED) {
+      // Already printed, just skip it in the FIFO
+      kfifo_skip_count(&klog_fifo, sizeof(hdr) + hdr.len);
+      spinlock_unlock_irqrestore(&klog_lock, flags);
+      continue;
+    }
+
+    // Read the record fully
+    kfifo_skip_count(&klog_fifo, sizeof(hdr));
+    size_t to_read = hdr.len;
+    if (to_read > sizeof(out_buf) - 1)
+      to_read = sizeof(out_buf) - 1;
+    
+    unsigned int n = kfifo_out(&klog_fifo, (void *)out_buf, (unsigned int)to_read);
+    if (n < hdr.len) {
+      kfifo_skip_count(&klog_fifo, hdr.len - n);
+    }
+    spinlock_unlock_irqrestore(&klog_lock, flags);
+
+    if (hdr.level <= effective_console_level) {
+      console_emit_prefix_ts(hdr.level, hdr.ts_ns);
+      for (unsigned int i = 0; i < n; i++)
+        klog_console_sink(out_buf[i]);
+    }
+  }
+}
+
 static int klog_sync_threshold = KLOG_ERR; // ERR and above stay synchronous
 
 static int early_printk_recursion = 0;
@@ -254,9 +278,8 @@ int __no_cfi log_write_str(int level, const char *msg) {
     effective_console_level = KLOG_DEBUG;
 
   if (klog_console_sink && level <= effective_console_level) {
-    if (level <= effective_console_level)
-      do_sync_emit = ((!klog_async_enabled && !klog_console_sink_async_hint) ||
-                      (level <= klog_sync_threshold));
+    do_sync_emit = ((!klog_async_enabled && !klog_console_sink_async_hint) ||
+                    (level <= klog_sync_threshold));
   }
 
   // Nested calls never emit synchronously to avoid deadlocking console_lock
@@ -275,11 +298,11 @@ int __no_cfi log_write_str(int level, const char *msg) {
     flags_hdr |= KLOGF_SYNC_EMITTED;
   }
 
-  // Always store in ring buffer regardless of sink presence
+  // Always store in kfifo regardless of sink presence
   irq_flags_t flags;
   flags = spinlock_lock_irqsave(&klog_lock);
   uint32_t need = (uint32_t)(sizeof(klog_hdr_t) + (uint32_t)len);
-  if (ringbuf_space(&klog_ring) < need)
+  if (kfifo_avail(&klog_fifo) < need)
     drop_oldest(need);
 
   // Write header and payload
@@ -287,8 +310,8 @@ int __no_cfi log_write_str(int level, const char *msg) {
                     .flags = flags_hdr,
                     .len = (uint16_t)len,
                     .ts_ns = ts_ns};
-  ringbuf_write(&klog_ring, &hdr, sizeof(hdr));
-  ringbuf_write(&klog_ring, msg, len);
+  kfifo_in(&klog_fifo, (void *)&hdr, sizeof(hdr));
+  kfifo_in(&klog_fifo, (void *)msg, (unsigned int)len);
 
   spinlock_unlock_irqrestore(&klog_lock, flags);
 
@@ -297,96 +320,31 @@ int __no_cfi log_write_str(int level, const char *msg) {
   else
     early_printk_recursion--;
 
-  // Don't check_preempt here - IRQ state may be inconsistent immediately
-  // after spinlock_unlock_irqrestore(). The scheduler will preempt naturally
-  // on the next timer tick or syscall return.
-
   return (int)len;
 }
 
-// Background logger thread: drains ring buffer to console
+// Background logger thread: drains FIFO to console
 static int __no_cfi klogd_thread(void *data) {
   (void)data;
-  char out_buf[512];
   while (1) {
-    uint64_t slice_start = get_time_ns();
-    int records = 0;
-    size_t bytes = 0;
-    for (;;) {
-      int lvl = KLOG_INFO;
-      uint64_t ts = 0;
-      uint8_t flags_local = 0;
-      // internal read to obtain ts/flags
-      size_t n = 0;
-      {
-        // inline internal reader: duplicated logic of log_read to also fetch
-        // ts/flags
-        uint64_t lflags = spinlock_lock_irqsave(&klog_lock);
-        if (!ringbuf_empty(&klog_ring)) {
-          klog_hdr_t hdr;
-          if (ringbuf_read(&klog_ring, &hdr, sizeof(hdr)) == sizeof(hdr)) {
-            lvl = hdr.level;
-            ts = hdr.ts_ns;
-            flags_local = hdr.flags;
-            size_t to_copy = hdr.len;
-            if (to_copy > sizeof(out_buf) - 1)
-              to_copy = sizeof(out_buf) - 1;
-            n = ringbuf_read(&klog_ring, out_buf, to_copy);
-            if (n < to_copy && hdr.len > to_copy) {
-              ringbuf_skip(&klog_ring, hdr.len - to_copy);
-            }
-            out_buf[n] = '\0';
-          }
-        }
-        spinlock_unlock_irqrestore(&klog_lock, lflags);
-      }
-      if (n == 0)
-        break;
-
-      // Recompute effective console level here as well so background
-      // consumer honors the runtime debug enable flag.
-      int effective_console_level_klogd = klog_console_level;
-      if (klog_debug_enabled)
-        effective_console_level_klogd = KLOG_DEBUG;
-
-      if (!(flags_local & KLOGF_SYNC_EMITTED) && klog_console_sink &&
-          lvl <= effective_console_level_klogd) {
-        // In klogd context, avoid disabling IRQs while emitting to slow sinks
-        // to reduce system-wide latency. Console lock still protects output
-        // order.
-        irq_flags_t cf = spinlock_lock_irqsave(&klog_console_lock);
-        console_emit_prefix_ts(lvl, ts);
-        for (size_t j = 0; j < n; ++j)
-          klog_console_sink(out_buf[j]);
-        spinlock_unlock_irqrestore(&klog_console_lock, cf);
-      }
-      records++;
-      bytes += n;
-
-      // Cooperative yield if we exceed any budget to avoid starving others
-      uint64_t now = get_time_ns();
-      if (records >= KLOGD_MAX_BATCH_RECORDS ||
-          bytes >= (size_t)KLOGD_MAX_BATCH_BYTES ||
-          (now - slice_start) >= KLOGD_MAX_SLICE_NS) {
-        // Cooperative yield - only schedule once to prevent stack buildup.
-        schedule();
-        slice_start = get_time_ns();
-        records = 0;
-        bytes = 0;
-      }
+    if (!kfifo_is_empty(&klog_fifo)) {
+      irq_flags_t f = spinlock_lock_irqsave(&klog_console_lock);
+      log_flush_fifo_locked();
+      spinlock_unlock_irqrestore(&klog_console_lock, f);
     }
-    // No explicit schedule() needed here here, loop back to wait_event
+    // Cooperative yield
+    schedule();
   }
+  return 0;
 }
 
 int log_init_async(void) {
   if (klog_async_enabled)
     return -EALREADY;
-  // Create a low-priority kernel thread to drain the ring buffer
-  // Drop any pre-existing buffered records to avoid duplicate console output
+  // Create a low-priority kernel thread to drain the FIFO
   {
     uint64_t f = spinlock_lock_irqsave(&klog_lock);
-    ringbuf_init(&klog_ring, klog_ring_data, KLOG_RING_SIZE);
+    kfifo_reset(&klog_fifo);
     spinlock_unlock_irqrestore(&klog_lock, f);
   }
 
@@ -405,25 +363,27 @@ int log_read(char *out_buf, int out_buf_len, int *out_level) {
 
   uint64_t flags = spinlock_lock_irqsave(&klog_lock);
 
-  if (ringbuf_empty(&klog_ring)) {
+  if (kfifo_is_empty(&klog_fifo)) {
     spinlock_unlock_irqrestore(&klog_lock, flags);
     return 0; // empty
   }
 
   klog_hdr_t hdr;
-  if (ringbuf_read(&klog_ring, &hdr, sizeof(hdr)) < sizeof(hdr)) {
+  if (kfifo_out_peek(&klog_fifo, (void *)&hdr, sizeof(hdr)) < sizeof(hdr)) {
     spinlock_unlock_irqrestore(&klog_lock, flags);
     return 0;
   }
+
+  kfifo_skip_count(&klog_fifo, sizeof(hdr));
 
   int to_copy = hdr.len;
   if (to_copy > out_buf_len - 1)
     to_copy = out_buf_len - 1; // reserve NUL
 
-  size_t actual = ringbuf_read(&klog_ring, out_buf, (size_t)to_copy);
+  size_t actual = kfifo_out(&klog_fifo, (void *)out_buf, (unsigned int)to_copy);
   if (actual < (size_t)to_copy && hdr.len > (size_t)to_copy) {
     // Skip remaining data we couldn't fit
-    ringbuf_skip(&klog_ring, hdr.len - (size_t)to_copy);
+    kfifo_skip_count(&klog_fifo, hdr.len - (size_t)to_copy);
   }
 
   out_buf[actual] = '\0';

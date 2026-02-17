@@ -163,3 +163,5 @@ extern unsigned long __per_cpu_offset[MAX_CPUS];
 int setup_per_cpu_areas(void);
 
 int percpu_ready(void);
+
+DECLARE_PER_CPU(unsigned long, this_cpu_off);

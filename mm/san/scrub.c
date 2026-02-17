@@ -39,9 +39,7 @@ static int mm_scrubberd(void *data) {
 
     /* Verify init_mm VMAs */
     down_read(&init_mm.mmap_lock);
-    if (vma_verify_tree(&init_mm) != 0) {
-      panic("mm_scrubber: init_mm VMA tree corruption detected!\n");
-    }
+    unmet_cond_crit(vma_verify_tree(&init_mm) != 0);
     up_read(&init_mm.mmap_lock);
   }
   return 0;

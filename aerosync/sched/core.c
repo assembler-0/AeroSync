@@ -609,10 +609,8 @@ void __no_cfi schedule(void) {
 
   if (!next_task) {
     /* Should never happen as idle class always returns a task */
-    if (rq->idle) {
+    unmet_cond_crit_else(!rq->idle) {
       next_task = rq->idle;
-    } else {
-      panic("schedule(): No task to run and no idle task!");
     }
   }
 

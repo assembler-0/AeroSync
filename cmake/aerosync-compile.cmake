@@ -15,21 +15,17 @@ add_dependencies(aerosync.krnl fkx_key_header)
 target_compile_options(aerosync.krnl PRIVATE
     $<$<COMPILE_LANGUAGE:C>:
         -m64
-        -target ${CLANG_TARGET_TRIPLE}
         -ffreestanding
         -nostdlib
         -fno-builtin
-        -mcmodel=kernel
         -mno-red-zone
 
         -msoft-float
-        -mno-implicit-float
         -mno-80387
 
         -fPIE
         -fPIC
         -fno-plt
-        -mno-retpoline
         -fvisibility=hidden
         -fdata-sections
         -ffunction-sections
@@ -37,10 +33,21 @@ target_compile_options(aerosync.krnl PRIVATE
         -fno-omit-frame-pointer
         -fno-optimize-sibling-calls
     >
-    $<$<COMPILE_LANGUAGE:ASM_NA`SM>:
+    $<$<COMPILE_LANGUAGE:ASM_NASM>:
         -felf64
     >
 )
+
+if(COMPILER_IDENTIFIER STREQUAL "clang")
+    target_compile_options(aerosync.krnl PRIVATE
+        $<$<COMPILE_LANGUAGE:C>:
+            -target ${CLANG_TARGET_TRIPLE}
+            -mno-implicit-float
+            -mcmodel=kernel
+            -mno-retpoline
+        >
+    )
+endif()
 
 # ----------------------------------------------------------------------------
 # optimizations
@@ -95,7 +102,7 @@ endif()
 # extra features
 # ----------------------------------------------------------------------------
 
-if (LTO)
+if (COMPILER_IDENTIFIER STREQUAL "clang" AND LTO)
     target_compile_options(aerosync.krnl PRIVATE
         $<$<COMPILE_LANGUAGE:C>:
             -flto=full
@@ -112,7 +119,7 @@ if (LTO)
     )
 endif()
 
-if(CFI_ENABLE)
+if(COMPILER_IDENTIFIER STREQUAL "clang" AND CFI_ENABLE)
     target_compile_options(aerosync.krnl PRIVATE
         $<$<COMPILE_LANGUAGE:C>:
             -fsanitize=cfi

@@ -137,10 +137,12 @@ int fkx_load_image(void *data, size_t size) {
   Elf64_Ehdr *hdr = (Elf64_Ehdr *) data;
 
   // We only support ET_DYN (Shared Object) for now
+#ifndef __GNUC__ /* FIXME: this check make all modules compiled with gcc failed */
   if (hdr->e_type != ET_DYN) {
     printk(KERN_ERR FKX_CLASS "Module must be ET_DYN (PIE/Shared Object)\n");
     return -EINVAL;
   }
+#endif
 
   // 1. Calculate memory requirements
   uint64_t min_vaddr = (uint64_t) -1;

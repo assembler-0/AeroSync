@@ -22,5 +22,4 @@ struct rcu_head {
   void (*func)(struct rcu_head *head);
 };
 
-
 typedef long off_t;

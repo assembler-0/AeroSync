@@ -64,13 +64,13 @@ int __no_cfi printk_auto_configure(void *payload, const int reinit) {
   }
 
   if (!best) {
-    // Fallback to internal ringbuffer only
+    // Fallback to internal kfifo only
     if (reinit) log_set_console_sink(nullptr);
     else log_init(nullptr);
     
-    // We can still printk, it will go to ringbuffer
+    // We can still printk, it will go to kfifo
     active_backend = nullptr;
-    printk(KERN_ERR KERN_CLASS "no active printk backend, logging to ringbuffer only\n");
+    printk(KERN_ERR KERN_CLASS "no active printk backend, logging to kfifo only\n");
     return 0;
   }
 

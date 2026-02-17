@@ -81,8 +81,8 @@ static struct task_struct *select_bad_process(struct resdomain *rd) {
 void oom_kill_process(struct resdomain *rd) {
   struct task_struct *victim = select_bad_process(rd);
 
-  if (victim) {
-    printk(KERN_ERR "OOM: Killing process %d (%s) in ResDomain '%s' score %lu\n",
+  unmet_cond_crit_else(!victim) {
+    printk(KERN_ERR VMM_CLASS "oom: Killing process %d (%s) in ResDomain '%s' score %lu\n",
            victim->pid, victim->comm, victim->rd ? victim->rd->name : "none",
            oom_badness(victim, rd));
 
@@ -94,8 +94,5 @@ void oom_kill_process(struct resdomain *rd) {
      * terminated upon its next return to userspace or next preemption point.
      */
     set_need_resched();
-  } else {
-    /* Critical failure: system is unusable */
-    panic("OOM: No killable processes found! System halted.");
   }
 }

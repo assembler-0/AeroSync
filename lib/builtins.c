@@ -674,6 +674,17 @@ __uint128_t __udivti3(__uint128_t a, __uint128_t b) {
   return q;
 }
 
+int __popcountdi2(uint64_t a) {
+  uint64_t x = a;
+  x = x - ((x >> 1) & 0x5555555555555555ULL);
+  x = (x & 0x3333333333333333ULL) + ((x >> 2) & 0x3333333333333333ULL);
+  x = (x + (x >> 4)) & 0x0F0F0F0F0F0F0F0FULL;
+  x = x + (x >> 8);
+  x = x + (x >> 16);
+  x = x + (x >> 32);
+  return x & 0x0000003F;
+}
+
 #include <aerosync/export.h>
 
 EXPORT_SYMBOL(__adddf3);
@@ -681,3 +692,4 @@ EXPORT_SYMBOL(__muldf3);
 EXPORT_SYMBOL(__divdf3);
 EXPORT_SYMBOL(__truncdfsf2);
 EXPORT_SYMBOL(__floatsidf);
+EXPORT_SYMBOL(__popcountdi2);

@@ -150,3 +150,63 @@ static inline struct page *virt_to_head_page(const void *x) {
 /* Advanced memory management */
 void *krealloc(void *ptr, size_t new_size, gfp_t flags);
 size_t ksize(const void *ptr);
+
+/**
+ * kmalloc_array_node - allocate memory for an array on a specific node
+ * @n: number of elements.
+ * @size: element size.
+ * @flags: the type of memory to allocate (see kmalloc).
+ * @node: node to allocate from.
+ *
+ * return: pointer to the allocated memory or %NULL in case of error
+ */
+static inline void *kmalloc_array_node(size_t n, size_t size, gfp_t flags,
+                                       int node) {
+  size_t bytes;
+
+  if (unlikely(__builtin_mul_overflow(n, size, &bytes)))
+    return nullptr;
+
+  if (flags & __GFP_ZERO)
+    return kzalloc_node(bytes, node);
+
+  return kmalloc_node(bytes, node);
+}
+
+/**
+ * kmalloc_array - allocate memory for an array.
+ * @n: number of elements.
+ * @size: element size.
+ * @flags: the type of memory to allocate (see kmalloc).
+ *
+ * return: pointer to the allocated memory or %NULL in case of error
+ */
+static inline void *kmalloc_array(size_t n, size_t size, gfp_t flags) {
+  return kmalloc_array_node(n, size, flags, -1);
+}
+
+/**
+ * kcalloc_node - allocate memory for an array on a specific node and zero it.
+ * @n: number of elements.
+ * @size: element size.
+ * @flags: the type of memory to allocate (see kmalloc).
+ * @node: node to allocate from.
+ *
+ * return: pointer to the allocated memory or %NULL in case of error
+ */
+static inline void *kcalloc_node(size_t n, size_t size, gfp_t flags, int node) {
+  return kmalloc_array_node(n, size, flags | __GFP_ZERO, node);
+}
+
+/**
+ * kcalloc - allocate memory for an array and zero it.
+ * @n: number of elements.
+ * @size: element size.
+ * @flags: the type of memory to allocate (see kmalloc).
+ *
+ * return: pointer to the allocated memory or %NULL in case of error
+ */
+static inline void *kcalloc(size_t n, size_t size, gfp_t flags) {
+  return kmalloc_array(n, size, flags | __GFP_ZERO);
+}
+

@@ -2,15 +2,14 @@
 
 ## Overview
 
-AeroSync uses CMake as its build system to create a modern, monolithic 64-bit x86_64 kernel. The build system is designed to be modular, supporting various configurations and targets for development and deployment.
+AeroSync uses CMake as its build system to create a modern, monolithic 64-bit x86_64 kernel. The build system is designed to be modular, supporting various configurations and targets for development and release.
 
 ## Prerequisites
 
 To build AeroSync, you will need the following tools:
-a
+
 *   **CMake:** Version 3.30 or newer (or, edit the `CMakeLists.txt` file to use an older version)
 *   **LLVM**: Version 18.0.0 or newer recommended (including clang, lld, and llvm-*)
-> ⚠️ AeroSync ONLY supports LLVM-based compiler (e.g., clang, icx, aocc); GCC is not tested whatsoever (don't ask me why)
 *   **NASM:** The Netwide Assembler
 *   **xorriso:** A tool to create and manipulate ISO 9660 images
 *   **lld:** The LLVM linker
@@ -85,6 +84,13 @@ There are two ways to configure the kernel:
   - The kernel command line will be automatically appended with `initrd=<filename>`.
   - The kernel will unpack it into the root `tmpfs` during early boot.
 
+## Using GCC
+As you may know, AeroSync does not support GCC for a while, but i have considered to support it
+but currently most GCC builds are broken and unusable, but if you still want to use GCC to compile the kernel
+please use the following toolchain files:
+- `AeroSyncGcc.cmake`: uses `x86_64-unknown-elf` compiler, you can get a [prebuilt](https://github.com/assembler-0/prebuilt-freestanding-toolchains) here
+- `AeroSyncHostGcc.cmake`: uses host GCC compiler (idk why would you use this)
+
 ## ISO Generation
 
 The build system creates a hybrid ISO that supports both BIOS and UEFI boot modes using the Limine bootloader:
@@ -117,4 +123,4 @@ The build system creates a hybrid ISO that supports both BIOS and UEFI boot mode
 
 ## Configuration System
 
-AeroSync uses Kconfig [(more)](kconfig.md) for kernel configuration, allowing fine-grained control over features and options. The configuration system integrates with CMake to generate appropriate build definitions.
+AeroSync uses Kconfig [(more)](kconfig.md) for kernel configuration. The configuration system integrates with CMake to generate appropriate build definitions.

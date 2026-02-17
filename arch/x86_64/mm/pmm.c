@@ -110,16 +110,10 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
   g_hhdm_offset = hhdm_offset;
 
   volatile struct limine_executable_address_request *exec_addr = get_executable_address_request();
-  if (exec_addr->response) {
+
+  unmet_cond_crit_else(!exec_addr->response) {
     g_kernel_virt_base = exec_addr->response->virtual_base;
     g_kernel_phys_base = exec_addr->response->physical_base;
-  } else {
-    /*
-     * If Limine is old or doesn't provide this, we are in trouble with KASLR.
-     * However, the user said they just made it compatible, so we assume
-     * Limine v4+ which MUST provide this for relocatable kernels.
-     */
-    panic(PMM_CLASS "KASLR requested but no executable address response");
   }
 
   printk(KERN_DEBUG PMM_CLASS "Initializing buddy system...\n");

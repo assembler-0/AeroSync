@@ -255,8 +255,6 @@ void kthread_init(void) {
   kthread_run(kthread_create(kthreadd, nullptr, "kthreadd"));
 }
 
-DECLARE_PER_CPU(struct rq, runqueues);
-
 extern void ret_from_kernel_thread(void);
 
 extern void ret_from_user_thread(void);

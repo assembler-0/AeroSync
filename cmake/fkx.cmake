@@ -28,9 +28,9 @@ add_custom_command(
 add_custom_target(fkx_key_header DEPENDS ${FKX_PUB_HEADER})
 
 function(add_fkx_module MODULE_NAME)
-    # Build as a shared library (or static, depending on format)
+    # Build as a loadable module
     add_executable(${MODULE_NAME} ${ARGN})
-    
+
     # Ensure the signer and key header are ready before the module
     add_dependencies(${MODULE_NAME} fkx_signer fkx_key_header)
 
@@ -45,7 +45,6 @@ function(add_fkx_module MODULE_NAME)
    	target_compile_options(${MODULE_NAME} PRIVATE
    	    $<$<COMPILE_LANGUAGE:C>:
    	        -m64
-            -target ${CLANG_TARGET_TRIPLE}
    	        -O${OPT_LEVEL}
    	        -g${DSYM_LEVEL}
    	        -fdata-sections
@@ -54,12 +53,10 @@ function(add_fkx_module MODULE_NAME)
    	        -finline-functions
    	        -foptimize-sibling-calls
    	        -ffreestanding
-   	        -mno-implicit-float
    	        -msoft-float
    	        -mno-red-zone
    	        -mserialize
    	        -fPIC
-   	        -mcmodel=kernel
    	        -fcf-protection=full
    	        -fvisibility=hidden
    	    >
@@ -68,12 +65,23 @@ function(add_fkx_module MODULE_NAME)
    	    >
    	)
 
+    if(COMPILER_IDENTIFIER STREQUAL "clang")
+        target_compile_options(${MODULE_NAME} PRIVATE
+            $<$<COMPILE_LANGUAGE:C>:
+                -target ${CLANG_TARGET_TRIPLE}
+                -mno-implicit-float
+                -mcmodel=kernel
+            >
+        )
+    endif()
+
     # Link flags
     target_link_options(${MODULE_NAME} PRIVATE
             -fuse-ld=lld
             -nostdlib
             -shared
             -Wl,-melf_x86_64
+            -Wl,--unresolved-symbols=ignore-all
     )
 
 	if(MOD_SANITIZER)

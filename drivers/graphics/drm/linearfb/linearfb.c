@@ -993,7 +993,7 @@ static void __exit __noinline __noreturn __sysv_abi linearfb_panic_early(void) {
 
 static const panic_ops_t linearfb_panic_ops = {
   .name = "linearfb_panic",
-  .prio = 200,
+  .prio = 100,
   .panic = linearfb_panic,
   .panic_exception = linearfb_panic_exception,
   .panic_early = linearfb_panic_early,

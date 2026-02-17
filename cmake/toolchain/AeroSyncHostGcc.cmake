@@ -1,25 +1,16 @@
 # ============================================================================
-# AeroSync Toolchain for LLVM/Clang (Cross-Compilation)
+# AeroSync Toolchain for Host GCC (no idea why would you want this)
 # ============================================================================
 set(CMAKE_SYSTEM_NAME Generic)
 set(CMAKE_SYSTEM_PROCESSOR x86_64)
 
-set(CMAKE_C_COMPILER clang)
-set(CMAKE_CXX_COMPILER clang++)
+set(CMAKE_C_COMPILER gcc)
+set(CMAKE_CXX_COMPILER g++)
 set(CMAKE_ASM_NASM_COMPILER nasm)
-set(CMAKE_LINKER lld)
+set(CMAKE_LINKER ld)
 
-set(COMPILER_IDENTIFIER "clang")
-set(LINKER_IDENTIFIER "lld")
-
-# Target Triple
-if(NOT DEFINED CLANG_TARGET_TRIPLE)
-    set(CLANG_TARGET_TRIPLE "x86_64-unknown-none-elf" CACHE STRING "Clang target triple")
-endif()
-
-set(CMAKE_C_COMPILER_TARGET ${CLANG_TARGET_TRIPLE})
-set(CMAKE_CXX_COMPILER_TARGET ${CLANG_TARGET_TRIPLE})
-set(CMAKE_ASM_COMPILER_TARGET ${CLANG_TARGET_TRIPLE})
+set(COMPILER_IDENTIFIER "host-gcc")
+set(LINKER_IDENTIFIER "ld")
 
 # Don't look for system headers/libs in host locations
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)

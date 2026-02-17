@@ -60,16 +60,14 @@ static void time_dev_release(struct device *dev) {
   kfree(td);
 }
 
-void time_register_source(const time_source_t *source) {
+int time_register_source(const time_source_t *source) {
   if (unlikely(!time_class_registered)) {
     class_register(&time_class);
     time_class_registered = true;
   }
 
   struct time_device *td = kzalloc(sizeof(struct time_device));
-  if (!td) {
-    panic(TIME_CLASS "Failed to allocate time device");
-  }
+  if (!td) return -ENOMEM;
 
   td->source = source;
   td->dev.class = &time_class;
@@ -79,12 +77,13 @@ void time_register_source(const time_source_t *source) {
   if (device_register(&td->dev) != 0) {
     printk(KERN_ERR TIME_CLASS "Failed to register time device\n");
     kfree(td);
-    return;
+    return -EFAULT;
   }
 
   printk(KERN_DEBUG TIME_CLASS
          "Registered time source: %s (prio: %d) via UDM\n",
          source->name, source->priority);
+  return 0;
 }
 
 #define MAX_CANDIDATES 16

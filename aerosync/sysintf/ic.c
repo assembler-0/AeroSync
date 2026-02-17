@@ -25,10 +25,8 @@
 #include <aerosync/sysintf/device.h>
 #include <aerosync/sysintf/ic.h>
 #include <aerosync/types.h>
-#include <asm-generic/errno-base.h>
-#include <drivers/apic/apic.h>
+#include <aerosync/errno.h>
 #include <lib/printk.h>
-#include <lib/string.h>
 #include <lib/string.h>
 #include <mm/slub.h>
 

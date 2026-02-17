@@ -54,7 +54,7 @@ typedef struct time_source {
  * @brief Register a new time source with the subsystem.
  * @param source Pointer to the time source structure.
  */
-void time_register_source(const time_source_t *source);
+int time_register_source(const time_source_t *source);
 
 /**
  * @brief Initialize the Time Subsystem, selecting the best available source.

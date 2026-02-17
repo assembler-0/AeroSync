@@ -15,6 +15,7 @@
 #include <aerosync/wait.h>
 #include <aerosync/classes.h>
 #include <aerosync/sysintf/panic.h>
+#include <aerosync/errno.h>
 
 static struct workqueue_struct *system_wq;
 
@@ -81,10 +82,11 @@ bool schedule_work(struct work_struct *work) {
   return queue_work(system_wq, work);
 }
 
-void workqueue_init(void) {
+int workqueue_init(void) {
   system_wq = create_workqueue("system");
   if (!system_wq) {
-    panic("Failed to create system workqueue");
+    return -ENOMEM;
   }
   printk(KERN_INFO KERN_CLASS "System workqueue initialized.\n");
+  return 0;
 }

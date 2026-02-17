@@ -1,6 +1,8 @@
 #pragma once
 
 #include <aerosync/types.h>
+#include <linux/minmax.h>
+#include <linux/log2.h>
 
 /**
  * DIV_ROUND_UP_POW2 - divide and round up
@@ -360,19 +362,6 @@ static inline double tanh(double x) {
     return (e2 - 1) / (e2 + 1);
 }
 
-#define min(a, b) ({        \
-  __auto_type _a = (a);     \
-  __auto_type _b = (b);     \
-  _a < _b ? _a : _b;        \
-})
-
-#define max(c, d) ({        \
-  __auto_type _c = (c);     \
-  __auto_type _d = (d);     \
-  _c > _d ? _c : _d;        \
-})
-
-
 /* Fast reciprocal approximation */
 static inline float fast_recipf(float x) {
     union { float f; uint32_t i; } conv = { x };
@@ -484,8 +473,6 @@ static inline vec3f vec3f_normalize(vec3f v) {
     float invlen = rsqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
     return (vec3f){ v.x * invlen, v.y * invlen, v.z * invlen };
 }
-
-#define clamp(val, lo, hi) min(max(val, lo), hi)
 
 static inline double lerp(double a, double b, double t) {
     return a + (b - a) * t;

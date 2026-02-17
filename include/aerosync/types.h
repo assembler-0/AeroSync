@@ -21,6 +21,7 @@ typedef uint16_t char16_t;
 
 #define IDX_COUNT(arr) (sizeof(arr) / sizeof(arr[0]))
 #define IDX_COUNT_HALF(arr) (IDX_COUNT(arr) / 2)
+#define ARRAY_SIZE(x) IDX_COUNT(x)
 
 #define __STRINGIFY(x) #x
 #define STRINGIFY(x) __STRINGIFY(x)

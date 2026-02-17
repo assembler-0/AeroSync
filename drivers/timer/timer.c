@@ -11,11 +11,13 @@
 #include <drivers/timer/pit.h>
 #include <aerosync/fkx/fkx.h>
 #include <aerosync/sysintf/time.h>
+#include <aerosync/errno.h>
 
 int timer_mod_init(void) {
-  time_register_source(hpet_get_time_source());
-  time_register_source(pit_get_time_source());
-  return 0;
+  int err = 0;
+  if (time_register_source(hpet_get_time_source()) < 0) ++err;
+  if (time_register_source(pit_get_time_source()) < 0) ++err;
+  return err == 0 ? 0 : -EFAULT;
 }
 
 FKX_MODULE_DEFINE(

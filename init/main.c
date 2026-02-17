@@ -220,10 +220,7 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
     aerosync_core_init(timekeeping_init, boot_ts);
   }
 
-  // Initialize Physical Memory Manager
-  if (!get_memmap_request()->response || !get_hhdm_request()->response) {
-    panic(KERN_CLASS "memmap/HHDM not available");
-  }
+  unmet_cond_crit(!get_memmap_request()->response || !get_hhdm_request()->response);
 
   aerosync_core_init(cpu_features_init);
   aerosync_core_init(pmm_init, get_memmap_request()->response, get_hhdm_request()->response->offset,
@@ -332,8 +329,7 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
   // Start kernel_init thread (do the rest of the kernel init)
   struct task_struct *init_task =
       kthread_create(kernel_init, nullptr, "kernel_init");
-  if (!init_task)
-    panic(KERN_CLASS "Failed to create kernel_init thread");
+  unmet_cond_crit(!init_task);
   kthread_run(init_task);
 
   cpu_sti();

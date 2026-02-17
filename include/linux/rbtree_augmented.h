@@ -198,8 +198,8 @@ RB_DECLARE_CALLBACKS(RBSTATIC, RBNAME,					\
 #define __rb_is_black(pc)  __rb_color(pc)
 #define __rb_is_red(pc)    (!__rb_color(pc))
 #define rb_color(rb)       __rb_color((rb)->__rb_parent_color)
-#define rb_is_red(rb)      __rb_is_red((rb)->__rb_parent_color)
-#define rb_is_black(rb)    __rb_is_black((rb)->__rb_parent_color)
+#define rb_is_red(rb)      ((rb) && __rb_is_red((rb)->__rb_parent_color))
+#define rb_is_black(rb)    (!(rb) || __rb_is_black((rb)->__rb_parent_color))
 
 static inline void rb_set_parent(struct rb_node *rb, struct rb_node *p)
 {

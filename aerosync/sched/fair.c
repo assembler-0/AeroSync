@@ -11,6 +11,7 @@
 
 #include <aerosync/resdomain.h>
 #include <aerosync/sched/sched.h>
+#include <aerosync/sched/topology.h>
 #include <aerosync/timer.h>
 #include <linux/container_of.h>
 #include <linux/rbtree.h>
@@ -520,7 +521,6 @@ static int select_idle_sibling(struct task_struct* p, int prev_cpu, int target) 
   if (target_rq->nr_running == 0) {
 #ifdef CONFIG_SCHED_SMT
     /* Check if sibling is also idle (real idle core) */
-    DECLARE_PER_CPU(struct cpumask, cpu_sibling_map);
     struct cpumask* sib = per_cpu_ptr(cpu_sibling_map, target);
     int s;
     bool core_idle = true;
@@ -544,7 +544,6 @@ static int select_idle_sibling(struct task_struct* p, int prev_cpu, int target) 
     struct rq* prev_rq = per_cpu_ptr(runqueues, prev_cpu);
     if (prev_rq->nr_running == 0) {
 #ifdef CONFIG_SCHED_SMT
-      DECLARE_PER_CPU(struct cpumask, cpu_sibling_map);
       struct cpumask* sib = per_cpu_ptr(cpu_sibling_map, prev_cpu);
       int s;
       bool core_idle = true;
@@ -584,7 +583,6 @@ static int select_idle_sibling(struct task_struct* p, int prev_cpu, int target) 
 
     bool this_core_idle = true;
 #ifdef CONFIG_SCHED_SMT
-    DECLARE_PER_CPU(struct cpumask, cpu_sibling_map);
     struct cpumask* sib = per_cpu_ptr(cpu_sibling_map, cpu);
     int s;
     for_each_cpu(s, sib) {

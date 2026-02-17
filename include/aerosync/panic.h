@@ -39,8 +39,14 @@ __aerosync_chk_fail_warn(
 #define unmet_cond_crit(cond) \
   do { if (cond) __aerosync_chk_fail_crit(#cond, __FILE__, __LINE__); } while (0)
 
+#define unmet_cond_crit_else(cond) \
+  if (cond) __aerosync_chk_fail_crit(#cond, __FILE__, __LINE__); else
+
 #define unmet_cond_warn(cond) \
   ({ int __r = !!(cond); if (__r) __aerosync_chk_fail_warn(#cond, __FILE__, __LINE__); __r; })
+
+#define unmet_cond_warn_else(cond) \
+  if (!!cond) __aerosync_chk_fail_warn(#cond, __FILE__, __LINE__); else
 
 #define unmet_cond_warn_once(cond) \
   ({                                                                                               \

@@ -58,7 +58,7 @@ int printk_set_sink(const char *backend_name, bool cleanup);
 void printk_shutdown(void);
 
 /**
- * @function printk_disable(0) - disable console output but keep ringbuffer logging
+ * @function printk_disable(0) - disable console output but keep kfifo logging
  */
 void printk_disable(void);
 

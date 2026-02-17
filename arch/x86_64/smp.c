@@ -228,7 +228,7 @@ void smp_call_function_many(const struct cpumask *mask, smp_call_func_t func, vo
   int this_cpu = (int) smp_get_id();
 
   // For many, we use an array of CSDs if waiting
-  if (wait) {
+  unmet_cond_warn_else(!wait) {
     struct call_single_data *csds = kmalloc(sizeof(struct call_single_data) * MAX_CPUS);
     int target_count = 0;
     int targets[MAX_CPUS];
@@ -259,8 +259,6 @@ void smp_call_function_many(const struct cpumask *mask, smp_call_func_t func, vo
       }
     }
     kfree(csds);
-  } else {
-    panic("smp_call_function_many: async not supported\n");
   }
 }
 
@@ -348,6 +346,7 @@ int smp_prepare_boot_cpu(void) {
   this_cpu_write(cpu_number, 0);
   cpumask_set_cpu(0, &cpu_online_mask);
 
+  smp_init_cpu(0);
   detect_cpu_topology();
   return 0;
 }

@@ -53,5 +53,5 @@ bool queue_work(struct workqueue_struct *wq, struct work_struct *work);
 /**
  * workqueue_init - Initialize the workqueue system
  */
-void workqueue_init(void);
+int workqueue_init(void);
 
