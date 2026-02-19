@@ -28,7 +28,7 @@ project(AeroSync
     VERSION 4.3.7
     LANGUAGES C CXX ASM_NASM
     HOMEPAGE_URL "https://github.com/assembler-0/AeroSync"
-    DESCRIPTION "A modern monolithic operating system kernel."
+    DESCRIPTION "A modern moduler monolithic kernel for amd64."
 )
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
@@ -64,6 +64,7 @@ include(HostTools)
 # Source Gathering
 include(source)       # Core kernel sources
 include(fkx)          # FKX framework
+include(asrx)         # ASRX framework
 
 # Driver & Library Modules
 include(fkx_modules)

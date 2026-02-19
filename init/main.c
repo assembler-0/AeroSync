@@ -21,6 +21,7 @@
 #include <aerosync/ksymtab.h>
 #include <aerosync/classes.h>
 #include <aerosync/fkx/fkx.h>
+#include <aerosync/asrx.h>
 #include <aerosync/panic.h>
 #include <aerosync/sched/process.h>
 #include <aerosync/sched/sched.h>
@@ -69,6 +70,41 @@
 
 static alignas(16) struct task_struct bsp_task;
 
+static int __late_init __noinline __sysv_abi
+system_load_extensions(void) {
+  if (lmm_get_count() > 0) {
+    printk(KERN_DEBUG FKX_CLASS "Processing FKX modules via LMM...\n");
+
+    lmm_for_each_module(LMM_TYPE_FKX, lmm_load_fkx_callback, nullptr);
+
+    if (fkx_finalize_loading() != 0) {
+      printk(KERN_ERR FKX_CLASS "Failed to finalize module loading\n");
+      return -ENOSYS;
+    }
+  } else {
+    printk(KERN_NOTICE FKX_CLASS
+      "no modules found via LMM"
+      ", you probably do not want this"
+      ", this build of AeroSync does not have "
+      "any built-in hardware drivers"
+      ", expect exponential lack of hardware support.\n");
+    return -ENOSYS;
+  }
+  return 0;
+}
+
+static int __late_init __noinline __sysv_abi
+system_load_modules(void) {
+  if (lmm_get_count() > 0) {
+    printk(KERN_DEBUG ASRX_CLASS "Processing ASRX modules via LMM...\n");
+    lmm_for_each_module(LMM_TYPE_ASRX, lmm_load_asrx_callback, nullptr);
+  } else {
+    printk(KERN_NOTICE ASRX_CLASS "no modules found via LMM\n");
+    return -ENOSYS;
+  }
+  return 0;
+}
+
 static int __late_init __noreturn __noinline __sysv_abi kernel_init(void *unused) {
   (void) unused;
 
@@ -96,6 +132,8 @@ static int __late_init __noreturn __noinline __sysv_abi kernel_init(void *unused
   aerosync_core_init(mm_scrubber_init);
 #endif
 
+  aerosync_extra_init(system_load_modules);
+
   printk(KERN_DEBUG KERN_CLASS "attempting to run init process: %s\n", STRINGIFY(CONFIG_INIT_PATH));
   const int ret = run_init_process(STRINGIFY(CONFIG_INIT_PATH));
   if (ret < 0) {
@@ -110,29 +148,6 @@ static int __late_init __noreturn __noinline __sysv_abi kernel_init(void *unused
   while (1) {
     idle_loop();
   }
-}
-
-static int __init __noinline __sysv_abi
-system_load_extensions(void) {
-  if (lmm_get_count() > 0) {
-    printk(KERN_DEBUG FKX_CLASS "Processing modules via LMM...\n");
-
-    lmm_for_each_module(LMM_TYPE_FKX, lmm_load_fkx_callback, nullptr);
-
-    if (fkx_finalize_loading() != 0) {
-      printk(KERN_ERR FKX_CLASS "Failed to finalize module loading\n");
-      return -ENOSYS;
-    }
-  } else {
-    printk(KERN_NOTICE FKX_CLASS
-      "no modules found via LMM"
-      ", you probably do not want this"
-      ", this build of AeroSync does not have "
-      "any built-in hardware drivers"
-      ", expect exponential lack of hardware support.\n");
-    return -ENOSYS;
-  }
-  return 0;
 }
 
 /**
@@ -171,18 +186,19 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   if (get_cmdline_request()->response) {
     printkln(KERN_CLASS "cmdline: %s", current_cmdline);
+  } else {
+    goto no_cmdline;
   }
 
   if (cmdline_find_option_bool(current_cmdline, "bootinfo")) {
     if (
-      get_executable_address_request()->response &&
       cmdline_find_option_bool(current_cmdline, "kaslrinfo")
     ) {
       printkln(KERN_CLASS "kaslr base: %p", get_executable_address_request()->response->virtual_base);
     }
 
     if (get_bootloader_info_request()->response &&
-        get_bootloader_performance_request()->response) {
+        get_bootloader_performance_request()->response)! {
       printk(KERN_CLASS
              "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
              get_bootloader_info_request()->response->name
@@ -212,7 +228,11 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
     }
   }
 
-  printk(KERN_CLASS "system pagination level: %d\n", vmm_get_paging_levels());
+  if (cmdline_find_option_bool(current_cmdline, "mm_page_lvl")) {
+    printk(KERN_CLASS "system pagination level: %d\n", vmm_get_paging_levels());
+  }
+
+no_cmdline:
 
   if (get_date_at_boot_request()->response) {
     uint64_t boot_ts = get_date_at_boot_request()->response->timestamp;
@@ -256,6 +276,7 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
 #ifdef CONFIG_LIMINE_MODULE_MANAGER
   aerosync_core_init(lmm_register_prober, initramfs_cpio_prober);
   aerosync_core_init(lmm_register_prober, lmm_fkx_prober);
+  aerosync_core_init(lmm_register_prober, lmm_asrx_prober);
   aerosync_core_init(lmm_init, get_module_request()->response);
 #endif
 

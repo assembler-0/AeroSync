@@ -47,6 +47,8 @@ typedef struct {
 #define ELFMAG1 'E'
 #define ELFMAG2 'L'
 #define ELFMAG3 'F'
+#define ELFMAG "\177ELF"
+#define SELFMAG 4
 
 /* e_type */
 #define ET_NONE 0
@@ -79,6 +81,8 @@ typedef struct {
 #define PT_SHLIB   5
 #define PT_PHDR    6
 #define PT_TLS     7
+#define PT_GNU_STACK 0x6474e551
+#define PT_GNU_RELRO 0x6474e552
 
 /* p_flags */
 #define PF_X (1 << 0)
@@ -133,6 +137,11 @@ typedef struct {
 #define ELF64_ST_BIND(i)   ((i) >> 4)
 #define ELF64_ST_TYPE(i)   ((i) & 0xf)
 
+/* Symbol Bindings */
+#define STB_LOCAL  0
+#define STB_GLOBAL 1
+#define STB_WEAK   2
+
 /* Symbol Types */
 #define STT_NOTYPE  0
 #define STT_OBJECT  1
@@ -172,3 +181,33 @@ typedef struct {
 #define R_X86_64_PC16      13
 #define R_X86_64_8         14
 #define R_X86_64_PC8       15
+
+/* Auxiliary Vector */
+typedef struct {
+  Elf64_Xword a_type;
+  union {
+    Elf64_Xword a_val;
+  } a_un;
+} Elf64_auxv_t;
+
+/* a_type values */
+#define AT_NULL    0
+#define AT_IGNORE  1
+#define AT_EXECFD  2
+#define AT_PHDR    3
+#define AT_PHENT   4
+#define AT_PHNUM   5
+#define AT_PAGESZ  6
+#define AT_BASE    7
+#define AT_FLAGS   8
+#define AT_ENTRY   9
+#define AT_NOTELF  10
+#define AT_UID     11
+#define AT_EUID    12
+#define AT_GID     13
+#define AT_EGID    14
+#define AT_PLATFORM 15
+#define AT_HWCAP   16
+#define AT_CLKTCK  17
+#define AT_RANDOM  25
+#define AT_EXECFN  31

@@ -20,4 +20,4 @@ volatile struct limine_rsdp_request *get_rsdp_request(void);
 volatile struct limine_executable_address_request *get_executable_address_request(void);
 volatile struct limine_efi_system_table_request *get_efi_system_table_request(void);
 
-#define current_cmdline get_cmdline_request()->response->cmdline
+#define current_cmdline get_cmdline_request()->response ? get_cmdline_request()->response->cmdline : nullptr

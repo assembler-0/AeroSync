@@ -119,6 +119,7 @@ FKX_MODULE_DEFINE(
   "Pseudo-Terminal (PTY) Driver",
   0,
   FKX_DRIVER_CLASS,
+  KSYM_LICENSE_GPL,
   FKX_SUBCLASS_CHAR,
   FKX_NO_REQUIREMENTS,
   pty_mod_init

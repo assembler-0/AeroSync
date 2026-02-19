@@ -26,13 +26,10 @@
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/tsc.h>
 #include <lib/printk.h>
-
 #include <aerosync/sysintf/class.h>
 #include <aerosync/sysintf/device.h>
 #include <lib/string.h>
-#include <lib/string.h>
 #include <mm/slub.h>
-#include <aerosync/errno.h>
 
 static struct class time_class = {
   .name = "time_source",

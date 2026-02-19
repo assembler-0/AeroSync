@@ -3,13 +3,22 @@
 # ============================================================================
 # Generate limine.conf from template
 get_property(FKX_MODULE_LIST GLOBAL PROPERTY FKX_MODULES)
+get_property(ASRX_MODULE_LIST GLOBAL PROPERTY ASRX_MODULES)
+
 set(LIMINE_MODULES "")
-set(FKX_MODULE_FILES "")
-set(FKX_COPY_COMMANDS "")
+set(ALL_MODULE_FILES "")
+set(ALL_COPY_COMMANDS "")
+
 foreach(MOD ${FKX_MODULE_LIST})
     string(APPEND LIMINE_MODULES "    module_path: boot():/module/${MOD}.module.fkx\n")
-    list(APPEND FKX_MODULE_FILES $<TARGET_FILE:${MOD}>)
-    list(APPEND FKX_COPY_COMMANDS COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${MOD}> ${CMAKE_CURRENT_BINARY_DIR}/bootdir/module/$<TARGET_FILE_NAME:${MOD}>)
+    list(APPEND ALL_MODULE_FILES $<TARGET_FILE:${MOD}>)
+    list(APPEND ALL_COPY_COMMANDS COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${MOD}> ${CMAKE_CURRENT_BINARY_DIR}/bootdir/module/$<TARGET_FILE_NAME:${MOD}>)
+endforeach()
+
+foreach(MOD ${ASRX_MODULE_LIST})
+    string(APPEND LIMINE_MODULES "    module_path: boot():/module/${MOD}.module.asrx\n")
+    list(APPEND ALL_MODULE_FILES $<TARGET_FILE:${MOD}>)
+    list(APPEND ALL_COPY_COMMANDS COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${MOD}> ${CMAKE_CURRENT_BINARY_DIR}/bootdir/module/$<TARGET_FILE_NAME:${MOD}>)
 endforeach()
 
 # Handle optional initrd
@@ -45,11 +54,11 @@ add_custom_command(
         # Copy Limine config
         COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/limine.conf
         ${CMAKE_CURRENT_BINARY_DIR}/bootdir/limine.conf
-        # Copy FKX modules
-        ${FKX_COPY_COMMANDS}
+        # Copy All modules (FKX + ASRX)
+        ${ALL_COPY_COMMANDS}
         # Copy initrd if provided
         ${INITRD_COPY_COMMAND}
-        DEPENDS aerosync.krnl ${CMAKE_BINARY_DIR}/limine.conf ${FKX_MODULE_FILES} ${INITRD_DEPENDENCY}
+        DEPENDS aerosync.krnl ${CMAKE_BINARY_DIR}/limine.conf ${ALL_MODULE_FILES} ${INITRD_DEPENDENCY}
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         COMMENT "Setting up boot directory with Limine"
         VERBATIM
@@ -57,9 +66,11 @@ add_custom_command(
 
 add_custom_target(bootdir ALL DEPENDS bootd)
 
-get_property(FKX_MODULE_LIST GLOBAL PROPERTY FKX_MODULES)
 if (FKX_MODULE_LIST)
     add_dependencies(bootdir ${FKX_MODULE_LIST})
+endif()
+if (ASRX_MODULE_LIST)
+    add_dependencies(bootdir ${ASRX_MODULE_LIST})
 endif()
 
 add_custom_command(
@@ -103,8 +114,10 @@ add_custom_command(
 set(ISO_PATH ${CMAKE_CURRENT_BINARY_DIR}/aerosync.hybrid.iso)
 add_custom_target(iso ALL DEPENDS aerosync.hybrid.iso)
 
-# Add FKX module dependencies to ISO target
-get_property(FKX_MODULE_LIST GLOBAL PROPERTY FKX_MODULES)
+# Add module dependencies to ISO target
 if (FKX_MODULE_LIST)
     add_dependencies(iso ${FKX_MODULE_LIST})
+endif()
+if (ASRX_MODULE_LIST)
+    add_dependencies(iso ${ASRX_MODULE_LIST})
 endif()

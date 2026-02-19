@@ -285,7 +285,7 @@ do {                                                               \
 do {                                                               \
   static int __status_##init_f = 0;                                \
   (ret) = init_f(&__status_##init_f, ##__VA_ARGS__ );              \
-  if (IS_ERR_INT(__ret_##init_f))                                  \
+  if (IS_ERR_INT(__status_##init_f))                               \
     printk(KERN_ERR KERN_CLASS #init_f                             \
     " failed with error: %d aka %s\n",                             \
     __ret_##init_f, errname(__ret_##init_f));                      \

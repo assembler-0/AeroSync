@@ -3,11 +3,22 @@
 #include <aerosync/types.h>
 
 /**
+ * Kernel Symbol license types
+ */
+enum ksymbol_license {
+  KSYM_LICENSE_NONE = 0,      /* No specific license requirements */
+  KSYM_LICENSE_GPL,           /* Requires GPL-compatible module */
+  KSYM_LICENSE_MIT,           /* Requires MIT-compatible module */
+  KSYM_LICENSE_PROPRIETARY,   /* Internal use, usually not exported to modules */
+};
+
+/**
  * Kernel Symbol structure
  */
 struct ksymbol {
   uintptr_t addr;
   const char *name;
+  uint32_t license; /* enum ksymbol_license */
 };
 
 /**
@@ -17,6 +28,11 @@ struct ksymbol {
  * @return Address of the symbol or 0 if not found
  */
 uintptr_t lookup_ksymbol(const char *name);
+
+/**
+ * Lookup a symbol with license enforcement
+ */
+uintptr_t lookup_ksymbol_licensed(const char *name, uint32_t module_license);
 
 /**
  * Lookup a symbol name by its address in the global kernel symbol table
@@ -32,9 +48,10 @@ const char *lookup_ksymbol_by_addr(uintptr_t addr, uintptr_t *offset);
  *
  * @param addr Address of the symbol
  * @param name Name of the symbol
+ * @param license License of the symbol
  * @return 0 on success, error code otherwise
  */
-int register_ksymbol(uintptr_t addr, const char *name);
+int register_ksymbol(uintptr_t addr, const char *name, uint32_t license);
 
 /**
  * Unregister a symbol from the global kernel symbol table

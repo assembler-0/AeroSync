@@ -1193,6 +1193,7 @@ FKX_MODULE_DEFINE(
   "Advanced Multi-FB Linear Framebuffer Driver",
   0,
   FKX_PRINTK_CLASS,
+  KSYM_LICENSE_GPL,
   FKX_SUBCLASS_DRM_CONSOLE | FKX_SUBCLASS_DRM_PANIC,
   FKX_NO_REQUIREMENTS,
   linearfb_mod_init

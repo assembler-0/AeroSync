@@ -42,6 +42,7 @@
 #define NVRAM_CLASS "[sys::core::fw::nvram] "
 #define SMBIOS_CLASS "[sys::core::fw::smbios] " // SMBIOS parsing
 #define FKX_CLASS "[sys::sysintf::fkx] "         // FKX Module Loader
+#define ASRX_CLASS "[sys::sysintf::asrx] "
 #define SYNC_CLASS "[sys::core::sync] " // Synchronization (Mutex, Semaphores, Spinlocks)
 #define NUMA_CLASS "[sys::core::numa] "
 #define STACKTRACE_CLASS "[sys::core::stacktrace] "

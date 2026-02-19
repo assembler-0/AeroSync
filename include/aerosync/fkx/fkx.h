@@ -91,6 +91,7 @@ struct fkx_module_info {
 
   uint32_t flags; /* FKX_FLAG_* combination */
   fkx_module_class_t module_class;
+  uint32_t license; /* enum ksymbol_license */
 
   /* Subclass and Requirements */
   uint64_t subclass;      /* Bitmask of what this module PROVIDES */
@@ -105,21 +106,8 @@ struct fkx_module_info {
 
 /**
  * FKX_MODULE_DEFINE - Convenience macro to define module info
- *
- * Usage:
- *   FKX_MODULE_DEFINE(
- *       my_module,
- *       "1.0.0",
- *       "Author Name",
- *       "Module description",
- *       FKX_FLAG_CORE,
- *       FKX_DRIVER_CLASS,
- *       FKX_SUBCLASS_PCI,
- *       FKX_SUBCLASS_NONE,
- *       my_module_init
- *   );
  */
-#define FKX_MODULE_DEFINE(_name, ver, auth, desc, flg, cls, subcls, reqs, entry) \
+#define FKX_MODULE_DEFINE(_name, ver, auth, desc, flg, cls, lic, subcls, reqs, entry) \
     __attribute__((section(".fkx_info"), used)) struct fkx_module_info __fkx_module_info_##_name = { \
         .magic = FKX_MAGIC, \
         .api_version = FKX_API_VERSION, \
@@ -129,6 +117,7 @@ struct fkx_module_info {
         .description = desc, \
         .flags = flg, \
         .module_class = cls, \
+        .license = lic, \
         .subclass = subcls, \
         .requirements = reqs, \
         .init = entry, \

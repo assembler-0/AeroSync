@@ -155,10 +155,20 @@ int ksymtab_finalize(void) {
 }
 
 uintptr_t lookup_ksymbol(const char *name) {
+  return lookup_ksymbol_licensed(name, KSYM_LICENSE_NONE);
+}
+EXPORT_SYMBOL(lookup_ksymbol);
+
+uintptr_t lookup_ksymbol_licensed(const char *name, uint32_t module_license) {
   // 1. Search static kernel symbols (Exported)
   const struct ksymbol *curr = _ksymtab_start;
   while (curr < _ksymtab_end) {
     if (strcmp(curr->name, name) == 0) {
+      if (curr->license != KSYM_LICENSE_NONE && curr->license != module_license) {
+        printk(KERN_WARNING KERN_CLASS "ksymtab: Refusing to provide '%s' (license %d) to module with license %d\n",
+               name, curr->license, module_license);
+        return 0;
+      }
       return curr->addr;
     }
     curr++;
@@ -169,6 +179,12 @@ uintptr_t lookup_ksymbol(const char *name) {
   struct dyn_ksymbol *dyn = g_dyn_symbols;
   while (dyn) {
     if (strcmp(dyn->sym.name, name) == 0) {
+      if (dyn->sym.license != KSYM_LICENSE_NONE && dyn->sym.license != module_license) {
+        printk(KERN_WARNING KERN_CLASS "ksymtab: Refusing to provide dynamic '%s' (license %d) to module with license %d\n",
+               name, dyn->sym.license, module_license);
+        spinlock_unlock_irqrestore(&g_dyn_symbols_lock, flags);
+        return 0;
+      }
       uintptr_t addr = dyn->sym.addr;
       spinlock_unlock_irqrestore(&g_dyn_symbols_lock, flags);
       return addr;
@@ -179,7 +195,7 @@ uintptr_t lookup_ksymbol(const char *name) {
 
   return 0;
 }
-EXPORT_SYMBOL(lookup_ksymbol);
+EXPORT_SYMBOL(lookup_ksymbol_licensed);
 
 const char *lookup_ksymbol_by_addr(uintptr_t addr, uintptr_t *offset) {
   // 1. Try optimized index first (Binary Search)
@@ -254,7 +270,7 @@ const char *lookup_ksymbol_by_addr(uintptr_t addr, uintptr_t *offset) {
 }
 EXPORT_SYMBOL(lookup_ksymbol_by_addr);
 
-int register_ksymbol(uintptr_t addr, const char *name) {
+int register_ksymbol(uintptr_t addr, const char *name, uint32_t license) {
   if (!name) return -EINVAL;
 
   struct dyn_ksymbol *new_sym = kmalloc(sizeof(struct dyn_ksymbol));
@@ -262,6 +278,7 @@ int register_ksymbol(uintptr_t addr, const char *name) {
 
   new_sym->sym.addr = addr;
   new_sym->sym.name = name;
+  new_sym->sym.license = license;
 
   irq_flags_t flags = spinlock_lock_irqsave(&g_dyn_symbols_lock);
   new_sym->next = g_dyn_symbols;

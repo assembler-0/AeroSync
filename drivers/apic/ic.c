@@ -25,6 +25,7 @@ FKX_MODULE_DEFINE(
   "APIC & PIC interrupt driver module",
   0,
   FKX_IC_CLASS,
+  KSYM_LICENSE_GPL,
   FKX_SUBCLASS_IC,
   FKX_NO_REQUIREMENTS,
   ic_mod_init

@@ -75,6 +75,17 @@
 		- [x] **Unified Buffer Cache (UBC)**: Integrate page cache with block layer for zero-copy file I/O.
 		- [x] **Kernel UBC API**: Implemented `ubc_map_page` and `ubc_unmap_page` for safe kernel-side buffer access.
 		- [x] **Writeback Engine**: Dedicated threads for flushing dirty pages to disk.
+	- [x] **Phase 6: Advanced Loader Overhaul (Production Grade)**
+		- [x] **Userspace ELF Overhaul**:
+			- [x] **PIE Support**: Full support for Position Independent Executables with dynamic load bias.
+			- [x] **PT_INTERP Support**: Robust loading and linking of dynamic interpreters (e.g., ld-linux.so).
+			- [x] **Full System V ABI Stack**: Compliant stack frame setup with argc, argv, envp, and Auxiliary Vector (AuxV).
+			- [x] **Integrated RNG**: Use kernel unified crypto stack (sw_rng) for `AT_RANDOM` vector initialization.
+		- [x] **FKX Module Loader Hardening**:
+			- [x] **Strict Segment Permissions**: Per-segment protection (RX for code, RW for data, RO for constants) using `vmm_set_flags`.
+			- [x] **Expanded Relocations**: Support for GCC/LLVM complex relocations (`R_X86_64_GOTPCREL`, `R_X86_64_32S`, etc.).
+			- [x] **Multi-Compiler Compatibility**: Relaxed ELF type checks to support both `ET_DYN` and `ET_REL` modules from varied toolchains.
+			- [x] **Weak Symbol Resolution**: Proper handling of `STB_WEAK` bindings and undefined symbols.
 	- [x] **vmalloc**: use maple tree for vmalloc
 	- [x] **Phase 3: Robustness & Advanced Features**
 		- [x] **OOM Killer 2.0**: Implement a "Reaper" thread to asynchronously reclaim memory from killed tasks, preventing deadlocks.
@@ -155,8 +166,9 @@
 	- [x] Linux syscall table
 - modularity
 	- [x] FKX (Fused Kernel eXtension)
+	- [x] **ASRX (AeroSync Runtime eXtension)**: Full support for loadable kernel extensions with System V ABI relocations, license enforcement, and safe unloading support.
 	- [ ] rFKX (runtime Fused Kernel eXtension) (FKX modules that can be loaded at any time, not early boot)
-	- [ ] ASRX (AeroSync Runtime eXtension)
+	- [ ] ASRX (AeroSync Runtime eXtension) - DUPLICATE REMOVED
 	- [ ] generic interface for *everything* (Linux-inspired)
 	- [x] **Full Unified Driver Model (UDM)**
 		- [x] `struct device` with `kref` reference counting

@@ -10,3 +10,4 @@
 - `initrd=VAL`: VAL is path to initrd
 - `bootinfo`: display some limine boot info
 - `kaslrinfo`: logs kernel base
+- `mm_page_lvl`: log cmdline
