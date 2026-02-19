@@ -7,7 +7,7 @@
  * @brief MMU gather structure for batching TLB flushes and page freeing
  */
 
-#define MAX_GATHER_PAGES 512
+#define MAX_GATHER_PAGES 128
 
 struct mmu_gather {
     struct mm_struct *mm;

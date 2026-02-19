@@ -198,7 +198,7 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
     }
 
     if (get_bootloader_info_request()->response &&
-        get_bootloader_performance_request()->response)! {
+        get_bootloader_performance_request()->response) {
       printk(KERN_CLASS
              "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
              get_bootloader_info_request()->response->name
@@ -244,9 +244,9 @@ no_cmdline:
 
   aerosync_core_init(cpu_features_init);
   aerosync_core_init(pmm_init, get_memmap_request()->response, get_hhdm_request()->response->offset,
-               get_rsdp_request()->response
-                 ? get_rsdp_request()->response->address
-                 : nullptr);
+                     get_rsdp_request()->response
+                     ? get_rsdp_request()->response->address
+                     : nullptr);
   aerosync_core_init(lru_init);
   aerosync_core_init(vmm_init);
   aerosync_core_init(slab_init);

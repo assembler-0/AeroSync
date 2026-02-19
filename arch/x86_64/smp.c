@@ -230,8 +230,21 @@ void smp_call_function_many(const struct cpumask *mask, smp_call_func_t func, vo
   // For many, we use an array of CSDs if waiting
   unmet_cond_warn_else(!wait) {
     struct call_single_data *csds = kmalloc(sizeof(struct call_single_data) * MAX_CPUS);
+    int *targets = kmalloc(sizeof(int) * MAX_CPUS);
     int target_count = 0;
-    int targets[MAX_CPUS];
+
+    if (!csds || !targets) {
+      kfree(csds);
+      kfree(targets);
+      /* Fallback to serial execution if memory allocation fails */
+      for (int i = 0; i < (int) smp_get_cpu_count(); i++) {
+        if (i == this_cpu) continue;
+        if (cpumask_test_cpu(i, mask)) {
+          smp_call_function_single(i, func, info, wait);
+        }
+      }
+      return;
+    }
 
     for (int i = 0; i < (int) smp_get_cpu_count(); i++) {
       if (i == this_cpu) continue;
@@ -258,6 +271,7 @@ void smp_call_function_many(const struct cpumask *mask, smp_call_func_t func, vo
         cpu_relax();
       }
     }
+    kfree(targets);
     kfree(csds);
   }
 }

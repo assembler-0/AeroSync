@@ -61,9 +61,21 @@ target_compile_options(aerosync.krnl PRIVATE
         -fno-common
         -fwrapv
 
+        -Werror
         -Werror=implicit-function-declaration
         -Werror=incompatible-pointer-types
         -Werror=return-type
+        -Werror=implicit-function-declaration
+        -Werror=implicit-int
+        -Werror=return-type
+        -Werror=incompatible-pointer-types
+        -Werror=int-conversion
+        -Werror=format
+        -Werror=format-security
+        -Wstrict-prototypes
+        -Wundef
+        -Wdouble-promotion
+        -Wframe-larger-than=2048
         -Wvla
         -Wshadow
     >

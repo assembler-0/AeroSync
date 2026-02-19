@@ -124,17 +124,19 @@ static int do_pollfd(struct pollfd *pfd, poll_table *pt) {
 }
 
 int do_poll(struct pollfd *fds, unsigned int nfds, uint64_t timeout_ns) {
-  struct poll_wqueues table;
+  struct poll_wqueues *table = kmalloc(sizeof(struct poll_wqueues));
+  if (!table) return -ENOMEM;
+
   int count = 0;
   uint64_t deadline = 0;
 
-  poll_initwait(&table);
+  poll_initwait(table);
 
   if (timeout_ns != (uint64_t) -1) {
     deadline = get_time_ns() + timeout_ns;
   }
 
-  poll_table *pt = &table.pt;
+  poll_table *pt = &table->pt;
 
   for (;;) {
     set_current_state(TASK_INTERRUPTIBLE);
@@ -147,7 +149,7 @@ int do_poll(struct pollfd *fds, unsigned int nfds, uint64_t timeout_ns) {
     /* Stop adding to wait queues after first pass */
     pt = nullptr;
 
-    if (count || !timeout_ns || table.error)
+    if (count || !timeout_ns || table->error)
       break;
 
     if (timeout_ns != (uint64_t) -1) {
@@ -169,7 +171,8 @@ int do_poll(struct pollfd *fds, unsigned int nfds, uint64_t timeout_ns) {
   }
 
   __set_current_state(TASK_RUNNING);
-  poll_freewait(&table);
+  poll_freewait(table);
+  kfree(table);
 
   return count;
 }

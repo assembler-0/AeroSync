@@ -488,31 +488,44 @@ int do_rmdir(const char *path) {
 EXPORT_SYMBOL(do_rmdir);
 
 int do_rename(const char *oldpath, const char *newpath) {
-  char old_parent_path[1024], new_parent_path[1024];
-  char old_name[256], new_name[256];
+  char *old_parent_path = nullptr, *new_parent_path = nullptr;
+  char *old_name = nullptr, *new_name = nullptr;
+  struct dentry *old_parent = nullptr, *new_parent = nullptr;
+  struct dentry *old_dentry = nullptr, *new_dentry = nullptr;
+  int ret = -ENOMEM;
 
   if (strcmp(oldpath, newpath) == 0) return 0;
+
+  old_parent_path = kmalloc(1024);
+  new_parent_path = kmalloc(1024);
+  old_name = kmalloc(256);
+  new_name = kmalloc(256);
+
+  if (!old_parent_path || !new_parent_path || !old_name || !new_name)
+    goto out;
 
   split_path(oldpath, old_parent_path, old_name);
   split_path(newpath, new_parent_path, new_name);
 
-  struct dentry *old_parent = vfs_path_lookup(old_parent_path, 0);
-  if (!old_parent) return -ENOENT;
+  old_parent = vfs_path_lookup(old_parent_path, 0);
+  if (!old_parent) {
+    ret = -ENOENT;
+    goto out;
+  }
 
-  struct dentry *new_parent = vfs_path_lookup(new_parent_path, 0);
+  new_parent = vfs_path_lookup(new_parent_path, 0);
   if (!new_parent) {
-    dput(old_parent);
-    return -ENOENT;
+    ret = -ENOENT;
+    goto out;
   }
 
-  struct dentry *old_dentry = vfs_path_lookup(oldpath, 0);
+  old_dentry = vfs_path_lookup(oldpath, 0);
   if (!old_dentry) {
-    dput(old_parent);
-    dput(new_parent);
-    return -ENOENT;
+    ret = -ENOENT;
+    goto out;
   }
 
-  struct dentry *new_dentry = vfs_path_lookup(newpath, 0);
+  new_dentry = vfs_path_lookup(newpath, 0);
   if (new_dentry) {
 #ifdef CONFIG_VFS_RENAME_OVERWRITE
     /* Unlink or rmdir the existing destination if it's the same type */
@@ -523,40 +536,38 @@ int do_rename(const char *oldpath, const char *newpath) {
         vfs_unlink(new_parent->d_inode, new_dentry);
       } else {
         /* Mixed types - usually error */
-        dput(new_dentry);
-        dput(old_dentry);
-        dput(old_parent);
-        dput(new_parent);
-        return -EISDIR; // Or -ENOTDIR
+        ret = -EISDIR; // Or -ENOTDIR
+        goto out;
       }
     }
     dput(new_dentry);
+    new_dentry = nullptr;
 #else
     /* Fail if destination exists */
-    dput(new_dentry);
-    dput(old_dentry);
-    dput(old_parent);
-    dput(new_parent);
-    return -EEXIST;
+    ret = -EEXIST;
+    goto out;
 #endif
   }
 
   struct qstr qname = {.name = (const unsigned char *) new_name, .len = (uint32_t) strlen(new_name)};
   new_dentry = d_alloc_pseudo(new_parent->d_inode->i_sb, &qname);
   if (!new_dentry) {
-    dput(old_dentry);
-    dput(old_parent);
-    dput(new_parent);
-    return -ENOMEM;
+    ret = -ENOMEM;
+    goto out;
   }
   new_dentry->d_parent = new_parent;
 
-  int ret = vfs_rename(old_parent->d_inode, old_dentry, new_parent->d_inode, new_dentry);
-  
-  dput(new_dentry);
-  dput(old_dentry);
-  dput(old_parent);
-  dput(new_parent);
+  ret = vfs_rename(old_parent->d_inode, old_dentry, new_parent->d_inode, new_dentry);
+
+out:
+  if (new_dentry) dput(new_dentry);
+  if (old_dentry) dput(old_dentry);
+  if (old_parent) dput(old_parent);
+  if (new_parent) dput(new_parent);
+  kfree(old_parent_path);
+  kfree(new_parent_path);
+  kfree(old_name);
+  kfree(new_name);
   return ret;
 }
 
