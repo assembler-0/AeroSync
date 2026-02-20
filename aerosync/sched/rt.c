@@ -21,24 +21,10 @@
 #include <lib/printk.h>
 #include <linux/container_of.h>
 
-#define RT_CLASS "[sched/rt]: "
 
 /* RT bandwidth defaults */
 #define RT_RUNTIME_DEFAULT (950 * NSEC_PER_MSEC) /* 950ms per second */
 #define RT_PERIOD_DEFAULT NSEC_PER_SEC           /* 1 second period */
-
-/* Bitmap operations for priority queue */
-static inline void __set_bit(int nr, uint64_t *bitmap) {
-  bitmap[nr / 64] |= (1ULL << (nr % 64));
-}
-
-static inline void __clear_bit(int nr, uint64_t *bitmap) {
-  bitmap[nr / 64] &= ~(1ULL << (nr % 64));
-}
-
-static inline int __test_bit(int nr, const uint64_t *bitmap) {
-  return (bitmap[nr / 64] >> (nr % 64)) & 1;
-}
 
 /**
  * Find first set bit in bitmap (lowest priority number = highest priority)

@@ -90,7 +90,7 @@ int block_device_register(struct block_device *dev) {
       dev->dev.driver = &block_driver;
   
   /* Initialize the device structure if not already done */
-  if (dev->dev.kref.refcount.counter == 0)
+  if (kref_read(&dev->dev.kref) == 0)
     device_initialize(&dev->dev);
   
   /* Set parent-child relationship if this is a partition */

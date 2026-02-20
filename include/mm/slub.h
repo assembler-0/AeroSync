@@ -158,7 +158,7 @@ size_t ksize(const void *ptr);
  * @flags: the type of memory to allocate (see kmalloc).
  * @node: node to allocate from.
  *
- * return: pointer to the allocated memory or %NULL in case of error
+ * return: pointer to the allocated memory or %nullptr in case of error
  */
 static inline void *kmalloc_array_node(size_t n, size_t size, gfp_t flags,
                                        int node) {
@@ -179,7 +179,7 @@ static inline void *kmalloc_array_node(size_t n, size_t size, gfp_t flags,
  * @size: element size.
  * @flags: the type of memory to allocate (see kmalloc).
  *
- * return: pointer to the allocated memory or %NULL in case of error
+ * return: pointer to the allocated memory or %nullptr in case of error
  */
 static inline void *kmalloc_array(size_t n, size_t size, gfp_t flags) {
   return kmalloc_array_node(n, size, flags, -1);
@@ -192,7 +192,7 @@ static inline void *kmalloc_array(size_t n, size_t size, gfp_t flags) {
  * @flags: the type of memory to allocate (see kmalloc).
  * @node: node to allocate from.
  *
- * return: pointer to the allocated memory or %NULL in case of error
+ * return: pointer to the allocated memory or %nullptr in case of error
  */
 static inline void *kcalloc_node(size_t n, size_t size, gfp_t flags, int node) {
   return kmalloc_array_node(n, size, flags | __GFP_ZERO, node);
@@ -204,7 +204,7 @@ static inline void *kcalloc_node(size_t n, size_t size, gfp_t flags, int node) {
  * @size: element size.
  * @flags: the type of memory to allocate (see kmalloc).
  *
- * return: pointer to the allocated memory or %NULL in case of error
+ * return: pointer to the allocated memory or %nullptr in case of error
  */
 static inline void *kcalloc(size_t n, size_t size, gfp_t flags) {
   return kmalloc_array(n, size, flags | __GFP_ZERO);

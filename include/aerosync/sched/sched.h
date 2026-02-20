@@ -4,9 +4,10 @@
 #include <aerosync/sched/cpumask.h>
 #include <aerosync/spinlock.h>
 #include <aerosync/types.h>
-#include <linux/list.h>
 #include <linux/rbtree.h>
 #include <aerosync/pid_ns.h>
+#include <aerosync/preempt.h>
+#include <aerosync/cred.h>
 
 /* Forward declarations */
 struct sched_class;
@@ -329,6 +330,8 @@ struct task_struct {
   uint64_t pending;           /* Per-thread pending signals */
   uint64_t blocked;           /* Blocked signals */
   struct signal_struct *signal; /* Shared signal state */
+
+  struct cred *cred;          /* Task credentials */
 };
 
 /*
@@ -337,62 +340,6 @@ struct task_struct {
  * These implement nested preemption disable/enable with automatic
  * reschedule on final enable if needed.
  */
-
-/**
- * preempt_count - Get current preemption count
- */
-#define preempt_count() (current->preempt_count)
-
-/**
- * preempt_disable - Disable preemption
- *
- * Increments preempt_count. Can be nested.
- */
-#define preempt_disable()                                                      \
-  do {                                                                         \
-    struct task_struct *_________curr = get_current();                         \
-    if (_________curr) _________curr->preempt_count++;                         \
-    cbarrier();                                                                \
-  } while (0)
-
-/**
- * preempt_enable_no_resched - Enable preemption without rescheduling
- *
- * Decrements preempt_count but doesn't check for pending reschedule.
- */
-#define preempt_enable_no_resched()                                            \
-  do {                                                                         \
-    cbarrier();                                                                \
-    struct task_struct *_________curr = get_current();                         \
-    if (_________curr) _________curr->preempt_count--;                         \
-  } while (0)
-
-/**
- * preempt_enable - Enable preemption and reschedule if needed
- *
- * Decrements preempt_count and checks for pending reschedule.
- */
-#define preempt_enable()                                                       \
-  do {                                                                         \
-    cbarrier();                                                                \
-    struct task_struct *_________curr = get_current();                         \
-    if (_________curr) {                                                       \
-        if (--_________curr->preempt_count == 0 && this_cpu_read(need_resched))\
-            schedule();                                                        \
-    }                                                                          \
-  } while (0)
-
-/**
- * in_atomic - Check if we're in atomic context
- *
- * Returns true if preemption is disabled.
- */
-#define in_atomic() (preempt_count() != 0)
-
-/**
- * preemptible - Check if current context is preemptible
- */
-#define preemptible() (preempt_count() == 0)
 
 #define __set_current_state(x) (current ? current->state = (x) : 0)
 #define set_current_state(x) ({ __set_current_state(x); x; })

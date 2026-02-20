@@ -1,11 +1,8 @@
 #pragma once
 
 #include <aerosync/types.h>
-#include <aerosync/atomic.h>
-#include <aerosync/spinlock.h>
 #include <aerosync/kref.h>
-#include <linux/list.h>
-#include <lib/id_alloc.h>
+#include <linux/idr.h>
 
 struct task_struct;
 

@@ -17,7 +17,7 @@
 #include <uacpi/internal/event.h>
 #include <uacpi/internal/mutex.h>
 #include <uacpi/internal/osi.h>
-#include <aerosync/panic.h>
+#include <aerosync/errno.h>
 
 #ifndef UACPI_BAREBONES_MODE
 

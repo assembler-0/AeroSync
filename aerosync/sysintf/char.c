@@ -50,7 +50,7 @@ int char_device_register(struct char_device *cdev) {
     if (!cdev->dev.driver)
         cdev->dev.driver = &char_driver;
 
-  if (cdev->dev.kref.refcount.counter == 0)
+  if (kref_read(&cdev->dev.kref) == 0)
     device_initialize(&cdev->dev);
 
   int ret = device_add(&cdev->dev);

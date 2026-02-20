@@ -11,32 +11,29 @@
 
 #include <aerosync/atomic.h>
 #include <lib/printk.h>
+#include <aerosync/classes.h>
+#include <linux/refcount.h>
 
 struct kref {
-    atomic_t refcount;
+  refcount_t refcount;
 };
 
-#define KREF_INIT(n) { .refcount = ATOMIC_INIT(n) }
+#define KREF_INIT(n) { .refcount = REFCOUNT_INIT(n) }
 
 /**
  * kref_init - initialize object.
  * @kref: object in question.
  */
-static inline void kref_init(struct kref *kref)
-{
-    atomic_set(&kref->refcount, 1);
+static inline void kref_init(struct kref *kref) {
+  refcount_set(&kref->refcount, 1);
 }
 
 /**
  * kref_get - increment refcount for object.
  * @kref: object.
  */
-static inline void kref_get(struct kref *kref)
-{
-    if (atomic_read(&kref->refcount))
-        atomic_inc(&kref->refcount);
-    else
-        printk(KERN_ERR "kref_get: refcount is 0!\n");
+static inline void kref_get(struct kref *kref) {
+  refcount_inc(&kref->refcount);
 }
 
 /**
@@ -47,16 +44,34 @@ static inline void kref_get(struct kref *kref)
  *           This pointer is required, and it is not acceptable to pass kfree
  *           in directly.
  */
-static inline int kref_put(struct kref *kref, void (*release)(struct kref *kref))
-{
-    if (atomic_dec_and_test(&kref->refcount)) {
-        release(kref);
-        return 1;
-    }
-    return 0;
+static inline int kref_put(struct kref *kref, void (*release)(struct kref *kref)) {
+  if (refcount_dec_and_test(&kref->refcount)) {
+    release(kref);
+    return 1;
+  }
+  return 0;
 }
 
-static inline int kref_read(const struct kref *kref)
-{
-	return atomic_read(&kref->refcount);
+static inline int kref_read(const struct kref *kref) {
+  return refcount_read(&kref->refcount);
+}
+
+/**
+ * kref_get_unless_zero - Increment refcount for object unless it is zero.
+ * @kref: object.
+ *
+ * This function is intended to simplify locking around refcounting for
+ * objects that can be looked up from a lookup structure, and which are
+ * removed from that lookup structure in the object destructor.
+ * Operations on such objects require at least a read lock around
+ * lookup + kref_get, and a write lock around kref_put + remove from lookup
+ * structure. Furthermore, RCU implementations become extremely tricky.
+ * With a lookup followed by a kref_get_unless_zero *with return value check*
+ * locking in the kref_put path can be deferred to the actual removal from
+ * the lookup structure and RCU lookups become trivial.
+ *
+ * Return: non-zero if the increment succeeded. Otherwise return 0.
+ */
+static inline int __must_check kref_get_unless_zero(struct kref *kref) {
+  return refcount_inc_not_zero(&kref->refcount);
 }

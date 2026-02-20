@@ -14,7 +14,6 @@
 #include <aerosync/sysintf/char.h>
 #include <limine/limine.h>
 #include <lib/linearfb/linearfb.h>
-#include <linux/list.h>
 
 struct linearfb_device {
   struct limine_framebuffer *limine_fb;

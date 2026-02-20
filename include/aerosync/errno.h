@@ -170,6 +170,9 @@
 #define MAX_ERRNO	4095
 
 #include <compiler.h>
+#include <aerosync/classes.h>
+#include <lib/printk.h>
+#include <aerosync/sysintf/panic.h>
 
 #define IS_ERR_VALUE(x) unlikely((unsigned long)(void *)(x) >= (unsigned long)-MAX_ERRNO)
 
@@ -290,5 +293,51 @@ do {                                                               \
     " failed with error: %d aka %s\n",                             \
     __ret_##init_f, errname(__ret_##init_f));                      \
 } while (0)
+
+static void __exit __noreturn __noinline __sysv_abi
+__aerosync_chk_fail_crit(
+  const char *expr,
+  const char *file,
+  int line
+) {
+  panic("__aerosync_chk_fail_crit: %s at %s:%d (%s)\n", expr, file, line);
+  __unreachable();
+}
+
+static void __noinline __sysv_abi
+__aerosync_chk_fail_warn(
+  const char *expr,
+  const char *file,
+  int line
+) {
+  printk( KERN_WARNING KERN_CLASS "__aerosync_chk_fail_warn: %s at %s:%d\n", expr, file, line);
+}
+
+#define unmet_function_deprecation(__f) \
+({  __aerosync_chk_fail_warn(#__f, __FILE__, __LINE__); })
+
+#define unmet_cond_crit(cond) \
+do { if (cond) __aerosync_chk_fail_crit(#cond, __FILE__, __LINE__); } while (0)
+
+#define unmet_cond_crit_else(cond) \
+if (cond) __aerosync_chk_fail_crit(#cond, __FILE__, __LINE__); else
+
+#define unmet_cond_warn(cond) \
+({ int __r = !!(cond); if (__r) __aerosync_chk_fail_warn(#cond, __FILE__, __LINE__); __r; })
+
+#define unmet_cond_warn_else(cond) \
+if (!!cond) __aerosync_chk_fail_warn(#cond, __FILE__, __LINE__); else
+
+#define unmet_cond_warn_once(cond) \
+({                                                                                               \
+static int __done; int __r = !!(cond);                                                         \
+if (__r && !__done) { __done = 1; __aerosync_chk_fail_warn(#cond, __FILE__, __LINE__); }        \
+__r;                                                                                           \
+})
+
+#define BUG_ON unmet_cond_crit
+#define WARN_ON unmet_cond_warn
+#define WARN_ON_ONCE unmet_cond_warn_once
+#define WARN_ONCE unmet_cond_warn_once
 
 #endif /* _KERNEL_ERRNO_H */

@@ -13,6 +13,7 @@
 #include <aerosync/sched/process.h>
 #include <lib/printk.h>
 #include <mm/vma.h>
+#include <aerosync/errno.h>
 
 /*
  * Calculate "badness" score for a task.

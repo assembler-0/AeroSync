@@ -202,7 +202,7 @@ static const char *__errname(unsigned err)
 		return names_0[err];
 	if (err >= 512 && err - 512 < IDX_COUNT(names_512))
 		return names_512[err - 512];
-	return NULL;
+	return nullptr;
 }
 
 /*
@@ -213,7 +213,7 @@ const char *errname(int err)
 {
 	const char *name = __errname(abs(err));
 	if (!name)
-		return NULL;
+		return nullptr;
 
 	return err > 0 ? name + 1 : name;
 }

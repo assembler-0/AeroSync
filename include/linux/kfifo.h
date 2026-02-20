@@ -131,7 +131,7 @@ struct kfifo_rec_ptr_2 __STRUCT_KFIFO_PTR(unsigned char, 2, void);
 	__kfifo->out = 0; \
 	__kfifo->mask = __is_kfifo_ptr(__tmp) ? 0 : ARRAY_SIZE(__tmp->buf) - 1;\
 	__kfifo->esize = sizeof(*__tmp->buf); \
-	__kfifo->data = __is_kfifo_ptr(__tmp) ?  NULL : __tmp->buf; \
+	__kfifo->data = __is_kfifo_ptr(__tmp) ?  nullptr : __tmp->buf; \
 })
 
 /**
@@ -154,7 +154,7 @@ struct kfifo_rec_ptr_2 __STRUCT_KFIFO_PTR(unsigned char, 2, void);
 				  ARRAY_SIZE((fifo).buf) - 1, \
 			.esize	= sizeof(*(fifo).buf), \
 			.data	= __is_kfifo_ptr(&(fifo)) ? \
-				NULL : \
+				nullptr : \
 				(fifo).buf, \
 			} \
 		} \

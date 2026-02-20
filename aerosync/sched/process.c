@@ -284,11 +284,11 @@ int pid_allocator_init(void) {
   INIT_LIST_HEAD(&task_list);
   spinlock_init(&tasklist_lock);
 
-  ida_init(&pid_ida, 32768);
-  ida_alloc(&pid_ida); // Allocate 0 for idle/init
+  ida_init(&pid_ida);
+  ida_alloc(&pid_ida, GFP_KERNEL); // Allocate 0 for idle/init
 
-  ida_init(&init_pid_ns.pid_ida, 32768);
-  ida_alloc(&init_pid_ns.pid_ida); /* Reserve 0 */
+  ida_init(&init_pid_ns.pid_ida);
+  ida_alloc(&init_pid_ns.pid_ida, GFP_KERNEL); /* Reserve 0 */
   return 0;
 }
 
@@ -299,8 +299,8 @@ struct pid_namespace *create_pid_namespace(struct pid_namespace *parent) {
   kref_init(&ns->kref);
   ns->parent = parent; /* TODO: get_pid_ns(parent) */
   ns->level = parent ? parent->level + 1 : 0;
-  ida_init(&ns->pid_ida, 32768);
-  ida_alloc(&ns->pid_ida); /* Reserve 0 */
+  ida_init(&ns->pid_ida);
+  ida_alloc(&ns->pid_ida, GFP_KERNEL); /* Reserve 0 */
 
   return ns;
 }
@@ -321,7 +321,7 @@ static inline void get_pid_ns(struct pid_namespace *ns) {
 }
 
 pid_t pid_ns_alloc(struct pid_namespace *ns) {
-  return ida_alloc(&ns->pid_ida);
+  return ida_alloc(&ns->pid_ida, GFP_KERNEL);
 }
 
 void pid_ns_free(struct pid_namespace *ns, pid_t pid) {
@@ -486,6 +486,13 @@ struct task_struct *copy_process(uint64_t clone_flags,
   // Setup Resource Domain
   resdomain_task_init(p, parent);
 
+  /* Setup credentials */
+  if (parent) {
+    p->cred = get_cred(parent->cred);
+  } else {
+    p->cred = get_cred(&init_cred);
+  }
+
   // Setup FPU
   p->thread.fpu = fpu_alloc();
   if (parent->thread.fpu && parent->thread.fpu_used) {
@@ -567,6 +574,11 @@ struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
   p->thread.rflags = 0x202;
 
   return p;
+}
+
+void kthread_stop(struct task_struct *k) {
+  if (!k) return;
+  send_signal(SIGKILL, k);
 }
 
 struct task_struct * __no_cfi __kthread_create(int (*threadfn)(void *data), void *data,

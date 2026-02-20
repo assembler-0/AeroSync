@@ -204,4 +204,8 @@ static inline void spin_unlock(spinlock_t *lock) {
   spinlock_unlock(lock);
 }
 
+static inline void spin_lock_init(spinlock_t *lock) {
+  spinlock_init(lock);
+}
+
 #endif /* SPINLOCK_LINUX_COMPAT */

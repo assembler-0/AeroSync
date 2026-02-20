@@ -36,7 +36,7 @@ int __kfifo_alloc_node(struct __kfifo *fifo, unsigned int size,
 	fifo->esize = esize;
 
 	if (size < 2) {
-		fifo->data = NULL;
+		fifo->data = nullptr;
 		fifo->mask = 0;
 		return -EINVAL;
 	}
@@ -59,7 +59,7 @@ void __kfifo_free(struct __kfifo *fifo)
 	fifo->in = 0;
 	fifo->out = 0;
 	fifo->esize = 0;
-	fifo->data = NULL;
+	fifo->data = nullptr;
 	fifo->mask = 0;
 }
 EXPORT_SYMBOL(__kfifo_free);

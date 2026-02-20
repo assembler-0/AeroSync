@@ -6,6 +6,8 @@
 #include <stdint.h>
 
 typedef int pid_t;
+typedef uint32_t uid_t;
+typedef uint32_t gid_t;
 typedef uint32_t dev_t;
 typedef long ssize_t;
 typedef long ptrdiff_t;
@@ -13,6 +15,16 @@ typedef char* cstring;
 typedef uintptr_t usize;
 typedef long time_t;
 typedef uint16_t char16_t;
+
+typedef uint8_t u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+typedef uint64_t u64;
+
+typedef int8_t s8;
+typedef int16_t s16;
+typedef int32_t s32;
+typedef int64_t s64;
 
 #define ULONG_MAX (~0UL)
 #define UINT_MAX  (~0U)
@@ -43,6 +55,6 @@ typedef uint16_t char16_t;
 #define ULLONG_MAX	(~0ULL)
 #define UINTPTR_MAX	ULONG_MAX
 
-#define BITS_PER_LONG (sizeof(unsigned long) * 8)
-#define BITS_PER_LONG_LONG (sizeof(unsigned long long) * 8)
+#define BITS_PER_LONG 64
+#define BITS_PER_LONG_LONG 64
 

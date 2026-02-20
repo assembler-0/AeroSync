@@ -11,6 +11,7 @@
 #include <linux/rcupdate.h>
 #include <lib/string.h>
 #include <mm/gfp.h>
+#include <aerosync/spinlock.h>
 
 /*
  * Allocated nodes are mutable until they have been inserted into the tree,

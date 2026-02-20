@@ -8,7 +8,13 @@
 #ifndef _LINUX_RADIX_TREE_H
 #define _LINUX_RADIX_TREE_H
 
-#include <linux/xarray.h>
+#include <linux/types.h>
+#include <mm/gfp.h>
+#include <aerosync/spinlock.h>
+#include <linux/rcupdate.h>
+
+struct xarray;
+struct xa_node;
 
 /* Keep unconverted code working */
 #define radix_tree_root		xarray
@@ -72,10 +78,7 @@ static inline bool radix_tree_is_internal_node(void *ptr)
 
 #define INIT_RADIX_TREE(root, mask) xa_init_flags(root, mask)
 
-static inline bool radix_tree_empty(const struct radix_tree_root *root)
-{
-	return root->xa_head == nullptr;
-}
+bool radix_tree_empty(const struct xarray *root);
 
 /**
  * struct radix_tree_iter - radix tree iterator state
@@ -458,4 +461,5 @@ static __always_inline void __rcu **radix_tree_next_slot(void __rcu **slot,
 	     slot = radix_tree_next_slot(slot, iter,			\
 				RADIX_TREE_ITER_TAGGED | tag))
 
+#include <linux/xarray.h>
 #endif /* _LINUX_RADIX_TREE_H */

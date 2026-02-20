@@ -26,7 +26,6 @@
 #include <arch/x86_64/tsc.h>
 #include <drivers/apic/apic.h>
 #include <aerosync/classes.h>
-#include <aerosync/panic.h>
 #include <aerosync/export.h>
 #include <aerosync/sched/cpumask.h>
 #include <aerosync/sched/process.h>
@@ -40,10 +39,13 @@
 #include <mm/slub.h>
 #include <mm/vma.h>
 #include <aerosync/timer.h>
-#include <lib/string.h>
 #include <aerosync/resdomain.h>
 #include <arch/x86_64/gdt/gdt.h>
 #include <linux/rculist.h>
+#include <aerosync/errno.h>
+
+DEFINE_PER_CPU(int, __preempt_count) = 0;
+DEFINE_PER_CPU(int, need_resched) = 0;
 
 static int idle_balance(struct rq *this_rq);
 

@@ -7,6 +7,7 @@
 #include <linux/maple_tree.h>
 #include <aerosync/spinlock.h>
 #include <aerosync/errno.h>
+#include <aerosync/atomic.h>
 
 /*
  * AeroSync High Performance Hybrid vmalloc Subsystem

@@ -23,6 +23,7 @@ int pid_allocator_init(void);
 struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
                                    const char *namefmt, ...);
 void kthread_run(struct task_struct *k);
+void kthread_stop(struct task_struct *k);
 void set_task_cpu(struct task_struct *task, int cpu);
 void move_task_to_rq(struct task_struct *task, int dest_cpu);
 

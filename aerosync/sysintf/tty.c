@@ -92,7 +92,7 @@ struct char_device *tty_register_device(const struct char_operations *ops, void 
     cdev->ops = &tty_char_ops;
     cdev->private_data = tty;
     
-    int id = ida_alloc(&tty_class.ida);
+    int id = ida_alloc(&tty_class.ida, GFP_KERNEL);
   if (id < 0) {
     ringbuf_destroy(tty->read_buf);
     kfree(tty);

@@ -526,6 +526,25 @@ static char *err_ptr(char *buf, char *end, void *ptr,
 }
 
 static
+char *uuid_string(char *buf, char *end, uint8_t *addr, struct printf_spec spec,
+		 const char *fmt)
+{
+	char uuid[37];
+	static const char hex[] = "0123456789abcdef";
+	int i, j;
+
+	for (i = 0, j = 0; i < 16; i++) {
+		if (i == 4 || i == 6 || i == 8 || i == 10)
+			uuid[j++] = '-';
+		uuid[j++] = hex[addr[i] >> 4];
+		uuid[j++] = hex[addr[i] & 0x0f];
+	}
+	uuid[j] = '\0';
+
+	return string(buf, end, uuid, spec);
+}
+
+static
 char *pointer(const char *fmt, char *buf, char *end, void *ptr,
 	      struct printf_spec spec)
 {
@@ -536,6 +555,8 @@ char *pointer(const char *fmt, char *buf, char *end, void *ptr,
 	case 'R':
 	case 'h':
 		return hex_string(buf, end, ptr, spec, fmt);
+	case 'U':
+		return uuid_string(buf, end, ptr, spec, fmt);
 	case 'b':
 		return bitmap_string(buf, end, ptr, spec, fmt);
 	case 'x':

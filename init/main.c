@@ -271,6 +271,7 @@ no_cmdline:
   aerosync_core_init(pid_allocator_init);
   aerosync_core_init(sched_init);
   bsp_task.active_mm = &init_mm;
+  bsp_task.cred = &init_cred;
   aerosync_core_init(sched_init_task, &bsp_task);
 
 #ifdef CONFIG_LIMINE_MODULE_MANAGER

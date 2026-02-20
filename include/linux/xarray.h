@@ -16,6 +16,9 @@
 #include <linux/rcupdate.h>
 #include <aerosync/errno.h>
 
+struct xarray;
+struct xa_node;
+
 struct list_lru;
 
 /*

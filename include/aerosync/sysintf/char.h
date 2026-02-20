@@ -9,11 +9,9 @@
 
 #pragma once
 
-#include <aerosync/mutex.h>
 #include <aerosync/sysintf/device.h>
 #include <aerosync/types.h>
 #include <fs/vfs.h>
-#include <linux/list.h>
 
 #define MAJOR(dev) ((unsigned int) ((dev) >> 20))
 #define MINOR(dev) ((unsigned int) ((dev) & ((1U << 20) - 1)))

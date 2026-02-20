@@ -92,6 +92,7 @@
  *  PROCESS MANAGEMENT & SCHEDULING
  * ========================================================================= */
 #define SCHED_CLASS "[sys::sched] " // Scheduler (Context switching, Picking tasks)
+#define RT_CLASS "[sys::sched::rt] "
 #define TASK_CLASS "[sys::sched::task] "   // Task creation/destruction logic
 #define ELF_CLASS "[sys::sched::elf] "     // ELF Loader / Binary parser
 #define IPC_CLASS "[sys::sched::ipc] " // Inter-Process Communication (Pipes, MsgQueues)

@@ -116,6 +116,14 @@
 	- [x] more rigid MMIO
 	- [x] Stack management
 	- [x] handle user MM faults gracully
+- Security & Identification
+	- [x] **UID/GID Support**: Defined `uid_t` and `gid_t` base types for identity management.
+	- [x] **UUID/GUID Infrastructure**: RFC 4122 compliant UUID generation (v4) and parsing in `lib/uuid.c`.
+	- [x] **Credential Management System**: 
+		- [x] Introduced `struct cred` for shared, refcounted security contexts.
+		- [x] Implemented copy-on-write credential inheritance in `copy_process`.
+		- [x] Integrated credentials with the capability system for per-task permission checks.
+	- [x] **Extended vsprintf**: Support for `%pU` format specifier for direct UUID printing.
 - scheduling
 	- [x] PI (Priority Inheritance)
 	- [x] Per-Entity Load Tracking (PELT) - 32ms half-life decaying averages

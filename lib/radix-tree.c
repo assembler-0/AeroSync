@@ -10,9 +10,9 @@
  */
 
 #include <aerosync/fkx/fkx.h>
+#include <linux/radix-tree.h>
 #include <linux/xarray.h>
 #include <mm/slub.h>
-#include <linux/radix-tree.h>
 #include <linux/idr.h>
 #include <linux/container_of.h>
 #include <lib/math.h>
@@ -646,6 +646,11 @@ static inline int insert_entries(struct radix_tree_node *node,
  *
  *	Insert an item into the radix tree at position @index.
  */
+bool radix_tree_empty(const struct xarray *root)
+{
+	return root->xa_head == nullptr;
+}
+
 int radix_tree_insert(struct radix_tree_root *root, unsigned long index,
                       void *item) {
   struct radix_tree_node *node;

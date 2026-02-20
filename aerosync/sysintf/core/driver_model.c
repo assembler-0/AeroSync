@@ -94,7 +94,7 @@ int class_register(struct class *cls) {
 
   /* Initialize ID allocator if any naming mechanism is provided */
   if (cls->dev_name || cls->dev_prefix || cls->naming_scheme != NAMING_NONE) {
-    ida_init(&cls->ida, 1024); // Support up to 1024 devices per class
+    ida_init(&cls->ida); // Support up to 1024 devices per class
   }
 
   mutex_lock(&device_model_lock);
@@ -285,7 +285,7 @@ static void generate_device_name(struct device *dev) {
 
   int id = dev->id;
   if (id < 0) {
-    id = ida_alloc(&dev->class->ida);
+    id = ida_alloc(&dev->class->ida, GFP_KERNEL);
     if (id < 0) return;
     dev->id = id;
     dev->class_id_allocated = true;

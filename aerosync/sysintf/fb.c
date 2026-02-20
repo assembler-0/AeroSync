@@ -40,7 +40,7 @@ struct char_device *fb_register_device(const struct char_operations *ops, void *
   cdev->private_data = private_data;
 
   /* FB major 29, minors via IDA */
-  int id = ida_alloc(&fb_class.ida);
+  int id = ida_alloc(&fb_class.ida, GFP_KERNEL);
   if (id < 0) {
     kfree(cdev);
     return nullptr;

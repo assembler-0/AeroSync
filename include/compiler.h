@@ -154,6 +154,7 @@
  *            It does NOT prevent the CPU from reordering.
  */
 #define cbarrier()      __asm__ volatile("" ::: "memory")
+#define barrier()       cbarrier()
 
 # define __compiletime_error(msg)       __attribute__((__error__(msg)))
 

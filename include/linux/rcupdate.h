@@ -1,33 +1,54 @@
 #pragma once
 
-#include <aerosync/sched/sched.h>
-#include <aerosync/panic.h>
+#include <linux/types.h>
+#include <aerosync/preempt.h>
+
+/*
+ * Barriers and pointer accessors.
+ */
+#ifndef rcu_dereference
+#define rcu_dereference(p) ({\
+    typeof(p) _________p1 = smp_load_acquire(&(p)); \
+    _________p1; \
+})
+#endif
+
+#ifndef rcu_dereference_raw
+#define rcu_dereference_raw(p) ({ \
+    typeof(p) _________p1 = READ_ONCE(p); \
+    _________p1; \
+})
+#endif
+
+#ifndef rcu_assign_pointer
+#define rcu_assign_pointer(p, v) do { \
+    smp_store_release(&(p), (v)); \
+} while (0)
+#endif
+
+#ifndef RCU_INIT_POINTER
+#define RCU_INIT_POINTER(p, v)	do { (p) = (v); } while (0)
+#endif
 
 /*
  * RCU read-side critical sections.
  * For non-preemptible RCU, this just disables preemption.
  */
+#ifndef rcu_read_lock
 static inline void rcu_read_lock(void) {
     preempt_disable();
 }
+#endif
 
+#ifndef rcu_read_unlock
 static inline void rcu_read_unlock(void) {
     preempt_enable();
 }
+#endif
 
 /*
- * Barriers and pointer accessors.
+ * Barriers and pointer accessors (more complex ones).
  */
-#define rcu_dereference(p) ({\
-    typeof(p) _________p1 = smp_load_acquire(&(p)); \
-    _________p1; \
-})
-
-#define rcu_dereference_raw(p) ({ \
-    typeof(p) _________p1 = READ_ONCE(p); \
-    _________p1; \
-})
-
 #define rcu_dereference_check(p, c) ({ \
     unmet_cond_warn(!(c)) \
     rcu_dereference(p); \
@@ -40,13 +61,10 @@ static inline void rcu_read_unlock(void) {
 
 #define rcu_dereference_raw_check(p) rcu_dereference_raw(p)
 
-#define rcu_assign_pointer(p, v) do { \
-    smp_store_release(&(p), (v)); \
-} while (0)
-
 /*
  * API Prototypes
  */
+struct rcu_head;
 void call_rcu(struct rcu_head *head, void (*func)(struct rcu_head *head));
 void synchronize_rcu(void);
 void rcu_barrier(void);
@@ -56,6 +74,4 @@ void rcu_barrier(void);
 
 /* Internal init */
 void rcu_check_callbacks(void);
-
-#define RCU_INIT_POINTER(p, v)	do { (p) = (v); } while (0)
 

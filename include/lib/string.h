@@ -49,6 +49,12 @@ void *memscan(void *addr, int c, size_t size);
 void *memrchr(const void *s, int c, size_t n);
 void *memmem(const void *haystack, size_t hlen, const void *needle, size_t nlen);
 void memswap(void *a, void *b, size_t n);
+void **__memcat_p(void **a, void **b);
+#else
+static inline void **__memcat_p(void **a, void **b) { return nullptr; }
+static inline void *memrchr(const void *s, int c, size_t n) { return nullptr; }
+static inline void *memmem(const void *haystack, size_t hlen, const void *needle, size_t nlen) { return nullptr; }
+static inline void memswap(void *a, void *b, size_t n) {}
 #endif
 
 /* Cryptographic functions */
