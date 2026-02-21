@@ -19,7 +19,7 @@
  */
 #pragma once
 
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <aerosync/types.h>
 
 typedef enum {

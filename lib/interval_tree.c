@@ -2,7 +2,7 @@
 #include <linux/interval_tree.h>
 #include <linux/interval_tree_generic.h>
 #include <linux/container_of.h>
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <aerosync/export.h>
 
 #define START(node) ((node)->start)
@@ -19,6 +19,7 @@ EXPORT_SYMBOL_GPL(interval_tree_iter_first);
 EXPORT_SYMBOL_GPL(interval_tree_iter_next);
 
 #ifdef CONFIG_INTERVAL_TREE_SPAN_ITER
+
 /*
  * Roll nodes[1] into nodes[0] by advancing nodes[1] to the end of a contiguous
  * span of nodes. This makes nodes[0]->last the end of that contiguous used span

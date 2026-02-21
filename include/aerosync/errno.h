@@ -169,10 +169,10 @@
 
 #define MAX_ERRNO	4095
 
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <aerosync/classes.h>
 #include <lib/printk.h>
-#include <aerosync/sysintf/panic.h>
+#include <aerosync/panic.h>
 
 #define IS_ERR_VALUE(x) unlikely((unsigned long)(void *)(x) >= (unsigned long)-MAX_ERRNO)
 

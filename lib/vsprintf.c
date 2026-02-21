@@ -17,7 +17,7 @@
 #include <aerosync/ctype.h>
 #include <aerosync/export.h>
 #include <lib/string.h>
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <math.h>
 #include <aerosync/errno.h>
 #include <mm/slub.h>

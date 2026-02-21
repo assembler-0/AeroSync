@@ -13,7 +13,6 @@
 
 #include <aerosync/classes.h>
 #include <aerosync/errno.h>
-#include <aerosync/panic.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <mm/gfp.h>

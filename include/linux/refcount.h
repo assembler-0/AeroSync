@@ -102,7 +102,7 @@
 #define _LINUX_REFCOUNT_H
 
 
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <aerosync/spinlock.h>
 
 #include "aerosync/atomic.h"

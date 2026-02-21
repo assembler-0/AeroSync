@@ -40,7 +40,7 @@
 
 #include <linux/unaligned.h>
 #include <aerosync/errno.h>
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <linux/kernel.h>
 #include <aerosync/export.h>
 #include <lib/string.h>

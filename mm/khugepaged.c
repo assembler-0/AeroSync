@@ -5,39 +5,40 @@
  * @file mm/khugepaged.c
  * @brief Transparent Huge Page (THP) daemon
  * @copyright (C) 2025-2026 assembler-0
- *
- * This file is part of the AeroSync kernel.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
-#include <mm/vma.h>
+#include <aerosync/classes.h>
+#include <aerosync/sched/process.h>
+#include <aerosync/sched/sched.h>
+#include <arch/x86_64/mm/vmm.h>
+#include <arch/x86_64/tsc.h>
+#include <lib/printk.h>
+#include <linux/container_of.h>
 #include <mm/mm_types.h>
 #include <mm/page.h>
 #include <mm/slub.h>
-#include <arch/x86_64/mm/vmm.h>
-#include <aerosync/sched/process.h>
-#include <aerosync/sched/sched.h>
-#include <linux/container_of.h>
-#include <lib/printk.h>
-#include <aerosync/classes.h>
-#include <arch/x86_64/tsc.h>
 #include <mm/vm_object.h>
+#include <mm/vma.h>
 
 #define SCAN_BATCH_VMAS 16
+#define THP_COLLAPSE_THRESHOLD 448 /* 87.5% of pages must be present */
+
+static int khugepaged_scan_promotion_candidate(struct mm_struct *mm,
+                                               uint64_t addr) {
+  int present = 0;
+  for (int i = 0; i < 512; i++) {
+    if (vmm_virt_to_phys(mm, addr + ((uint64_t)i << PAGE_SHIFT))) {
+      present++;
+    }
+  }
+  return present;
+}
 
 static void khugepaged_scan_mm(struct mm_struct *mm) {
   struct vm_area_struct *vma;
   int scanned = 0;
 
-  /* 
+  /*
    * Use RCU walk for scanning to minimize mmap_lock contention.
    * We only take mmap_lock if we find a candidate for collapsing.
    */
@@ -45,18 +46,22 @@ static void khugepaged_scan_mm(struct mm_struct *mm) {
   uint32_t mm_seq = atomic_read(&mm->mmap_seq);
 
   for_each_vma(mm, vma) {
-    if (scanned++ >= SCAN_BATCH_VMAS) break;
+    if (scanned++ >= SCAN_BATCH_VMAS)
+      break;
 
     /* Only anonymous VMAs that allow huge pages */
-    if (!vma->vm_obj || vma->vm_obj->type != VM_OBJECT_ANON) continue;
-    
-    /* 
+    if (!vma->vm_obj || vma->vm_obj->type != VM_OBJECT_ANON)
+      continue;
+
+    /*
      * Skip if layout changed since we started.
      * We'll try again in the next pass.
      */
-    if (atomic_read(&mm->mmap_seq) != mm_seq) break;
+    if (atomic_read(&mm->mmap_seq) != mm_seq)
+      break;
 
-    if (vma->vm_flags & (VM_NOHUGEPAGE | VM_IO | VM_PFNMAP)) continue;
+    if (vma->vm_flags & (VM_NOHUGEPAGE | VM_IO | VM_PFNMAP))
+      continue;
 
     uint32_t vma_seq = __atomic_load_n(&vma->vma_seq, __ATOMIC_ACQUIRE);
 
@@ -66,31 +71,51 @@ static void khugepaged_scan_mm(struct mm_struct *mm) {
 
     for (uint64_t addr = start; addr + 0x200000 <= end; addr += 0x200000) {
       /* Re-verify VMA state before attempting heavy collapse */
-      if (atomic_read(&mm->mmap_seq) != mm_seq || vma->vma_seq != vma_seq) break;
+      if (atomic_read(&mm->mmap_seq) != mm_seq || vma->vma_seq != vma_seq)
+        break;
 
-      /* 
-       * Attempt to merge. vmm_merge_to_huge will verify if
-       * all 512 pages are present and contiguous.
-       * We still need mmap_lock for the actual merge because it modifies page tables.
+      /*
+       * First, attempt a zero-copy merge if pages are already contiguous.
        */
       rcu_read_unlock();
+      bool processed = false;
       if (down_read_trylock(&mm->mmap_lock)) {
-          if (atomic_read(&mm->mmap_seq) == mm_seq && vma->vma_seq == vma_seq) {
-              if (vmm_merge_to_huge(mm, addr, VMM_PAGE_SIZE_2M) == 0) {
-                  // printk(KERN_DEBUG THP_CLASS "collapsed 2MB huge page at %llx\n", addr);
+        if (atomic_read(&mm->mmap_seq) == mm_seq && vma->vma_seq == vma_seq) {
+          if (vmm_merge_to_huge(mm, addr, VMM_PAGE_SIZE_2M) == 0) {
+            processed = true;
+          } else {
+            /*
+             * THP AUTO-PROMOTION:
+             * If they weren't contiguous, check if enough pages are present
+             * to justify a physical migration to a new huge page.
+             */
+            int present = khugepaged_scan_promotion_candidate(mm, addr);
+            if (present >= THP_COLLAPSE_THRESHOLD) {
+              if (vmm_promote_to_huge(mm, addr) == 0) {
+                processed = true;
+                printk(KERN_DEBUG THP_CLASS
+                       "Auto-promoted %d pages to 2MB huge page at %llx\n",
+                       present, addr);
               }
+            }
           }
-          up_read(&mm->mmap_lock);
+        }
+        up_read(&mm->mmap_lock);
       }
       rcu_read_lock();
+      if (processed) {
+        /* Once we collapse a range, it's safer to move to next VMA or wait */
+        break;
+      }
     }
   }
   rcu_read_unlock();
 }
 
 static int khugepaged_thread(void *unused) {
-  (void) unused;
-  printk(KERN_INFO THP_CLASS "khugepaged started\n");
+  (void)unused;
+  printk(KERN_INFO THP_CLASS
+         "khugepaged started with Auto-Promotion enabled\n");
 
   while (1) {
     struct mm_struct *mms[64];
@@ -109,11 +134,13 @@ static int khugepaged_thread(void *unused) {
             break;
           }
         }
-        if (duplicate) continue;
+        if (duplicate)
+          continue;
 
         mm_get(p->mm);
         mms[mm_count++] = p->mm;
-        if (mm_count >= 64) break;
+        if (mm_count >= 64)
+          break;
       }
     }
     spinlock_unlock_irqrestore(&tasklist_lock, flags);
@@ -137,7 +164,8 @@ static int khugepaged_thread(void *unused) {
 }
 
 int khugepaged_init(void) {
-  struct task_struct *k = kthread_create(khugepaged_thread, nullptr, "khugepaged");
+  struct task_struct *k =
+      kthread_create(khugepaged_thread, nullptr, "khugepaged");
   if (!k)
     return -ENOMEM;
   kthread_run(k);

@@ -15,14 +15,15 @@
 #define PTE_HUGE (1ULL << 7)     // Huge Page (2MB/1GB)
 #define PTE_PAT (1ULL << 7)      // Page Attribute Table (4KB pages)
 #define PTE_GLOBAL (1ULL << 8)   // Global Translation
-#define PTE_NUMA_HINT (1ULL << 11) // Software bit for NUMA hinting (Must be Present=0)
-#define PTE_NX (1ULL << 63)      // No Execute
+#define PTE_NUMA_HINT                                                          \
+  (1ULL << 11)              // Software bit for NUMA hinting (Must be Present=0)
+#define PTE_NX (1ULL << 63) // No Execute
 
-#define PDE_PAT (1ULL << 12)     // Page Attribute Table (2MB/1GB pages)
+#define PDE_PAT (1ULL << 12) // Page Attribute Table (2MB/1GB pages)
 
 // CR3 / PCID bits
 #define CR3_PCID_MASK 0xFFFULL
-#define CR3_NOFLUSH   (1ULL << 63)
+#define CR3_NOFLUSH (1ULL << 63)
 
 // Cache Types (PAT)
 // 0: WB, 1: WC, 2: UC-, 3: UC, 4: WB, 5: WT, 6: WC, 7: WP
@@ -86,14 +87,15 @@ int vmm_map_page_no_flush(struct mm_struct *mm, uint64_t virt, uint64_t phys,
                           uint64_t flags);
 int vmm_map_huge_page(struct mm_struct *mm, uint64_t virt, uint64_t phys,
                       uint64_t flags, uint64_t page_size);
-int vmm_map_huge_page_no_flush(struct mm_struct *mm, uint64_t virt, uint64_t phys,
-                              uint64_t flags, uint64_t page_size);
+int vmm_map_huge_page_no_flush(struct mm_struct *mm, uint64_t virt,
+                               uint64_t phys, uint64_t flags,
+                               uint64_t page_size);
 int vmm_map_pages(struct mm_struct *mm, uint64_t virt, uint64_t phys,
                   size_t count, uint64_t flags);
 int vmm_map_pages_no_flush(struct mm_struct *mm, uint64_t virt, uint64_t phys,
                            size_t count, uint64_t flags);
-int vmm_map_pages_list(struct mm_struct *mm, uint64_t virt, const uint64_t *phys_list,
-                       size_t count, uint64_t flags);
+int vmm_map_pages_list(struct mm_struct *mm, uint64_t virt,
+                       const uint64_t *phys_list, size_t count, uint64_t flags);
 
 /**
  * Unmap a virtual page and return the folio.
@@ -110,7 +112,7 @@ int vmm_unmap_page(struct mm_struct *mm, uint64_t virt);
 uint64_t vmm_unmap_page_no_flush(struct mm_struct *mm, uint64_t virt);
 int vmm_unmap_pages(struct mm_struct *mm, uint64_t virt, size_t count);
 int vmm_unmap_pages_and_get_folios(struct mm_struct *mm, uint64_t virt,
-                                  struct folio **folios, size_t count);
+                                   struct folio **folios, size_t count);
 
 /**
  * Copy user page tables for fork (COW).
@@ -118,7 +120,8 @@ int vmm_unmap_pages_and_get_folios(struct mm_struct *mm, uint64_t virt,
  * @param dst_mm Destination address space
  * @return 0 on success
  */
-int vmm_copy_page_tables(struct mm_struct *src_mm, const struct mm_struct *dst_mm);
+int vmm_copy_page_tables(struct mm_struct *src_mm,
+                         const struct mm_struct *dst_mm);
 
 /**
  * Handle a Copy-On-Write fault.
@@ -141,6 +144,13 @@ uint64_t vmm_virt_to_phys(struct mm_struct *mm, uint64_t virt);
 void vmm_free_page_tables(struct mm_struct *mm);
 
 /**
+ * Move page tables without physical copying.
+ * Used by mremap internally for high-speed relocation.
+ */
+int vmm_move_page_tables(struct mm_struct *mm, uint64_t old_virt,
+                         uint64_t new_virt, size_t len);
+
+/**
  * Modern VMM functions
  */
 int vmm_set_flags(struct mm_struct *mm, uint64_t virt, uint64_t flags);
@@ -160,8 +170,11 @@ void pgt_cache_refill(void);
  * Huge Page Helpers
  */
 struct mm_struct;
-int vmm_merge_to_huge(struct mm_struct *mm, uint64_t virt, uint64_t target_huge_size);
-int vmm_shatter_huge_page(struct mm_struct *mm, uint64_t virt, uint64_t large_page_size);
+int vmm_merge_to_huge(struct mm_struct *mm, uint64_t virt,
+                      uint64_t target_huge_size);
+int vmm_promote_to_huge(struct mm_struct *mm, uint64_t virt);
+int vmm_shatter_huge_page(struct mm_struct *mm, uint64_t virt,
+                          uint64_t large_page_size);
 void vmm_merge_range(struct mm_struct *mm, uint64_t start, uint64_t end);
 
 /**
@@ -177,7 +190,8 @@ int vmm_page_size_supported(size_t size);
  * @param pml_root_phys Physical address of the new PML root
  */
 void vmm_switch_pml_root(uint64_t pml_root_phys);
-void vmm_switch_pml_root_pcid(uint64_t pml_root_phys, uint16_t pcid, bool no_flush);
+void vmm_switch_pml_root_pcid(uint64_t pml_root_phys, uint16_t pcid,
+                              bool no_flush);
 
 /**
  * NUMA Hinting Support

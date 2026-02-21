@@ -1,7 +1,7 @@
 #pragma once
 
 #include <aerosync/types.h>
-#include <compiler.h>
+#include <aerosync/compiler.h>
 
 #define GDT_ACCESS_CODE_PL0 0x9A // Present, Ring 0, Executable, Read/Write
 #define GDT_ACCESS_DATA_PL0 0x92 // Present, Ring 0, Read/Write

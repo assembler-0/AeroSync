@@ -254,14 +254,7 @@ struct task_struct {
   struct mm_struct *active_mm;
 
   /* Per-thread VMA Cache */
-  #ifndef MM_VMA_CACHE_SIZE
-    #ifndef CONFIG_MM_VMA_CACHE_SIZE
-      #define MM_VMA_CACHE_SIZE 4
-    #else
-      #define MM_VMA_CACHE_SIZE CONFIG_MM_VMA_CACHE_SIZE
-    #endif
-  #endif
-  struct vm_area_struct *vmacache[MM_VMA_CACHE_SIZE];
+  struct vm_area_struct *vmacache[CONFIG_MM_VMA_CACHE_SIZE];
   uint64_t vmacache_seqnum;
 
   /*

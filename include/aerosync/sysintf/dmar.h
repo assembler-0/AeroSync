@@ -12,7 +12,7 @@
 #include <aerosync/types.h>
 #include <uacpi/acpi.h>
 #include <linux/list.h>
-#include <compiler.h>
+#include <aerosync/compiler.h>
 
 /* DMAR Subtable Types */
 enum dmar_type {

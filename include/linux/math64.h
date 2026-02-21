@@ -3,7 +3,7 @@
 #define _LINUX_MATH64_H
 
 #include <aerosync/types.h>
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <lib/math.h>
 
 /**

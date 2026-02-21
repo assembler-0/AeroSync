@@ -2,7 +2,7 @@
 #ifndef _LINUX_LIST_H
 #define _LINUX_LIST_H
 
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <aerosync/types.h>
 #include <linux/types.h>
 #include <linux/poison.h>

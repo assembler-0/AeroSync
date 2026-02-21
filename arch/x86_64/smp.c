@@ -31,14 +31,13 @@
 #include <aerosync/errno.h>
 #include <aerosync/sysintf/ic.h>
 #include <aerosync/wait.h>
-#include <aerosync/sysintf/panic.h>
+#include <aerosync/panic.h>
 #include <aerosync/export.h>
 #include <lib/printk.h>
 #include <limine/limine.h>
 #include <mm/slub.h>
 #include <aerosync/timer.h>
 #include <linux/container_of.h>
-#include <aerosync/errno.h>
 #include <arch/x86_64/requests.h>
 
 // SMP Request

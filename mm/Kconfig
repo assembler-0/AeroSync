@@ -236,6 +236,35 @@ config MM_RESDOMAIN_DIRECT_RECLAIM
 
 endmenu
 
+menu "ksm tuning"
+
+config MM_KSM
+    bool "Kernel Samepage Merging (KSM)"
+    default y
+    help
+      Enable Kernel Samepage Merging, allowing the kernel to merge identical
+      memory pages across different processes or VMs to save memory.
+      Workloads that run many similar processes benefit most.
+
+config MM_KSM_SLEEP_MSEC
+    int "KSM sleep before next scan (msec)"
+    depends on MM_KSM
+    default 20
+    range 1 1000
+    help
+      Milliseconds KSM should sleep between scans. Lower values increase
+      CPU usage but merge pages faster.
+
+config MM_KSM_PAGES_TO_SCAN
+    int "KSM pages to scan per batch"
+    depends on MM_KSM
+    default 100
+    range 10 10000
+    help
+      How many pages KSM daemon should scan in a single pass before sleeping.
+
+endmenu
+
 menu "slub tuning"
 
 config SLAB_MAG_SIZE
@@ -270,10 +299,28 @@ menu "vma tuning"
 
 config MM_VMA_CACHE_SIZE
     int "Per-Task VMA Cache Size"
-    default 4
-    range 1 16
+    default 8
+    range 1 32
     help
       Number of recently accessed VMAs to cache per thread for O(1) lookup.
+      Increasing this value reduces Maple Tree traversals but increases
+      task_struct size and search latency in the cache itself.
+      Recommended: 8-16 for most workloads.
+
+config MM_VMA_LOCK_STATS
+    bool "Per-VMA Lock Statistics"
+    depends on MM_VMA_LOCKING
+    default n
+    help
+      Track contention and success rates for per-VMA locks.
+      Useful for kernel debugging and performance tuning.
+
+config MM_VMA_OPTIMISTIC_MERGE
+    bool "Optimistic VMA Merging"
+    default y
+    help
+      Attempt to merge VMAs more aggressively by relaxing some alignment
+      checks where safe. Reduces total VMA count and tree depth.
 
 config MM_POPULATE_PREFAULT
     bool "Enable VMA prefaulting for mm_populate"

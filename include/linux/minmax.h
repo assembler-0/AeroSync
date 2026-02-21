@@ -2,7 +2,7 @@
 #ifndef _LINUX_MINMAX_H
 #define _LINUX_MINMAX_H
 
-#include <compiler.h>
+#include <aerosync/compiler.h>
 
 /*
  * min()/max()/clamp() macros must accomplish several things:

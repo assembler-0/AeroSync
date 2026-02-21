@@ -14,7 +14,6 @@
 #include <lib/printk.h>
 #include <aerosync/wait.h>
 #include <aerosync/classes.h>
-#include <aerosync/sysintf/panic.h>
 #include <aerosync/errno.h>
 
 static struct workqueue_struct *system_wq;

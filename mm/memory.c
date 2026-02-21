@@ -18,28 +18,29 @@
  * GNU General Public License for more details.
  */
 
-#include <mm/mm_types.h>
-#include <mm/zone.h>
-#include <mm/vma.h>
-#include <mm/vm_object.h>
-#include <mm/page.h>
-#include <mm/slub.h>
-#include <mm/mmu_gather.h>
-#include <mm/workingset.h>
-#include <mm/swap.h>
-#include <arch/x86_64/mm/pmm.h>
-#include <arch/x86_64/mm/vmm.h>
 #include <aerosync/classes.h>
 #include <aerosync/errno.h>
 #include <aerosync/mutex.h>
-#include <linux/container_of.h>
-#include <linux/list.h>
-#include <lib/printk.h>
-#include <lib/string.h>
-#include <aerosync/wait.h>
 #include <aerosync/sched/process.h>
 #include <aerosync/sched/sched.h>
+#include <aerosync/wait.h>
+#include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/mm/tlb.h>
+#include <arch/x86_64/mm/vmm.h>
+#include <lib/printk.h>
+#include <lib/string.h>
+#include <linux/container_of.h>
+#include <linux/list.h>
+#include <mm/mm_types.h>
+#include <mm/mmu_gather.h>
+#include <mm/page.h>
+#include <mm/slub.h>
+#include <mm/swap.h>
+#include <mm/userfaultfd.h>
+#include <mm/vm_object.h>
+#include <mm/vma.h>
+#include <mm/workingset.h>
+#include <mm/zone.h>
 
 /* LRU Management */
 #ifdef CONFIG_MM_LRU
@@ -63,9 +64,9 @@ DEFINE_PER_CPU(spinlock_t, lru_lock);
  * the bloom filter.
  */
 #ifdef CONFIG_MM_MGLRU_BLOOM_FILTER
-#define BLOOM_FILTER_SIZE   (64 * 1024)  /* 64KB per filter = 512K bits */
-#define BLOOM_FILTER_BITS   (BLOOM_FILTER_SIZE * 8)
-#define BLOOM_HASH_COUNT    3
+#define BLOOM_FILTER_SIZE (64 * 1024) /* 64KB per filter = 512K bits */
+#define BLOOM_FILTER_BITS (BLOOM_FILTER_SIZE * 8)
+#define BLOOM_HASH_COUNT 3
 
 struct lru_gen_bloom {
   unsigned long *bits[MAX_NR_GENS];
@@ -84,7 +85,8 @@ static inline unsigned long bloom_hash(unsigned long addr, int seed) {
   return addr % BLOOM_FILTER_BITS;
 }
 
-static void bloom_add(struct lru_gen_bloom *bloom, int gen, unsigned long addr) {
+static void bloom_add(struct lru_gen_bloom *bloom, int gen,
+                      unsigned long addr) {
   if (!bloom || !bloom->bits[gen])
     return;
 
@@ -97,7 +99,8 @@ static void bloom_add(struct lru_gen_bloom *bloom, int gen, unsigned long addr) 
   atomic_long_inc(&bloom->set_count[gen]);
 }
 
-static bool bloom_test(struct lru_gen_bloom *bloom, int gen, unsigned long addr) {
+static bool bloom_test(struct lru_gen_bloom *bloom, int gen,
+                       unsigned long addr) {
   if (!bloom || !bloom->bits[gen])
     return true; /* Assume present if no filter */
 
@@ -230,20 +233,20 @@ struct scan_control {
   int nid; /* Node being scanned */
 
   /* scan control */
-  bool may_writepage; /* Allow writing dirty pages */
-  bool may_unmap; /* Allow unmapping pages */
-  bool may_swap; /* Allow swapping anonymous pages */
-  unsigned long scan_limit; /* Max pages to scan before giving up */
+  bool may_writepage;            /* Allow writing dirty pages */
+  bool may_unmap;                /* Allow unmapping pages */
+  bool may_swap;                 /* Allow swapping anonymous pages */
+  unsigned long scan_limit;      /* Max pages to scan before giving up */
   unsigned int contention_count; /* Lock contention backoff */
 };
 
 #ifdef CONFIG_MM_MGLRU
 static inline int folio_lru_gen(struct folio *folio) {
-  return (int) ((folio->flags >> LRU_GEN_SHIFT) & LRU_GEN_MASK);
+  return (int)((folio->flags >> LRU_GEN_SHIFT) & LRU_GEN_MASK);
 }
 
 static inline int folio_is_file(struct folio *folio) {
-  return !((uintptr_t) folio->mapping & 0x1);
+  return !((uintptr_t)folio->mapping & 0x1);
 }
 
 /*
@@ -265,16 +268,19 @@ struct lru_batch {
 DEFINE_PER_CPU(struct lru_batch, lru_batch_add);
 
 static void __lru_batch_flush(struct lru_batch *batch) {
-  if (batch->nr == 0) return;
+  if (batch->nr == 0)
+    return;
 
   /* Group by node for efficient lock acquisition */
   for (unsigned int i = 0; i < batch->nr; i++) {
     struct folio *folio = batch->folios[i];
-    if (!folio) continue;
+    if (!folio)
+      continue;
 
     int nid = folio->node;
     struct pglist_data *pgdat = node_data[nid];
-    if (!pgdat) continue;
+    if (!pgdat)
+      continue;
 
     int type = !folio_is_file(folio);
 
@@ -294,9 +300,10 @@ static void __lru_batch_flush(struct lru_batch *batch) {
       old_flags = folio->flags;
       new_flags = old_flags | PG_lru;
       new_flags &= ~(LRU_GEN_MASK << LRU_GEN_SHIFT);
-      new_flags |= ((unsigned long) gen << LRU_GEN_SHIFT);
+      new_flags |= ((unsigned long)gen << LRU_GEN_SHIFT);
     } while (!__atomic_compare_exchange_n(&folio->flags, &old_flags, new_flags,
-                                          false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST));
+                                          false, __ATOMIC_SEQ_CST,
+                                          __ATOMIC_SEQ_CST));
 
     list_add(&folio->lru, &pgdat->lrugen.lists[gen][type]);
     atomic_long_inc(&pgdat->lrugen.nr_pages[gen][type]);
@@ -328,11 +335,13 @@ void lru_batch_flush_cpu(void) {
  * Folios are queued locally and flushed in bulk when the batch is full.
  */
 void folio_add_lru(struct folio *folio) {
-  if (!folio || (folio->flags & PG_lru)) return;
+  if (!folio || (folio->flags & PG_lru))
+    return;
 
   int nid = folio->node;
   struct pglist_data *pgdat = node_data[nid];
-  if (!pgdat) return;
+  if (!pgdat)
+    return;
 
   preempt_disable();
   struct lru_batch *batch = this_cpu_ptr(lru_batch_add);
@@ -351,7 +360,8 @@ void folio_add_lru(struct folio *folio) {
  * folio_add_lru - Add a folio to the inactive LRU list.
  */
 void folio_add_lru(struct folio *folio) {
-  if (!folio) return;
+  if (!folio)
+    return;
 
   struct list_head *inactive = this_cpu_ptr(inactive_list);
   spinlock_t *lock = this_cpu_ptr(lru_lock);
@@ -376,13 +386,14 @@ void folio_add_lru(struct folio *folio) {
  */
 int try_to_unmap_folio(struct folio *folio, struct mmu_gather *tlb) {
   void *mapping = folio->mapping;
-  if (!mapping) return 0;
+  if (!mapping)
+    return 0;
 
   rcu_read_lock();
 
   /* Check if it's anonymous (bit 0 set) */
-  if ((uintptr_t) mapping & 0x1) {
-    struct anon_vma *av = (struct anon_vma *) ((uintptr_t) mapping & ~0x1);
+  if ((uintptr_t)mapping & 0x1) {
+    struct anon_vma *av = (struct anon_vma *)((uintptr_t)mapping & ~0x1);
 
     // Validate anon_vma before use
     if (!av || atomic_read(&av->refcount) == 0) {
@@ -405,10 +416,12 @@ int try_to_unmap_folio(struct folio *folio, struct mmu_gather *tlb) {
 
     list_for_each_entry(avc, &av->head, same_anon_vma) {
       struct vm_area_struct *vma = avc->vma;
-      if (!vma || !vma->vm_mm) continue;
+      if (!vma || !vma->vm_mm)
+        continue;
 
       uint64_t address = vma->vm_start + (folio->index << PAGE_SHIFT);
-      if (address < vma->vm_start || address >= vma->vm_end) continue;
+      if (address < vma->vm_start || address >= vma->vm_end)
+        continue;
 
       if (vma->vm_mm->pml_root) {
         if (tlb) {
@@ -430,17 +443,17 @@ int try_to_unmap_folio(struct folio *folio, struct mmu_gather *tlb) {
   }
 
   /* Shared Memory / File-backed (bit 0 NOT set) */
-  struct vm_object *obj = (struct vm_object *) mapping;
+  struct vm_object *obj = (struct vm_object *)mapping;
   down_read(&obj->lock);
   struct vm_area_struct *vma;
+  struct interval_tree_node *node;
 
-  list_for_each_entry(vma, &obj->i_mmap, vm_shared) {
-    if (folio->index < vma->vm_pgoff) continue;
-
-    uint64_t pgoff_in_vma = folio->index - vma->vm_pgoff;
-    if (pgoff_in_vma >= vma_pages(vma)) continue;
-
-    uint64_t address = vma->vm_start + (pgoff_in_vma << PAGE_SHIFT);
+  for (node =
+           interval_tree_iter_first(&obj->i_mmap, folio->index, folio->index);
+       node; node = interval_tree_iter_next(node, folio->index, folio->index)) {
+    vma = container_of(node, struct vm_area_struct, obj_node);
+    uint64_t address =
+        vma->vm_start + ((folio->index - vma->vm_pgoff) << PAGE_SHIFT);
 
     if (vma->vm_mm->pml_root) {
       if (tlb) {
@@ -462,7 +475,8 @@ int try_to_unmap_folio(struct folio *folio, struct mmu_gather *tlb) {
 }
 
 /**
- * folio_referenced - Check if any PTE pointing to this folio has the Accessed bit set.
+ * folio_referenced - Check if any PTE pointing to this folio has the Accessed
+ * bit set.
  *
  * OPTIMIZATION: Uses vmm_clear_accessed_no_flush() to avoid O(n) TLB shootdowns
  * when the folio is mapped in multiple VMAs. We accumulate the address range
@@ -471,7 +485,8 @@ int try_to_unmap_folio(struct folio *folio, struct mmu_gather *tlb) {
 int folio_referenced(struct folio *folio) {
   int referenced = 0;
   void *mapping = folio->mapping;
-  if (!mapping) return 0;
+  if (!mapping)
+    return 0;
 
   /* Track range for batched TLB shootdown */
   uint64_t flush_start = ULONG_MAX;
@@ -480,8 +495,8 @@ int folio_referenced(struct folio *folio) {
 
   rcu_read_lock();
 
-  if ((uintptr_t) mapping & 0x1) {
-    struct anon_vma *av = (struct anon_vma *) ((uintptr_t) mapping & ~0x1);
+  if ((uintptr_t)mapping & 0x1) {
+    struct anon_vma *av = (struct anon_vma *)((uintptr_t)mapping & ~0x1);
     irq_flags_t flags = spinlock_lock_irqsave(&av->lock);
     struct anon_vma_chain *avc;
 
@@ -489,15 +504,18 @@ int folio_referenced(struct folio *folio) {
       struct vm_area_struct *vma = avc->vma;
       uint64_t address = vma->vm_start + (folio->index << PAGE_SHIFT);
 
-      if (address < vma->vm_start || address >= vma->vm_end) continue;
+      if (address < vma->vm_start || address >= vma->vm_end)
+        continue;
 
       if (vma->vm_mm->pml_root) {
         if (vmm_is_accessed(vma->vm_mm, address)) {
           referenced++;
           vmm_clear_accessed_no_flush(vma->vm_mm, address);
           /* Track range for batched flush */
-          if (address < flush_start) flush_start = address;
-          if (address + PAGE_SIZE > flush_end) flush_end = address + PAGE_SIZE;
+          if (address < flush_start)
+            flush_start = address;
+          if (address + PAGE_SIZE > flush_end)
+            flush_end = address + PAGE_SIZE;
           flush_mm = vma->vm_mm;
         }
       }
@@ -505,22 +523,31 @@ int folio_referenced(struct folio *folio) {
     spinlock_unlock_irqrestore(&av->lock, flags);
   } else {
     /* VM Object */
-    struct vm_object *obj = (struct vm_object *) mapping;
+    struct vm_object *obj = (struct vm_object *)mapping;
     down_read(&obj->lock);
     struct vm_area_struct *vma;
+    struct interval_tree_node *node;
 
-    list_for_each_entry(vma, &obj->i_mmap, vm_shared) {
-      uint64_t address = vma->vm_start + ((folio->index - vma->vm_pgoff) << PAGE_SHIFT);
+    for (node =
+             interval_tree_iter_first(&obj->i_mmap, folio->index, folio->index);
+         node;
+         node = interval_tree_iter_next(node, folio->index, folio->index)) {
+      vma = container_of(node, struct vm_area_struct, obj_node);
+      uint64_t address =
+          vma->vm_start + ((folio->index - vma->vm_pgoff) << PAGE_SHIFT);
 
-      if (address < vma->vm_start || address >= vma->vm_end) continue;
+      if (address < vma->vm_start || address >= vma->vm_end)
+        continue;
 
       if (vma->vm_mm->pml_root) {
         if (vmm_is_accessed(vma->vm_mm, address)) {
           referenced++;
           vmm_clear_accessed_no_flush(vma->vm_mm, address);
           /* Track range for batched flush */
-          if (address < flush_start) flush_start = address;
-          if (address + PAGE_SIZE > flush_end) flush_end = address + PAGE_SIZE;
+          if (address < flush_start)
+            flush_start = address;
+          if (address + PAGE_SIZE > flush_end)
+            flush_end = address + PAGE_SIZE;
           flush_mm = vma->vm_mm;
         }
       }
@@ -555,10 +582,11 @@ int folio_reclaim(struct folio *folio, struct mmu_gather *tlb) {
     return -EAGAIN;
   }
 
-  bool is_anon = (uintptr_t) folio->mapping & 0x1;
+  bool is_anon = (uintptr_t)folio->mapping & 0x1;
 
   if (is_anon) {
-    struct vm_object *obj = (struct vm_object *) ((uintptr_t) folio->mapping & ~0x1);
+    struct vm_object *obj =
+        (struct vm_object *)((uintptr_t)folio->mapping & ~0x1);
 
 #ifdef CONFIG_MM_ZMM
     /* Strategy 1: Try ZMM compression */
@@ -567,10 +595,10 @@ int folio_reclaim(struct folio *folio, struct mmu_gather *tlb) {
       down_write(&obj->lock);
       /*
        * XArray 'exceptional' entry: we store the handle with bit 0 set to 1.
-       * Since our handles are zmm_entry pointers (8-byte aligned), bit 1 is free.
-       * We use bit 0=1 to mark it as NOT a folio pointer.
+       * Since our handles are zmm_entry pointers (8-byte aligned), bit 1 is
+       * free. We use bit 0=1 to mark it as NOT a folio pointer.
        */
-      void *exceptional = (void *) (handle | 0x1);
+      void *exceptional = (void *)(handle | 0x1);
       xa_store(&obj->page_tree, folio->index, exceptional, GFP_ATOMIC);
 
       /* Unmap from all users before freeing physical page */
@@ -600,7 +628,7 @@ int folio_reclaim(struct folio *folio, struct mmu_gather *tlb) {
            * We use a special encoding: swap entries have bits [1:0] = 0b10
            * to distinguish from folios (0b00) and ZMM (0b01).
            */
-          void *swap_exceptional = (void *) ((entry.val << 2) | 0x2);
+          void *swap_exceptional = (void *)((entry.val << 2) | 0x2);
           xa_store(&obj->page_tree, folio->index, swap_exceptional, GFP_ATOMIC);
 
           /* Track swap usage */
@@ -611,7 +639,7 @@ int folio_reclaim(struct folio *folio, struct mmu_gather *tlb) {
           /* Store shadow entry for refault detection */
           void *shadow = workingset_eviction(folio, obj);
           /* Shadow is stored implicitly via the swap entry */
-          (void) shadow;
+          (void)shadow;
 #endif
 
           /* Unmap from all users */
@@ -653,7 +681,8 @@ int folio_reclaim(struct folio *folio, struct mmu_gather *tlb) {
 
 #ifdef CONFIG_MM_LRU
 /**
- * shrink_active_list - Move pages from active to inactive if they aren't referenced.
+ * shrink_active_list - Move pages from active to inactive if they aren't
+ * referenced.
  */
 void shrink_active_list(size_t nr_to_scan, struct scan_control *sc) {
   struct list_head *active = this_cpu_ptr(active_list);
@@ -663,18 +692,15 @@ void shrink_active_list(size_t nr_to_scan, struct scan_control *sc) {
 
   irq_flags_t flags = spinlock_lock_irqsave(lock);
   for (size_t i = 0; i < nr_to_scan && !list_empty(active); i++) {
-    struct
-    folio *folio = list_last_entry(active, struct folio, lru);
+    struct folio *folio = list_last_entry(active, struct folio, lru);
     list_move(&folio->lru, &folio_list);
     folio->flags &= ~PG_active;
   }
   spinlock_unlock_irqrestore(lock, flags);
 
   struct list_head *pos, *q;
-  list_for_each_safe(pos, q, &folio_list)
-  {
-    struct
-    folio *folio = list_entry(pos, struct folio, lru);
+  list_for_each_safe(pos, q, &folio_list) {
+    struct folio *folio = list_entry(pos, struct folio, lru);
 
     if (folio_referenced(folio)) {
       /* Still active, move back to head of active list */
@@ -705,8 +731,7 @@ size_t shrink_inactive_list(size_t nr_to_scan) {
 
   irq_flags_t flags = spinlock_lock_irqsave(lock);
   for (size_t i = 0; i < nr_to_scan && !list_empty(inactive); i++) {
-    struct
-    folio *folio = list_last_entry(inactive, struct folio, lru);
+    struct folio *folio = list_last_entry(inactive, struct folio, lru);
     list_move(&folio->lru, &folio_list);
     folio->flags &= ~PG_lru;
   }
@@ -720,10 +745,8 @@ size_t shrink_inactive_list(size_t nr_to_scan) {
   tlb_gather_mmu(&tlb, &init_mm, 0, 0); // Dynamic range
 
   struct list_head *pos, *q;
-  list_for_each_safe(pos, q, &folio_list)
-  {
-    struct
-    folio *folio = list_entry(pos, struct folio, lru);
+  list_for_each_safe(pos, q, &folio_list) {
+    struct folio *folio = list_entry(pos, struct folio, lru);
 
     int ret = folio_reclaim(folio, &tlb);
     if (ret == 0) {
@@ -755,7 +778,7 @@ size_t shrink_inactive_list(size_t nr_to_scan) {
  * lru_gen_folio_gen - Get the generation of a folio.
  */
 static inline int lru_gen_folio_gen(struct folio *folio) {
-  return (int) ((folio->flags >> LRU_GEN_SHIFT) & LRU_GEN_MASK);
+  return (int)((folio->flags >> LRU_GEN_SHIFT) & LRU_GEN_MASK);
 }
 
 /**
@@ -766,7 +789,8 @@ static inline int lru_gen_folio_gen(struct folio *folio) {
  *   - Bloom filter integration for efficient PT scanning
  *   - Workingset-aware promotion
  */
-static size_t scan_gen(struct pglist_data *pgdat, int gen, int type, struct scan_control *sc) {
+static size_t scan_gen(struct pglist_data *pgdat, int gen, int type,
+                       struct scan_control *sc) {
   size_t reclaimed = 0;
   size_t scanned = 0;
   size_t promoted = 0;
@@ -815,8 +839,11 @@ static size_t scan_gen(struct pglist_data *pgdat, int gen, int type, struct scan
       unsigned long old_f, new_f;
       do {
         old_f = folio->flags;
-        new_f = (old_f & ~(LRU_GEN_MASK << LRU_GEN_SHIFT)) | ((unsigned long) new_gen << LRU_GEN_SHIFT);
-      } while (!__atomic_compare_exchange_n(&folio->flags, &old_f, new_f, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED));
+        new_f = (old_f & ~(LRU_GEN_MASK << LRU_GEN_SHIFT)) |
+                ((unsigned long)new_gen << LRU_GEN_SHIFT);
+      } while (!__atomic_compare_exchange_n(&folio->flags, &old_f, new_f, false,
+                                            __ATOMIC_RELAXED,
+                                            __ATOMIC_RELAXED));
 
       list_add(&folio->lru, &pgdat->lrugen.lists[new_gen][type]);
       atomic_long_dec(&pgdat->lrugen.nr_pages[gen][type]);
@@ -838,7 +865,7 @@ static size_t scan_gen(struct pglist_data *pgdat, int gen, int type, struct scan
     /*
      * 2. Check scan control flags before attempting reclaim.
      */
-    bool is_anon = (uintptr_t) folio->mapping & 0x1;
+    bool is_anon = (uintptr_t)folio->mapping & 0x1;
 
     /* Skip anonymous pages if may_swap is false */
     if (is_anon && !sc->may_swap) {
@@ -858,15 +885,17 @@ static size_t scan_gen(struct pglist_data *pgdat, int gen, int type, struct scan
 
     /*
      * 3. RECLAIM: Attempt to free the page.
-     * If it fails (e.g., it's dirty or locked), it stays in its current generation
-     * but moves to the head (most recently used) to avoid immediate re-scanning.
+     * If it fails (e.g., it's dirty or locked), it stays in its current
+     * generation but moves to the head (most recently used) to avoid immediate
+     * re-scanning.
      */
     int ret = folio_reclaim(folio, &tlb);
     if (ret == 0) {
       reclaimed++;
       atomic_long_dec(&pgdat->lrugen.nr_pages[gen][type]);
 
-      /* Throttling: If we reclaimed enough, balance dirty pages if pressure is high */
+      /* Throttling: If we reclaimed enough, balance dirty pages if pressure is
+       * high */
       if (reclaimed % 32 == 0) {
         balance_dirty_pages_ratelimited(folio->mapping);
       }
@@ -925,7 +954,8 @@ static void shrink_node(struct pglist_data *pgdat, struct scan_control *sc) {
      * TIER 1: Clean File Pages (Cheapest to reclaim)
      */
     sc->nr_reclaimed += scan_gen(pgdat, file_gen, 0, sc); /* file */
-    if (sc->nr_reclaimed >= sc->nr_to_reclaim) return;
+    if (sc->nr_reclaimed >= sc->nr_to_reclaim)
+      return;
 
     /*
      * TIER 2: Anonymous Pages (Require Swap/Compression)
@@ -934,7 +964,8 @@ static void shrink_node(struct pglist_data *pgdat, struct scan_control *sc) {
 #if defined(CONFIG_MM_SWAP) || defined(CONFIG_MM_ZMM)
     if (sc->may_swap) {
       sc->nr_reclaimed += scan_gen(pgdat, anon_gen, 1, sc); /* anon */
-      if (sc->nr_reclaimed >= sc->nr_to_reclaim) return;
+      if (sc->nr_reclaimed >= sc->nr_to_reclaim)
+        return;
     }
 #endif
 
@@ -947,8 +978,8 @@ static void shrink_node(struct pglist_data *pgdat, struct scan_control *sc) {
 
   /*
    * ADVANCE GENERATIONS:
-   * If we reached here, it means the current generations are exhausted or too hot.
-   * We advance the max sequence to start a new aging cycle.
+   * If we reached here, it means the current generations are exhausted or too
+   * hot. We advance the max sequence to start a new aging cycle.
    */
   irq_flags_t flags = spinlock_lock_irqsave(&pgdat->lru_lock);
   pgdat->lrugen.max_seq++;
@@ -995,7 +1026,8 @@ static void shrink_zone(struct zone *zone, struct scan_control *sc) {
 static void shrink_node(struct pglist_data *pgdat, struct scan_control *sc) {
   for (int i = MAX_NR_ZONES - 1; i >= 0; i--) {
     struct zone *z = &pgdat->node_zones[i];
-    if (z->present_pages == 0) continue;
+    if (z->present_pages == 0)
+      continue;
 
     if (z->nr_free_pages < z->watermark[WMARK_HIGH]) {
       shrink_zone(z, sc);
@@ -1005,7 +1037,8 @@ static void shrink_node(struct pglist_data *pgdat, struct scan_control *sc) {
 #endif
 
 void wakeup_kswapd(struct zone *zone) {
-  if (!zone || !zone->zone_pgdat) return;
+  if (!zone || !zone->zone_pgdat)
+    return;
   wake_up(&zone->zone_pgdat->kswapd_wait);
 }
 
@@ -1023,7 +1056,7 @@ static int kswapd_should_run(struct pglist_data *pgdat) {
 }
 
 static int kswapd_thread(void *data) {
-  struct pglist_data *pgdat = (struct pglist_data *) data;
+  struct pglist_data *pgdat = (struct pglist_data *)data;
   printk(KERN_INFO SWAP_CLASS "kswapd started for node %d\n", pgdat->node_id);
 
 #ifdef CONFIG_MM_MGLRU
@@ -1039,18 +1072,18 @@ static int kswapd_thread(void *data) {
     wait_event(pgdat->kswapd_wait, kswapd_should_run(pgdat));
 
     struct scan_control sc = {
-      .gfp_mask = GFP_KERNEL,
-      .nr_to_reclaim = 128,
-      .priority = 12, /* Start with lowest priority */
-      .nid = pgdat->node_id,
-      .nr_reclaimed = 0,
-      .nr_scanned = 0,
-      /* Enhanced controls */
-      .may_writepage = true,
-      .may_unmap = true,
-      .may_swap = true,
-      .scan_limit = 0, /* No limit for kswapd */
-      .contention_count = 0,
+        .gfp_mask = GFP_KERNEL,
+        .nr_to_reclaim = 128,
+        .priority = 12, /* Start with lowest priority */
+        .nid = pgdat->node_id,
+        .nr_reclaimed = 0,
+        .nr_scanned = 0,
+        /* Enhanced controls */
+        .may_writepage = true,
+        .may_unmap = true,
+        .may_swap = true,
+        .scan_limit = 0, /* No limit for kswapd */
+        .contention_count = 0,
     };
 
     while (sc.priority >= 0) {
@@ -1082,20 +1115,21 @@ static int kswapd_thread(void *data) {
  * Called synchronously when allocations fail and we need to free
  * memory immediately. More aggressive than background kswapd.
  */
-size_t try_to_free_pages(struct pglist_data *pgdat, size_t nr_to_reclaim, gfp_t gfp_mask) {
+size_t try_to_free_pages(struct pglist_data *pgdat, size_t nr_to_reclaim,
+                         gfp_t gfp_mask) {
   struct scan_control sc = {
-    .nr_to_reclaim = nr_to_reclaim,
-    .gfp_mask = gfp_mask,
-    .priority = 12,
-    .nid = pgdat->node_id,
-    .nr_reclaimed = 0,
-    .nr_scanned = 0,
-    /* Enhanced controls for direct reclaim */
-    .may_writepage = !(gfp_mask & __GFP_IO) ? false : true,
-    .may_unmap = true,
-    .may_swap = !(gfp_mask & __GFP_IO) ? false : true,
-    .scan_limit = nr_to_reclaim * 4, /* Don't scan forever */
-    .contention_count = 0,
+      .nr_to_reclaim = nr_to_reclaim,
+      .gfp_mask = gfp_mask,
+      .priority = 12,
+      .nid = pgdat->node_id,
+      .nr_reclaimed = 0,
+      .nr_scanned = 0,
+      /* Enhanced controls for direct reclaim */
+      .may_writepage = !(gfp_mask & __GFP_IO) ? false : true,
+      .may_unmap = true,
+      .may_swap = !(gfp_mask & __GFP_IO) ? false : true,
+      .scan_limit = nr_to_reclaim * 4, /* Don't scan forever */
+      .contention_count = 0,
   };
 
   /*
@@ -1104,7 +1138,8 @@ size_t try_to_free_pages(struct pglist_data *pgdat, size_t nr_to_reclaim, gfp_t 
    */
   while (sc.priority >= 0) {
     shrink_node(pgdat, &sc);
-    if (sc.nr_reclaimed >= nr_to_reclaim) break;
+    if (sc.nr_reclaimed >= nr_to_reclaim)
+      break;
 
     /* Check if we've scanned too much without success */
     if (sc.nr_scanned > nr_to_reclaim * 8 && sc.nr_reclaimed == 0) {
@@ -1156,7 +1191,8 @@ int lru_init(void) {
  */
 int anon_vma_chain_link(struct vm_area_struct *vma, struct anon_vma *av) {
   struct anon_vma_chain *avc = kmalloc(sizeof(struct anon_vma_chain));
-  if (!avc) return -ENOMEM;
+  if (!avc)
+    return -ENOMEM;
 
   avc->vma = vma;
   avc->anon_vma = av;
@@ -1174,10 +1210,12 @@ int anon_vma_chain_link(struct vm_area_struct *vma, struct anon_vma *av) {
  * anon_vma_prepare - Ensure a VMA has an anon_vma for reverse mapping.
  */
 int anon_vma_prepare(struct vm_area_struct *vma) {
-  if (vma->anon_vma) return 0;
+  if (vma->anon_vma)
+    return 0;
 
   struct anon_vma *av = kmalloc(sizeof(struct anon_vma));
-  if (!av) return -ENOMEM;
+  if (!av)
+    return -ENOMEM;
 
   spinlock_init(&av->lock);
   INIT_LIST_HEAD(&av->head);
@@ -1189,7 +1227,8 @@ int anon_vma_prepare(struct vm_area_struct *vma) {
 }
 
 void anon_vma_free(struct anon_vma *av) {
-  if (!av) return;
+  if (!av)
+    return;
   if (atomic_dec_and_test(&av->refcount)) {
     kfree(av);
   }
@@ -1198,14 +1237,15 @@ void anon_vma_free(struct anon_vma *av) {
 /**
  * folio_add_anon_rmap - Links a physical folio to an anonymous VMA.
  */
-void folio_add_anon_rmap(struct folio *folio, struct vm_area_struct *vma, uint64_t address) {
+void folio_add_anon_rmap(struct folio *folio, struct vm_area_struct *vma,
+                         uint64_t address) {
   /*
    * Anonymous mapping: bit 0 is set.
    * If the folio is already mapped, we skip adding it to the LRU again,
    * but we ensure the mapping is correct (e.g. for COW).
    */
   if (!folio->mapping) {
-    folio->mapping = (void *) ((uintptr_t) vma->anon_vma | 0x1);
+    folio->mapping = (void *)((uintptr_t)vma->anon_vma | 0x1);
     folio->index = (address - vma->vm_start) >> PAGE_SHIFT;
     folio_add_lru(folio);
   }
@@ -1214,10 +1254,11 @@ void folio_add_anon_rmap(struct folio *folio, struct vm_area_struct *vma, uint64
 /**
  * folio_add_file_rmap - Links a physical folio to its owning VM Object.
  */
-void folio_add_file_rmap(struct folio *folio, struct vm_object *obj, uint64_t pgoff) {
+void folio_add_file_rmap(struct folio *folio, struct vm_object *obj,
+                         uint64_t pgoff) {
   if (!folio->mapping) {
     /* VM Object mapping: bit 0 is NOT set */
-    folio->mapping = (void *) obj;
+    folio->mapping = (void *)obj;
     folio->index = pgoff;
     folio_add_lru(folio);
   }
@@ -1226,23 +1267,27 @@ void folio_add_file_rmap(struct folio *folio, struct vm_object *obj, uint64_t pg
 /* --- Shared Memory Support --- */
 
 static int shmem_fault(struct vm_area_struct *vma, struct vm_fault *vmf) {
-  if (!vma->vm_obj) return VM_FAULT_SIGBUS;
+  if (!vma->vm_obj)
+    return VM_FAULT_SIGBUS;
   vmf->prot = vma->vm_page_prot;
   return vma->vm_obj->ops->fault(vma->vm_obj, vma, vmf);
 }
 
 const struct vm_operations_struct shmem_vm_ops = {
-  .fault = shmem_fault,
+    .fault = shmem_fault,
 };
 
 /**
  * migrate_folio_to_node - Physically move a folio to a different NUMA node.
  */
 static int migrate_folio_to_node(struct folio *folio, int nid) {
-  if (!folio || folio->node == nid) return 0;
+  if (!folio || folio->node == nid)
+    return 0;
 
-  struct folio *new_folio = alloc_pages_node(nid, GFP_KERNEL, folio_order(folio));
-  if (!new_folio) return -ENOMEM;
+  struct folio *new_folio =
+      alloc_pages_node(nid, GFP_KERNEL, folio_order(folio));
+  if (!new_folio)
+    return -ENOMEM;
 
   /* 1. Unmap all users to freeze the page */
   if (try_to_unmap_folio(folio, nullptr) != 0) {
@@ -1256,8 +1301,8 @@ static int migrate_folio_to_node(struct folio *folio, int nid) {
   /* 3. Update mapping */
   void *mapping = folio->mapping;
   if (mapping) {
-    if (!((uintptr_t) mapping & 0x1)) {
-      struct vm_object *obj = (struct vm_object *) mapping;
+    if (!((uintptr_t)mapping & 0x1)) {
+      struct vm_object *obj = (struct vm_object *)mapping;
       down_write(&obj->lock);
       xa_store(&obj->page_tree, folio->index, new_folio, GFP_ATOMIC);
       up_write(&obj->lock);
@@ -1276,7 +1321,8 @@ static int migrate_folio_to_node(struct folio *folio, int nid) {
  * do_numa_page - Handle a NUMA hint fault.
  * Triggers when a page is accessed that belongs to a remote node.
  */
-static int do_numa_page(struct vm_area_struct *vma, uint64_t address, struct folio *folio) {
+static int do_numa_page(struct vm_area_struct *vma, uint64_t address,
+                        struct folio *folio) {
   int target_node = this_node();
   int source_node = folio->node;
 
@@ -1302,18 +1348,21 @@ static int do_numa_page(struct vm_area_struct *vma, uint64_t address, struct fol
 }
 
 /**
- * handle_mm_fault - Generic fault handler that dispatches to VMA-specific operations.
+ * handle_mm_fault - Generic fault handler that dispatches to VMA-specific
+ * operations.
  *
  * NOTE: The caller MUST hold either:
  *   1. mm->mmap_lock (Read/Write)
  *   2. vma->vm_lock (Shared/Exclusive)
  *   3. RCU read lock (if flags & FAULT_FLAG_SPECULATIVE)
  */
-int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int flags) {
+int handle_mm_fault(struct vm_area_struct *vma, uint64_t address,
+                    unsigned int flags) {
   struct mm_struct *mm = vma->vm_mm;
   uint32_t vma_seq = vma->vma_seq;
 
-  /* Check for NUMA hint faults first if the PTE is present but marked for hinting */
+  /* Check for NUMA hint faults first if the PTE is present but marked for
+   * hinting */
   if (vmm_is_numa_hint(mm, address)) {
     struct folio *folio = vmm_get_folio(mm, address);
     if (folio) {
@@ -1323,11 +1372,27 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
     }
   }
 
+  /*
+   * USERFAULTFD HOOKS
+   * If the VMA is registered for userfaultfd and this is a missing page,
+   * or a write-protect fault on a registered WP VMA, trap to userspace.
+   */
+  bool is_present = (vmm_virt_to_phys(mm, address) != 0);
+  if (!is_present && (vma->vm_flags & VM_UFFD_MISSING)) {
+    return handle_userfault(vma, address, flags, UFFD_EVENT_PAGEFAULT);
+  }
+
+  if (is_present && (flags & FAULT_FLAG_WRITE) &&
+      (vma->vm_flags & VM_UFFD_WP)) {
+    return handle_userfault(vma, address, flags, UFFD_EVENT_PAGEFAULT);
+  }
+
   struct vm_fault vmf;
   vmf.address = address & PAGE_MASK;
   vmf.flags = flags;
   vmf.pgoff = (address - vma->vm_start) >> PAGE_SHIFT;
-  if (vma->vm_pgoff) vmf.pgoff += vma->vm_pgoff;
+  if (vma->vm_pgoff)
+    vmf.pgoff += vma->vm_pgoff;
   vmf.folio = nullptr;
 
   int ret = VM_FAULT_SIGSEGV;
@@ -1348,7 +1413,8 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
    * Priority 3: Lazy Anonymous Object Creation
    */
   else if (!vma->vm_obj && !(vma->vm_flags & (VM_IO | VM_PFNMAP))) {
-    if (flags & FAULT_FLAG_SPECULATIVE) return VM_FAULT_RETRY;
+    if (flags & FAULT_FLAG_SPECULATIVE)
+      return VM_FAULT_RETRY;
 
     /*
      * We cannot upgrade locks safely here if we only hold shared.
@@ -1359,18 +1425,21 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
     if (!vma->vm_obj) {
       return VM_FAULT_OOM;
     }
+    vma_obj_node_setup(vma);
     down_write(&vma->vm_obj->lock);
-    list_add(&vma->vm_shared, &vma->vm_obj->i_mmap);
+    interval_tree_insert(&vma->obj_node, &vma->vm_obj->i_mmap);
     up_write(&vma->vm_obj->lock);
 
     ret = vma->vm_obj->ops->fault(vma->vm_obj, vma, &vmf);
   }
 
-  if (ret == VM_FAULT_COMPLETED) return 0;
-  if (ret != 0) return ret;
+  if (ret == VM_FAULT_COMPLETED)
+    return 0;
+  if (ret != 0)
+    return ret;
 
   if (vmf.folio) {
-    /* 
+    /*
      * SPF COMMIT: Before we map the page, we MUST verify the VMA didn't change.
      */
     if (flags & FAULT_FLAG_SPECULATIVE) {
@@ -1378,7 +1447,7 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
         folio_put(vmf.folio);
         return VM_FAULT_RETRY;
       }
-      
+
       /* Verify mmap_seq to detect any address space changes */
       if (unlikely(atomic_read(&mm->mmap_seq) != (int)(flags >> 16))) {
         folio_put(vmf.folio);
@@ -1390,8 +1459,8 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
     uint64_t phys = folio_to_phys(folio);
 
     if (PageHead(&folio->page) && folio->page.order == 9) {
-      vmm_map_huge_page(vma->vm_mm, vmf.address & 0xFFFFFFFFFFE00000ULL,
-                        phys, vmf.prot, VMM_PAGE_SIZE_2M);
+      vmm_map_huge_page(vma->vm_mm, vmf.address & 0xFFFFFFFFFFE00000ULL, phys,
+                        vmf.prot, VMM_PAGE_SIZE_2M);
     } else {
       vmm_map_page(vma->vm_mm, vmf.address, phys, vmf.prot);
     }
@@ -1404,11 +1473,13 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address, unsigned int f
 
       if (vma->vm_ops && vma->vm_ops->page_mkwrite) {
         mk_ret = vma->vm_ops->page_mkwrite(vma, &vmf);
-      } else if (vma->vm_obj && vma->vm_obj->ops && vma->vm_obj->ops->page_mkwrite) {
+      } else if (vma->vm_obj && vma->vm_obj->ops &&
+                 vma->vm_obj->ops->page_mkwrite) {
         mk_ret = vma->vm_obj->ops->page_mkwrite(vma->vm_obj, vma, &vmf);
       }
 
-      if (mk_ret != 0) return mk_ret;
+      if (mk_ret != 0)
+        return mk_ret;
 
       folio->page.flags |= PG_dirty;
       account_page_dirtied();

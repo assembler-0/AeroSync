@@ -19,13 +19,14 @@
  */
 
 #include <aerosync/classes.h>
+#include <aerosync/compiler.h>
 #include <aerosync/errno.h>
 #include <aerosync/fkx/fkx.h>
+#include <arch/x86_64/mm/layout.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/mm/vmm.h>
 #include <arch/x86_64/percpu.h>
-#include <compiler.h>
-#include <arch/x86_64/mm/layout.h>
+#include <arch/x86_64/requests.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <limine/limine.h>
@@ -33,7 +34,6 @@
 #include <mm/gfp.h>
 #include <mm/page.h>
 #include <mm/zone.h>
-#include <arch/x86_64/requests.h>
 
 // Global HHDM offset
 uint64_t g_hhdm_offset = 0;
@@ -109,7 +109,8 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
 
   g_hhdm_offset = hhdm_offset;
 
-  volatile struct limine_executable_address_request *exec_addr = get_executable_address_request();
+  volatile struct limine_executable_address_request *exec_addr =
+      get_executable_address_request();
 
   unmet_cond_crit_else(!exec_addr->response) {
     g_kernel_virt_base = exec_addr->response->virtual_base;
@@ -130,7 +131,7 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
     struct limine_memmap_entry *entry = memmap->entries[i];
     uint64_t end = entry->base + entry->length;
 
-    /* 
+    /*
      * We track the highest address across all reported memory regions
      * to ensure the HHDM covers everything.
      */
@@ -161,8 +162,8 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
 
   /* Set dynamic HHDM size and Vmalloc base */
   g_hhdm_size = PAGE_ALIGN_UP(highest_addr);
-  
-  /* 
+
+  /*
    * Vmalloc starts after HHDM with a 128GB safety gap.
    * This ensures that even if some driver uses slightly out of bounds HHDM,
    * it won't hit vmalloc space immediately.
@@ -183,9 +184,11 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
 
   /*
    * Optimization: Place mem_map at the end of the region to avoid fragmenting
-   * naturally aligned blocks (like 1GB boundaries) at the beginning of the region.
+   * naturally aligned blocks (like 1GB boundaries) at the beginning of the
+   * region.
    */
-  uint64_t mm_phys = PAGE_ALIGN_DOWN(mm_region->base + mm_region->length - memmap_size);
+  uint64_t mm_phys =
+      PAGE_ALIGN_DOWN(mm_region->base + mm_region->length - memmap_size);
   mem_map = (struct page *)pmm_phys_to_virt(mm_phys);
 
   /*
@@ -309,23 +312,28 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
         if (next_size > max_count)
           break;
 
-        /* Check if the entire next_size block is on the same node and in the same zone */
+        /* Check if the entire next_size block is on the same node and in the
+         * same zone */
         int start_nid = pfn_to_nid(cur_pfn);
         int end_nid = pfn_to_nid(cur_pfn + next_size - 1);
         if (start_nid != end_nid)
           break;
 
-        /* 
+        /*
          * ZONE boundaries are at 16MB (4096) and 4GB (1048576).
          * Both are 1GB aligned or larger, so a naturally aligned 1GB block
-         * will NEVER cross these boundaries unless it starts before and ends after.
-         * But a 1GB aligned block starts at N*1GB.
-         * 16MB is NOT 1GB aligned. 4GB IS 1GB aligned.
-         * So a block starting at 3GB and ending at 4GB is fine.
-         * A block starting at 0 and ending at 1GB crosses 16MB.
+         * will NEVER cross these boundaries unless it starts before and ends
+         * after. But a 1GB aligned block starts at N*1GB. 16MB is NOT 1GB
+         * aligned. 4GB IS 1GB aligned. So a block starting at 3GB and ending at
+         * 4GB is fine. A block starting at 0 and ending at 1GB crosses 16MB.
          */
-        int start_z = (cur_pfn < 4096) ? ZONE_DMA : (cur_pfn < 1048576 ? ZONE_DMA32 : ZONE_NORMAL);
-        int end_z = ((cur_pfn + next_size - 1) < 4096) ? ZONE_DMA : ((cur_pfn + next_size - 1) < 1048576 ? ZONE_DMA32 : ZONE_NORMAL);
+        int start_z = (cur_pfn < 4096)
+                          ? ZONE_DMA
+                          : (cur_pfn < 1048576 ? ZONE_DMA32 : ZONE_NORMAL);
+        int end_z = ((cur_pfn + next_size - 1) < 4096)
+                        ? ZONE_DMA
+                        : ((cur_pfn + next_size - 1) < 1048576 ? ZONE_DMA32
+                                                               : ZONE_NORMAL);
         if (start_z != end_z)
           break;
 

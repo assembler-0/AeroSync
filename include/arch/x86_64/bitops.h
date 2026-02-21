@@ -1,7 +1,7 @@
 #pragma once
 
 #include <aerosync/types.h>
-#include <compiler.h>
+#include <aerosync/compiler.h>
 
 /**
  * @file include/arch/x86_64/bitops.h

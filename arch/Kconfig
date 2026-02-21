@@ -8,4 +8,28 @@ config SYMMETRIC_MP
     help
       Enables SMP support for the AeroSync kernel subsystems
 
+config MAX_CPUS
+    int "Maximum # supported of logical processor(s)"
+    default 512
+
+menu "cpu topology"
+
+config RDPID_SUPPORT
+    bool "Support RDPID instruction"
+    default y
+    help
+      Enables detection and support for the RDPID instruction, which
+      allows fast retrieval of the logical CPU ID.
+
+config RDPID_CPU_ID
+    bool "Use RDPID for logical CPU ID"
+    depends on RDPID_SUPPORT
+    default n
+    help
+      Use the RDPID instruction to retrieve the logical CPU ID.
+      This is faster than reading from the per-CPU area via GS.
+      Requires RDPID_SUPPORT and hardware support.
+
+endmenu
+
 endmenu

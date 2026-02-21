@@ -2,7 +2,7 @@
 
 #include <arch/x86_64/mm/vmm.h>
 #include <aerosync/types.h>
-#include <compiler.h>
+#include <aerosync/compiler.h>
 
 /**
  * copy_from_user - Copy a block of data from user space.

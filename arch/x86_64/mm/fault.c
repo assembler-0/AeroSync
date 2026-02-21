@@ -18,25 +18,25 @@
  * GNU General Public License for more details.
  */
 
-#include <lib/string.h>
-#include <arch/x86_64/cpu.h>
-#include <arch/x86_64/exception.h>
-#include <arch/x86_64/mm/vmm.h>
-#include <arch/x86_64/mm/layout.h>
-#include <arch/x86_64/mm/pmm.h>
 #include <aerosync/classes.h>
 #include <aerosync/panic.h>
 #include <aerosync/sched/sched.h>
 #include <aerosync/signal.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/exception.h>
+#include <arch/x86_64/mm/layout.h>
+#include <arch/x86_64/mm/pmm.h>
+#include <arch/x86_64/mm/vmm.h>
 #include <lib/printk.h>
+#include <lib/string.h>
 #include <mm/vma.h>
 
 // Error Code Bits
-#define PF_PROT (1 << 0)    // 0: Non-present, 1: Protection violation
-#define PF_WRITE (1 << 1)   // 0: Read, 1: Write
-#define PF_USER (1 << 2)    // 0: Kernel, 1: User
-#define PF_RSVD (1 << 3)    // 1: Reserved bit set
-#define PF_INSTR (1 << 4)   // 1: Instruction fetch
+#define PF_PROT (1 << 0)  // 0: Non-present, 1: Protection violation
+#define PF_WRITE (1 << 1) // 0: Read, 1: Write
+#define PF_USER (1 << 2)  // 0: Kernel, 1: User
+#define PF_RSVD (1 << 3)  // 1: Reserved bit set
+#define PF_INSTR (1 << 4) // 1: Instruction fetch
 
 void do_page_fault(cpu_regs *regs) {
   uint64_t cr2;
@@ -53,7 +53,8 @@ void do_page_fault(cpu_regs *regs) {
     mm = &init_mm;
   } else if (curr) {
     // For user-space faults, we must have a mm.
-    // For kernel faults (below user max), we might be using an active_mm (borrowed).
+    // For kernel faults (below user max), we might be using an active_mm
+    // (borrowed).
     mm = curr->mm ? curr->mm : curr->active_mm;
   }
 
@@ -64,16 +65,20 @@ void do_page_fault(cpu_regs *regs) {
 
   // Detect kernel stack overflow
   if (!user_mode && curr && curr->stack) {
-    if (cr2 >= (uint64_t) curr->stack - PAGE_SIZE && cr2 < (uint64_t) curr->stack) {
-      printk(KERN_EMERG FAULT_CLASS "KERNEL STACK OVERFLOW detected for task %s (pid %d) at %llx\n",
+    if (cr2 >= (uint64_t)curr->stack - PAGE_SIZE &&
+        cr2 < (uint64_t)curr->stack) {
+      printk(KERN_EMERG FAULT_CLASS
+             "KERNEL STACK OVERFLOW detected for task %s (pid %d) at %llx\n",
              curr->comm, curr->pid, cr2);
       goto kernel_panic;
     }
   }
 
-  // Security: If user mode access to higher half or canonical hole occurs, it's a SEGV.
+  // Security: If user mode access to higher half or canonical hole occurs, it's
+  // a SEGV.
   if (user_mode && cr2 >= vmm_get_max_user_address()) {
-    printk(KERN_ERR FAULT_CLASS "User-mode access to kernel address %llx\n", cr2);
+    printk(KERN_ERR FAULT_CLASS "User-mode access to kernel address %llx\n",
+           cr2);
     goto signal_segv;
   }
 
@@ -104,10 +109,12 @@ void do_page_fault(cpu_regs *regs) {
       __asm__ volatile("mov %%cr3, %0" : "=r"(current_cr3));
       current_cr3 &= PTE_ADDR_MASK;
 
-      if (current_cr3 != (uint64_t) init_mm.pml_root) {
-        uint64_t *src_pml4 = (uint64_t *) pmm_phys_to_virt((uint64_t) init_mm.pml_root);
-        uint64_t *dst_pml4 = (uint64_t *) pmm_phys_to_virt(current_cr3);
-        uint64_t idx = (vmm_get_paging_levels() == 5) ? PML5_INDEX(cr2) : PML4_INDEX(cr2);
+      if (current_cr3 != (uint64_t)init_mm.pml_root) {
+        uint64_t *src_pml4 =
+            (uint64_t *)pmm_phys_to_virt((uint64_t)init_mm.pml_root);
+        uint64_t *dst_pml4 = (uint64_t *)pmm_phys_to_virt(current_cr3);
+        uint64_t idx =
+            (vmm_get_paging_levels() == 5) ? PML5_INDEX(cr2) : PML4_INDEX(cr2);
 
         if (!(dst_pml4[idx] & PTE_PRESENT) && (src_pml4[idx] & PTE_PRESENT)) {
           dst_pml4[idx] = src_pml4[idx];
@@ -154,7 +161,8 @@ void do_page_fault(cpu_regs *regs) {
     bool write_fault = (error_code & PF_WRITE);
     bool exec_fault = (error_code & PF_INSTR);
 
-    if ((write_fault && !(vm_flags & VM_WRITE)) || (exec_fault && !(vm_flags & VM_EXEC))) {
+    if ((write_fault && !(vm_flags & VM_WRITE)) ||
+        (exec_fault && !(vm_flags & VM_EXEC))) {
       rcu_read_unlock();
       goto signal_segv;
     }
@@ -171,16 +179,20 @@ void do_page_fault(cpu_regs *regs) {
       }
 
       // Re-verify sequence under VMA lock to ensure layout is still stable
-      if (unlikely(atomic_read(&mm->mmap_seq) != mm_seq || vma->vma_seq != vma_seq)) {
+      if (unlikely(atomic_read(&mm->mmap_seq) != mm_seq ||
+                   vma->vma_seq != vma_seq)) {
         vma_unlock_shared(vma);
         rcu_read_unlock();
         goto slow_path;
       }
 
       unsigned int fault_flags = FAULT_FLAG_SPECULATIVE;
-      if (write_fault) fault_flags |= FAULT_FLAG_WRITE;
-      if (user_mode) fault_flags |= FAULT_FLAG_USER;
-      if (exec_fault) fault_flags |= FAULT_FLAG_INSTR;
+      if (write_fault)
+        fault_flags |= FAULT_FLAG_WRITE;
+      if (user_mode)
+        fault_flags |= FAULT_FLAG_USER;
+      if (exec_fault)
+        fault_flags |= FAULT_FLAG_INSTR;
 
       /*
        * Call the fault handler.
@@ -190,10 +202,13 @@ void do_page_fault(cpu_regs *regs) {
       vma_unlock_shared(vma);
 
       // 4. Final validation: Did the VMA layout change during the fault?
-      if (likely(atomic_read(&mm->mmap_seq) == mm_seq && vma->vma_seq == vma_seq)) {
+      if (likely(atomic_read(&mm->mmap_seq) == mm_seq &&
+                 vma->vma_seq == vma_seq)) {
         rcu_read_unlock();
-        if (res == 0) return;
-        if (res == VM_FAULT_OOM) goto kernel_panic;
+        if (res == 0)
+          return;
+        if (res == VM_FAULT_OOM)
+          goto kernel_panic;
         /* On other errors (like VM_FAULT_RETRY), we might need the slow path */
         goto slow_path;
       }
@@ -229,23 +244,31 @@ slow_path:
 
     // Dispatches to VMA-specific fault handler (e.g. shadow_obj_fault)
     unsigned int fault_flags = 0;
-    if (write_fault) fault_flags |= FAULT_FLAG_WRITE;
-    if (user_mode) fault_flags |= FAULT_FLAG_USER;
-    if (exec_fault) fault_flags |= FAULT_FLAG_INSTR;
+    if (write_fault)
+      fault_flags |= FAULT_FLAG_WRITE;
+    if (user_mode)
+      fault_flags |= FAULT_FLAG_USER;
+    if (exec_fault)
+      fault_flags |= FAULT_FLAG_INSTR;
 
     vma_lock_shared(vma);
     int res = handle_mm_fault(vma, cr2, fault_flags);
     vma_unlock_shared(vma);
 
-    if (res == 0) {
+    if (res == 0 || res == VM_FAULT_RETRY) {
       up_read(&mm->mmap_lock);
       return;
     }
 
-    // Legacy/PTE COW Handling: If it's a write fault on a present page in a writable VMA
-    // This is a fallback for aerosync/modules or VMAs not yet using vm_objects fully.
+    // Legacy/PTE COW Handling: If it's a write fault on a present page in a
+    // writable VMA This is a fallback for aerosync/modules or VMAs not yet
+    // using vm_objects fully.
     if (write_fault && (error_code & PF_PROT)) {
-      if (vmm_handle_cow(mm, cr2) == 0) {
+      vma_lock_shared(vma);
+      int cow_res = vmm_handle_cow(mm, cr2);
+      vma_unlock_shared(vma);
+
+      if (cow_res == 0) {
         up_read(&mm->mmap_lock);
         return; // Success, retry write
       }

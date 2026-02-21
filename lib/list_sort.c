@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <aerosync/export.h>
 #include <linux/list_sort.h>
 #include <linux/list.h>

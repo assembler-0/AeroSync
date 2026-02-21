@@ -18,7 +18,7 @@
  * GNU General Public License for more details.
  */
 
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <crypto/crc32.h>
 #include <aerosync/crypto.h>
 #include <lib/printk.h>

@@ -9,7 +9,7 @@
 #define __LITTLE_ENDIAN_BITFIELD
 #endif
 
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <asm/swab.h>
 #include <linux/types.h>
 #include <linux/swab.h>

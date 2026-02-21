@@ -59,7 +59,7 @@ struct vm_object {
   void *priv;               /* Owner/Backing data (e.g., struct inode) */
   struct xarray page_tree;  /* All pages currently in this object (indexed by pgoff) */
   struct rw_semaphore lock;
-  struct list_head i_mmap;  /* List of all VMAs mapping this object */
+  struct rb_root_cached i_mmap;  /* Interval Tree of all VMAs mapping this object */
   struct list_head dirty_list; /* Node in global dirty_objects list */
   const struct vm_object_operations *ops;
   atomic_t refcount;

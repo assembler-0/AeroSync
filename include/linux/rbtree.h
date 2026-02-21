@@ -18,7 +18,7 @@
 
 #include <aerosync/types.h>
 #include <linux/rbtree_types.h>
-#include <compiler.h>
+#include <aerosync/compiler.h>
 
 #define rb_parent(r)   ((struct rb_node *)((r)->__rb_parent_color & ~3))
 

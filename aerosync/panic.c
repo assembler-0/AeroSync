@@ -1,148 +1,121 @@
-///SPDX-License-Identifier: GPL-2.0-only
+/// SPDX-License-Identifier: GPL-2.0-only
 /**
  * AeroSync monolithic kernel
  *
  * @file aerosync/panic.c
- * @brief builtin kernel panic handler with diagnostics
+ * @brief Kernel panic handlers management system
  * @copyright (C) 2025-2026 assembler-0
+ *
+ * This file is part of the AeroSync kernel.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
-#include <arch/x86_64/cpu.h>
-#include <arch/x86_64/exception.h>
-#include <compiler.h>
-#include <aerosync/classes.h>
-#include <lib/printk.h>
-#include <aerosync/spinlock.h>
-#include <aerosync/sysintf/panic.h>
-#include <aerosync/stacktrace.h>
-#include <aerosync/version.h>
-#include <aerosync/sched/sched.h>
-#include <lib/log.h>
+#define MAX_PANIC_HANDLERS 8
+
 #include <lib/string.h>
+#include <aerosync/classes.h>
+#include <aerosync/fkx/fkx.h>
+#include <aerosync/panic.h>
+#include <lib/printk.h>
 
-static DEFINE_SPINLOCK(panic_lock);
+static const panic_ops_t *registered_backends[MAX_PANIC_HANDLERS];
+static int num_registered_backends = 0;
+static const panic_ops_t *active_backend = nullptr;
 
-static void dump_registers(cpu_regs *regs) {
-  printk(KERN_EMERG PANIC_CLASS "Registers:\n");
-  printk(KERN_EMERG PANIC_CLASS "  RAX: %016llx RBX: %016llx RCX: %016llx\n", regs->rax, regs->rbx, regs->rcx);
-  printk(KERN_EMERG PANIC_CLASS "  RDX: %016llx RSI: %016llx RDI: %016llx\n", regs->rdx, regs->rsi, regs->rdi);
-  printk(KERN_EMERG PANIC_CLASS "  RBP: %016llx R8 : %016llx R9 : %016llx\n", regs->rbp, regs->r8, regs->r9);
-  printk(KERN_EMERG PANIC_CLASS "  R10: %016llx R11: %016llx R12: %016llx\n", regs->r10, regs->r11, regs->r12);
-  printk(KERN_EMERG PANIC_CLASS "  R13: %016llx R14: %016llx R15: %016llx\n", regs->r13, regs->r14, regs->r15);
-  printk(KERN_EMERG PANIC_CLASS "  RIP: %016llx RSP: %016llx RFLAGS: %08llx\n", regs->rip, regs->rsp, regs->rflags);
-  printk(KERN_EMERG PANIC_CLASS "  CS : %04llx SS : %04llx\n", regs->cs, regs->ss);
+#define transfer_active_control(fn) fn()
 
-  uint64_t cr0, cr2, cr3, cr4;
-  __asm__ volatile("mov %%cr0, %0" : "=r"(cr0));
-  __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
-  __asm__ volatile("mov %%cr3, %0" : "=r"(cr3));
-  __asm__ volatile("mov %%cr4, %0" : "=r"(cr4));
-  printk(KERN_EMERG PANIC_CLASS "  CR0: %016llx CR2: %016llx\n", cr0, cr2);
-  printk(KERN_EMERG PANIC_CLASS "  CR3: %016llx CR4: %016llx\n", cr3, cr4);
-}
-
-static void panic_header(const char *reason) {
-  printk(KERN_EMERG PANIC_CLASS "[--------------------------------------------------------------------------------]\n");
-  printk(KERN_EMERG PANIC_CLASS "                                AeroSync panic\n");
-  printk(KERN_EMERG PANIC_CLASS "[--------------------------------------------------------------------------------]\n");
-
-  printk(KERN_EMERG PANIC_CLASS "Reason: %s\n", reason);
-
-#ifdef CONFIG_PANIC_VERBOSE
-  struct task_struct *curr = get_current();
-  int cpu_id = -1;
-
-  cpu_id = this_cpu_read(cpu_info.core_id);
-
-  printk(KERN_EMERG PANIC_CLASS "System State:\n");
-  printk(KERN_EMERG PANIC_CLASS "  Kernel Version : %s\n", AEROSYNC_VERSION);
-  printk(KERN_EMERG PANIC_CLASS "  CPU Core ID    : %d\n", cpu_id);
-  printk(KERN_EMERG PANIC_CLASS "  Lock on CPU    : %d\n", spinlock_get_cpu(&panic_lock));
-  if (curr) {
-    printk(KERN_EMERG PANIC_CLASS "  Current Task   : %s (pid: %d)\n", curr->comm, curr->pid);
-  } else {
-    printk(KERN_EMERG PANIC_CLASS "  Current Task   : None (early)\n");
+void __no_cfi panic_register_handler(const panic_ops_t *ops) {
+  if (num_registered_backends >= MAX_PANIC_HANDLERS) {
+    // Can't printk here safely maybe?
+    return;
   }
-#endif
-  printk(KERN_EMERG PANIC_CLASS "[--------------------------------------------------------------------------------]\n");
+  registered_backends[num_registered_backends++] = ops;
+}
+EXPORT_SYMBOL(panic_register_handler);
+
+void __no_cfi panic_handler_install() {
+  const panic_ops_t *best = nullptr;
+
+  for (int i = 0; i < num_registered_backends; i++) {
+    const panic_ops_t *b = registered_backends[i];
+    if (!b)
+      continue;
+
+    if (!best || b->prio > best->prio)
+      best = b;
+  }
+
+  if (!best) {
+    active_backend = nullptr;
+    return;
+  }
+  active_backend = best;
+}
+EXPORT_SYMBOL(panic_handler_install);
+
+void __no_cfi panic_switch_handler(const char *name) {
+  if (!name) return;
+  for (int i = 0; i < num_registered_backends; i++) {
+    const panic_ops_t *b = registered_backends[i];
+    if (b && b->name && strcmp(b->name, name) == 0) {
+      if (active_backend && active_backend->cleanup) {
+        // null dereference check - not all backends implement cleanup
+        active_backend->cleanup();
+      }
+      if (b->init) {
+        // same as above
+        if (b->init() != 0) {
+          printk(KERN_ERR KERN_CLASS "failed to reinit printk backend %s\n", name);
+          return;
+        }
+      }
+      active_backend = b;
+    }
+  }
 }
 
-void __exit __noinline __noreturn __sysv_abi builtin_panic_early_() {
-  log_mark_panic();
+void __no_cfi __exit __noinline __sysv_abi panic(const char *msg, ...) {
+  va_list va;
+  va_start(va, msg);
+  char buff[128];
+  vsnprintf(buff, sizeof(buff), msg, va);
+  active_backend->panic(buff);
+#ifdef CONFIG_KDB
+  if (active_backend->kdb)
+    transfer_active_control(active_backend->kdb);
+#endif
+  va_end(va);
   system_hlt();
   __unreachable();
 }
+EXPORT_SYMBOL(panic);
 
-void __exit __noinline __noreturn __sysv_abi builtin_panic_(const char *msg) {
-  log_mark_panic();
-  spinlock_lock(&panic_lock);
-
-  panic_header(msg);
-
-#ifdef CONFIG_PANIC_DUMP_REGISTERS
-  cpu_regs regs;
-  __asm__ volatile(
-    "mov %%rax, %0\n" "mov %%rbx, %1\n" "mov %%rcx, %2\n" "mov %%rdx, %3\n"
-    "mov %%rsi, %4\n" "mov %%rdi, %5\n" "mov %%rbp, %6\n" "mov %%rsp, %7\n"
-    "lea (%%rip), %%rax\n" "mov %%rax, %8\n"
-    : "=m"(regs.rax), "=m"(regs.rbx), "=m"(regs.rcx), "=m"(regs.rdx),
-    "=m"(regs.rsi), "=m"(regs.rdi), "=m"(regs.rbp), "=m"(regs.rsp),
-    "=m"(regs.rip)
-  );
-  __asm__ volatile("pushfq\n popq %0" : "=m"(regs.rflags));
-  __asm__ volatile("mov %%cs, %0" : "=m"(regs.cs));
-  __asm__ volatile("mov %%ss, %0" : "=m"(regs.ss));
-  dump_registers(&regs);
+void __no_cfi __exit __noinline __noreturn __sysv_abi panic_exception(cpu_regs *regs) {
+  active_backend->panic_exception(regs);
+#ifdef CONFIG_KDB
+  if (active_backend->kdb)
+    transfer_active_control(active_backend->kdb);
 #endif
-
-#ifdef CONFIG_PANIC_STACKTRACE
-  dump_stack();
-#endif
-  printk(KERN_EMERG PANIC_CLASS "[--------------------------- end panic - not syncing ----------------------------]\n");
   system_hlt();
   __unreachable();
 }
+EXPORT_SYMBOL(panic_exception);
 
-void __exit __noinline __noreturn __sysv_abi builtin_panic_exception_(cpu_regs *regs) {
-  log_mark_panic();
-  spinlock_lock(&panic_lock);
-
-  char exc_name[128];
-  get_exception_as_str(exc_name, regs->interrupt_number);
-
-  char reason[256];
-  snprintf(reason, sizeof(reason), "Exception %s (0x%llx), Error Code: 0x%llx",
-           exc_name, regs->interrupt_number, regs->error_code);
-
-  panic_header(reason);
-
-  dump_registers(regs);
-
-#ifdef CONFIG_PANIC_STACKTRACE
-  dump_stack_from(regs->rbp, regs->rip);
+void __no_cfi __exit __noinline __noreturn __sysv_abi panic_early() {
+  active_backend->panic_early();
+#ifdef CONFIG_KDB
+  if (active_backend->kdb)
+    transfer_active_control(active_backend->kdb);
 #endif
-
-  printk(KERN_EMERG PANIC_CLASS "[---------------------------- end panic - exception -----------------------------]\n", exc_name);
-
   system_hlt();
   __unreachable();
 }
-
-static int builtin_panic_init() { return 0; }
-
-static void builtin_panic_cleanup() {
-}
-
-static const panic_ops_t builtin_panic_ops = {
-  .name = "builtin panic",
-  .prio = 100,
-  .panic_early = builtin_panic_early_,
-  .panic = builtin_panic_,
-  .panic_exception = builtin_panic_exception_,
-  .init = builtin_panic_init,
-  .cleanup = builtin_panic_cleanup
-};
-
-const panic_ops_t *get_builtin_panic_ops() {
-  return &builtin_panic_ops;
-}
+EXPORT_SYMBOL(panic_early);

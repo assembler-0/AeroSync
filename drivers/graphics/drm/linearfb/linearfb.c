@@ -24,7 +24,7 @@
 #include <aerosync/spinlock.h>
 #include <aerosync/sysintf/char.h>
 #include <aerosync/sysintf/fb.h>
-#include <aerosync/sysintf/panic.h>
+#include <aerosync/panic.h>
 #include <aerosync/version.h>
 #include <aerosync/sched/sched.h>
 #include <arch/x86_64/mm/pmm.h>
@@ -318,6 +318,24 @@ void linearfb_console_putc(char c) {
 
   if (c == '\r') {
     dev->console_col = 0;
+    if (!in_panic) {
+      spinlock_unlock_irqrestore(&dev->lock, flags);
+    }
+    return;
+  }
+
+  if (c == '\b') {
+    if (dev->console_col > 0) {
+      dev->console_col--;
+    } else if (dev->console_row > 0) {
+      dev->console_row--;
+      dev->console_col = dev->console_cols - 1;
+    }
+
+    /* Erase character at new position */
+    linearfb_dev_draw_glyph(dev, dev->console_col, dev->console_row, ' ');
+    linearfb_dev_flush(dev);
+
     if (!in_panic) {
       spinlock_unlock_irqrestore(&dev->lock, flags);
     }
@@ -938,7 +956,7 @@ static void linearfb_panic_render(const char *reason, cpu_regs *regs, bool is_ex
   linearfb_dev_flush(primary_fb);
 }
 
-static void __exit __noinline __noreturn __sysv_abi linearfb_panic(const char *msg) {
+static void __exit __noinline __sysv_abi linearfb_panic(const char *msg) {
   log_mark_panic();
   linearfb_panic_lock();
 
@@ -956,12 +974,9 @@ static void __exit __noinline __noreturn __sysv_abi linearfb_panic(const char *m
   __asm__ volatile("mov %%ss, %0" : "=m"(regs.ss));
 
   linearfb_panic_render(msg, &regs, false);
-
-  system_hlt();
-  __unreachable();
 }
 
-static void __exit __noinline __noreturn __sysv_abi linearfb_panic_exception(cpu_regs *regs) {
+static void __exit __noinline __sysv_abi linearfb_panic_exception(cpu_regs *regs) {
   log_mark_panic();
   linearfb_panic_lock();
 
@@ -973,21 +988,15 @@ static void __exit __noinline __noreturn __sysv_abi linearfb_panic_exception(cpu
            exc_name, regs->interrupt_number, regs->error_code);
 
   linearfb_panic_render(reason, regs, true);
-
-  system_hlt();
-  __unreachable();
 }
 
-static void __exit __noinline __noreturn __sysv_abi linearfb_panic_early(void) {
+static void __exit __noinline __sysv_abi linearfb_panic_early(void) {
   log_mark_panic();
   linearfb_panic_lock();
   
   if (primary_fb) {
-    linearfb_panic_render("Early Kernel Panic", nullptr, false);
+    linearfb_panic("early panic");
   }
-  
-  system_hlt();
-  __unreachable();
 }
 
 static const panic_ops_t linearfb_panic_ops = {

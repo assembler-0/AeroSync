@@ -12,7 +12,7 @@
 #pragma once
 
 #include <aerosync/types.h>
-#include <compiler.h>
+#include <aerosync/compiler.h>
 
 /* Maximum XSAVE area size - covers AVX-512 and future extensions */
 #define XSTATE_MAX_SIZE 4096

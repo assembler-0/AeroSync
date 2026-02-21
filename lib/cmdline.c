@@ -9,7 +9,7 @@
  * GNU Indent formatting options for this file: -kr -i8 -npsl -pcs
  */
 
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <aerosync/export.h>
 #include <aerosync/types.h>
 #include <lib/string.h>

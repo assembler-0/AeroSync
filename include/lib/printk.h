@@ -25,6 +25,7 @@ static int generic_backend_init(void *payload) { (void)payload; return 0; }
 #define KERN_NOTICE "$5$"
 #define KERN_INFO "$6$"
 #define KERN_DEBUG "$7$"
+#define KERN_RAW "$8$"
 
 // Print functions (*ln functions implicitlt adds a newline)
 int printk(const char *fmt, ...);

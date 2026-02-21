@@ -13,7 +13,7 @@
 #include <aerosync/sysintf/class.h>
 #include <aerosync/sysintf/platform.h>
 #include <aerosync/errno.h>
-#include <compiler.h>
+#include <aerosync/compiler.h>
 
 /**
  * struct firmware_device - Generic firmware device structure

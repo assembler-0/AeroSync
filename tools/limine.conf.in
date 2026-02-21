@@ -4,7 +4,7 @@ timeout: 3
     protocol: limine
     path: boot():/aerosync/aerosync.krnl
     kaslr: yes
-    cmdline: verbose mtest dumpdevtree bootinfo @AEROSYNC_INITRD_CMDLINE@
+    cmdline: verbose mtest dumpdevtree bootinfo fwinfo @AEROSYNC_INITRD_CMDLINE@
 @LIMINE_MODULES@
 
 /AeroSync

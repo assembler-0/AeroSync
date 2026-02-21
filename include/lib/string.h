@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 #pragma once
 
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <aerosync/types.h>
 #include <aerosync/stdarg.h>
 

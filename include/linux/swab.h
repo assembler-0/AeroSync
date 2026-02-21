@@ -3,7 +3,7 @@
 #define _UAPI_LINUX_SWAB_H
 
 #include <asm/swab.h>
-#include <compiler.h>
+#include <aerosync/compiler.h>
 
 /*
  * Implement the following as inlines, but define the interface using

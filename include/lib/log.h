@@ -9,6 +9,7 @@
 #define KLOG_NOTICE  5
 #define KLOG_INFO    6
 #define KLOG_DEBUG   7
+#define KLOG_RAW     8
 
 // Console sink management
 fnd(void, log_sink_putc_t, char c);

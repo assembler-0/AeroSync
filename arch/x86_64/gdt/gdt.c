@@ -21,7 +21,7 @@
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/gdt/gdt.h>
 #include <arch/x86_64/percpu.h>
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <aerosync/spinlock.h>
 #include <mm/slub.h>
 

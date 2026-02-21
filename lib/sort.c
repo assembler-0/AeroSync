@@ -11,7 +11,7 @@
  */
 
 #include <linux/types.h>
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <aerosync/types.h>
 #include <aerosync/export.h>
 #include <linux/sort.h>

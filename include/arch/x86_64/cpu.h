@@ -1,6 +1,6 @@
 #pragma once
 
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <aerosync/types.h>
 #include <arch/x86_64/cpuid_vendor.h>
 

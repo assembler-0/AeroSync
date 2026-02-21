@@ -4,7 +4,7 @@
  * Misc librarized functions for cmdline poking.
  */
 
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <aerosync/errno.h>
 #include <aerosync/types.h>
 

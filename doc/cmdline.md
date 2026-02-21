@@ -11,3 +11,4 @@
 - `bootinfo`: display some limine boot info
 - `kaslrinfo`: logs kernel base
 - `mm_page_lvl`: log cmdline
+- `fwinfo`: log info from smbio

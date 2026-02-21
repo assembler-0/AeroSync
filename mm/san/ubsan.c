@@ -18,7 +18,7 @@
  * GNU General Public License for more details.
  */
 
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <aerosync/classes.h>
 #include <aerosync/panic.h>
 #include <lib/printk.h>

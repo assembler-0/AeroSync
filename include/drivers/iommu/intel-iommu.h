@@ -11,7 +11,7 @@
 
 #include <aerosync/types.h>
 #include <aerosync/spinlock.h>
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <linux/list.h>
 
 /* VT-d Register Offsets */

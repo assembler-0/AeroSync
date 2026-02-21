@@ -19,7 +19,7 @@
  */
 
 #include <arch/x86_64/tsc.h>
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <aerosync/sched/process.h>
 #include <aerosync/sched/sched.h>
 #include <aerosync/spinlock.h>
@@ -215,8 +215,8 @@ static void log_flush_fifo_locked(void) {
     }
     spinlock_unlock_irqrestore(&klog_lock, flags);
 
-    if (hdr.level <= effective_console_level) {
-      console_emit_prefix_ts(hdr.level, hdr.ts_ns);
+    if (hdr.level <= effective_console_level || hdr.level == KLOG_RAW) {
+      if (hdr.level != KLOG_RAW) console_emit_prefix_ts(hdr.level, hdr.ts_ns);
       for (unsigned int i = 0; i < n; i++)
         klog_console_sink(out_buf[i]);
     }
@@ -290,7 +290,7 @@ int __no_cfi log_write_str(int level, const char *msg) {
   if (do_sync_emit) {
     irq_flags_t f;
     f = spinlock_lock_irqsave(&klog_console_lock);
-    console_emit_prefix_ts(level, ts_ns);
+    if (level != KLOG_RAW) console_emit_prefix_ts(level, ts_ns);
     const char *p = msg;
     while (*p)
       klog_console_sink(*p++);

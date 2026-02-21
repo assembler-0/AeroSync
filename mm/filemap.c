@@ -310,8 +310,9 @@ int generic_file_mmap(struct file *file, struct vm_area_struct *vma) {
   }
   vma->vm_obj = inode->i_ubc;
   vm_object_get(vma->vm_obj);
+  vma_obj_node_setup(vma);
   down_write(&vma->vm_obj->lock);
-  list_add(&vma->vm_shared, &vma->vm_obj->i_mmap);
+  interval_tree_insert(&vma->obj_node, &vma->vm_obj->i_mmap);
   up_write(&vma->vm_obj->lock);
   return 0;
 }

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <aerosync/types.h>
-#include <compiler.h>
+#include <aerosync/compiler.h>
 
 // An entry in the IDT (64-bit)
 struct IdtEntry {

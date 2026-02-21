@@ -1,5 +1,5 @@
 #pragma once
-#include <compiler.h>
+#include <aerosync/compiler.h>
 
 // Initialize ACPI power management (Power Button, etc.)
 int __must_check acpi_power_init(void);

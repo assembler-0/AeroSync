@@ -49,6 +49,11 @@
 		- [x] **Per-VMA Locking**: Fine-grained fault serialization using `vma_lock` to eliminate `mmap_lock` contention.
 		- [x] **Direct Reclaim Integration**: Enforce hard memory limits in ResDomain by triggering synchronous reclaim on charge failure.
 		- [x] **Proportional Writeback Throttling**: Throttled dirty page creation based on system-wide writeback speed.
+	- [x] **Phase 2.7: Advanced RMAP Scalability (Interval Tree)**
+		- [x] **Interval Tree RMAP**: Migrated `vm_object->i_mmap` from legacy `list_head` to a high-performance Interval Tree.
+		- [x] **Logarithmic Lookup**: Replaced $O(N)$ linear scans in `try_to_unmap_folio` and `folio_referenced` with $O(\log N + M)$ range searches.
+		- [x] **Zero-Allocation Registration**: Used embedded `obj_node` in `vm_area_struct` to eliminate memory allocation overhead during `mmap`.
+		- [x] **Scalable Shared Mappings**: Dramatic performance improvement for objects with high mapping counts (shared libraries, IPC segments).
 	- [ ] **Phase 4: Userspace & Device Infrastructure (Production Grade)**
 		- [x] **Recursive Path Lookup**: Implement robust `vfs_path_lookup` in `namei.c` with support for `..`, `.`, symlinks, and mount point crossing.
 		- [ ] **Unified Device Model (UDM) Integration**: 
@@ -93,6 +98,16 @@
 		- [x] **Kernel Guard Pages**: Unmapped guard pages between vmalloc stacks.
 		- [x] **Transparent Huge Pages (THP)**: Background promotion of contiguous 4KB pages to 2MB pages using a dedicated `khugepaged` daemon.
 	- [x] proper COW (Copy-On-Write) using XNU-inspired Shadow Object chains
+	- [x] **Phase 3.5: Advanced Memory Virtualization & Deduplication**
+		- [x] **userfaultfd(2) Syscall**: Implemented core syscall (323) for userspace-driven page fault management.
+		- [x] **Fault Event Infrastructure**: Wait-queue based notification system and event list for fault tracking.
+		- [x] **UFFDIO_API/WAKE**: Handshake and selective thread wake-up for fault resolution.
+		- [x] **UFFDIO_REGISTER/UNREGISTER**: Multi-VMA registration with `VM_UFFD_MISSING` and `VM_UFFD_WP` support.
+		- [x] **UFFDIO_COPY/ZEROPAGE**: Optimized page population IOCTLs with atomic-ready presence checks.
+		- [x] **Retriable Fault Handling**: Integrated `VM_FAULT_RETRY` support in `do_page_fault` for async resolution.
+		- [x] **Proactive KSM implementation**: Fully implemented `ksmd` with dual-tree (stable/unstable) RB-tree management.
+		- [x] **Zero-Copy Deduplication**: DJB2 page hashing, full verification, and RO-PTE merging for COW savings.
+		- [x] **VMM Huge Page Promotion**: Added `vmm_promote_to_huge` to support background THP optimization.
 	- [x] Finish RMAP for all subsystems
 	- [x] Advance ANON object fault
 	- [ ] SHM (SHared Memory) management +IPC)

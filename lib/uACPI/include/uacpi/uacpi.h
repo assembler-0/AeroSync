@@ -1,6 +1,6 @@
 #pragma once
 
-#include <compiler.h>
+#include <aerosync/compiler.h>
 #include <uacpi/types.h>
 #include <uacpi/status.h>
 #include <uacpi/kernel_api.h>

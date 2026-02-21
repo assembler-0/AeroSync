@@ -46,7 +46,7 @@ struct vm_object *vm_object_alloc(vm_object_type_t type) {
   obj->type = type;
   xa_init(&obj->page_tree);
   rwsem_init(&obj->lock);
-  INIT_LIST_HEAD(&obj->i_mmap);
+  obj->i_mmap = RB_ROOT_CACHED;
   INIT_LIST_HEAD(&obj->dirty_list);
   obj->flags = 0;
   atomic_set(&obj->refcount, 1);
@@ -819,9 +819,10 @@ void vm_object_collapse(struct vm_object *obj) {
       if (old_backing) {
         /*
          * To safely bypass 'obj', we must update all VMAs that point to it.
-         * This requires iterating obj->i_mmap.
+         * This requires iterating obj->i_mmap interval tree.
          */
         struct vm_area_struct *vma;
+        struct interval_tree_node *node;
         bool all_updated = true;
 
         /*
@@ -829,7 +830,8 @@ void vm_object_collapse(struct vm_object *obj) {
          * mmap_lock (read) or vma->vm_lock. Since we are changing vma->vm_obj,
          * we ideally need the mmap_lock of the associated mm_struct.
          */
-        list_for_each_entry(vma, &obj->i_mmap, vm_shared) {
+        while ((node = interval_tree_iter_first(&obj->i_mmap, 0, ULONG_MAX))) {
+          vma = container_of(node, struct vm_area_struct, obj_node);
           /*
            * For each VMA, we adjust its offset and object pointer.
            * This must be done atomically with respect to faults.
@@ -839,12 +841,17 @@ void vm_object_collapse(struct vm_object *obj) {
             break;
           }
 
+          /* Remove from current object's interval tree */
+          interval_tree_remove(&vma->obj_node, &obj->i_mmap);
+
           vma->vm_obj = old_backing;
           vma->vm_pgoff += (obj->shadow_offset >> PAGE_SHIFT);
           vm_object_get(old_backing);
 
-          list_del(&vma->vm_shared);
-          list_add(&vma->vm_shared, &old_backing->i_mmap);
+          /* Setup and insert into backing object's interval tree */
+          vma->obj_node.start = vma->vm_pgoff;
+          vma->obj_node.last = vma->vm_pgoff + vma_pages(vma) - 1;
+          interval_tree_insert(&vma->obj_node, &old_backing->i_mmap);
 
           if (vma->vm_mm) up_write(&vma->vm_mm->mmap_lock);
         }
@@ -1185,9 +1192,21 @@ int vm_object_cow_prepare(struct vm_area_struct *vma, struct vm_area_struct *new
 
   vma->vm_obj = shadow_parent;
   vma->vm_pgoff = 0;
+  vma->obj_node.start = 0;
+  vma->obj_node.last = vma_pages(vma) - 1;
 
   new_vma->vm_obj = shadow_child;
   new_vma->vm_pgoff = 0;
+  new_vma->obj_node.start = 0;
+  new_vma->obj_node.last = vma_pages(new_vma) - 1;
+
+  down_write(&shadow_parent->lock);
+  interval_tree_insert(&vma->obj_node, &shadow_parent->i_mmap);
+  up_write(&shadow_parent->lock);
+
+  down_write(&shadow_child->lock);
+  interval_tree_insert(&new_vma->obj_node, &shadow_child->i_mmap);
+  up_write(&shadow_child->lock);
 
   vm_object_put(old_obj);
   return 0;

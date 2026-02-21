@@ -206,8 +206,8 @@ static const char *parse_level_prefix(const char *fmt, int *level_io) {
   if (!fmt[0] || !fmt[1] || !fmt[2])
     return fmt;
 
-  // format: $<0-7>$ (see include/lib/printk.h for level definitions)
-  if (fmt[0] == '$' && fmt[1] >= '0' && fmt[1] <= '7' && fmt[2] == '$') {
+  // format: $<0-8>$ (see include/lib/printk.h for level definitions)
+  if (fmt[0] == '$' && fmt[1] >= '0' && fmt[1] <= '8' && fmt[2] == '$') {
     if (level_io)
       *level_io = (fmt[1] - '0');
     return fmt + 3; // Skip past the level prefix

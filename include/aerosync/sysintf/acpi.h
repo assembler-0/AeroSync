@@ -12,7 +12,7 @@
 #include <aerosync/types.h>
 #include <uacpi/acpi.h>
 #include <uacpi/tables.h>
-#include <compiler.h>
+#include <aerosync/compiler.h>
 
 /**
  * @brief Initialize all ACPI table managers.

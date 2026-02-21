@@ -2,7 +2,7 @@
 
 #include <aerosync/types.h>
 #include <arch/x86_64/percpu.h>
-#include <compiler.h>
+#include <aerosync/compiler.h>
 
 struct task_struct;
 

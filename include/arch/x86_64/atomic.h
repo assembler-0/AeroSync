@@ -1,6 +1,6 @@
 #pragma once
 
-#include <compiler.h>
+#include <aerosync/compiler.h>
 
 /**
  * @file include/arch/x86_64/atomic.h

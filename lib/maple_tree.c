@@ -61,7 +61,7 @@
 #include <linux/kernel.h>
 #include <aerosync/bitops.h>
 
-#include "aerosync/panic.h"
+#include "../include/aerosync/builtin/panic/panic.h"
 
 /*
  * Kernel pointer hashing renders much of the maple tree dump useless as tagged
