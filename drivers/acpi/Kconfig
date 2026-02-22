@@ -14,4 +14,11 @@ config ACPI_DEBUG_OUTPUT
     help
       Make ACPICA more talkative
 
+config DENY_LINUX_OSI
+    bool "Deny Linux OSI"
+    default y
+    help
+      Deny Linux support in OSI handler
+      making firmwares behaves 'better'
+
 endmenu

@@ -28,6 +28,64 @@ To build AeroSync, you will need the following tools:
     - ninja: faster than make (theoretically)
     - Arch Linux
 
+- Fedora:
+```bash
+sudo dnf install \
+  cmake \
+  clang \
+  llvm \
+  lld \
+  nasm \
+  xorriso \
+  python3 \
+  python3-pip \
+  git
+pip3 install --user kconfiglib
+```
+- Ubuntu/Debian:
+```bash
+sudo apt update
+sudo apt install \
+  cmake \
+  clang \
+  lld \
+  llvm \
+  nasm \
+  xorriso \
+  python3 \
+  python3-pip \
+  git
+pip3 install --user kconfiglib
+```
+- Arch:
+```bash
+sudo pacman -S \
+  cmake \
+  clang \
+  lld \
+  llvm \
+  nasm \
+  xorriso \
+  python \
+  python-pip \
+  git
+pip3 install --user kconfiglib
+```
+- OpenSUSE:
+```bash
+sudo zypper install \
+  cmake \
+  clang \
+  llvm \
+  lld \
+  nasm \
+  xorriso \
+  python3 \
+  python3-pip \
+  git
+pip3 install --user kconfiglib
+```
+
 ## Build Process
 
 ### Presets (recommended) 
@@ -77,6 +135,10 @@ The build process generates:
 There are two ways to configure the kernel:
 - **CMake (cache):** `cmake -D<OPTION>=<VALUE> <SRC_DIR>` or `cmake-gui <SRC_DIR>` or `ccmake <SRC_DIR>`
 - **Kconfig:** `python -m *config <SRC_DIR>` or `<GENERATOR> *config`
+
+### Environment variables
+- `CLANG_VERSION=x`: use this env to specify clang version for CMake to search for (usage: `CLANG_VERSION=19 cmake --preset amd64` - now uses clang-19)
+- `GCC_TARGET=x`: use this env to specify gcc target for CMake to search for (usage: `GCC_TARGET=x86_64-unknown-elf` --preset amd64 - now uses x86_64-unknown-elf-gcc)
 
 #### Notable CMake options:
 - `AEROSYNC_INITRD`: Path to a CPIO archive to be used as an initial ramdisk. If provided:

@@ -900,6 +900,47 @@ AcpiOsGetTableByAddress(
   return AE_NOT_IMPLEMENTED;
 }
 
+static ACPI_STATUS
+osl_osi_handler(ACPI_STRING interface_name, UINT32 *supported)
+{
+  if (!supported || !interface_name) return AE_BAD_PARAMETER;
+
+  /* TODO: add `acpi_osi=` boot parameter support here */
+  /* FIXME: discover the actual needed 'lies', not blindly supporting all */
+
+  /* Default to not supported */
+  *supported = 0;
+
+  /* Whitelist what we actually support */
+  if (!strcmp(interface_name, "Windows 2013") ||
+      !strcmp(interface_name, "Windows 2015") ||
+      !strcmp(interface_name, "Windows 2019") ||
+      !strcmp(interface_name, "Windows 2022") ||
+      !strcmp(interface_name, "Windows 2025") ||
+      !strcmp(interface_name, "Windows 2012") ||
+      !strcmp(interface_name, "Windows 2009") ||
+      !strcmp(interface_name, "Module Device")  ||
+      !strcmp(interface_name, "Processor Device") ||
+      !strcmp(interface_name, "3.0 Thermal Model") ||
+      !strcmp(interface_name, "Extended Address Space Descriptor")) {
+    *supported = 1;
+    return AE_OK;
+  }
+
+#ifdef CONFIG_DENY_LINUX_OSI
+  /*
+   * Explicitly deny "Linux" - some vendor firmware (Lenovo infamously)
+   * returns broken thermal/battery data when this returns true
+   */
+  if (!strcmp(interface_name, "Linux")) {
+    *supported = 0;
+    return AE_OK;
+  }
+#endif
+
+  return AE_OK;
+}
+
 /* --- Initialization Calls --- */
 
 int acpica_kernel_init_early(void) {
@@ -917,6 +958,11 @@ int acpica_kernel_init_early(void) {
   if (ACPI_FAILURE(status)) {
     printk(KERN_ERR ACPI_CLASS "Could not initialize tables: %s\n", AcpiFormatException(status));
     return -ENODEV;
+  }
+
+  status = AcpiInstallInterfaceHandler((ACPI_INTERFACE_HANDLER)osl_osi_handler);
+  if (ACPI_FAILURE(status)) {
+    printk(KERN_WARNING ACPI_CLASS "Failed to install OSI handler: %s\n", AcpiFormatException(status));
   }
 
   status = AcpiLoadTables();
