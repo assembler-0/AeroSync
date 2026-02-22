@@ -1,6 +1,6 @@
 # AeroSync
 
-**Version:** r0c3-4.3.7
+**Version:** r0c4-5.4.9
 
 <p align="center">
   <img src="https://img.shields.io/github/languages/top/assembler-0/AeroSync?style=for-the-badge&color=blueviolet" />
@@ -32,8 +32,8 @@ AeroSync is a (modular) monolithic, amd64 kernel built for modern systems.
 AeroSync leverages several excellent open-source projects:
 
 *   **[Limine](https://github.com/limine-bootloader/limine):** A modern, robust bootloader.
-*   **[uACPI](https://github.com/uacpi/uacpi):** A lightweight, portable ACPI implementation.
-*   **[linearfb](lib/linearfb/README.md):** A simple linear framebuffer library.
+*   **[ACPICA](https://github.com/acpica/acpica):** An industry-standard ACPI implementation by Intel.
+*   **[linearfb](drivers/graphics/drm/linearfb/README.md):** A simple linear framebuffer library.
 *   **[Linux](https://github.com/torvalds/linux):** Serves as a major architectural inspiration, with 'some' data structures adapted from it.
 *   **[XNU](https://github.com/apple-oss-distributions/xnu):** another major architectural inspiration.
 

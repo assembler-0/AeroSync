@@ -479,13 +479,13 @@ aerosync_core_init(ic_register_lapic_get_id_early);
 
 ---
 
-### Phase 23: Early uACPI Initialization
+### Phase 23: Early ACPICA Initialization
 
 ```c
-aerosync_core_init(uacpi_kernel_init_early);
+aerosync_core_init(acpica_kernel_init_early);
 ```
 
-Initializes early uACPI (userspace ACPI) kernel support.
+Initializes early ACPICA kernel support.
 
 ---
 
@@ -504,7 +504,7 @@ Parses and initializes ACPI tables via uACPI.
 ```c
 interrupt_controller_t ic_type;
 aerosync_core_init_status_ret(ic_install, ic_type);
-uacpi_notify_ic_ready();
+acpica_notify_ic_ready();
 ```
 
 **Purpose:** Install the appropriate interrupt controller (x2APIC/xAPIC).
@@ -538,7 +538,7 @@ aerosync_core_init(timer_init_subsystem);
 ### Phase 27: Late uACPI Initialization
 
 ```c
-aerosync_core_init(uacpi_kernel_init_late);
+aerosync_core_init(acpica_kernel_init_late);
 aerosync_extra_init(acpi_power_init);
 aerosync_core_init(acpi_bus_enumerate);
 ```
@@ -546,7 +546,7 @@ aerosync_core_init(acpi_bus_enumerate);
 **Purpose:** Complete uACPI initialization and enumerate ACPI devices.
 
 **Functions:**
-- `uacpi_kernel_init_late()` - Completes uACPI initialization
+- `acpica_kernel_init_late()` - Completes uACPI initialization
 - `acpi_power_init()` - Initializes ACPI power management (buttons, sleep states)
 - `acpi_bus_enumerate()` - Enumerates ACPI device tree
 
