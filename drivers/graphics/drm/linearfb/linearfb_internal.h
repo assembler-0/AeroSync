@@ -35,6 +35,15 @@ struct linearfb_device {
 
   linearfb_color_format_t format;
 
+  /* ANSI parsing state */
+  enum {
+    ANS_STATE_NORMAL,
+    ANS_STATE_ESC,
+    ANS_STATE_CSI,
+  } ans_state;
+  uint32_t ans_params[8];
+  int ans_num_params;
+
   spinlock_t lock;
   struct list_head list;
 };

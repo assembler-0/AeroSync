@@ -221,6 +221,49 @@ static struct char_operations linearfb_char_ops = {
 
 /* --- Console Implementation --- */
 
+#ifdef CONFIG_DRM_LINEARFB_COLOR
+static uint32_t ansi_colors[] = {
+  0x00000000, // Black
+  0x00AA0000, // Red
+  0x0000AA00, // Green
+  0x00AA5500, // Yellow
+  0x000000AA, // Blue
+  0x00AA00AA, // Magenta
+  0x0000AAAA, // Cyan
+  0x00AAAAAA, // White
+  0x00555555, // Bright Black (Gray)
+  0x00FF5555, // Bright Red
+  0x0055FF55, // Bright Green
+  0x00FFFF55, // Bright Yellow
+  0x005555FF, // Bright Blue
+  0x00FF55FF, // Bright Magenta
+  0x0055FFFF, // Bright Cyan
+  0x00FFFFFF, // Bright White
+};
+
+static void linearfb_ansi_apply(struct linearfb_device *dev) {
+  for (int i = 0; i < dev->ans_num_params; i++) {
+    uint32_t p = dev->ans_params[i];
+    if (p == 0) {
+      dev->console_fg = linearfb_encode_color(&dev->format, 255, 255, 255);
+      dev->console_bg = linearfb_encode_color(&dev->format, 0, 0, 0);
+    } else if (p >= 30 && p <= 37) {
+      uint32_t color = ansi_colors[p - 30];
+      dev->console_fg = linearfb_encode_color(&dev->format, (color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF);
+    } else if (p >= 40 && p <= 47) {
+      uint32_t color = ansi_colors[p - 40];
+      dev->console_bg = linearfb_encode_color(&dev->format, (color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF);
+    } else if (p >= 90 && p <= 97) {
+      uint32_t color = ansi_colors[p - 90 + 8];
+      dev->console_fg = linearfb_encode_color(&dev->format, (color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF);
+    } else if (p >= 100 && p <= 107) {
+      uint32_t color = ansi_colors[p - 100 + 8];
+      dev->console_bg = linearfb_encode_color(&dev->format, (color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF);
+    }
+  }
+}
+#endif
+
 static void linearfb_dev_draw_glyph(struct linearfb_device *dev, uint32_t col, uint32_t row, char c) {
   if (!dev || !fb_font.data) return;
   if (col >= dev->console_cols || row >= dev->console_rows) return;
@@ -298,6 +341,45 @@ void linearfb_dev_scroll(struct linearfb_device *dev) {
 void linearfb_console_putc(char c) {
   if (!primary_fb) return;
   struct linearfb_device *dev = primary_fb;
+
+#ifdef CONFIG_DRM_LINEARFB_COLOR
+  if (dev->ans_state == ANS_STATE_ESC) {
+    if (c == '[') {
+      dev->ans_state = ANS_STATE_CSI;
+      dev->ans_num_params = 0;
+      dev->ans_params[0] = 0;
+      return;
+    }
+    dev->ans_state = ANS_STATE_NORMAL;
+  } else if (dev->ans_state == ANS_STATE_CSI) {
+    if (c >= '0' && c <= '9') {
+      dev->ans_params[dev->ans_num_params] = dev->ans_params[dev->ans_num_params] * 10 + (c - '0');
+      return;
+    } else if (c == ';') {
+      if (dev->ans_num_params < 7) {
+        dev->ans_num_params++;
+        dev->ans_params[dev->ans_num_params] = 0;
+      }
+      return;
+    } else if (c == 'm') {
+      dev->ans_num_params++;
+      linearfb_ansi_apply(dev);
+      dev->ans_state = ANS_STATE_NORMAL;
+      return;
+    }
+    dev->ans_state = ANS_STATE_NORMAL;
+    /* fallthrough if not handled? no, just return or handle normally. 
+       Usually non-'m' CSI codes should be ignored or handled. 
+       We only support 'm' for now. */
+    return;
+  }
+
+  if (c == '\033') {
+    dev->ans_state = ANS_STATE_ESC;
+    return;
+  }
+#endif
+
   irq_flags_t flags = 0;
   
   bool in_panic = (__atomic_load_n(&fb_panic_cpu, __ATOMIC_ACQUIRE) != -1);

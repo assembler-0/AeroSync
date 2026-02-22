@@ -12,6 +12,40 @@
 #define KERN_DEBUG "$7$"
 #define KERN_RAW "$8$"
 
+#ifdef CONFIG_PRINTK_COLOR
+#define ANS_RESET     "\033[0m"
+#define ANS_RED       "\033[31m"
+#define ANS_GREEN     "\033[32m"
+#define ANS_YELLOW    "\033[33m"
+#define ANS_BLUE      "\033[34m"
+#define ANS_MAGENTA   "\033[35m"
+#define ANS_CYAN      "\033[36m"
+#define ANS_WHITE     "\033[37m"
+#define ANS_BRED      "\033[91m"
+#define ANS_BGREEN    "\033[92m"
+#define ANS_BYELLOW   "\033[93m"
+#define ANS_BBLUE     "\033[94m"
+#define ANS_BMAGENTA  "\033[95m"
+#define ANS_BCYAN     "\033[96m"
+#define ANS_BWHITE    "\033[97m"
+#else
+#define ANS_RESET     ""
+#define ANS_RED       ""
+#define ANS_GREEN     ""
+#define ANS_YELLOW    ""
+#define ANS_BLUE      ""
+#define ANS_MAGENTA   ""
+#define ANS_CYAN      ""
+#define ANS_WHITE     ""
+#define ANS_BRED      ""
+#define ANS_BGREEN    ""
+#define ANS_BYELLOW   ""
+#define ANS_BBLUE     ""
+#define ANS_BMAGENTA  ""
+#define ANS_BCYAN     ""
+#define ANS_BWHITE    ""
+#endif
+
 // Print functions (*ln functions implicitlt adds a newline)
 int printk(const char *fmt, ...);
 int printkln(const char *fmt, ...);

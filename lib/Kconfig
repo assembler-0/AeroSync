@@ -60,4 +60,10 @@ config STRING_CRYPTO
     help
       Include constant-time comparison and crypto-safe string functions.
 
+config PRINTK_COLOR
+    bool "Enable ANSI color support for printk"
+    default y
+    help
+      Enables support for ANSI color escape sequences in printk output.
+
 endmenu

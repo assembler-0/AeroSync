@@ -9,4 +9,12 @@ config EXT_DRM_RENDERER
     help
       Requests a simple linear framebuffer for simple rendering
 
+config DRM_LINEARFB_COLOR
+    bool "Enable ANSI color support for linearfb console"
+    depends on EXT_DRM_RENDERER
+    default y
+    help
+      Enables parsing of ANSI color escape sequences in the linearfb
+      console driver.
+
 endmenu
