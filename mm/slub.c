@@ -643,11 +643,13 @@ int kmem_cache_alloc_bulk(kmem_cache_t *s, gfp_t flags, size_t size, void **p) {
           check_poison(s, curr);
         check_redzone(s, curr);
         
+        void *next_list = get_freelist_next(curr, s->offset);
+
         if (flags & __GFP_ZERO) {
           memset(curr, 0, s->object_size);
         }
 
-        curr = get_freelist_next(curr, s->offset);
+        curr = next_list;
       }
       atomic_long_add(size, &s->total_objects);
       atomic_long_add(size, &s->alloc_fastpath);

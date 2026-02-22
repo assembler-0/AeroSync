@@ -3,32 +3,18 @@
  * AeroSync monolithic kernel
  *
  * @file aerosync/sysintf/madt.c
- * @brief Generic MADT Parser Implementation
+ * @brief Generic MADT Parser Implementation using ACPICA
  * @copyright (C) 2025-2026 assembler-0
- *
- * This file is part of the AeroSync kernel.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
+#include <acpi.h>
 #include <aerosync/sysintf/madt.h>
 #include <aerosync/classes.h>
 #include <aerosync/errno.h>
 #include <aerosync/fkx/fkx.h>
 #include <lib/printk.h>
-#include <uacpi/uacpi.h>
-#include <uacpi/platform/types.h>
-#include <uacpi/tables.h>
-#include <aerosync/errno.h>
 
-static uint64_t s_lapic_address = 0xfee00000; // Default x86 base
+static uint64_t s_lapic_address = 0xfee00000;
 static madt_ioapic_t s_ioapics[MADT_MAX_IOAPICS];
 static size_t s_num_ioapics = 0;
 
@@ -38,82 +24,75 @@ static size_t s_num_isos = 0;
 static madt_lapic_nmi_t s_lapic_nmis[MADT_MAX_LAPIC_NMIS];
 static size_t s_num_lapic_nmis = 0;
 
-static uacpi_iteration_decision madt_iter_cb(uacpi_handle user, struct acpi_entry_hdr *ehdr) {
-  (void) user;
-
-  switch (ehdr->type) {
-    case ACPI_MADT_ENTRY_TYPE_LAPIC: {
-      // We could track individual LAPICs here if needed for SMP
-      break;
-    }
-    case ACPI_MADT_ENTRY_TYPE_LAPIC_ADDRESS_OVERRIDE: {
-      const struct acpi_madt_lapic_address_override *ovr = (const void *) ehdr;
-      s_lapic_address = ovr->address;
-      break;
-    }
-    case ACPI_MADT_ENTRY_TYPE_IOAPIC: {
-      if (s_num_ioapics < MADT_MAX_IOAPICS) {
-        const struct acpi_madt_ioapic *io = (const void *) ehdr;
-        s_ioapics[s_num_ioapics].id = io->id;
-        s_ioapics[s_num_ioapics].address = io->address;
-        s_ioapics[s_num_ioapics].gsi_base = io->gsi_base;
-        s_num_ioapics++;
-      }
-      break;
-    }
-    case ACPI_MADT_ENTRY_TYPE_INTERRUPT_SOURCE_OVERRIDE: {
-      if (s_num_isos < MADT_MAX_ISO) {
-        const struct acpi_madt_interrupt_source_override *iso = (const void *) ehdr;
-        s_isos[s_num_isos].bus = iso->bus;
-        s_isos[s_num_isos].source = iso->source;
-        s_isos[s_num_isos].gsi = iso->gsi;
-        s_isos[s_num_isos].flags = iso->flags;
-        s_num_isos++;
-      }
-      break;
-    }
-    case ACPI_MADT_ENTRY_TYPE_LAPIC_NMI: {
-      if (s_num_lapic_nmis < MADT_MAX_LAPIC_NMIS) {
-        const struct acpi_madt_lapic_nmi *nmi = (const void *) ehdr;
-        s_lapic_nmis[s_num_lapic_nmis].processor_id = nmi->uid;
-        s_lapic_nmis[s_num_lapic_nmis].flags = nmi->flags;
-        s_lapic_nmis[s_num_lapic_nmis].lint = nmi->lint;
-        s_num_lapic_nmis++;
-      }
-      break;
-    }
-  }
-
-  return UACPI_ITERATION_DECISION_CONTINUE;
-}
-
 int madt_init(void) {
-  uacpi_table tbl;
-  uacpi_status st = uacpi_table_find_by_signature(ACPI_MADT_SIGNATURE, &tbl);
-  if (uacpi_unlikely_error(st)) {
+  ACPI_TABLE_MADT *madt;
+  ACPI_STATUS st = AcpiGetTable(ACPI_SIG_MADT, 1, (ACPI_TABLE_HEADER **)&madt);
+  if (ACPI_FAILURE(st)) {
     printk(KERN_WARNING ACPI_CLASS "MADT not found, using defaults\n");
     return -ENODEV;
   }
 
-  // First, get the standard LAPIC address from the MADT header
-  struct acpi_madt *madt_hdr = (struct acpi_madt *) tbl.hdr;
-  s_lapic_address = madt_hdr->local_interrupt_controller_address;
+  s_lapic_address = madt->Address;
 
-  // Iterate subtables for overrides and IOAPICs
-  uacpi_for_each_subtable(tbl.hdr, sizeof(struct acpi_madt), madt_iter_cb, nullptr);
+  ACPI_SUBTABLE_HEADER *sub = (ACPI_SUBTABLE_HEADER *)(madt + 1);
+  uint8_t *end = (uint8_t *)madt + madt->Header.Length;
 
-  uacpi_table_unref(&tbl);
+  while ((uint8_t *)sub < end) {
+    switch (sub->Type) {
+      case ACPI_MADT_TYPE_LOCAL_APIC:
+        break;
+      case ACPI_MADT_TYPE_LOCAL_APIC_OVERRIDE: {
+        ACPI_MADT_LOCAL_APIC_OVERRIDE *ovr = (ACPI_MADT_LOCAL_APIC_OVERRIDE *)sub;
+        s_lapic_address = ovr->Address;
+        break;
+      }
+      case ACPI_MADT_TYPE_IO_APIC: {
+        if (s_num_ioapics < MADT_MAX_IOAPICS) {
+          ACPI_MADT_IO_APIC *io = (ACPI_MADT_IO_APIC *)sub;
+          s_ioapics[s_num_ioapics].id = io->Id;
+          s_ioapics[s_num_ioapics].address = io->Address;
+          s_ioapics[s_num_ioapics].gsi_base = io->GlobalIrqBase;
+          s_num_ioapics++;
+        }
+        break;
+      }
+      case ACPI_MADT_TYPE_INTERRUPT_OVERRIDE: {
+        if (s_num_isos < MADT_MAX_ISO) {
+          ACPI_MADT_INTERRUPT_OVERRIDE *iso = (ACPI_MADT_INTERRUPT_OVERRIDE *)sub;
+          s_isos[s_num_isos].bus = iso->Bus;
+          s_isos[s_num_isos].source = iso->SourceIrq;
+          s_isos[s_num_isos].gsi = iso->GlobalIrq;
+          s_isos[s_num_isos].flags = iso->IntiFlags;
+          s_num_isos++;
+        }
+        break;
+      }
+      case ACPI_MADT_TYPE_LOCAL_APIC_NMI: {
+        if (s_num_lapic_nmis < MADT_MAX_LAPIC_NMIS) {
+          ACPI_MADT_LOCAL_APIC_NMI *nmi = (ACPI_MADT_LOCAL_APIC_NMI *)sub;
+          s_lapic_nmis[s_num_lapic_nmis].processor_id = nmi->ProcessorId;
+          s_lapic_nmis[s_num_lapic_nmis].flags = nmi->IntiFlags;
+          s_lapic_nmis[s_num_lapic_nmis].lint = nmi->Lint;
+          s_num_lapic_nmis++;
+        }
+        break;
+      }
+    }
+    sub = (ACPI_SUBTABLE_HEADER *)((uint8_t *)sub + sub->Length);
+  }
 
   printk(KERN_INFO ACPI_CLASS "MADT parsed: %zu IOAPICs, %zu ISOs, %zu LAPIC NMIs\n",
          s_num_ioapics, s_num_isos, s_num_lapic_nmis);
   printk(KERN_DEBUG ACPI_CLASS "Local APIC Address: 0x%llx\n", s_lapic_address);
 
-      return 0;
-  }
-  
-  EXPORT_SYMBOL(madt_init);
-  
-  uint64_t madt_get_lapic_address(void) {  return s_lapic_address;
+  return 0;
+}
+
+#include <aerosync/export.h>
+EXPORT_SYMBOL(madt_init);
+
+uint64_t madt_get_lapic_address(void) {
+  return s_lapic_address;
 }
 
 const madt_ioapic_t *madt_get_ioapics(size_t *out_count) {

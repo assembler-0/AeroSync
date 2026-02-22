@@ -38,6 +38,11 @@ target_compile_options(aerosync.krnl PRIVATE
     >
 )
 
+# for acpica
+target_compile_definitions(aerosync.krnl PUBLIC
+    __aerosync__
+)
+
 if(COMPILER_IDENTIFIER STREQUAL "clang")
     target_compile_options(aerosync.krnl PRIVATE
         $<$<COMPILE_LANGUAGE:C>:

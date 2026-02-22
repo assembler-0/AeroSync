@@ -21,7 +21,6 @@
 #pragma once
 
 #include <aerosync/sysintf/time.h>
-#include <uacpi/types.h>
 #include <aerosync/export.h>
 
 /* FKX Magic: "FKX1" in little-endian */

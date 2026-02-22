@@ -14,6 +14,7 @@
 #include <aerosync/classes.h>
 #include <aerosync/fkx/fkx.h>
 #include <aerosync/sysintf/madt.h>
+#include <acpi.h>
 #include <arch/x86_64/cpu.h>
 #include <lib/printk.h>
 
@@ -176,10 +177,10 @@ void apic_enable_irq(uint32_t irq_line) {
   if (!found_override) {
     if (gsi >= 16) {
       // PCI/System interrupts are Level/Low by default
-      flags = ACPI_MADT_POLARITY_ACTIVE_LOW | ACPI_MADT_TRIGGERING_LEVEL;
+      flags = ACPI_MADT_POLARITY_ACTIVE_LOW | ACPI_MADT_TRIGGER_LEVEL;
     } else {
       // ISA interrupts are Edge/High by default
-      flags = ACPI_MADT_POLARITY_ACTIVE_HIGH | ACPI_MADT_TRIGGERING_EDGE;
+      flags = ACPI_MADT_POLARITY_ACTIVE_HIGH | ACPI_MADT_TRIGGER_EDGE;
     }
   }
 
@@ -343,3 +344,8 @@ static const interrupt_controller_interface_t apic_interface = {
 const interrupt_controller_interface_t *apic_get_driver(void) {
   return &apic_interface;
 }
+
+#include <aerosync/export.h>
+EXPORT_SYMBOL(apic_get_driver);
+EXPORT_SYMBOL(apic_send_eoi);
+EXPORT_SYMBOL(lapic_get_id);

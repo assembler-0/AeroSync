@@ -244,13 +244,16 @@
  * typeof() keeps the const qualifier. Use __unqual_scalar_typeof() in order
  * to discard the const qualifier for the __element variable.
  */
-#define __minmax_array(op, array, len) ({				\
-	typeof(&(array)[0]) __array = (array);				\
-	typeof(len) __len = (len);					\
-	__unqual_scalar_typeof(__array[0]) __element = __array[--__len];\
-	while (__len--)							\
-		__element = op(__element, __array[__len]);		\
-	__element; })
+#define __minmax_array(op, array, len) ({               \
+    typeof(&(array)[0]) __array = (array);              \
+    typeof(len) __len = (len);                          \
+    BUILD_BUG_ON_MSG(statically_true(__len == 0),       \
+        "min/max_array() called with zero length");     \
+    __unqual_scalar_typeof(__array[0]) __element =      \
+        __array[--__len];                               \
+    while (__len--)                                     \
+        __element = op(__element, __array[__len]);      \
+    __element; })
 
 /**
  * min_array - return minimum of values present in an array

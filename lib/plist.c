@@ -190,9 +190,6 @@ queue:
 
 #ifdef CONFIG_DEBUG_PLIST
 #include <linux/sched.h>
-#include <linux/sched/clock.h>
-#include <linux/module.h>
-#include <linux/init.h>
 
 static struct plist_node __initdata test_node[241];
 

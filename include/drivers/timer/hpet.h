@@ -1,9 +1,6 @@
 #pragma once
 
 #include <aerosync/types.h>
-#include <uacpi/acpi.h>
-#include <uacpi/tables.h>
-#include <uacpi/uacpi.h>
 
 // HPET register offsets
 #define HPET_GENERAL_CAPABILITIES_ID 0x00

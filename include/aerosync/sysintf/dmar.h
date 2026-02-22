@@ -10,7 +10,6 @@
 #pragma once
 
 #include <aerosync/types.h>
-#include <uacpi/acpi.h>
 #include <linux/list.h>
 #include <aerosync/compiler.h>
 

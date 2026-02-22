@@ -1,9 +1,6 @@
 #pragma once
 
 #include <aerosync/types.h>
-#include <uacpi/uacpi.h>
-#include <uacpi/tables.h>
-#include <uacpi/acpi.h>
 
 // --- Constants ---
 #define XAPIC_DELIVERY_MODE_FIXED        (0b000 << 8)

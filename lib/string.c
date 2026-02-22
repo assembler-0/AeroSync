@@ -288,8 +288,8 @@ void htoa(uint64_t n, char *buffer) {
   if (!buffer)
     return;
 
-  __attribute__((nonstring)) static const char hex_chars[16] =
-      "0123456789ABCDEF";
+  static __nonstring constexpr
+      char hex_chars[16] = "0123456789ABCDEF";
 
   buffer[0] = '0';
   buffer[1] = 'x';
@@ -326,10 +326,10 @@ void itoa(uint64_t n, char *buffer) {
 
   while (n >= 10) {
     uint64_t q = n / 10;
-    *--p = '0' + (n - q * 10);
+    *--p = (char)('0' + (n - q * 10));
     n = q;
   }
-  *--p = '0' + n;
+  *--p = (char)('0' + n);
 
   strcpy(buffer, p);
 }

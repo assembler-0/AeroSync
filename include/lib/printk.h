@@ -1,21 +1,6 @@
 #pragma once
 
-#include <aerosync/spinlock.h>
 #include <aerosync/types.h>
-
-typedef struct printk_backend {
-  const char *name;
-  int priority;              // bigger = preferred
-  fn(void, putc, char c);
-  fn(int, probe, void);
-  fn(int, init, void *payload);
-  fn(void, cleanup, void);
-  fn(int, is_active, void);
-  fn(int, suspend, void);
-  fn(int, resume, void);
-} printk_backend_t;
-
-static int generic_backend_init(void *payload) { (void)payload; return 0; }
 
 #define KERN_EMERG "$0$"
 #define KERN_ALERT "$1$"
@@ -33,7 +18,24 @@ int printkln(const char *fmt, ...);
 int vprintk(const char *fmt, va_list args);
 int vprintkln(const char *fmt, va_list args);
 
+#include <aerosync/spinlock.h>
+
+typedef struct printk_backend {
+  const char *name;
+  int priority;              // bigger = preferred
+  fn(void, putc, char c);
+  fn(int, probe, void);
+  fn(int, init, void *payload);
+  fn(void, cleanup, void);
+  fn(int, is_active, void);
+  fn(int, suspend, void);
+  fn(int, resume, void);
+} printk_backend_t;
+
+static int generic_backend_init(void *payload) { (void)payload; return 0; }
+
 #define PRINTK_BACKEND_NAME(b) (b ? b->name : nullptr)
+
 
 // Initialize printing subsystem
 void printk_register_backend(const printk_backend_t *backend);

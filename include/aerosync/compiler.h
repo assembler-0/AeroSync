@@ -59,6 +59,7 @@
 #define __trap()        __builtin_trap()
 #define __likely(x)     __builtin_expect(!!(x), 1)
 #define __unlikely(x)   __builtin_expect(!!(x), 0)
+#define __nonstring     __attribute__((__nonstring__))
 
 /*
  * Branch Prediction Hints
@@ -69,6 +70,17 @@
 
 #define likely(x)      __likely(x)
 #define unlikely(x)    __unlikely(x)
+
+# define __same_type(a, b) __builtin_types_compatible_p(typeof(a), typeof(b))
+
+/* &a[0] degrades to a pointer: a different type from an array */
+#define __is_array(a)		(!__same_type((a), &(a)[0]))
+#define __must_be_array(a)	__BUILD_BUG_ON_ZERO_MSG(!__is_array(a), \
+							"must be array")
+
+#define __is_byte_array(a)	(__is_array(a) && sizeof((a)[0]) == 1)
+#define __must_be_byte_array(a)	__BUILD_BUG_ON_ZERO_MSG(!__is_byte_array(a), \
+							"must be byte array")
 
 /*
  * This returns a constant expression while determining if an argument is
@@ -257,7 +269,6 @@ static inline void __chk_io_ptr(const volatile void __iomem *ptr) { }
 # define __private	__attribute__((noderef))
 # define ACCESS_PRIVATE(p, member) (*((typeof((p)->member) __force *) &(p)->member))
 
-
 /*
  * Force a compilation error if condition is true, but also produce a
  * result (of value 0 and type int), so the expression can be used
@@ -389,7 +400,6 @@ __diag_ ## compiler(version, error, option)
 #ifndef __diag_ignore_all
 #define __diag_ignore_all(option, comment)
 #endif
-
 
 /*
  * sanitizers

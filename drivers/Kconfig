@@ -81,6 +81,7 @@ config LOG_DEVICE_TREE
       If enabled, the kernel will print the entire unified device tree
       at the end of the initialization process.
 
+source "drivers/acpi/Kconfig"
 source "drivers/block/Kconfig"
 source "drivers/graphics/Kconfig"
 source "drivers/iommu/Kconfig"

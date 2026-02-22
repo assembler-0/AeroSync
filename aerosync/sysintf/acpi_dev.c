@@ -3,24 +3,22 @@
  * AeroSync monolithic kernel
  *
  * @file aerosync/sysintf/acpi_dev.c
- * @brief ACPI Namespace Device Enumerator
+ * @brief ACPI Namespace Device Enumerator using ACPICA
  * @copyright (C) 2025-2026 assembler-0
  */
 
+#include <aerosync/classes.h>
 #include <aerosync/sysintf/acpi.h>
+#include <aerosync/sysintf/bus.h>
 #include <aerosync/sysintf/class.h>
 #include <aerosync/sysintf/device.h>
-#include <aerosync/classes.h>
-#include <aerosync/sysintf/bus.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <mm/slub.h>
-#include <uacpi/namespace.h>
-#include <uacpi/utilities.h>
 
 struct acpi_device {
   struct device dev;
-  uacpi_namespace_node *node;
+  ACPI_HANDLE handle;
   char hid[16];
 };
 
@@ -52,9 +50,9 @@ static int __no_cfi acpi_bus_probe(struct device *dev) {
 }
 
 struct bus_type acpi_bus_type = {
-  .name = "acpi",
-  .match = acpi_bus_match,
-  .probe = acpi_bus_probe,
+    .name = "acpi",
+    .match = acpi_bus_match,
+    .probe = acpi_bus_probe,
 };
 
 static bool acpi_bus_registered = false;
@@ -64,54 +62,64 @@ static void acpi_dev_release(struct device *dev) {
   kfree(adev);
 }
 
-static uacpi_iteration_decision __no_cfi
-acpi_enum_callback(void *user, uacpi_namespace_node *node, uacpi_u32 depth) {
-  (void) user;
-  (void) depth;
-  uacpi_namespace_node_info *info;
-  uacpi_status st;
+static ACPI_STATUS __no_cfi acpi_enum_callback(ACPI_HANDLE object,
+                                               uint32_t nesting_level,
+                                               void *context,
+                                               void **return_value) {
+  (void)nesting_level;
+  (void)context;
+  (void)return_value;
 
-  st = uacpi_get_namespace_node_info(node, &info);
-  if (uacpi_unlikely_error(st))
-    return UACPI_ITERATION_DECISION_CONTINUE;
+  ACPI_DEVICE_INFO *info;
+  ACPI_STATUS st;
 
-  if (info->type == UACPI_OBJECT_DEVICE) {
+  st = AcpiGetObjectInfo(object, &info);
+  if (ACPI_FAILURE(st))
+    return AE_OK;
+
+  if (info->Type == ACPI_TYPE_DEVICE) {
     struct acpi_device *adev = kzalloc(sizeof(struct acpi_device));
     if (!adev) {
-      uacpi_free_namespace_node_info(info);
-      return UACPI_ITERATION_DECISION_CONTINUE;
+      ACPI_FREE(info);
+      return AE_OK;
     }
 
-    adev->node = node;
+    adev->handle = object;
     device_initialize(&adev->dev);
     adev->dev.bus = &acpi_bus_type;
     adev->dev.release = acpi_dev_release;
 
-    // Get name from node
-    uacpi_object_name name = uacpi_namespace_node_name(node);
+    // Get name from handle
+    ACPI_BUFFER buffer = {ACPI_ALLOCATE_BUFFER, nullptr};
+    st = AcpiGetName(object, ACPI_SINGLE_NAME, &buffer);
+
+    const char *name_ptr =
+        (st == AE_OK) ? (const char *)buffer.Pointer : "????";
     const char *acpi_prefix = STRINGIFY(CONFIG_ACPI_NAME_PREFIX);
+
     if (acpi_prefix[0] != '\0') {
-        device_set_name(&adev->dev, "%s_%c%c%c%c", acpi_prefix, name.text[0], name.text[1],
-                 name.text[2], name.text[3]);
+      device_set_name(&adev->dev, "%s_%s", acpi_prefix, name_ptr);
     } else {
-        device_set_name(&adev->dev, "%c%c%c%c", name.text[0], name.text[1],
-                 name.text[2], name.text[3]);
+      device_set_name(&adev->dev, "%s", name_ptr);
     }
 
-    if (info->flags & UACPI_NS_NODE_INFO_HAS_HID) {
-      strncpy(adev->hid, info->hid.value, 15);
+    if (buffer.Pointer)
+      ACPI_FREE(buffer.Pointer);
+
+    if (info->Valid & ACPI_VALID_HID) {
+      strncpy(adev->hid, info->HardwareId.String, 15);
     }
 
     if (device_add(&adev->dev) != 0) {
       kfree(adev);
     } else {
-      printk(KERN_DEBUG ACPI_CLASS "discovered device %s (HID: %s)\n", adev->dev.name,
-             adev->hid[0] ? adev->hid : "None");
+      printk(KERN_DEBUG ACPI_CLASS "discovered device %s (HID: %s)\n",
+             adev->dev.name, adev->hid[0] ? adev->hid : "None");
     }
   }
 
-  uacpi_free_namespace_node_info(info);
-  return UACPI_ITERATION_DECISION_CONTINUE;
+  ACPI_FREE(info);
+  return AE_OK;
 }
 
 int acpi_bus_enumerate(void) {
@@ -121,8 +129,7 @@ int acpi_bus_enumerate(void) {
   }
 
   printk(KERN_INFO ACPI_CLASS "enumerating ACPI namespace...\n");
-  uacpi_namespace_for_each_child(uacpi_namespace_root(), acpi_enum_callback,
-                                 UACPI_NULL, UACPI_OBJECT_ANY_BIT,
-                                 UACPI_MAX_DEPTH_ANY, nullptr);
+  AcpiWalkNamespace(ACPI_TYPE_DEVICE, ACPI_ROOT_OBJECT, ACPI_UINT32_MAX,
+                    acpi_enum_callback, nullptr, nullptr, nullptr);
   return 0;
 }

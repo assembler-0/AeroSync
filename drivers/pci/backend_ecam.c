@@ -94,16 +94,16 @@ void pci_backend_ecam_init(void) {
 
   for (size_t i = 0; i < entries_count; i++) {
     const struct acpi_mcfg_allocation *alloc = &entries[i];
-    regions[i].phys_base = alloc->address;
-    regions[i].segment = alloc->segment;
-    regions[i].start_bus = alloc->start_bus;
-    regions[i].end_bus = alloc->end_bus;
+    regions[i].phys_base = alloc->Address;
+    regions[i].segment = alloc->PciSegment;
+    regions[i].start_bus = alloc->StartBusNumber;
+    regions[i].end_bus = alloc->EndBusNumber;
 
-    size_t size = (size_t)(alloc->end_bus - alloc->start_bus + 1) << 20;
-    regions[i].virt_base = ioremap(alloc->address, size);
+    size_t size = (size_t)(alloc->EndBusNumber - alloc->StartBusNumber + 1) << 20;
+    regions[i].virt_base = ioremap(alloc->Address, size);
 
     printk(KERN_DEBUG PCI_CLASS "ECAM Segment %d Bus %02x-%02x mapped at %p\n",
-           alloc->segment, alloc->start_bus, alloc->end_bus,
+           alloc->PciSegment, alloc->StartBusNumber, alloc->EndBusNumber,
            regions[i].virt_base);
   }
 

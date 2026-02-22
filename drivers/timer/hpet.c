@@ -122,21 +122,19 @@ int hpet_init(void) {
 
   printk(HPET_CLASS "Initializing HPET driver...\n");
 
-  const struct acpi_hpet *hpet = acpi_get_hpet();
+  const ACPI_TABLE_HPET *hpet = (const ACPI_TABLE_HPET *)acpi_get_hpet();
   if (!hpet) {
     printk(KERN_WARNING HPET_CLASS "HPET table not found in ACPI inventory\n");
     return -ENODEV;
   }
 
-  hpet_info.base_address = hpet->address.address;
-  hpet_info.revision_id = hpet->block_id & 0xFF;
+  hpet_info.base_address = hpet->Address.Address;
+  hpet_info.revision_id = hpet->Id & 0xFF;
   hpet_info.vendor_id =
-      (hpet->block_id >> ACPI_HPET_PCI_VENDOR_ID_SHIFT) & 0xFFFF;
+      (hpet->Id >> 16) & 0xFFFF;
   hpet_info.num_comparators =
-      ((hpet->block_id >> ACPI_HPET_NUMBER_OF_COMPARATORS_SHIFT) &
-       ACPI_HPET_NUMBER_OF_COMPARATORS_MASK) +
-      1;
-  hpet_info.page_protection = hpet->flags & ACPI_HPET_PAGE_PROTECTION_MASK;
+      ((hpet->Id >> 8) & 0x1F) + 1;
+  hpet_info.page_protection = hpet->Flags & 0x03;
 
   printk(KERN_DEBUG HPET_CLASS "HPET found:\n");
   printk(KERN_DEBUG HPET_CLASS "  Base Address: 0x%lx\n",
@@ -149,6 +147,7 @@ int hpet_init(void) {
          hpet_info.page_protection);
 
   hpet_mapped_base = ioremap(hpet_info.base_address, PAGE_SIZE);
+
   if (!hpet_mapped_base) {
     printk(KERN_ERR HPET_CLASS "Failed to map HPET registers\n");
     return -1;
@@ -321,3 +320,9 @@ int hpet_calibrate_tsc(void) {
 
   return -EINVAL;
 }
+
+#include <aerosync/export.h>
+EXPORT_SYMBOL(hpet_init);
+EXPORT_SYMBOL(hpet_get_counter);
+EXPORT_SYMBOL(hpet_get_time_ns);
+EXPORT_SYMBOL(hpet_get_time_source);

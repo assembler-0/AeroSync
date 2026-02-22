@@ -107,6 +107,19 @@ kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align,
 
 void *kmem_cache_alloc(kmem_cache_t *cache);
 void *kmem_cache_alloc_node(kmem_cache_t *cache, int node);
+
+static inline void *kmem_cache_zalloc_node(kmem_cache_t *cache, int node) {
+  void *obj = kmem_cache_alloc_node(cache, node);
+  if (obj) {
+    memset(obj, 0, cache->object_size);
+  }
+  return obj;
+}
+
+static inline void *kmem_cache_zalloc(kmem_cache_t *cache) {
+  return kmem_cache_zalloc_node(cache, -1);
+}
+
 void kmem_cache_free(kmem_cache_t *cache, void *obj);
 int kmem_cache_alloc_bulk(kmem_cache_t *s, gfp_t flags, size_t size, void **p);
 void kmem_cache_free_bulk(kmem_cache_t *s, size_t size, void **p);

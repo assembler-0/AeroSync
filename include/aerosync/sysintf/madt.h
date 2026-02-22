@@ -10,7 +10,6 @@
 #pragma once
 
 #include <aerosync/types.h>
-#include <uacpi/acpi.h>
 
 #define MADT_MAX_IOAPICS 8
 #define MADT_MAX_ISO 16

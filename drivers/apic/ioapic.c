@@ -22,7 +22,7 @@
 #include <drivers/apic/ioapic.h>
 #include <aerosync/classes.h>
 #include <aerosync/fkx/fkx.h>
-#include <uacpi/acpi.h>
+ #include <acpi.h>
 #include <mm/vmalloc.h>
 #include <lib/printk.h>
 
@@ -95,7 +95,7 @@ void ioapic_set_gsi_redirect(uint32_t gsi, uint8_t vector, uint32_t dest_apic_id
 
   // Handle flags
   uint16_t polarity = flags & ACPI_MADT_POLARITY_MASK;
-  uint16_t trigger = flags & ACPI_MADT_TRIGGERING_MASK;
+  uint16_t trigger = flags & ACPI_MADT_TRIGGER_MASK;
 
   /*
    * Handle 'Conforms to bus specifications' (0)
@@ -103,18 +103,18 @@ void ioapic_set_gsi_redirect(uint32_t gsi, uint8_t vector, uint32_t dest_apic_id
    * For PCI/System (GSIs >= 16): Level triggered, Active Low
    * SCI is almost always Level/Low.
    */
-  if (polarity == ACPI_MADT_POLARITY_CONFORMING) {
+  if (polarity == ACPI_MADT_POLARITY_CONFORMS) {
     if (gsi >= 16)
       polarity = ACPI_MADT_POLARITY_ACTIVE_LOW;
     else
       polarity = ACPI_MADT_POLARITY_ACTIVE_HIGH;
   }
 
-  if (trigger == ACPI_MADT_TRIGGERING_CONFORMING) {
+  if (trigger == ACPI_MADT_TRIGGER_CONFORMS) {
     if (gsi >= 16)
-      trigger = ACPI_MADT_TRIGGERING_LEVEL;
+      trigger = ACPI_MADT_TRIGGER_LEVEL;
     else
-      trigger = ACPI_MADT_TRIGGERING_EDGE;
+      trigger = ACPI_MADT_TRIGGER_EDGE;
   }
 
   if (polarity == ACPI_MADT_POLARITY_ACTIVE_LOW) {
@@ -123,7 +123,7 @@ void ioapic_set_gsi_redirect(uint32_t gsi, uint8_t vector, uint32_t dest_apic_id
     redirect_entry |= (0ull << 13); // Polarity: High
   }
 
-  if (trigger == ACPI_MADT_TRIGGERING_LEVEL) {
+  if (trigger == ACPI_MADT_TRIGGER_LEVEL) {
     redirect_entry |= (1ull << 15); // Trigger: Level
   } else {
     redirect_entry |= (0ull << 15); // Trigger: Edge

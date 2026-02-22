@@ -8,16 +8,13 @@
  */
 
 #include <mm/zone.h>
-#include <mm/page.h>
+#include <acpi.h>
 #include <lib/printk.h>
-#include <uacpi/acpi.h> // We only use the header definitions
 #include <aerosync/classes.h>
 #include <aerosync/errno.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <lib/string.h>
-
 #include <aerosync/sched/cpumask.h>
-#include <aerosync/errno.h>
 
 struct pglist_data *node_data[MAX_NUMNODES] = {nullptr};
 static struct pglist_data static_node_data[MAX_NUMNODES];
@@ -110,9 +107,9 @@ int numa_find_best_node(int preferred_node) {
   return -ENODEV;
 }
 
-static void parse_srat(struct acpi_srat *srat) {
+static void parse_srat(ACPI_TABLE_SRAT *srat) {
   uint8_t *ptr = (uint8_t *) (srat + 1);
-  uint8_t *end = (uint8_t *) srat + srat->hdr.length;
+  uint8_t *end = (uint8_t *) srat + srat->Header.Length;
   
   numa_enabled = 1;
   int max_nid = 0;
@@ -121,34 +118,34 @@ static void parse_srat(struct acpi_srat *srat) {
   for (int i = 0; i < MAX_NUMNODES; i++) cpumask_clear(&node_to_cpumask_map[i]);
 
   while (ptr < end) {
-    struct acpi_entry_hdr *ehdr = (struct acpi_entry_hdr *) ptr;
-    if (ehdr->length == 0) break;
+    ACPI_SUBTABLE_HEADER *ehdr = (ACPI_SUBTABLE_HEADER *) ptr;
+    if (ehdr->Length == 0) break;
 
-    switch (ehdr->type) {
-      case ACPI_SRAT_ENTRY_TYPE_PROCESSOR_AFFINITY: {
-        struct acpi_srat_processor_affinity *la = (void *) ehdr;
-        if (!(la->flags & ACPI_SRAT_PROCESSOR_ENABLED)) break;
+    switch (ehdr->Type) {
+      case ACPI_SRAT_TYPE_CPU_AFFINITY: {
+        ACPI_SRAT_CPU_AFFINITY *la = (void *) ehdr;
+        if (!(la->Flags & ACPI_SRAT_CPU_ENABLED)) break;
 
-        uint32_t domain = la->proximity_domain_low;
-        domain |= (uint32_t) la->proximity_domain_high[0] << 8;
-        domain |= (uint32_t) la->proximity_domain_high[1] << 16;
-        domain |= (uint32_t) la->proximity_domain_high[2] << 24;
+        uint32_t domain = la->ProximityDomainLo;
+        domain |= (uint32_t) la->ProximityDomainHi[0] << 8;
+        domain |= (uint32_t) la->ProximityDomainHi[1] << 16;
+        domain |= (uint32_t) la->ProximityDomainHi[2] << 24;
         
         if (domain > (uint32_t)max_nid) max_nid = (int)domain;
         
         /* Map LAPIC to Node */
         if (lapic_node_count < MAX_CPUS) {
-          lapic_node_map[lapic_node_count].lapic_id = la->id;
+          lapic_node_map[lapic_node_count].lapic_id = la->ApicId;
           lapic_node_map[lapic_node_count].nid = (int) domain;
           lapic_node_count++;
         }
         break;
       }
-      case ACPI_SRAT_ENTRY_TYPE_MEMORY_AFFINITY: {
-        struct acpi_srat_memory_affinity *ma = (void *) ehdr;
-        if (!(ma->flags & ACPI_SRAT_MEMORY_ENABLED)) break;
+      case ACPI_SRAT_TYPE_MEMORY_AFFINITY: {
+        ACPI_SRAT_MEM_AFFINITY *ma = (void *) ehdr;
+        if (!(ma->Flags & ACPI_SRAT_MEM_ENABLED)) break;
 
-        uint32_t domain = ma->proximity_domain;
+        uint32_t domain = ma->ProximityDomain;
         if (domain < MAX_NUMNODES) {
           if (node_data[domain] == nullptr) {
             node_data[domain] = &static_node_data[domain];
@@ -159,13 +156,13 @@ static void parse_srat(struct acpi_srat *srat) {
           
           if ((int)domain > max_nid) max_nid = (int)domain;
 
-          uint64_t start_pfn = ma->address >> 12;
-          uint64_t end_pfn = (ma->address + ma->length) >> 12;
+          uint64_t start_pfn = ma->BaseAddress >> 12;
+          uint64_t end_pfn = (ma->BaseAddress + ma->Length) >> 12;
 
           if (start_pfn < node_data[domain]->node_start_pfn)
             node_data[domain]->node_start_pfn = start_pfn;
 
-          uint64_t total_end = start_pfn + (ma->length >> 12);
+          uint64_t total_end = start_pfn + (ma->Length >> 12);
           if (total_end > (node_data[domain]->node_start_pfn + node_data[domain]->node_spanned_pages))
             node_data[domain]->node_spanned_pages = total_end - node_data[domain]->node_start_pfn;
 
@@ -176,24 +173,24 @@ static void parse_srat(struct acpi_srat *srat) {
             numa_range_count++;
 
             printk(KERN_DEBUG NUMA_CLASS "Range [%llx - %llx] -> Node %d\n",
-                   ma->address, ma->address + ma->length, domain);
+                   ma->BaseAddress, ma->BaseAddress + ma->Length, domain);
           }
         }
         break;
       }
     }
-    ptr += ehdr->length;
+    ptr += ehdr->Length;
   }
   nr_node_ids = max_nid + 1;
 }
 
-static void parse_slit(struct acpi_slit *slit) {
-  uint64_t count = slit->num_localities;
+static void parse_slit(ACPI_TABLE_SLIT *slit) {
+  uint64_t count = slit->LocalityCount;
   if (count > MAX_NUMNODES) count = MAX_NUMNODES;
 
   for (uint64_t i = 0; i < count; i++) {
     for (uint64_t j = 0; j < count; j++) {
-      numa_distance[i][j] = slit->matrix[i * slit->num_localities + j];
+      numa_distance[i][j] = slit->Entry[i * slit->LocalityCount + j];
     }
   }
   numa_distance_valid = true;
@@ -206,28 +203,28 @@ void numa_init(void *rsdp_ptr) {
     goto fallback;
   }
 
-  struct acpi_rsdp *rsdp = (struct acpi_rsdp *) rsdp_ptr;
-  struct acpi_xsdt *xsdt = nullptr;
+  ACPI_TABLE_RSDP *rsdp = (ACPI_TABLE_RSDP *) rsdp_ptr;
+  ACPI_TABLE_XSDT *xsdt = nullptr;
 
-  if (rsdp->revision >= 2 && rsdp->xsdt_addr) {
-    xsdt = (struct acpi_xsdt *) pmm_phys_to_virt(rsdp->xsdt_addr);
+  if (rsdp->Revision >= 2 && rsdp->XsdtPhysicalAddress) {
+    xsdt = (ACPI_TABLE_XSDT *) pmm_phys_to_virt(rsdp->XsdtPhysicalAddress);
   } else {
     printk(KERN_WARNING NUMA_CLASS "No XSDT found (legacy ACPI), assuming UMA.\n");
     goto fallback;
   }
 
-  size_t entry_count = (xsdt->hdr.length - sizeof(struct acpi_sdt_hdr)) / sizeof(uint64_t);
+  size_t entry_count = (xsdt->Header.Length - sizeof(ACPI_TABLE_HEADER)) / sizeof(uint64_t);
   bool found_srat = false;
 
   for (size_t i = 0; i < entry_count; i++) {
-    struct acpi_sdt_hdr *table = (struct acpi_sdt_hdr *) pmm_phys_to_virt(xsdt->entries[i]);
-    if (memcmp(table->signature, ACPI_SRAT_SIGNATURE, 4) == 0) {
+    ACPI_TABLE_HEADER *table = (ACPI_TABLE_HEADER *) pmm_phys_to_virt(xsdt->TableOffsetEntry[i]);
+    if (memcmp(table->Signature, ACPI_SIG_SRAT, 4) == 0) {
       printk(KERN_DEBUG NUMA_CLASS "Found SRAT at %p\n", table);
-      parse_srat((struct acpi_srat *) table);
+      parse_srat((ACPI_TABLE_SRAT *) table);
       found_srat = true;
-    } else if (memcmp(table->signature, ACPI_SLIT_SIGNATURE, 4) == 0) {
+    } else if (memcmp(table->Signature, ACPI_SIG_SLIT, 4) == 0) {
       printk(KERN_DEBUG NUMA_CLASS "Found SLIT at %p\n", table);
-      parse_slit((struct acpi_slit *) table);
+      parse_slit((ACPI_TABLE_SLIT *) table);
     }
   }
 
@@ -257,4 +254,3 @@ int numa_mem_id(void) {
   extern int this_node(void);
   return this_node();
 }
-

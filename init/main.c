@@ -67,8 +67,8 @@
 #include <mm/vm_object.h>
 #include <mm/vma.h>
 #include <mm/vmalloc.h>
+#include <aerosync/sysintf/acpica.h>
 #include <mm/zmm.h>
-#include <uacpi/uacpi.h>
 
 static alignas(16) struct task_struct bsp_task;
 
@@ -321,14 +321,14 @@ no_cmdline:
   fkx_init_module_class(FKX_IC_CLASS);
   aerosync_core_init(ic_register_lapic_get_id_early);
 
-  aerosync_core_init(uacpi_kernel_init_early);
+  aerosync_core_init(acpica_kernel_init_early);
 
   aerosync_core_init(acpi_tables_init);
 
   interrupt_controller_t ic_type;
   aerosync_core_init_status_ret(ic_install, ic_type);
 
-  uacpi_notify_ic_ready();
+  acpica_notify_ic_ready();
 
   // --- Time Subsystem Initialization ---
   fkx_init_module_class(FKX_TIMER_CLASS);
@@ -339,8 +339,8 @@ no_cmdline:
 
   aerosync_core_init(timer_init_subsystem);
 
-  // -- initialize the rest of uACPI ---
-  aerosync_core_init(uacpi_kernel_init_late);
+  // -- initialize the rest of ACPI (ACPICA) ---
+  aerosync_core_init(acpica_kernel_init_late);
   aerosync_extra_init(acpi_power_init);
   aerosync_core_init(acpi_bus_enumerate);
 

@@ -8,4 +8,10 @@ config ACPI_POWER_KERNEL_DEINITIALIZE
     help
       Enables graceful shutdown and rollbacks
 
+config ACPI_DEBUG_OUTPUT
+    bool "Enable debug output"
+    default n
+    help
+      Make ACPICA more talkative
+
 endmenu

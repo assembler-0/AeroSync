@@ -31,9 +31,12 @@ typedef int64_t s64;
 #define INT_MAX   ((int)(UINT_MAX >> 1))
 #define LONG_MAX  ((long)(ULONG_MAX >> 1))
 
-#define IDX_COUNT(arr) (sizeof(arr) / sizeof(arr[0]))
+#define IDX_COUNT(arr) (sizeof(arr) / sizeof((arr)[0]) + __must_be_array(arr))
 #define IDX_COUNT_HALF(arr) (IDX_COUNT(arr) / 2)
+#define IDX_END(arr)  (&(arr)[IDX_COUNT(arr)])
+
 #define ARRAY_SIZE(x) IDX_COUNT(x)
+#define ARRAY_END(arr)  (&(arr)[ARRAY_SIZE(arr)])
 
 #define __STRINGIFY(x) #x
 #define STRINGIFY(x) __STRINGIFY(x)

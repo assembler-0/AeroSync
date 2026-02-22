@@ -3,25 +3,13 @@
  * AeroSync monolithic kernel
  *
  * @file drivers/acpi/shutdown.c
- * @brief ACPI Shutdown and Reboot Implementation
+ * @brief ACPI Shutdown and Reboot Implementation using ACPICA
  * @copyright (C) 2025-2026 assembler-0
- *
- * This file is part of the AeroSync kernel.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
+#include <acpi.h>
 #include <drivers/acpi/power.h>
 #include <lib/printk.h>
-#include <uacpi/uacpi.h>
-#include <uacpi/sleep.h>
 #include <aerosync/classes.h>
 #include <aerosync/panic.h>
 #include <aerosync/sysintf/ic.h>
@@ -30,9 +18,9 @@
 void acpi_shutdown(void) {
   printk(POWER_CLASS "Preparing for S5 Soft Off...\n");
 
-  uacpi_status ret = uacpi_prepare_for_sleep_state(UACPI_SLEEP_STATE_S5);
-  if (uacpi_unlikely_error(ret)) {
-    printk(KERN_ERR POWER_CLASS "Failed to prepare for S5: %s\n", uacpi_status_to_string(ret));
+  ACPI_STATUS ret = AcpiEnterSleepStatePrep(ACPI_STATE_S5);
+  if (ACPI_FAILURE(ret)) {
+    printk(KERN_ERR POWER_CLASS "Failed to prepare for S5: %s\n", AcpiFormatException(ret));
     return;
   }
 
@@ -41,16 +29,16 @@ void acpi_shutdown(void) {
   cpu_cli();
   const int k_ret = udm_shutdown_all();
   if (k_ret != 0) {
-    printk(KERN_ERR POWER_CLASS "Failed to shutdown devices: %d\n", k_ret)
+    printk(KERN_ERR POWER_CLASS "Failed to shutdown devices: %d\n", k_ret);
     return;
   }
 
   printk_disable();
 #endif
 
-  ret = uacpi_enter_sleep_state(UACPI_SLEEP_STATE_S5);
-  if (uacpi_unlikely_error(ret)) {
-    printk(KERN_ERR POWER_CLASS "Failed to enter S5: %s\n", uacpi_status_to_string(ret));
+  ret = AcpiEnterSleepState(ACPI_STATE_S5);
+  if (ACPI_FAILURE(ret)) {
+    printk(KERN_ERR POWER_CLASS "Failed to enter S5: %s\n", AcpiFormatException(ret));
 #ifdef ACPI_POWER_KERNEL_DEINITIALIZE
     printk_enable();
     goto rollback;
@@ -73,16 +61,16 @@ void acpi_reboot(void) {
   cpu_cli();
   const int k_ret = udm_shutdown_all();
   if (k_ret != 0) {
-    printk(KERN_ERR POWER_CLASS "Failed to shutdown devices: %d\n", k_ret)
+    printk(KERN_ERR POWER_CLASS "Failed to shutdown devices: %d\n", k_ret);
     return;
   }
 
   printk_disable();
 #endif
 
-  uacpi_status ret = uacpi_reboot();
-  if (uacpi_unlikely_error(ret)) {
-    printk(KERN_ERR POWER_CLASS "ACPI Reboot failed: %s\n", uacpi_status_to_string(ret));
+  ACPI_STATUS ret = AcpiReset();
+  if (ACPI_FAILURE(ret)) {
+    printk(KERN_ERR POWER_CLASS "ACPI Reboot failed: %s\n", AcpiFormatException(ret));
 #ifdef ACPI_POWER_KERNEL_DEINITIALIZE
     printk_enable();
     goto rollback;

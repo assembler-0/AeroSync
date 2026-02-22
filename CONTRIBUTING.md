@@ -91,7 +91,7 @@ they are an **os-in-kernel**-which is the worst possible thing.
   - use the correct alignment.
   - should add bound/null checks where applicable.\
 - pointers:
-  - as this project uses the C23 standard, please use nullptr instead of NULL.
+  - as this project uses the C23 standard, please use nullptr instead of nullptr.
 - logging:
   - please use printk(ln)(KERN_* *_CLASS "fmt", ...)
 - returns values:

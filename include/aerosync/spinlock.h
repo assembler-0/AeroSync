@@ -2,9 +2,6 @@
 
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/atomic.h>
-#ifndef CONFIG_DEBUG_SPINLOCK
-#include <aerosync/errno.h>
-#endif
 
 #define DEADLOCK_TIMEOUT_CYCLES 100000000ULL
 #define MAX_BACKOFF_CYCLES 1024
@@ -154,6 +151,8 @@ static inline void spinlock_unlock(spinlock_t *lock) {
 }
 
 #endif
+
+#include <aerosync/errno.h>
 
 static inline uint32_t spinlock_get_cpu(spinlock_t *lock) {
 #if CONFIG_DEBUG_SPINLOCK && CONFIG_TICKET_SPINLOCKS

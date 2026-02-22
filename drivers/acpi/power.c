@@ -3,57 +3,50 @@
  * AeroSync monolithic kernel
  *
  * @file drivers/acpi/power.c
- * @brief ACPI Power Button and Sleep Button handling
+ * @brief ACPI Power Button and Sleep Button handling using ACPICA
  * @copyright (C) 2025-2026 assembler-0
- *
- * This file is part of the AeroSync kernel.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
-#include <drivers/acpi/power.h>
+#include <acpi.h>
 #include <aerosync/classes.h>
-#include <lib/printk.h>
-#include <uacpi/event.h>
-#include <uacpi/uacpi.h>
 #include <aerosync/errno.h>
+#include <drivers/acpi/power.h>
+#include <lib/printk.h>
 
-static uacpi_interrupt_ret handle_power_button(uacpi_handle ctx) {
+static uint32_t handle_power_button(void *ctx) {
   (void)ctx;
   acpi_shutdown();
-  return UACPI_INTERRUPT_HANDLED;
+  return ACPI_INTERRUPT_HANDLED;
 }
 
-static uacpi_interrupt_ret handle_sleep_button(uacpi_handle ctx) {
-  (void) ctx;
-  return UACPI_INTERRUPT_HANDLED;
+static uint32_t handle_sleep_button(void *ctx) {
+  (void)ctx;
+  return ACPI_INTERRUPT_HANDLED;
 }
 
 int acpi_power_init(void) {
-  uacpi_status ret;
+  ACPI_STATUS ret;
   int status = 0;
 
   printk(ACPI_BUTTON_CLASS "Installing Fixed Event Handlers...\n");
 
 #ifdef ACPI_POWER_BUTTON
-  uacpi_clear_fixed_event(UACPI_FIXED_EVENT_POWER_BUTTON);
+  AcpiClearEvent(ACPI_EVENT_POWER_BUTTON);
   // Install Power Button Handler
-  ret = uacpi_install_fixed_event_handler(UACPI_FIXED_EVENT_POWER_BUTTON, handle_power_button, nullptr);
-  if (uacpi_unlikely_error(ret)) {
-    printk(KERN_ERR ACPI_BUTTON_CLASS "Failed to install Power Button handler: %s (%d)\n", uacpi_status_to_string(ret), ret);
+  ret = AcpiInstallFixedEventHandler(ACPI_EVENT_POWER_BUTTON,
+                                     handle_power_button, nullptr);
+  if (ACPI_FAILURE(ret)) {
+    printk(KERN_ERR ACPI_BUTTON_CLASS
+           "Failed to install Power Button handler: %s\n",
+           AcpiFormatException(ret));
     status = -EIO;
   } else {
     // Enable the event
-    ret = uacpi_enable_fixed_event(UACPI_FIXED_EVENT_POWER_BUTTON);
-    if (uacpi_unlikely_error(ret)) {
-      printk(KERN_ERR ACPI_BUTTON_CLASS "Failed to enable Power Button event: %s (%d)\n", uacpi_status_to_string(ret), ret);
+    ret = AcpiEnableEvent(ACPI_EVENT_POWER_BUTTON, 0);
+    if (ACPI_FAILURE(ret)) {
+      printk(KERN_ERR ACPI_BUTTON_CLASS
+             "Failed to enable Power Button event: %s\n",
+             AcpiFormatException(ret));
       status = -EIO;
     } else {
       printk(ACPI_BUTTON_CLASS "Power Button enabled.\n");
@@ -62,19 +55,24 @@ int acpi_power_init(void) {
 #endif
 
 #ifdef ACPI_SLEEP_BUTTON
-  uacpi_clear_fixed_event(UACPI_FIXED_EVENT_SLEEP_BUTTON);
-  // Install Sleep Button Handler (Optional, just logging for now)
-  ret = uacpi_install_fixed_event_handler(UACPI_FIXED_EVENT_SLEEP_BUTTON, handle_sleep_button, nullptr);
-  if (uacpi_unlikely_error(ret)) {
-    printk(KERN_WARNING ACPI_BUTTON_CLASS "Failed to install Sleep Button handler: %s (%d)\n", uacpi_status_to_string(ret), ret);
+  AcpiClearEvent(ACPI_EVENT_SLEEP_BUTTON);
+  // Install Sleep Button Handler
+  ret = AcpiInstallFixedEventHandler(ACPI_EVENT_SLEEP_BUTTON,
+                                     handle_sleep_button, nullptr);
+  if (ACPI_FAILURE(ret)) {
+    printk(KERN_WARNING ACPI_BUTTON_CLASS
+           "Failed to install Sleep Button handler: %s\n",
+           AcpiFormatException(ret));
     status = -EIO;
   } else {
     // Enable the event
-    ret = uacpi_enable_fixed_event(UACPI_FIXED_EVENT_SLEEP_BUTTON);
-    if (uacpi_likely_success(ret)) {
+    ret = AcpiEnableEvent(ACPI_EVENT_SLEEP_BUTTON, 0);
+    if (ACPI_SUCCESS(ret)) {
       printk(ACPI_BUTTON_CLASS "Sleep Button enabled.\n");
     } else {
-      printk(KERN_WARNING ACPI_BUTTON_CLASS "Failed to enable Sleep Button event: %s (%d)\n", uacpi_status_to_string(ret), ret);
+      printk(KERN_WARNING ACPI_BUTTON_CLASS
+             "Failed to enable Sleep Button event: %s\n",
+             AcpiFormatException(ret));
       status = -EIO;
     }
   }
