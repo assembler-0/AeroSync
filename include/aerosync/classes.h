@@ -9,170 +9,170 @@
  *  SYSTEM & ARCHITECTURE (Low Level)
  * ========================================================================= */
 ///@section Boot & Initialization
-#define BOOT_CLASS "[sys::boot] " // Bootloader info, multiboot parsing
-#define ACPI_CLASS "[sys::acpi] " // ACPI table parsing (RSDP, MADT, FADT)
+#define BOOT_CLASS "[aerosync::boot] " // Bootloader info, multiboot parsing
+#define ACPI_CLASS "[aerosync::acpi] " // ACPI table parsing (RSDP, MADT, FADT)
 #define ACPI_BUTTON_CLASS                                                      \
-  "[sys::acpi::btn] " // ACPI Power/Sleep button handling
-#define POWER_CLASS "[sys::acpi::power] "
+  "[aerosync::acpi::btn] " // ACPI Power/Sleep button handling
+#define POWER_CLASS "[aerosync::acpi::power] "
 #define HAL_CLASS                                                              \
-  "[sys::sysintf::udm] " // Hardware Abstraction Layer generic (UDM)
+  "[aerosync::sysintf::udm] " // Hardware Abstraction Layer generic (UDM)
 
 ///@section CPU & Interrupts
-#define GDT_CLASS "[sys::gdt] "        // Global Descriptor Table
-#define IDT_CLASS "[sys::irq::idt] "   // Interrupt Descriptor Table
-#define ISR_CLASS "[sys::irq::isr] "   // Interrupt Service Routines
-#define IRQ_CLASS "[sys::irq] "        // Hardware Interrupt Requests
-#define APIC_CLASS "[sys::ic::apic] "  // IOAPIC / LAPIC configuration
-#define PIC_CLASS "[sys::ic::pic] "    // Legacy PIC configuration
-#define PIT_CLASS "[sys::timer::pit] " // Programmable Interval Timer
+#define GDT_CLASS "[aerosync::gdt] "        // Global Descriptor Table
+#define IDT_CLASS "[aerosync::irq::idt] "   // Interrupt Descriptor Table
+#define ISR_CLASS "[aerosync::irq::isr] "   // Interrupt Service Routines
+#define IRQ_CLASS "[aerosync::irq] "        // Hardware Interrupt Requests
+#define APIC_CLASS "[aerosync::ic::apic] "  // IOAPIC / LAPIC configuration
+#define PIC_CLASS "[aerosync::ic::pic] "    // Legacy PIC configuration
+#define PIT_CLASS "[aerosync::timer::pit] " // Programmable Interval Timer
 #define IC_CLASS                                                               \
-  "[sys::sysintf::ic] " // Interrupt Controller (APIC/PIC switching)
+  "[aerosync::sysintf::ic] " // Interrupt Controller (APIC/PIC switching)
 #define SMP_CLASS                                                              \
-  "[sys::cpu::smp] " // Symmetric Multi-Processing (Multicore startup)
-#define TSC_CLASS "[sys::timer::tsc] "   // Time Stamp Counter / CPU timing
-#define CPU_CLASS "[sys::cpu] "          // CPU features, MSRs, CPUID
-#define FPU_CLASS "[sys::cpu::fpu] "     // Floating Point / SSE / AVX contexts
-#define HPET_CLASS "[sys::timer::hpet] " // High Precision Event Timer
-#define TIME_CLASS "[sys::sysintf::time] " // Unified timer subsystem
-#define PERCPU_CLASS "[sys::cpu::percpu] " // Per-CPU data
+  "[aerosync::cpu::smp] " // Symmetric Multi-Processing (Multicore startup)
+#define TSC_CLASS "[aerosync::timer::tsc] "   // Time Stamp Counter / CPU timing
+#define CPU_CLASS "[aerosync::cpu] "          // CPU features, MSRs, CPUID
+#define FPU_CLASS "[aerosync::cpu::fpu] "     // Floating Point / SSE / AVX contexts
+#define HPET_CLASS "[aerosync::timer::hpet] " // High Precision Event Timer
+#define TIME_CLASS "[aerosync::sysintf::time] " // Unified timer subsystem
+#define PERCPU_CLASS "[aerosync::cpu::percpu] " // Per-CPU data
 
 ///@section Core Kernel
-#define KERN_CLASS "[sys::core] "         // Generic kernel core messages
-#define PANIC_CLASS "[sys::core::panic] " // Kernel panics (Fatal errors)
-#define FAULT_CLASS "[sys::core::panic::fault] "
-#define SYSCALL_CLASS "[sys::core::syscall] " // System call entry/exit tracing
-#define ATOMIC_CLASS "[sys::core::atomic] "   // Atomic operations
-#define FW_CLASS "[sys::core::fw] "           // Firmware interfaces (BIOS/UEFI)
-#define NVRAM_CLASS "[sys::core::fw::nvram] "
-#define SMBIOS_CLASS "[sys::core::fw::smbios] " // SMBIOS parsing
-#define FKX_CLASS "[sys::sysintf::fkx] "        // FKX Module Loader
-#define ASRX_CLASS "[sys::sysintf::asrx] "
+#define KERN_CLASS "[aerosync::core] "         // Generic kernel core messages
+#define PANIC_CLASS "[aerosync::core::panic] " // Kernel panics (Fatal errors)
+#define FAULT_CLASS "[aerosync::core::panic::fault] "
+#define SYSCALL_CLASS "[aerosync::core::syscall] " // System call entry/exit tracing
+#define ATOMIC_CLASS "[aerosync::core::atomic] "   // Atomic operations
+#define FW_CLASS "[aerosync::core::fw] "           // Firmware interfaces (BIOS/UEFI)
+#define NVRAM_CLASS "[aerosync::core::fw::nvram] "
+#define SMBIOS_CLASS "[aerosync::core::fw::smbios] " // SMBIOS parsing
+#define FKX_CLASS "[aerosync::sysintf::fkx] "        // FKX Module Loader
+#define ASRX_CLASS "[aerosync::sysintf::asrx] "
 #define SYNC_CLASS                                                             \
-  "[sys::core::sync] " // Synchronization (Mutex, Semaphores, Spinlocks)
-#define NUMA_CLASS "[sys::core::numa] "
-#define STACKTRACE_CLASS "[sys::core::stacktrace] "
-#define LMM_CLASS "[sys::core::lmm] "
+  "[aerosync::core::sync] " // Synchronization (Mutex, Semaphores, Spinlocks)
+#define NUMA_CLASS "[aerosync::core::numa] "
+#define STACKTRACE_CLASS "[aerosync::core::stacktrace] "
+#define LMM_CLASS "[aerosync::core::lmm] "
 
 ///@section Crypto
-#define RNG_CLASS "[crypto::rng] " // Random Number Generator
-#define CRC_CLASS "[crypto::crc] " // CRC32
-#define SHA_CLASS "[crypto::sha] " // SHA*
-#define AES_CLASS "[crypto::aes] "
-#define RSA_CLASS "[crypto::rsa] "
-#define CRYPTO_CLASS "[crypto::core] "
+#define RNG_CLASS "[aerosync::crypto::rng] " // Random Number Generator
+#define CRC_CLASS "[aerosync::crypto::crc] " // CRC32
+#define SHA_CLASS "[aerosync::crypto::sha] " // SHA*
+#define AES_CLASS "[aerosync::crypto::aes] "
+#define RSA_CLASS "[aerosync::crypto::rsa] "
+#define CRYPTO_CLASS "[aerosync::crypto::core] "
 
 /* =========================================================================
  *  SANITIZER
  * ========================================================================= */
-#define UBSAN_CLASS "[sys::san::ubsan] " // Undefined Behavior Sanitizer
-#define ASAN_CLASS "[sys::san:asan] "    // Address Sanitizer
-#define TSAN_CLASS "[sys::san::tsan] "   // Thread Sanitizer
-#define MSAN_CLASS "[sys::san::msan] "   // Memory Sanitizer
-#define LSAN_CLASS "[sys::san::lsan] "   // Leak Sanitizer
-#define CFI_CLASS "[sys::san::cfi] "     // Control Flow Integrity
+#define UBSAN_CLASS "[aerosync::san::ubsan] " // Undefined Behavior Sanitizer
+#define ASAN_CLASS "[aerosync::san:asan] "    // Address Sanitizer
+#define TSAN_CLASS "[aerosync::san::tsan] "   // Thread Sanitizer
+#define MSAN_CLASS "[aerosync::san::msan] "   // Memory Sanitizer
+#define LSAN_CLASS "[aerosync::san::lsan] "   // Leak Sanitizer
+#define CFI_CLASS "[aerosync::san::cfi] "     // Control Flow Integrity
 
 /* =========================================================================
  *  MEMORY MANAGEMENT
  * ========================================================================= */
 ///@section Physical & Virtual Memory
-#define PMM_CLASS "[sys::mm::pm] " // Physical Memory Manager (Bitmap/Buddy)
-#define VMM_CLASS "[sys::mm::vm] " // Virtual Memory
-#define SWAP_CLASS "[sys::mm::vm::swap] " // Swap space / Paging to disk
-#define MMIO_CLASS "[sys::mm::vm::mmio] " // MMIO Virtual Address Allocator
-#define IOMMU_CLASS "[sys::mm::vm::iommu] "
-#define VMA_CLASS "[sys::mm::vm::vma] " // Virtual Memory Area
-#define FOLIO_CLASS "[sys::mm::folio] " // Linux struct folio
-#define WRITEBACK_CLASS "[sys::mm::vm::writeback] "
-#define THP_CLASS "[sys::mm::vm::thp] "
-#define DMA_CLASS "[sys::mm::pm::dma] "
-#define KSM_CLASS "[sys::mm::ksm] "
-#define UFFD_CLASS "[sys::mm::uffd] "
+#define PMM_CLASS "[aerosync::mm::pm] " // Physical Memory Manager (Bitmap/Buddy)
+#define VMM_CLASS "[aerosync::mm::vm] " // Virtual Memory
+#define SWAP_CLASS "[aerosync::mm::vm::swap] " // Swap space / Paging to disk
+#define MMIO_CLASS "[aerosync::mm::vm::mmio] " // MMIO Virtual Address Allocator
+#define IOMMU_CLASS "[aerosync::mm::vm::iommu] "
+#define VMA_CLASS "[aerosync::mm::vm::vma] " // Virtual Memory Area
+#define FOLIO_CLASS "[aerosync::mm::folio] " // Linux struct folio
+#define WRITEBACK_CLASS "[aerosync::mm::vm::writeback] "
+#define THP_CLASS "[aerosync::mm::vm::thp] "
+#define DMA_CLASS "[aerosync::mm::pm::dma] "
+#define KSM_CLASS "[aerosync::mm::ksm] "
+#define UFFD_CLASS "[aerosync::mm::uffd] "
 
 ///@section Heaps & Allocators
-#define SLAB_CLASS "[sys::mm::slab] " // Slab allocator specific
-#define SHM_CLASS "[sys::mm::shm] "   // Shared Memory (IPC)
+#define SLAB_CLASS "[aerosync::mm::slab] " // Slab allocator specific
+#define SHM_CLASS "[aerosync::mm::shm] "   // Shared Memory (IPC)
 
 ///@section Stack protectionv
-#define STACK_CLASS "[sys::mm::stack] " // Stack overflow protection
+#define STACK_CLASS "[aerosync::mm::stack] " // Stack overflow protection
 
 /* =========================================================================
  *  PROCESS MANAGEMENT & SCHEDULING
  * ========================================================================= */
 #define SCHED_CLASS                                                            \
-  "[sys::sched] " // Scheduler (Context switching, Picking tasks)
-#define RT_CLASS "[sys::sched::rt] "
-#define TASK_CLASS "[sys::sched::task] " // Task creation/destruction logic
-#define ELF_CLASS "[sys::sched::elf] "   // ELF Loader / Binary parser
+  "[aerosync::sched] " // Scheduler (Context switching, Picking tasks)
+#define RT_CLASS "[aerosync::sched::rt] "
+#define TASK_CLASS "[aerosync::sched::task] " // Task creation/destruction logic
+#define ELF_CLASS "[aerosync::sched::elf] "   // ELF Loader / Binary parser
 #define IPC_CLASS                                                              \
-  "[sys::sched::ipc] " // Inter-Process Communication (Pipes, MsgQueues)
-#define SIGNAL_CLASS "[sys::sched::signal] " // POSIX Signals delivery
+  "[aerosync::sched::ipc] " // Inter-Process Communication (Pipes, MsgQueues)
+#define SIGNAL_CLASS "[aerosync::sched::signal] " // POSIX Signals delivery
 
 /* =========================================================================
  *  DEVICE DRIVERS
  * ========================================================================= */
 ///@section Bus Drivers
 #define PCI_CLASS                                                              \
-  "[sys::sub::pci] " /// @note PCI IS NOT A DRIVER! ITS MORE OF A SUBSYSTEM!
-#define USB_CLASS "[sys::driver::usb] " // USB Stack (UHCI/EHCI/XHCI)
+  "[aerosync::sub::pci] " /// @note PCI IS NOT A DRIVER! ITS MORE OF A SUBSYSTEM!
+#define USB_CLASS "[aerosync::driver::usb] " // USB Stack (UHCI/EHCI/XHCI)
 
 ///@section Storage Drivers
-#define BLOCK_CLASS "[sys::driver::storage] "
-#define CHAR_CLASS "[sys::driver::char] "
-#define ATA_CLASS "[sys::driver::storage::ata] "         // IDE/PATA support
-#define AHCI_CLASS "[sys::driver::storage::ahci] "       // SATA support
-#define NVME_CLASS "[sys::driver::storage::nvme] "       // NVMe SSD support
-#define RAMDISK_CLASS "[sys::driver::storage::ramdisk] " // Initrd / Ramdisk
-#define VIRTIO_BLK_CLASS "[sys::driver::storage::virtio] "
+#define BLOCK_CLASS "[aerosync::driver::storage] "
+#define CHAR_CLASS "[aerosync::driver::char] "
+#define ATA_CLASS "[aerosync::driver::storage::ata] "         // IDE/PATA support
+#define AHCI_CLASS "[aerosync::driver::storage::ahci] "       // SATA support
+#define NVME_CLASS "[aerosync::driver::storage::nvme] "       // NVMe SSD support
+#define RAMDISK_CLASS "[aerosync::driver::storage::ramdisk] " // Initrd / Ramdisk
+#define VIRTIO_BLK_CLASS "[aerosync::driver::storage::virtio] "
 
 ///@section Human Interface Devices
-#define KBD_CLASS "[sys::driver::hid::keyboard] " // PS/2 or USB Keyboard
-#define MOUSE_CLASS "[sys::driver::hid::mouse] "  // PS/2 or USB Mouse
-#define HID_CLASS "[sys::driver::hid] "           // Generic HID
+#define KBD_CLASS "[aerosync::driver::hid::keyboard] " // PS/2 or USB Keyboard
+#define MOUSE_CLASS "[aerosync::driver::hid::mouse] "  // PS/2 or USB Mouse
+#define HID_CLASS "[aerosync::driver::hid] "           // Generic HID
 
 ///@section Display & Graphics
-#define VIDEO_CLASS "[sys::driver::video] "    // VGA / VESA / GOP / Framebuffer
-#define GPU_CLASS "[sys::driver::video::gpu] " // Hardware Acceleration
-#define TTY_CLASS "[sys::driver::video::tty] " // Terminal / Console output
-#define PTY_CLASS "[sys::driver::video::pty] " // Terminal / Console output
+#define VIDEO_CLASS "[aerosync::driver::video] "    // VGA / VESA / GOP / Framebuffer
+#define GPU_CLASS "[aerosync::driver::video::gpu] " // Hardware Acceleration
+#define TTY_CLASS "[aerosync::driver::video::tty] " // Terminal / Console output
+#define PTY_CLASS "[aerosync::driver::video::pty] " // Terminal / Console output
 
 ///@section Audio & Misc
-#define AUDIO_CLASS "[sys::driver::audio] "       // AC97 / Intel HDA
-#define SERIAL_CLASS "[sys::driver::misc::uart] " // UART / Serial Port
+#define AUDIO_CLASS "[aerosync::driver::audio] "       // AC97 / Intel HDA
+#define SERIAL_CLASS "[aerosync::driver::misc::uart] " // UART / Serial Port
 
 /* =========================================================================
  *  FILESYSTEMS (VFS)
  * ========================================================================= */
-#define VFS_CLASS "[sys::fs::vfs] "   // Virtual File System (Mounts, nodes)
-#define FAT_CLASS "[sys::fs::fat] "   // FAT12/16/32 Driver
-#define EXT_CLASS "[sys::fs::ext] "   // EXT2/3/4 Driver
-#define ISO_CLASS "[sys::fs::iso] "   // ISO9660 (CD-ROM)
-#define DEVFS_CLASS "[sys::fs::dev] " // /dev filesystem
-#define TMPFS_CLASS "[sys::fs::tmp] "
-#define SYSFS_CLASS "[sys::fs::sysfs] "
-#define NTFS_CLASS "[sys::fs::ntfs] "
-#define USTAR_CLASS "[sys::fs::ustar] "
-#define INITRD_CLASS "[sys::fs::initrd] "
-#define NEWC_CLASS "[sys::fs::newc] "
-#define CPIO_CLASS "[sys::fs::cpio] "
-#define PROCFS_CLASS "[sys::fs::proc] "
-#define RESFS_CLASS "[sys::fs::res] "
+#define VFS_CLASS "[aerosync::fs::vfs] "   // Virtual File System (Mounts, nodes)
+#define FAT_CLASS "[aerosync::fs::fat] "   // FAT12/16/32 Driver
+#define EXT_CLASS "[aerosync::fs::ext] "   // EXT2/3/4 Driver
+#define ISO_CLASS "[aerosync::fs::iso] "   // ISO9660 (CD-ROM)
+#define DEVFS_CLASS "[aerosync::fs::dev] " // /dev filesystem
+#define TMPFS_CLASS "[aerosync::fs::tmp] "
+#define SYSFS_CLASS "[aerosync::fs::sysfs] "
+#define NTFS_CLASS "[aerosync::fs::ntfs] "
+#define USTAR_CLASS "[aerosync::fs::ustar] "
+#define INITRD_CLASS "[aerosync::fs::initrd] "
+#define NEWC_CLASS "[aerosync::fs::newc] "
+#define CPIO_CLASS "[aerosync::fs::cpio] "
+#define PROCFS_CLASS "[aerosync::fs::proc] "
+#define RESFS_CLASS "[aerosync::fs::res] "
 
 /* =========================================================================
  *  NETWORKING STACK
  * ========================================================================= */
-#define NET_CLASS "[sys::net] " // Generic Network Stack
+#define NET_CLASS "[aerosync::net] " // Generic Network Stack
 #define NIC_CLASS                                                              \
-  "[sys::net::driver::nic] " // Network Interface Card Driver (e1000, rtl8139)
-#define ETH_CLASS "[sys::net::eth] "   // Ethernet Layer (L2)
-#define IP_CLASS "[sys::net::ip] "     // IPv4/IPv6 Layer (L3)
-#define ARP_CLASS "[sys::net::arp] "   // ARP Protocol
-#define TCP_CLASS "[sys::net::tcp] "   // TCP Protocol (L4)
-#define UDP_CLASS "[sys::net::udp] "   // UDP Protocol (L4)
-#define DHCP_CLASS "[sys::net::dhcp] " // DHCP Client
+  "[aerosync::net::driver::nic] " // Network Interface Card Driver (e1000, rtl8139)
+#define ETH_CLASS "[aerosync::net::eth] "   // Ethernet Layer (L2)
+#define IP_CLASS "[aerosync::net::ip] "     // IPv4/IPv6 Layer (L3)
+#define ARP_CLASS "[aerosync::net::arp] "   // ARP Protocol
+#define TCP_CLASS "[aerosync::net::tcp] "   // TCP Protocol (L4)
+#define UDP_CLASS "[aerosync::net::udp] "   // UDP Protocol (L4)
+#define DHCP_CLASS "[aerosync::net::dhcp] " // DHCP Client
 
 /* =========================================================================
  *  UTILITIES & LIBRARIES
  * ========================================================================= */
-#define TEST_CLASS "[misc::test] " // Unit tests running inside kernel
-#define DEBUG_CLASS "[misc::debug] "
-#define iKDB_CLASS "[sys::core::ikdb] "
+#define TEST_CLASS "[aerosync::misc::test] " // Unit tests running inside kernel
+#define DEBUG_CLASS "[aerosync::misc::debug] "
+#define iKDB_CLASS "[aerosync::core::ikdb] "
