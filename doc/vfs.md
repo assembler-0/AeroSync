@@ -18,9 +18,9 @@ Represents a mounted filesystem instance.
 
 ## Everything is a File
 
-AeroSync follows the "everything is a file" philosophy by integrating the **Unified Driver Model (UDM)** with **devfs**.
+AeroSync follows the "everything is a file" philosophy by integrating the **Unified Driver Model (UDM)** with **devtmpfs**.
 
-- **Device Nodes**: When a UDM `struct device` is registered with a class that has `CLASS_FLAG_AUTO_DEVFS`, a corresponding node is automatically created in `/dev`.
+- **Device Nodes**: When a UDM `struct device` is registered with a class that has `CLASS_FLAG_AUTO_DEVTMPFS`, a corresponding node is automatically created in `/dev`.
 - **Character Devices**: Drivers provide `struct char_operations`, which are mapped to VFS `file_operations` via `init_special_inode`.
 
 ## Process Integration

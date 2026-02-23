@@ -32,7 +32,7 @@
 #include <aerosync/resdomain.h>
 #include <aerosync/sysintf/char.h>
 #include <aerosync/sysintf/block.h>
-#include <fs/devfs.h>
+#include <fs/devtmpfs.h>
 #include <fs/sysfs.h>
 #include <fs/procfs.h>
 #include <fs/fs_struct.h>
@@ -88,9 +88,18 @@ int vfs_init(void) {
 
   extern void tmpfs_init(void);
   tmpfs_init();
+
+#ifdef CONFIG_RESFS
   resfs_init();
+#endif
+
+#ifdef CONFIG_SYSFS
   sysfs_init();
+#endif
+
+#ifdef CONFIG_PROCFS
   procfs_init();
+#endif
 
   // Mount tmpfs as the base rootfs
   int mount_ret = vfs_mount(nullptr, "/", "tmpfs", 0, nullptr);
@@ -117,17 +126,29 @@ int vfs_init(void) {
 
   initramfs_init(initramfs_path);
 
-#ifdef CONFIG_DEVFS
-  devfs_init();
+#ifdef CONFIG_DEVTMPFS
+  devtmpfs_init();
 
-#ifdef CONFIG_DEVFS_MOUNT
-  vfs_mount(nullptr, STRINGIFY(CONFIG_DEVFS_MOUNT_PATH), "devfs", 0, nullptr);
+#ifdef CONFIG_DEVTMPFS_MOUNT
+  vfs_mount(nullptr, STRINGIFY(CONFIG_DEVTMPFS_MOUNT_PATH), "devtmpfs", 0, nullptr);
 #endif
 #endif
 
 #ifdef CONFIG_SYSFS
 #ifdef CONFIG_SYSFS_MOUNT
   vfs_mount(nullptr, STRINGIFY(CONFIG_SYSFS_MOUNT_PATH), "sysfs", 0, nullptr);
+#endif
+#endif
+
+#ifdef CONFIG_PROCFS
+#ifdef CONFIG_PROCFS_MOUNT
+  vfs_mount(nullptr, STRINGIFY(CONFIG_PROCFS_MOUNT_PATH), "proc", 0, nullptr);
+#endif
+#endif
+
+#ifdef CONFIG_RESFS
+#ifdef CONFIG_RESFS_MOUNT
+  vfs_mount(nullptr, STRINGIFY(CONFIG_RESFS_MOUNT_PATH), "resfs", 0, nullptr);
 #endif
 #endif
 

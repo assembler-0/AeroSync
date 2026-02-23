@@ -14,7 +14,13 @@ typedef long ptrdiff_t;
 typedef char* cstring;
 typedef uintptr_t usize;
 typedef long time_t;
+typedef long suseconds_t;
 typedef uint16_t char16_t;
+
+struct timeval {
+    time_t tv_sec;
+    suseconds_t tv_usec;
+};
 
 typedef uint8_t u8;
 typedef uint16_t u16;

@@ -59,12 +59,12 @@
 		- [ ] **Unified Device Model (UDM) Integration**: 
 			- [x] **Char Device Layer**: `register_chrdev` API with major/minor number management.
 			- [x] **Block Device Layer**: Refine block I/O request queues and bio-like structures.
-			- [x] **DevFS**: Pseudo-filesystem for automatic device node exposure in `/dev`.
+			- [x] **DevtmpFS**: Pseudo-filesystem for automatic device node exposure in `/dev`.
 		- [x] **Advanced VFS Integration**:
 			- [x] **fs_struct**: Implement per-process root and working directory.
 			- [x] **Mount Management**: Implement a global mount tree and `sys_mount`/`sys_umount`.
 			- [x] **File-backed mmap**: Complete the link between `inode->i_ubc` and `vm_area_struct`.
-			- [x] **Everything-is-a-file**: Unified `devfs` linkage where UDM `struct device` automatically appears in `/dev`.
+			- [x] **Everything-is-a-file**: Unified `devtmpfs` linkage where UDM `struct device` automatically appears in `/dev`.
 		- [x] **Terminal & TTY Subsystem**:
 			- [x] **TTY Core**: Generic TTY driver with line discipline support (N_TTY).
 			- [ ] **Virtual Consoles**: Support for multiple TTYs on the same display/serial.
@@ -155,6 +155,11 @@
 	- [x] CFS Bandwidth Control (CPU Quotas)
 	- [x] Hybrid (E/P Core) Awareness
 	- [x] RCU-protected Task List
+	- [x] **Advanced Resource Domains (ResDomain) v2**:
+		- [x] **Hierarchical Resource Enforcement**: Support for nested domains with subtree control.
+		- [x] **FILES Resource Controller**: Per-domain open file descriptor limits (`files.max`).
+		- [x] **VFS Integration**: Automatic charging/uncharging of FDs during `open`, `close`, `dup`, and `fork`.
+		- [x] **IO Throttling**: Token-bucket based BPS and IOPS limiting.
 - VFS
 	- [x] FD allocation
 	- [ ] proper FD table
@@ -173,7 +178,7 @@
 	- [ ] XFS (RO)
 	- [ ] EROFS (`/system`)
 	- [ ] ASFS (AeroSyncFileSystem?) 
-	- [ ] devfs/procfs/tmpfs
+	- [ ] devtmpfs/procfs/tmpfs
 	- [ ] overlayfs
 	- [ ] USTAR
 	- [ ] ISOFS (ISO9660 + RockRidge extension)
@@ -236,7 +241,9 @@
 	- [ ] USB mass storage device
 	- [ ] xHCI controller stack (usable for OHCI & EHCI)
 	- [ ] PCIe with MSI and MSI-X
-	- [ ] ACPICA
+	- [x] **ACPICA OSL Hardening**:
+		- [x] Integration with kernel `msleep` primitives.
+		- [x] Interruptible synchronization (`TASK_INTERRUPTIBLE`) for improved system responsiveness.
 	- [x] SMBIOS
 	- [ ] True time counting
 	- [x] Software timer

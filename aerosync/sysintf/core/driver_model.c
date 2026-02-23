@@ -278,7 +278,7 @@ int device_set_name(struct device *dev, const char *fmt, ...) {
 
 EXPORT_SYMBOL(device_set_name);
 
-#include <fs/devfs.h>
+#include <fs/devtmpfs.h>
 
 static void generate_device_name(struct device *dev) {
   if (!dev->class || dev->name) return;
@@ -352,8 +352,8 @@ int __no_cfi device_add(struct device *dev) {
   }
   mutex_unlock(&device_model_lock);
 
-  /* Automatic devfs exposure */
-  if (dev->class && (dev->class->flags & CLASS_FLAG_AUTO_DEVFS) && dev->name) {
+  /* Automatic devtmpfs exposure */
+  if (dev->class && (dev->class->flags & CLASS_FLAG_AUTO_DEVTMPFS) && dev->name) {
     dev_t rdev = 0;
     vfs_mode_t mode = 0;
 
@@ -378,7 +378,7 @@ int __no_cfi device_add(struct device *dev) {
     }
 
     if (mode != 0) {
-      devfs_register_device(dev->name, mode, rdev, nullptr, nullptr);
+      devtmpfs_register_device(dev->name, mode, rdev, nullptr, nullptr);
     }
   }
   /* Create default attributes */

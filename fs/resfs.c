@@ -7,6 +7,8 @@
  * @copyright (C) 2026 assembler-0
  */
 
+#ifdef CONFIG_RESFS
+
 #include <aerosync/resdomain.h>
 #include <fs/pseudo_fs.h>
 #include <aerosync/errno.h>
@@ -220,3 +222,5 @@ void resfs_init(void) {
   root_resdomain.private_data = resfs_info.root;
   resfs_populate_dir(resfs_info.root, &root_resdomain);
 }
+
+#endif

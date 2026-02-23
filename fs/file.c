@@ -27,6 +27,7 @@
 #include <aerosync/panic.h>
 #include <aerosync/export.h>
 #include <aerosync/errno.h>
+#include <aerosync/resdomain.h>
 
 struct files_struct init_files = {
   .count = ATOMIC_INIT(1),
@@ -94,16 +95,32 @@ int sys_dup2(int oldfd, int newfd) {
   struct file *file = fget(oldfd);
   if (!file) return -EBADF;
 
+  int ret = resdomain_file_open(current->rd);
+  if (ret < 0) {
+      fput(file);
+      return ret;
+  }
+
   spinlock_lock(&files->file_lock);
   if (newfd < 0 || newfd >= (int) files->fdtab.max_fds) {
     spinlock_unlock(&files->file_lock);
+    resdomain_file_close(current->rd);
     fput(file);
     return -EBADF;
   }
 
   struct file *to_close = files->fdtab.fd[newfd];
   files->fdtab.fd[newfd] = file;
-  set_bit(newfd, files->fdtab.open_fds);
+  
+  if (!test_bit(newfd, files->fdtab.open_fds)) {
+      set_bit(newfd, files->fdtab.open_fds);
+  } else {
+      /* Already open, we already charged for it when it was first opened, 
+       * but we just charged again. Uncharge one. 
+       */
+      resdomain_file_close(current->rd);
+  }
+
   clear_bit(newfd, files->fdtab.close_on_exec);
   spinlock_unlock(&files->file_lock);
 
@@ -121,7 +138,7 @@ int sys_dup(int oldfd) {
   int newfd = get_unused_fd_flags(0);
   if (newfd < 0) {
     fput(file);
-    return -EMFILE;
+    return newfd;
   }
 
   fd_install(newfd, file);
@@ -159,7 +176,20 @@ int sys_fcntl(int fd, unsigned int cmd, unsigned long arg) {
         ret = -EMFILE;
         break;
       }
+
+      spinlock_unlock(&files->file_lock);
+      ret = resdomain_file_open(current->rd);
+      spinlock_lock(&files->file_lock);
+      if (ret < 0) break;
       
+      /* Re-check newfd after dropping lock */
+      newfd = find_next_zero_bit(files->fdtab.open_fds, files->fdtab.max_fds, start_fd);
+      if (newfd >= (int) files->fdtab.max_fds) {
+          resdomain_file_close(current->rd);
+          ret = -EMFILE;
+          break;
+      }
+
       set_bit(newfd, files->fdtab.open_fds);
       files->fdtab.fd[newfd] = file;
       if (file) atomic_inc(&file->f_count);
@@ -188,12 +218,15 @@ int get_unused_fd_flags(unsigned int flags) {
   struct files_struct *files = current->files;
   if (!files) return -EBADF;
 
+  int ret = resdomain_file_open(current->rd);
+  if (ret < 0) return ret;
+
   spinlock_lock(&files->file_lock);
   int fd = find_next_zero_bit(files->fdtab.open_fds, files->fdtab.max_fds, files->next_fd);
 
   if (fd >= files->fdtab.max_fds) {
-    // Here we would normally expand the fd table
     spinlock_unlock(&files->file_lock);
+    resdomain_file_close(current->rd);
     return -EMFILE;
   }
 
@@ -219,6 +252,7 @@ void put_unused_fd(unsigned int fd) {
     if (fd < files->next_fd) {
       files->next_fd = fd;
     }
+    resdomain_file_close(current->rd);
   }
   spinlock_unlock(&files->file_lock);
 }
@@ -265,6 +299,14 @@ struct files_struct *copy_files(struct files_struct *old_files) {
           set_bit(i, new_files->close_on_exec_init);
 
         if (f) atomic_inc(&f->f_count);
+        
+        /* Each inherited FD counts towards the new task's domain limit */
+        if (resdomain_file_open(current->rd) < 0) {
+            /* If we exceed limit during fork, we should probably fail fork, 
+             * but copy_files is often called late. 
+             * For now, we just charge it. 
+             */
+        }
       }
     }
     new_files->next_fd = old_files->next_fd;

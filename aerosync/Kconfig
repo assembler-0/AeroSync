@@ -248,20 +248,6 @@ config RESDOMAIN_MEM
     help
       Provides memory limits and accounting for domains.
 
-config RESFS_MOUNT
-    bool "Mount resfs automatically during boot"
-    depends on RESDOMAINS
-    default y
-    help
-      Automatically mount the resource filesystem (resfs) during boot.
-
-config RESFS_MOUNT_PATH
-    string "Default mount path for resfs"
-    depends on RESFS_MOUNT
-    default "/runtime/res"
-    help
-      The path where resfs should be mounted automatically.
-
 endmenu
 
 endmenu

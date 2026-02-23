@@ -26,6 +26,7 @@ enum rd_subsys_id {
     RD_SUBSYS_MEM,
     RD_SUBSYS_PID,
     RD_SUBSYS_IO,
+    RD_SUBSYS_FILES,
     RD_SUBSYS_COUNT
 };
 
@@ -137,6 +138,16 @@ struct pid_rd_state {
 
 int resdomain_can_fork(struct resdomain *rd);
 void resdomain_cancel_fork(struct resdomain *rd);
+
+/* --- Files Controller API --- */
+struct files_rd_state {
+    struct resdomain_subsys_state css;
+    int max;
+    atomic_t count;
+};
+
+int resdomain_file_open(struct resdomain *rd);
+void resdomain_file_close(struct resdomain *rd);
 
 /* --- IO Controller API --- */
 int resdomain_io_throttle(struct resdomain *rd, uint64_t bytes);

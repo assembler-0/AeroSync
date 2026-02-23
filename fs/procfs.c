@@ -7,6 +7,8 @@
  * @copyright (C) 2026 assembler-0
  */
 
+#ifdef CONFIG_PROCFS
+
 #include <printk.h>
 #include <aerosync/classes.h>
 #include <fs/pseudo_fs.h>
@@ -66,3 +68,5 @@ void procfs_init(void) {
   pseudo_fs_create_file(&procfs_info, nullptr, "meminfo", &proc_meminfo_fops, nullptr);
   pseudo_fs_create_file(&procfs_info, nullptr, "uptime", &proc_uptime_fops, nullptr);
 }
+
+#endif

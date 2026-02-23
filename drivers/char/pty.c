@@ -31,7 +31,7 @@ static struct class pty_slave_class = {
   .dev_prefix = STRINGIFY(CONFIG_PTY_SLAVE_PREFIX),
   .naming_scheme = NAMING_NUMERIC,
   .category = DEV_CAT_TTY,
-  .flags = CLASS_FLAG_AUTO_DEVFS,
+  .flags = CLASS_FLAG_AUTO_DEVTMPFS,
 };
 
 static ssize_t pty_master_write(struct tty_struct *tty, const void *buf, size_t count) {

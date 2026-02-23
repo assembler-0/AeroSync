@@ -26,7 +26,7 @@ enum naming_scheme {
     NAMING_NONE
 };
 
-#define CLASS_FLAG_AUTO_DEVFS (1 << 0) /* Automatically create devfs nodes */
+#define CLASS_FLAG_AUTO_DEVTMPFS (1 << 0) /* Automatically create devtmpfs nodes */
 
 enum device_category {
     DEV_CAT_NONE,

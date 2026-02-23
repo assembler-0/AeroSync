@@ -16,7 +16,7 @@
 #include <lib/printk.h>
 #include <mm/slub.h>
 #include <linux/list.h>
-#include <fs/devfs.h>
+#include <fs/devtmpfs.h>
 #include <aerosync/sysintf/char.h>
 
 /* --- Core Algorithm Management --- */
@@ -193,7 +193,7 @@ int crypto_sysintf_init(void) {
   const char *devname = strrchr(path, '/');
   devname = devname ? devname + 1 : path;
 
-  int ret = devfs_register_device(devname, S_IFCHR | 0666, MKDEV(10, 235), &crypto_fops, nullptr);
+  int ret = devtmpfs_register_device(devname, S_IFCHR | 0666, MKDEV(10, 235), &crypto_fops, nullptr);
   if (ret < 0) {
     printk(KERN_ERR HAL_CLASS "failed to register crypto device at %s\n", path);
     return ret;

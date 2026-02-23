@@ -23,7 +23,7 @@
 #include <drivers/uart/serial.h>
 #include <arch/x86_64/io.h>
 #include <aerosync/sysintf/char.h>
-#include <fs/devfs.h>
+#include <fs/devtmpfs.h>
 #include <aerosync/sysintf/device.h>
 #include <aerosync/sysintf/tty.h>
 

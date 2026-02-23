@@ -164,7 +164,7 @@ struct file {
     uint32_t            f_flags;          // Open flags (O_RDONLY, O_WRONLY, etc.)
     uint32_t            f_mode;           // Internal mode (FMODE_READ, etc.)
     void                *private_data;    // Filesystem private data for this open file
-    // ... more fields like reference count, etc.
+    struct resdomain    *f_rd;            // ResDomain this file is charged to
 };
 
 struct vm_area_struct;

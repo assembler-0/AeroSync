@@ -705,6 +705,68 @@ static void init_kmem_cache_cpu(struct kmem_cache_cpu *c) {
   c->freelist = nullptr;
   c->page = nullptr;
   c->tid = 0;
+  c->mag_count = 0;
+  for (int i = 0; i < SLAB_MAG_SIZE; i++)
+    c->mag[i] = nullptr;
+}
+
+static void flush_cpu_slab(void *info) {
+  kmem_cache_t *s = (kmem_cache_t *)info;
+  struct kmem_cache_cpu *c = &s->cpu_slab[smp_get_id()];
+
+  /* 1. Flush magazines */
+  while (c->mag_count > 0) {
+    void *obj = c->mag[--c->mag_count];
+    struct page *page = virt_to_head_page(obj);
+    __slab_free(s, page, obj);
+  }
+
+  /* 2. Flush frozen page */
+  struct page *page = c->page;
+  if (page) {
+    void *freelist = c->freelist;
+    c->page = nullptr;
+    c->freelist = nullptr;
+
+    lock_page_slab(page);
+
+    int free_in_cpu = 0;
+    void *curr = freelist;
+    while (curr) {
+      void *next = get_freelist_next(curr, s->offset);
+      set_freelist_next(curr, s->offset, page->freelist);
+      page->freelist = curr;
+      free_in_cpu++;
+      curr = next;
+    }
+
+    page->inuse -= (unsigned short)free_in_cpu;
+    page->frozen = 0;
+
+    bool empty = (page->inuse == 0);
+    unlock_page_slab(page);
+
+    struct kmem_cache_node *n = s->node[page->node];
+    if (empty) {
+      /* If we have too many partials, free this one, otherwise put it on the list */
+      if (n->nr_partial > s->min_partial) {
+        __free_slab(s, page);
+        atomic_long_dec(&s->active_slabs);
+      } else {
+        irq_flags_t flags = spinlock_lock_irqsave(&n->list_lock);
+        list_add(&page->list, &n->partial);
+        n->nr_partial++;
+        spinlock_unlock_irqrestore(&n->list_lock, flags);
+      }
+    } else {
+      if (page->freelist) {
+        irq_flags_t flags = spinlock_lock_irqsave(&n->list_lock);
+        list_add(&page->list, &n->partial);
+        n->nr_partial++;
+        spinlock_unlock_irqrestore(&n->list_lock, flags);
+      }
+    }
+  }
 }
 
 #define ALIGNED_MAGIC 0xDEADBEEFCAFEBABE
@@ -893,6 +955,120 @@ static kmem_cache_t static_caches[BOOT_CACHES_MAX];
 static struct kmem_cache_cpu static_cpu_slabs[BOOT_CACHES_MAX][MAX_CPUS];
 static struct kmem_cache_node static_nodes[BOOT_CACHES_MAX][MAX_NUMNODES];
 static int static_idx = 0;
+
+/**
+ * kmem_cache_purge - Free all empty slabs in the cache
+ * @s: The cache to purge
+ *
+ * This function iterates through all partial lists and frees any slabs
+ * that have no active objects. It also flushes per-CPU caches.
+ */
+void kmem_cache_purge(kmem_cache_t *s) {
+  struct kmem_cache_node *n;
+  struct page *page, *t;
+  LIST_HEAD(discard_list);
+
+  if (!s)
+    return;
+
+  /* 1. Flush all per-cpu slabs and magazines */
+  if (smp_is_active()) {
+    smp_call_function(flush_cpu_slab, s, true);
+  }
+
+  /* Flush current CPU (smp_call_function doesn't target self) */
+  irq_flags_t flags = local_irq_save();
+  flush_cpu_slab(s);
+  local_irq_restore(flags);
+
+  /* 2. Purge node lists */
+  for (int i = 0; i < MAX_NUMNODES; i++) {
+    n = s->node[i];
+    if (!n)
+      continue;
+
+    irq_flags_t n_flags = spinlock_lock_irqsave(&n->list_lock);
+    list_for_each_entry_safe(page, t, &n->partial, list) {
+      if (page->inuse == 0) {
+        list_del(&page->list);
+        n->nr_partial--;
+        list_add(&page->list, &discard_list);
+      }
+    }
+    spinlock_unlock_irqrestore(&n->list_lock, n_flags);
+  }
+
+  list_for_each_entry_safe(page, t, &discard_list, list) {
+    list_del(&page->list);
+    __free_slab(s, page);
+    atomic_long_dec(&s->active_slabs);
+  }
+}
+EXPORT_SYMBOL(kmem_cache_purge);
+
+/**
+ * kmem_cache_delete - Destroy a SLUB cache
+ * @s: The cache to destroy
+ *
+ * Returns: 0 on success, -EBUSY if cache still has active objects, -EINVAL if
+ * s is nullptr.
+ */
+int kmem_cache_delete(kmem_cache_t *s) {
+  if (!s)
+    return -EINVAL;
+
+  /* 1. Purge all empty slabs */
+  kmem_cache_purge(s);
+
+  /* 2. Check if there are any active objects/slabs */
+  if (atomic_long_read(&s->active_slabs) > 0 ||
+      atomic_long_read(&s->total_objects) > 0) {
+    printk(KERN_ERR SLAB_CLASS
+           "kmem_cache_delete(%s): cache still has active objects (%ld slabs, "
+           "%ld objects)\n",
+           s->name, atomic_long_read(&s->active_slabs),
+           atomic_long_read(&s->total_objects));
+    return -EBUSY;
+  }
+
+  /* 3. Remove from global list */
+  irq_flags_t flags = spinlock_lock_irqsave(&slab_lock);
+  list_del(&s->list);
+  spinlock_unlock_irqrestore(&slab_lock, flags);
+
+  /* 4. Free resources */
+  /* Check if this is a boot cache (static) */
+  if (s >= static_caches && s < &static_caches[BOOT_CACHES_MAX]) {
+    /* Static cache - we don't kfree it, but we should clear it if we want to
+     * reuse it */
+    memset(s, 0, sizeof(kmem_cache_t));
+    return 0;
+  }
+
+  /* Dynamic cache - free all components */
+  kfree(s->cpu_slab);
+
+  for (int i = 0; i < MAX_NUMNODES; i++) {
+    if (s->node[i]) {
+      /* Determine if node was allocated from static array or heap */
+      int is_static = 0;
+      for (int j = 0; j < BOOT_CACHES_MAX; j++) {
+        if (s->node[i] == &static_nodes[j][i]) {
+          is_static = 1;
+          break;
+        }
+      }
+      if (!is_static)
+        kfree(s->node[i]);
+    }
+    if (s->node_fallback[i])
+      kfree(s->node_fallback[i]);
+  }
+
+  kfree(s);
+  return 0;
+}
+EXPORT_SYMBOL(kmem_cache_delete);
 
 static struct kmem_cache *create_boot_cache(const char *name, size_t size,
                                             unsigned long flags) {

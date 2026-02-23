@@ -101,6 +101,7 @@
 #define SCHED_CLASS                                                            \
   "[aerosync::sched] " // Scheduler (Context switching, Picking tasks)
 #define RT_CLASS "[aerosync::sched::rt] "
+#define DL_CLASS "[aerosync::sched::dl] "
 #define TASK_CLASS "[aerosync::sched::task] " // Task creation/destruction logic
 #define ELF_CLASS "[aerosync::sched::elf] "   // ELF Loader / Binary parser
 #define IPC_CLASS                                                              \
@@ -146,7 +147,7 @@
 #define FAT_CLASS "[aerosync::fs::fat] "   // FAT12/16/32 Driver
 #define EXT_CLASS "[aerosync::fs::ext] "   // EXT2/3/4 Driver
 #define ISO_CLASS "[aerosync::fs::iso] "   // ISO9660 (CD-ROM)
-#define DEVFS_CLASS "[aerosync::fs::dev] " // /dev filesystem
+#define DEVTMPFS_CLASS "[aerosync::fs::devtmpfs] " // /dev filesystem
 #define TMPFS_CLASS "[aerosync::fs::tmp] "
 #define SYSFS_CLASS "[aerosync::fs::sysfs] "
 #define NTFS_CLASS "[aerosync::fs::ntfs] "

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <aerosync/types.h>
-#include <aerosync/sched/sched.h>
+#include <aerosync/wait.h>
 
 struct syscall_regs;
 
@@ -80,6 +80,7 @@ struct signal_struct {
     int count; /* Reference count */
     struct k_sigaction action[NSIG];
     /* Other process-wide signal state can go here */
+    struct wait_queue_head wait_chldexit;
 };
 
 struct sigpending {

@@ -33,6 +33,7 @@
 #include <aerosync/sysintf/ic.h>
 #include <aerosync/mutex.h>
 #include <aerosync/softirq.h>
+#include <aerosync/signal.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <linux/container_of.h>
@@ -427,6 +428,28 @@ long schedule_timeout(uint64_t ns) {
   long remaining = (long) (expire - get_time_ns());
   return remaining < 0 ? 0 : remaining;
 }
+
+void msleep(unsigned int msecs) {
+  uint64_t timeout = (uint64_t) msecs * NSEC_PER_MSEC;
+  
+  while (timeout) {
+    set_current_state(TASK_UNINTERRUPTIBLE);
+    timeout = schedule_timeout(timeout);
+  }
+}
+EXPORT_SYMBOL(msleep);
+
+unsigned int msleep_interruptible(unsigned int msecs) {
+  uint64_t timeout = (uint64_t) msecs * NSEC_PER_MSEC;
+  
+  while (timeout && !signal_pending(current)) {
+    set_current_state(TASK_INTERRUPTIBLE);
+    timeout = schedule_timeout(timeout);
+  }
+  
+  return (unsigned int) (timeout / NSEC_PER_MSEC);
+}
+EXPORT_SYMBOL(msleep_interruptible);
 
 void __no_cfi task_wake_up(struct task_struct *task) {
   int cpu = smp_get_id();

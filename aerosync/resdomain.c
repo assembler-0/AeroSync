@@ -390,6 +390,108 @@ static struct rd_subsys pid_subsys = {
   .populate = pid_populate,
 };
 
+/* --- Files Controller Ops --- */
+
+static struct resdomain_subsys_state *files_css_alloc(struct resdomain *rd) {
+  struct files_rd_state *fs = kzalloc(sizeof(struct files_rd_state));
+  if (!fs) return nullptr;
+  fs->max = -1;
+  return &fs->css;
+}
+
+static void files_css_free(struct resdomain *rd) {
+  kfree(rd->subsys[RD_SUBSYS_FILES]);
+}
+
+static ssize_t resfs_files_max_read(struct file *file, char *buf, size_t count, vfs_loff_t *ppos) {
+  struct resdomain *rd = file->f_inode->i_fs_info;
+  struct files_rd_state *fs = (struct files_rd_state *) rd->subsys[RD_SUBSYS_FILES];
+  char kbuf[32];
+  int len;
+  if (fs->max == -1)
+    len = snprintf(kbuf, sizeof(kbuf), "max\n");
+  else
+    len = snprintf(kbuf, sizeof(kbuf), "%d\n", fs->max);
+  return simple_read_from_buffer(buf, count, ppos, kbuf, (size_t) len);
+}
+
+static ssize_t resfs_files_max_write(struct file *file, const char *buf, size_t count, vfs_loff_t *ppos) {
+  (void) ppos;
+  struct resdomain *rd = file->f_inode->i_fs_info;
+  struct files_rd_state *fs = (struct files_rd_state *) rd->subsys[RD_SUBSYS_FILES];
+  char kbuf[32];
+  if (count >= sizeof(kbuf)) return -EINVAL;
+  if (copy_from_user(kbuf, buf, count)) return -EFAULT;
+  kbuf[count] = 0;
+  int val;
+  if (strncmp(kbuf, "max", 3) == 0) {
+    val = -1;
+  } else {
+    if (kstrtos(kbuf, 10, &val)) return -EINVAL;
+  }
+  fs->max = val;
+  return (ssize_t) count;
+}
+
+static const struct file_operations resfs_files_max_fops = {
+  .read = resfs_files_max_read,
+  .write = resfs_files_max_write,
+};
+
+static ssize_t resfs_files_current_read(struct file *file, char *buf, size_t count, vfs_loff_t *ppos) {
+  struct resdomain *rd = file->f_inode->i_fs_info;
+  struct files_rd_state *fs = (struct files_rd_state *) rd->subsys[RD_SUBSYS_FILES];
+  char kbuf[32];
+  int len = snprintf(kbuf, sizeof(kbuf), "%d\n", atomic_read(&fs->count));
+  return simple_read_from_buffer(buf, count, ppos, kbuf, (size_t) len);
+}
+
+static const struct file_operations resfs_files_current_fops = {
+  .read = resfs_files_current_read,
+};
+
+static void files_populate(struct resdomain *rd, struct pseudo_node *dir) {
+  extern struct pseudo_fs_info resfs_info;
+  extern void resfs_init_inode(struct inode *inode, struct pseudo_node *pnode);
+  struct pseudo_node *node;
+  node = pseudo_fs_create_file(&resfs_info, dir, "files.max", &resfs_files_max_fops, rd);
+  if (node) node->init_inode = resfs_init_inode;
+  node = pseudo_fs_create_file(&resfs_info, dir, "files.current", &resfs_files_current_fops, rd);
+  if (node) node->init_inode = resfs_init_inode;
+}
+
+static struct rd_subsys files_subsys = {
+  .name = "files",
+  .id = RD_SUBSYS_FILES,
+  .css_alloc = files_css_alloc,
+  .css_free = files_css_free,
+  .populate = files_populate,
+};
+
+int resdomain_file_open(struct resdomain *rd) {
+  if (!rd) rd = &root_resdomain;
+  struct files_rd_state *fs = (struct files_rd_state *) rd->subsys[RD_SUBSYS_FILES];
+  if (fs && fs->max != -1) {
+    if (atomic_read(&fs->count) >= fs->max) return -EMFILE;
+  }
+  if (fs) atomic_inc(&fs->count);
+  if (rd->parent) {
+    int ret = resdomain_file_open(rd->parent);
+    if (ret < 0) {
+      if (fs) atomic_dec(&fs->count);
+      return ret;
+    }
+  }
+  return 0;
+}
+
+void resdomain_file_close(struct resdomain *rd) {
+  if (!rd) rd = &root_resdomain;
+  struct files_rd_state *fs = (struct files_rd_state *) rd->subsys[RD_SUBSYS_FILES];
+  if (fs) atomic_dec(&fs->count);
+  if (rd->parent) resdomain_file_close(rd->parent);
+}
+
 /* --- IO Controller Ops --- */
 
 struct io_rd_state {
@@ -471,6 +573,7 @@ struct rd_subsys *rd_subsys_list[RD_SUBSYS_COUNT] = {
   [RD_SUBSYS_MEM] = &mem_subsys,
   [RD_SUBSYS_PID] = &pid_subsys,
   [RD_SUBSYS_IO] = &io_subsys,
+  [RD_SUBSYS_FILES] = &files_subsys,
 };
 
 /* --- Core Management --- */
@@ -493,7 +596,7 @@ int resdomain_init(void) {
   INIT_LIST_HEAD(&root_resdomain.sibling);
   spinlock_init(&root_resdomain.lock);
   root_resdomain.subtree_control = (1 << RD_SUBSYS_CPU) | (1 << RD_SUBSYS_MEM) | (1 << RD_SUBSYS_PID) | (
-                                     1 << RD_SUBSYS_IO);
+                                     1 << RD_SUBSYS_IO) | (1 << RD_SUBSYS_FILES);
   root_resdomain.child_subsys_mask = root_resdomain.subtree_control;
   for (int i = 0; i < RD_SUBSYS_COUNT; i++) {
     int ret = resdomain_init_subsys(&root_resdomain, i);

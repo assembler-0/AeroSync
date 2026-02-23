@@ -14,9 +14,16 @@ config ACPI_DEBUG_OUTPUT
     help
       Make ACPICA more talkative
 
+config ACPI_OSI_HANDLER
+    bool "Enable custom OSI handler"
+    default n
+    help
+      Install custom ACPICA OSI handler
+
 config DENY_LINUX_OSI
     bool "Deny Linux OSI"
     default y
+    depends on ACPI_OSI_HANDLER
     help
       Deny Linux support in OSI handler
       making firmwares behaves 'better'

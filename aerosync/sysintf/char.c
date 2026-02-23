@@ -19,7 +19,7 @@ static struct class char_class = {
     .dev_prefix = "char",
     .naming_scheme = NAMING_NUMERIC,
     .category = DEV_CAT_CHAR,
-    .flags = CLASS_FLAG_AUTO_DEVFS,
+    .flags = CLASS_FLAG_AUTO_DEVTMPFS,
 };
 
 static struct device_driver char_driver = {

@@ -10,6 +10,18 @@
 #include <linux/lockdep_types.h>
 #include <aerosync/sched/sched.h>
 
+/* wait4 options */
+#define WNOHANG		0x00000001
+#define WUNTRACED	0x00000002
+#define WSTOPPED	WUNTRACED
+#define WEXITED		0x00000004
+#define WCONTINUED	0x00000008
+#define WNOWAIT		0x01000000	/* Don't reap, just poll status.  */
+
+#define __WNOTHREAD	0x20000000	/* Don't wait on children of other threads in this group */
+#define __WCLONE	0x40000000	/* Wait on clone children only */
+#define __WALL		0x80000000	/* Wait on all children, regardless of type */
+
 typedef struct wait_queue_entry wait_queue_entry_t;
 
 typedef int (*wait_queue_func_t)(struct wait_queue_entry *wq_entry, unsigned mode, int flags, void *key);

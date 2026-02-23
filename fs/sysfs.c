@@ -7,6 +7,8 @@
  * @copyright (C) 2026 assembler-0
  */
 
+#ifdef CONFIG_SYSFS
+
 #include <fs/pseudo_fs.h>
 
 static struct pseudo_fs_info sysfs_info = {
@@ -22,3 +24,5 @@ void sysfs_init(void) {
   pseudo_fs_create_dir(&sysfs_info, nullptr, "bus");
   pseudo_fs_create_dir(&sysfs_info, nullptr, "class");
 }
+
+#endif

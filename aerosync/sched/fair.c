@@ -242,13 +242,41 @@ static void place_entity(struct cfs_rq* cfs_rq, struct sched_entity* se,
                          int initial) {
   uint64_t vruntime = cfs_rq->min_vruntime;
 
+  /*
+   * The 'thresh' is to prevent a sleeper from gaining too much advantage.
+   * If a task sleeps for a long time, its vruntime will be very far behind
+   * min_vruntime. If we bring it up exactly to min_vruntime, we lose the
+   * fact that it yielded the CPU. So we allow it to be slightly behind
+   * (by 'thresh'), giving it a boost, but bounding that boost.
+   */
   if (initial) {
-    se->vruntime = vruntime;
+    /* 
+     * New tasks start with a penalty so they don't immediately starve
+     * existing tasks. vruntime = min_vruntime + slice.
+     */
+    vruntime += sched_slice(cfs_rq, se);
   } else {
-    /* Waking task penalty/compensation */
-    if (se->vruntime < vruntime)
-      se->vruntime = vruntime;
+    /* 
+     * Waking tasks:
+     * Ensure vruntime is not too far in the past.
+     * vruntime = max(se->vruntime, min_vruntime - thresh)
+     */
+    uint64_t thresh = sched_slice(cfs_rq, se);
+    
+    if (se->vruntime < vruntime) {
+        uint64_t diff = vruntime - se->vruntime;
+        if (diff > thresh) {
+            vruntime -= thresh;
+        } else {
+            vruntime = se->vruntime;
+        }
+    } else {
+        /* Task's vruntime is already ahead (maybe migrated or short sleep), keep it */
+        vruntime = se->vruntime;
+    }
   }
+  
+  se->vruntime = vruntime;
 }
 
 /*
@@ -280,10 +308,13 @@ static void enqueue_task_fair(struct rq* rq, struct task_struct* p, int flags) {
    * We need logic to handle 'initial' placement better.
    */
   if (flags & ENQUEUE_WAKEUP) {
-    place_entity(cfs_rq, se, 0); // Not initial if waking up
+    place_entity(cfs_rq, se, 0); 
   } else if (flags & ENQUEUE_MOVE) {
     /* Denormalize vruntime after migration */
     se->vruntime += cfs_rq->min_vruntime;
+  } else {
+    /* Initial placement for new tasks (not wakeup, not move) */
+    place_entity(cfs_rq, se, 1);
   }
 
   update_curr_fair(rq);
@@ -499,6 +530,21 @@ static void check_preempt_curr_fair(struct rq* rq, struct task_struct* p,
   if (curr->sched_class != &fair_sched_class)
     return;
 
+  /*
+   * Granularity check:
+   * 1. Ensure the current task has run for at least SCHED_MIN_GRANULARITY_NS
+   *    to avoid cache thrashing.
+   * 2. Ensure the preempting task (pse) has a significant advantage in vruntime.
+   */
+  
+  uint64_t delta_exec = se->sum_exec_runtime - se->prev_sum_exec_runtime;
+  if (delta_exec < SCHED_MIN_GRANULARITY_NS)
+      return;
+
+  /* 
+   * If se->vruntime > pse->vruntime + gran, it means the current task 
+   * has "used up" its fair share relative to the waking task by margin 'gran'.
+   */
   if (se->vruntime > pse->vruntime + SCHED_WAKEUP_GRANULARITY_NS) {
     set_need_resched();
   }

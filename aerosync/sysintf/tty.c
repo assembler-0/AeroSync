@@ -20,7 +20,7 @@ static struct class tty_class = {
     .dev_prefix = STRINGIFY(CONFIG_SERIAL_NAME_PREFIX),
     .naming_scheme = NAMING_NUMERIC,
     .category = DEV_CAT_TTY,
-    .flags = CLASS_FLAG_AUTO_DEVFS,
+    .flags = CLASS_FLAG_AUTO_DEVTMPFS,
 };
 
 static struct device_driver tty_driver = {

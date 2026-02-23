@@ -18,6 +18,7 @@
 #include <aerosync/wait.h>
 #include <aerosync/panic.h>
 #include <aerosync/sysintf/time.h>
+#include <aerosync/signal.h>
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/io.h>
 #include <arch/x86_64/irq.h>
@@ -184,15 +185,25 @@ AcpiOsWaitSemaphore(
         return AE_TIME;
       }
 
-      prepare_to_wait(&sem->wait_q, &wait, TASK_UNINTERRUPTIBLE);
+      prepare_to_wait(&sem->wait_q, &wait, TASK_INTERRUPTIBLE);
       spinlock_unlock_irqrestore(&sem->lock, flags);
 
       uint64_t remaining = limit - (now - start);
       schedule_timeout(remaining);
+      
+      if (signal_pending(current)) {
+          finish_wait(&sem->wait_q, &wait);
+          return AE_ABORT_METHOD;
+      }
     } else {
-      prepare_to_wait(&sem->wait_q, &wait, TASK_UNINTERRUPTIBLE);
+      prepare_to_wait(&sem->wait_q, &wait, TASK_INTERRUPTIBLE);
       spinlock_unlock_irqrestore(&sem->lock, flags);
       schedule();
+      
+      if (signal_pending(current)) {
+          finish_wait(&sem->wait_q, &wait);
+          return AE_ABORT_METHOD;
+      }
     }
   }
 }
@@ -295,31 +306,52 @@ AcpiOsFree(
   void *Memory) {
   if (!Memory)
     return;
-  const uint64_t addr = (uint64_t) Memory;
-  (addr >= VMALLOC_VIRT_BASE && addr < VMALLOC_VIRT_END)
-    ? vfree(Memory)
-    : kfree(Memory);
+  const uint64_t addr = (uintptr_t) Memory;
+  if (is_vmalloc_addr(addr)) {
+    vfree(Memory);
+  } else {
+    kfree(Memory);
+  }
+}
+
+static void *
+osl_map_memory(ACPI_PHYSICAL_ADDRESS Address, ACPI_SIZE Length) {
+  if (PHYS_TO_PFN(Address) < pmm_get_max_pfn()) {
+    return pmm_phys_to_virt(Address);
+  }
+  return ioremap(Address, Length);
+}
+
+static void
+osl_unmap_memory(void *LogicalAddress, ACPI_SIZE Size) {
+  (void) Size;
+  if (is_vmalloc_addr((uintptr_t) LogicalAddress)) {
+    iounmap(LogicalAddress);
+  }
 }
 
 void *
 AcpiOsMapMemory(
   ACPI_PHYSICAL_ADDRESS Where,
   ACPI_SIZE Length) {
-  return ioremap(Where, Length);
+  return osl_map_memory(Where, Length);
 }
 
 void
 AcpiOsUnmapMemory(
   void *LogicalAddress,
   ACPI_SIZE Size) {
-  (void) Size;
-  iounmap(LogicalAddress);
+  osl_unmap_memory(LogicalAddress, Size);
 }
 
 ACPI_STATUS
 AcpiOsGetPhysicalAddress(
   void *LogicalAddress,
   ACPI_PHYSICAL_ADDRESS *PhysicalAddress) {
+  if (is_pmm_addr((uintptr_t) LogicalAddress)) {
+    *PhysicalAddress = pmm_virt_to_phys(LogicalAddress);
+    return AE_OK;
+  }
   *PhysicalAddress = vmm_virt_to_phys(&init_mm, (uintptr_t) LogicalAddress);
   return *PhysicalAddress ? AE_OK : AE_ERROR;
 }
@@ -343,15 +375,19 @@ AcpiOsCreateCache(
 ACPI_STATUS
 AcpiOsDeleteCache(
   ACPI_CACHE_T *Cache) {
-  (void) Cache;
-  /* kmem_cache_destroy not implemented in kernel yet */
+  if (!Cache)
+    return AE_BAD_PARAMETER;
+  if (kmem_cache_delete((kmem_cache_t *) Cache) != 0)
+    return AE_ERROR;
   return AE_OK;
 }
 
 ACPI_STATUS
 AcpiOsPurgeCache(
   ACPI_CACHE_T *Cache) {
-  (void) Cache;
+  if (!Cache)
+    return AE_BAD_PARAMETER;
+  kmem_cache_purge((kmem_cache_t *) Cache);
   return AE_OK;
 }
 
@@ -610,8 +646,7 @@ AcpiOsWaitEventsComplete(
 void
 AcpiOsSleep(
   UINT64 Milliseconds) {
-  current->state = TASK_UNINTERRUPTIBLE;
-  schedule_timeout(Milliseconds * 1000000);
+  msleep((unsigned int) Milliseconds);
 }
 
 void
@@ -669,7 +704,7 @@ AcpiOsReadMemory(
   ACPI_PHYSICAL_ADDRESS Address,
   UINT64 *Value,
   UINT32 Width) {
-  void *ptr = ioremap(Address, Width / 8);
+  void *ptr = osl_map_memory(Address, Width / 8);
   if (!ptr)
     return AE_NO_MEMORY;
 
@@ -687,11 +722,11 @@ AcpiOsReadMemory(
       *Value = *(volatile uint64_t *) ptr;
       break;
     default:
-      iounmap(ptr);
+      osl_unmap_memory(ptr, Width / 8);
       return AE_BAD_PARAMETER;
   }
 
-  iounmap(ptr);
+  osl_unmap_memory(ptr, Width / 8);
   return AE_OK;
 }
 
@@ -700,7 +735,7 @@ AcpiOsWriteMemory(
   ACPI_PHYSICAL_ADDRESS Address,
   UINT64 Value,
   UINT32 Width) {
-  void *ptr = ioremap(Address, Width / 8);
+  void *ptr = osl_map_memory(Address, Width / 8);
   if (!ptr)
     return AE_NO_MEMORY;
 
@@ -718,11 +753,11 @@ AcpiOsWriteMemory(
       *(volatile uint64_t *) ptr = Value;
       break;
     default:
-      iounmap(ptr);
+      osl_unmap_memory(ptr, Width / 8);
       return AE_BAD_PARAMETER;
   }
 
-  iounmap(ptr);
+  osl_unmap_memory(ptr, Width / 8);
   return AE_OK;
 }
 
@@ -766,14 +801,14 @@ BOOLEAN
 AcpiOsReadable(
   void *Pointer,
   ACPI_SIZE Length) {
-  return (uintptr_t) Pointer >= 0xFFFF800000000000;
+  return (uintptr_t) Pointer >= vmm_get_canonical_high_base();
 }
 
 BOOLEAN
 AcpiOsWritable(
   void *Pointer,
   ACPI_SIZE Length) {
-  return (uintptr_t) Pointer >= 0xFFFF800000000000;
+  return (uintptr_t) Pointer >= vmm_get_canonical_high_base();
 }
 
 UINT64
@@ -814,9 +849,7 @@ AcpiOsPrintf(
   ...) {
   va_list args;
   va_start(args, Format);
-  char buff[1024];
-  vscnprintf(buff, sizeof(buff), Format, args);
-  printk(KERN_DEBUG ACPI_CLASS "%s", buff);
+  vprintk(Format, args);
   va_end(args);
 }
 
@@ -824,9 +857,7 @@ void
 AcpiOsVprintf(
   const char *Format,
   va_list Args) {
-  char buff[1024];
-  vscnprintf(buff, sizeof(buff), Format, Args);
-  printk(KERN_DEBUG ACPI_CLASS "%s", buff);
+  vprintk(Format, Args);
 }
 
 void
@@ -900,6 +931,7 @@ AcpiOsGetTableByAddress(
   return AE_NOT_IMPLEMENTED;
 }
 
+#ifdef CONFIG_ACPI_OSI_HANDLER
 static ACPI_STATUS
 osl_osi_handler(ACPI_STRING interface_name, UINT32 *supported)
 {
@@ -914,10 +946,6 @@ osl_osi_handler(ACPI_STRING interface_name, UINT32 *supported)
   /* Whitelist what we actually support */
   if (!strcmp(interface_name, "Windows 2013") ||
       !strcmp(interface_name, "Windows 2015") ||
-      !strcmp(interface_name, "Windows 2019") ||
-      !strcmp(interface_name, "Windows 2022") ||
-      !strcmp(interface_name, "Windows 2025") ||
-      !strcmp(interface_name, "Windows 2012") ||
       !strcmp(interface_name, "Windows 2009") ||
       !strcmp(interface_name, "Module Device")  ||
       !strcmp(interface_name, "Processor Device") ||
@@ -940,6 +968,7 @@ osl_osi_handler(ACPI_STRING interface_name, UINT32 *supported)
 
   return AE_OK;
 }
+#endif
 
 /* --- Initialization Calls --- */
 
@@ -960,10 +989,12 @@ int acpica_kernel_init_early(void) {
     return -ENODEV;
   }
 
+#ifdef CONFIG_ACPI_OSI_HANDLER
   status = AcpiInstallInterfaceHandler((ACPI_INTERFACE_HANDLER)osl_osi_handler);
   if (ACPI_FAILURE(status)) {
     printk(KERN_WARNING ACPI_CLASS "Failed to install OSI handler: %s\n", AcpiFormatException(status));
   }
+#endif
 
   status = AcpiLoadTables();
   if (ACPI_FAILURE(status)) {

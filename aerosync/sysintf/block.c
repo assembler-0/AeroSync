@@ -24,7 +24,7 @@
 static struct class block_class = {
     .name = "block",
     .category = DEV_CAT_BLOCK,
-    .flags = CLASS_FLAG_AUTO_DEVFS,
+    .flags = CLASS_FLAG_AUTO_DEVTMPFS,
 };
 
 static struct class ide_class = {
@@ -32,7 +32,7 @@ static struct class ide_class = {
     .dev_prefix = STRINGIFY(CONFIG_IDE_NAME_PREFIX),
     .naming_scheme = NAMING_ALPHABETIC,
     .category = DEV_CAT_BLOCK,
-    .flags = CLASS_FLAG_AUTO_DEVFS,
+    .flags = CLASS_FLAG_AUTO_DEVTMPFS,
 };
 
 static struct class sata_class = {
@@ -40,7 +40,7 @@ static struct class sata_class = {
     .dev_prefix = STRINGIFY(CONFIG_SATA_NAME_PREFIX),
     .naming_scheme = NAMING_ALPHABETIC,
     .category = DEV_CAT_BLOCK,
-    .flags = CLASS_FLAG_AUTO_DEVFS,
+    .flags = CLASS_FLAG_AUTO_DEVTMPFS,
 };
 
 static struct class nvme_class = {
@@ -48,7 +48,7 @@ static struct class nvme_class = {
     .dev_prefix = STRINGIFY(CONFIG_NVME_NAME_PREFIX),
     .naming_scheme = NAMING_NUMERIC,
     .category = DEV_CAT_BLOCK,
-    .flags = CLASS_FLAG_AUTO_DEVFS,
+    .flags = CLASS_FLAG_AUTO_DEVTMPFS,
 };
 
 static struct class cdrom_class = {
@@ -56,7 +56,7 @@ static struct class cdrom_class = {
     .dev_prefix = STRINGIFY(CONFIG_CDROM_NAME_PREFIX),
     .naming_scheme = NAMING_NUMERIC,
     .category = DEV_CAT_BLOCK,
-    .flags = CLASS_FLAG_AUTO_DEVFS,
+    .flags = CLASS_FLAG_AUTO_DEVTMPFS,
 };
 
 static struct device_driver block_driver = {

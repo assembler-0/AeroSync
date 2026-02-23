@@ -105,6 +105,9 @@ void slab_verify_all(void);
 kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align,
                                 unsigned long flags);
 
+int kmem_cache_delete(kmem_cache_t *s);
+void kmem_cache_purge(kmem_cache_t *s);
+
 void *kmem_cache_alloc(kmem_cache_t *cache);
 void *kmem_cache_alloc_node(kmem_cache_t *cache, int node);
 

@@ -8,6 +8,7 @@
 #include <aerosync/pid_ns.h>
 #include <aerosync/preempt.h>
 #include <aerosync/cred.h>
+#include <aerosync/timer.h>
 
 /* Forward declarations */
 struct sched_class;
@@ -168,6 +169,11 @@ struct sched_dl_entity {
   uint64_t runtime;
   uint64_t period;
   unsigned int on_rq;
+  
+  /* Bandwidth enforcement */
+  int dl_throttled;
+  int dl_yielded;
+  struct timer_list dl_timer;
 };
 
 /**
@@ -498,6 +504,8 @@ void task_sleep(void);
 void task_wake_up(struct task_struct *task);
 void task_wake_up_all(void);
 long schedule_timeout(uint64_t ns);
+void msleep(unsigned int msecs);
+unsigned int msleep_interruptible(unsigned int msecs);
 
 /* Priority Inheritance (PI) functions */
 void pi_boost_prio(struct task_struct *owner, struct task_struct *waiter);

@@ -47,6 +47,7 @@ void signal_init_task(struct task_struct *p) {
     }
     memset(p->signal, 0, sizeof(struct signal_struct));
     p->signal->count = 1;
+    init_waitqueue_head(&p->signal->wait_chldexit);
   } else {
     p->signal->count++;
   }

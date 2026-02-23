@@ -39,6 +39,8 @@
 #include <aerosync/signal.h>
 #include <aerosync/errno.h>
 #include <aerosync/kref.h>
+#include <aerosync/resource.h>
+#include <lib/uaccess.h>
 #include <fs/fs_struct.h>
 #include <linux/container_of.h>
 #include <aerosync/resdomain.h>
@@ -52,6 +54,12 @@
  * Process/Thread Management
  */
 
+/* 
+ * Industry standard for x86_64 is 16KB (4 pages).
+ * Note: If reporting modern Windows OSI to firmware on physical hardware, 
+ * ACPICA interpreter recursion combined with shared IRQ stacks may require 
+ * 32KB (8 pages) to prevent random page faults.
+ */
 #define THREAD_STACK_SIZE (PAGE_SIZE * 4)
 
 /* Caches for fast allocation */
@@ -749,6 +757,10 @@ void sys_exit(int error_code) {
   /* 7. Notify parent */
   if (curr->parent) {
     send_signal(SIGCHLD, curr->parent);
+    /* Wake up parent waiting in wait4 */
+    if (curr->parent->signal) {
+        wake_up_interruptible(&curr->parent->signal->wait_chldexit);
+    }
   }
 
   spinlock_unlock(&tasklist_lock);
@@ -976,3 +988,117 @@ struct task_struct * __deprecated spawn_user_process_raw(void *data, size_t len,
 
 EXPORT_SYMBOL(spawn_user_process_raw);
 #endif
+
+/*
+ * Wait for a child process to change state
+ */
+static long do_wait(pid_t pid, int *status, int options, struct rusage *ru) {
+    struct task_struct *p = current;
+    struct task_struct *child, *safe;
+    int retval;
+
+    if (options & ~(WNOHANG | WUNTRACED | WCONTINUED | __WNOTHREAD | __WCLONE | __WALL))
+        return -EINVAL;
+
+    DECLARE_WAITQUEUE(wait, current);
+    add_wait_queue(&p->signal->wait_chldexit, &wait);
+
+repeat:
+    retval = -ECHILD;
+
+    /* Global lock is heavy but safe for now. Ideally use p->sighand->lock */
+    irq_flags_t flags = spinlock_lock_irqsave(&tasklist_lock);
+
+    list_for_each_entry_safe(child, safe, &p->children, sibling) {
+        /* Filter by PID */
+        if (pid > 0) {
+            if (child->pid != pid) continue;
+        } else if (pid == 0) {
+            if (child->tgid != p->tgid) continue;
+        } else if (pid < -1) {
+            if (child->tgid != -pid) continue;
+        }
+
+        /* Found a candidate child */
+        if (retval == -ECHILD) retval = 0;
+
+        /* Check for ZOMBIE (exited) */
+        if (child->state == TASK_ZOMBIE) {
+            pid_t pid_val = child->pid;
+            if (status) {
+                int code = (child->exit_code << 8) & 0xFF00; /* Normal exit */
+                /* TODO: Handle signal termination encoding */
+                if (copy_to_user(status, &code, sizeof(int))) {
+                    retval = -EFAULT;
+                    spinlock_unlock_irqrestore(&tasklist_lock, flags);
+                    goto end;
+                }
+            }
+            
+            if (ru) {
+                /* TODO: Aggregate usage from child */
+            }
+
+            /* Release the zombie */
+            free_task(child);
+            retval = pid_val;
+            spinlock_unlock_irqrestore(&tasklist_lock, flags);
+            goto end;
+        }
+
+        /* Check for STOPPED */
+        if ((options & WUNTRACED) && (child->state == TASK_STOPPED)) {
+            /* We need a flag to say if we already reported this stop */
+            /* For now, simplified: always report */
+            pid_t pid_val = child->pid;
+            if (status) {
+                int code = 0x7F; /* WIFSTOPPED */
+                /* Signal number in high bits? verify format */
+                if (copy_to_user(status, &code, sizeof(int))) {
+                    retval = -EFAULT;
+                    spinlock_unlock_irqrestore(&tasklist_lock, flags);
+                    goto end;
+                }
+            }
+            retval = pid_val;
+            spinlock_unlock_irqrestore(&tasklist_lock, flags);
+            goto end;
+        }
+    }
+
+    spinlock_unlock_irqrestore(&tasklist_lock, flags);
+
+    if (retval == -ECHILD) {
+        /* No children matched the PID spec */
+        goto end;
+    }
+
+    if (options & WNOHANG) {
+        retval = 0;
+        goto end;
+    }
+
+    set_current_state(TASK_INTERRUPTIBLE);
+    schedule();
+
+    if (signal_pending(current)) {
+        retval = -ERESTARTSYS;
+        goto end;
+    }
+    
+    goto repeat;
+
+end:
+    remove_wait_queue(&p->signal->wait_chldexit, &wait);
+    set_current_state(TASK_RUNNING);
+    return retval;
+}
+
+long sys_wait4(pid_t pid, int *status, int options, struct rusage *ru) {
+    return do_wait(pid, status, options, ru);
+}
+
+long sys_waitpid(pid_t pid, int *status, int options) {
+    return do_wait(pid, status, options, nullptr);
+}
+

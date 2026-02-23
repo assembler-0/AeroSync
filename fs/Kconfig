@@ -8,6 +8,17 @@ config VFS
     help
       Enable support for the Virtual File System layer.
 
+config VFS_PURE_KERNEL
+    bool "VFS Pure Kernel Mode (Disable all auto-mounts)"
+    depends on VFS
+    default n
+    help
+      If enabled, the kernel will not perform any automatic mounts of
+      pseudo-filesystems (devtmpfs, procfs, sysfs, resfs).
+      This ensures the kernel makes zero assumptions about the
+      userspace filesystem layout. Policy becomes the absolute
+      responsibility of the init process.
+
 config VFS_UBC
     bool "Unified Buffer Cache (UBC)"
     depends on VFS
@@ -42,6 +53,21 @@ config VFS_RENAME_OVERWRITE
       if it exists and is of the same type (file or directory). This is
       the default POSIX and Linux behavior.
 
+config AEROQ_HFS
+    bool "AeroQ Hierarchical File System (HFS) layout"
+    depends on VFS
+    default y
+    help
+      Enable the AeroQ HFS layout. This sets the default mount paths
+      for pseudo-filesystems like devtmpfs, procfs, and sysfs to comply
+      with the AeroQ OS specification.
+
+      Paths:
+        - devtmpfs: /runtime/devices
+        - procfs: /runtime/processes
+        - sysfs: /runtime/sys
+        - resfs: /runtime/res
+
 config VFS_DCACHE_SIZE
     int "Dentry Cache Size"
     depends on VFS
@@ -50,29 +76,51 @@ config VFS_DCACHE_SIZE
       The maximum number of directory entries to cache in memory.
       Higher values speed up path lookup but consume more slab memory.
 
-config DEVFS
-    bool "Device Filesystem (devfs) support"
+config DEVTMPFS
+    bool "Device Temporary Filesystem (devtmpfs) support"
     depends on VFS
     default y
     help
-      Enable support for devfs, a pseudo-filesystem for device nodes.
+      Enable support for devtmpfs, a kernel-managed pseudo-filesystem
+      for device nodes.
 
-config DEVFS_MOUNT
-    bool "Mount devfs automatically during boot"
-    depends on DEVFS
+config DEVTMPFS_MOUNT
+    bool "Mount devtmpfs automatically during boot"
+    depends on DEVTMPFS && !VFS_PURE_KERNEL
     default y
     help
-      Automatically mount devfs during kernel initialization.
-      Note: This is generally considered a policy decision and
-      should be handled by userspace unless early kernel access
-      to device nodes is required.
+      Automatically mount devtmpfs during kernel initialization.
 
-config DEVFS_MOUNT_PATH
-    string "Default mount path for devfs"
-    depends on DEVFS_MOUNT
-    default "/runtime/devices"
+config DEVTMPFS_MOUNT_PATH
+    string "Default mount path for devtmpfs"
+    depends on DEVTMPFS_MOUNT
+    default "/runtime/devices" if AEROQ_HFS
+    default "/dev"
     help
-      The path where devfs should be mounted automatically.
+      The path where devtmpfs should be mounted automatically.
+
+config PROCFS
+    bool "Process Information Filesystem (procfs) support"
+    depends on VFS
+    default y
+    help
+      Enable support for procfs, a pseudo-filesystem for process
+      information and system statistics.
+
+config PROCFS_MOUNT
+    bool "Mount procfs automatically during boot"
+    depends on PROCFS && !VFS_PURE_KERNEL
+    default y
+    help
+      Automatically mount procfs during kernel initialization.
+
+config PROCFS_MOUNT_PATH
+    string "Default mount path for procfs"
+    depends on PROCFS_MOUNT
+    default "/runtime/processes" if AEROQ_HFS
+    default "/proc"
+    help
+      The path where procfs should be mounted automatically.
 
 config SYSFS
     bool "System Filesystem (sysfs) support"
@@ -83,7 +131,7 @@ config SYSFS
 
 config SYSFS_MOUNT
     bool "Mount sysfs automatically during boot"
-    depends on SYSFS
+    depends on SYSFS && !VFS_PURE_KERNEL
     default y
     help
       Automatically mount sysfs during kernel initialization.
@@ -91,9 +139,33 @@ config SYSFS_MOUNT
 config SYSFS_MOUNT_PATH
     string "Default mount path for sysfs"
     depends on SYSFS_MOUNT
-    default "/runtime/sys"
+    default "/runtime/sys" if AEROQ_HFS
+    default "/sys"
     help
       The path where sysfs should be mounted automatically.
+
+config RESFS
+    bool "Resource Domain Filesystem (resfs) support"
+    depends on VFS && RESDOMAINS
+    default y
+    help
+      Enable support for resfs, a pseudo-filesystem for managing
+      hierarchical resource domains.
+
+config RESFS_MOUNT
+    bool "Mount resfs automatically during boot"
+    depends on RESFS && !VFS_PURE_KERNEL
+    default y
+    help
+      Automatically mount resfs during kernel initialization.
+
+config RESFS_MOUNT_PATH
+    string "Default mount path for resfs"
+    depends on RESFS_MOUNT
+    default "/runtime/res" if AEROQ_HFS
+    default "/res"
+    help
+      The path where resfs should be mounted automatically.
 
 config USTARFS
     bool "USTAR (tar) filesystem support"
