@@ -70,5 +70,5 @@ int my_probe(struct pci_dev *pdev) {
 ## Configurability
 The UDM is highly configurable via Kconfig under `drivers -> device naming policy`. You can customize:
 - Device name prefixes (e.g., `ttyS` vs `com`).
-- Automatic `devfs` exposure.
+- Automatic `devtmpfs` exposure.
 - Verbose topology logging.

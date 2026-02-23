@@ -45,8 +45,8 @@
                     - intel-ucode.img
                     - *.img*
                 - limine.conf
-        - runtime/ - runtime directory (devfs, procfs, tmpfs, swap,.. combined)
-            - devices/ - devfs
+        - runtime/ - runtime directory (devtmpfs, procfs, tmpfs, swap,.. combined)
+            - devices/ - devtmpfs
                 - block/ - block devices
                     - hda0
                     - sda0

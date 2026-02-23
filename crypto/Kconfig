@@ -81,7 +81,7 @@ config CRYPTO_DEV_PATH
 	depends on CRYPTO
 	default "/runtime/devices/crypto"
 	help
-	  The path where the crypto device node will be created in devfs.
+	  The path where the crypto device node will be created in devtmpfs.
 
 endif # CRYPTO
 

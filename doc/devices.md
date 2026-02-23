@@ -1,10 +1,10 @@
-# AeroSync Device Naming & devfs Policy
+# AeroSync Device Naming & devtmpfs Policy
 
 ## Overview
 AeroSync maintains a strict separation between kernel mechanism and userspace policy. Unlike Linux, which enforces a rigid Filesystem Hierarchy Standard (FHS), AeroSync allows all device names and mount points to be configured at compile-time or handled dynamically by userspace.
 
 ## Configurable Naming
-Device names are not hardcoded. The following Kconfig symbols control the default prefixes exposed in `devfs`:
+Device names are not hardcoded. The following Kconfig symbols control the default prefixes exposed in `devtmpfs`:
 
 | Device Type | Kconfig Symbol | Default Value | Example |
 |-------------|----------------|---------------|---------|
@@ -22,10 +22,10 @@ Numbers (suffixes) are allocated dynamically using the kernel's IDA (ID Allocato
   - `hd` and `sd` prefixes automatically use alphabetical suffixes (`a`, `b`, ... `aa`, `ab`).
   - Other prefixes (like `nvme`) use numeric suffixes (`0`, `1`).
 
-## devfs
-`devfs` is a mountable pseudo-filesystem that drivers use to export their interfaces.
-- **Kernel Policy**: The kernel does NOT mount `devfs` to `/dev` by default (unless `CONFIG_DEVFS_MOUNT` is enabled for early debugging).
-- **Userspace Policy**: It is the responsibility of the `init` process or a device manager to mount `devfs` at the preferred location.
+## devtmpfs
+`devtmpfs` is a mountable pseudo-filesystem that drivers use to export their interfaces.
+- **Kernel Policy**: The kernel does NOT mount `devtmpfs` to `/dev` by default (unless `CONFIG_DEVTMPFS_MOUNT` is enabled for early debugging).
+- **Userspace Policy**: It is the responsibility of the `init` process or a device manager to mount `devtmpfs` at the preferred location.
 
 ## Major & Minor Numbers
 While AeroSync uses a `major:minor` mapping for character and block devices to maintain architectural sanity, it does NOT strictly follow the Linux Assigned Numbers authority. Drivers are encouraged to use configurable ranges.

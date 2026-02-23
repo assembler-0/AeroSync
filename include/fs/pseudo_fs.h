@@ -38,7 +38,7 @@ struct pseudo_node {
     const struct inode_operations *iop;
     char *symlink_target; /* For symlinks */
     
-    /* Callback for custom inode initialization (e.g. for devfs) */
+    /* Callback for custom inode initialization (e.g. for devtmpfs) */
     void (*init_inode)(struct inode *inode, struct pseudo_node *node);
 
     struct pseudo_node *parent;

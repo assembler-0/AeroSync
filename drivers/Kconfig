@@ -16,7 +16,7 @@ config PTY_SLAVE_PREFIX
     default "pts"
     help
       The base name for pseudo-terminal slave devices (e.g. "pts", "pty").
-      This will be used for nodes in devfs.
+      This will be used for nodes in devtmpfs.
 
 config FB_NAME_PREFIX
     string "Framebuffer device name prefix"
