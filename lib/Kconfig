@@ -6,10 +6,6 @@ config LIST_HARDENED
     bool "Enable hardened linked-list"
     default n
 
-config DEBUG_PLIST
-    bool "Enabled debug plist (priority lists)"
-    default n
-
 config INTERVAL_TREE_SPAN_ITER
     bool "Enable interval tree span interation"
     default y
