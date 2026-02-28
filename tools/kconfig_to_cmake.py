@@ -88,7 +88,12 @@ def _generate_cache(kconfig_path: Path, config_path: Path, output_path: Path) ->
             value = sym.str_value
             if value in (None, ""):
                 continue
-            emit_symbol(sym.name, value, plain=True)
+
+            if sym.type == kconfiglib.STRING:
+                emit_symbol(sym.name, f"\"{value}\"", plain=True)
+            else:
+                emit_symbol(sym.name, value, plain=True)
+
             cmake_sets.append(
                 f"set(CONFIG_{sym.name} \"{_cmake_escape(value)}\")"
             )

@@ -14,7 +14,7 @@
 
 static struct class fb_class = {
   .name = "graphics",
-  .dev_prefix = STRINGIFY(CONFIG_FB_NAME_PREFIX),
+  .dev_prefix = CONFIG_FB_NAME_PREFIX,
   .naming_scheme = NAMING_NUMERIC,
   .category = DEV_CAT_FB,
   .flags = CLASS_FLAG_AUTO_DEVTMPFS,

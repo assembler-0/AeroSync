@@ -17,6 +17,7 @@
 #include <aerosync/timer.h>
 #include <mm/vm_object.h>
 #include <arch/x86_64/mm/pmm.h>
+#include <fs/procfs.h>
 
 static struct pseudo_fs_info procfs_info = {
   .name = "proc",
@@ -67,6 +68,12 @@ void procfs_init(void) {
 
   pseudo_fs_create_file(&procfs_info, nullptr, "meminfo", &proc_meminfo_fops, nullptr);
   pseudo_fs_create_file(&procfs_info, nullptr, "uptime", &proc_uptime_fops, nullptr);
+}
+
+int procfs_create_file_kern(const char *name, const struct file_operations *fops, void *private_data) {
+    if (!procfs_info.root) return -ENODEV;
+    struct pseudo_node *node = pseudo_fs_create_file(&procfs_info, nullptr, name, fops, private_data);
+    return node ? 0 : -ENOMEM;
 }
 
 #endif

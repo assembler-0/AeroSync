@@ -34,7 +34,7 @@
 
 static struct class ic_class = {
     .name = "interrupt_controller",
-    .dev_prefix = STRINGIFY(CONFIG_IC_NAME_PREFIX),
+    .dev_prefix = CONFIG_IC_NAME_PREFIX,
     .naming_scheme = NAMING_NUMERIC,
 };
 

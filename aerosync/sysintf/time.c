@@ -33,7 +33,7 @@
 
 static struct class time_class = {
   .name = "time_source",
-  .dev_prefix = STRINGIFY(CONFIG_TIME_NAME_PREFIX),
+  .dev_prefix = CONFIG_TIME_NAME_PREFIX,
   .naming_scheme = NAMING_NUMERIC,
 };
 

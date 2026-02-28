@@ -117,14 +117,24 @@ int filemap_fault(struct vm_object *obj, struct vm_area_struct *vma, struct vm_f
   struct folio *folio;
   int ret;
 
+  /* Sanity Check for poisoned object */
+  if (unlikely((uintptr_t)obj == 0xadadadadadadadad || (uintptr_t)obj == 0xdeadbeefcafebabe))
+    return VM_FAULT_SIGBUS;
+
   /* 1. Fast path: check cache under RCU/Shared lock */
   down_read(&obj->lock);
   folio = vm_object_find_folio(obj, vmf->pgoff);
-  if (folio) {
+  if (folio && !xa_is_err(folio)) {
+    /* Sanity check for poisoned folio */
+    if (unlikely((uintptr_t)folio == 0xadadadadadadadad || (uintptr_t)folio == 0xdeadbeefcafebabe)) {
+        up_read(&obj->lock);
+        return VM_FAULT_SIGBUS;
+    }
     folio_get(folio);
     vmf->folio = folio;
     vmf->prot = vma ? vma->vm_page_prot : vm_get_page_prot(VM_READ);
-    if (!(vma->vm_flags & VM_SHARED)) vmf->prot &= ~PTE_RW;
+    if (!vma && (vmf->flags & FAULT_FLAG_WRITE)) vmf->prot |= PTE_RW;
+    if (vma && !(vma->vm_flags & VM_SHARED)) vmf->prot &= ~PTE_RW;
     up_read(&obj->lock);
     return 0;
   }
@@ -134,7 +144,9 @@ int filemap_fault(struct vm_object *obj, struct vm_area_struct *vma, struct vm_f
   ubc_readahead(obj, vmf->pgoff);
 
   /* Allocate for current fault */
-  folio = alloc_pages_node(obj->preferred_node, GFP_KERNEL, 0);
+  int nid = vma ? vma->preferred_node : obj->preferred_node;
+  if (nid == -1) nid = this_node();
+  folio = alloc_pages_node(nid, GFP_KERNEL, 0);
   if (!folio) return VM_FAULT_OOM;
 
   /* Charge to ResDomain */
@@ -145,7 +157,7 @@ int filemap_fault(struct vm_object *obj, struct vm_area_struct *vma, struct vm_f
   }
   folio->page.rd = rd;
 
-  if (obj->ops && obj->ops->read_folio) {
+  if (obj->ops && obj->ops != (void*)0xdeadbeefcafebabe && obj->ops->read_folio) {
     ret = obj->ops->read_folio(obj, folio);
     if (ret < 0) {
       if (rd) resdomain_uncharge_mem(rd, PAGE_SIZE);
@@ -158,13 +170,18 @@ int filemap_fault(struct vm_object *obj, struct vm_area_struct *vma, struct vm_f
 
   down_write(&obj->lock);
   struct folio *existing = vm_object_find_folio(obj, vmf->pgoff);
-  if (existing) {
+  if (existing && !xa_is_err(existing)) {
     up_write(&obj->lock);
     if (rd) resdomain_uncharge_mem(rd, PAGE_SIZE);
     folio_put(folio);
+    
+    if (unlikely((uintptr_t)existing == 0xadadadadadadadad || (uintptr_t)existing == 0xdeadbeefcafebabe))
+        return VM_FAULT_SIGBUS;
+
     folio_get(existing);
     vmf->folio = existing;
     vmf->prot = vma ? vma->vm_page_prot : vm_get_page_prot(VM_READ);
+    if (!vma && (vmf->flags & FAULT_FLAG_WRITE)) vmf->prot |= PTE_RW;
     return 0;
   }
 
@@ -178,6 +195,7 @@ int filemap_fault(struct vm_object *obj, struct vm_area_struct *vma, struct vm_f
   vmf->folio = folio;
   folio_get(folio);
   vmf->prot = vma ? vma->vm_page_prot : vm_get_page_prot(VM_READ);
+  if (!vma && (vmf->flags & FAULT_FLAG_WRITE)) vmf->prot |= PTE_RW;
   if (vma && !(vma->vm_flags & VM_SHARED)) vmf->prot &= ~PTE_RW;
   up_write(&obj->lock);
 
@@ -262,6 +280,12 @@ ssize_t filemap_write(struct file *file, const char *buf, size_t count, vfs_loff
     size_t offset = (*ppos) & (PAGE_SIZE - 1);
     size_t n = min(count, PAGE_SIZE - offset);
 
+    /* Extend file size if writing beyond EOF */
+    if (*ppos + n > inode->i_size) {
+        inode->i_size = *ppos + n;
+        obj->size = inode->i_size;
+    }
+
     struct vm_fault vmf = {.pgoff = pgoff, .flags = FAULT_FLAG_WRITE};
     int ret = filemap_fault(obj, nullptr, &vmf);
     if (ret != 0) return total_written ? (ssize_t) total_written : -EIO;
@@ -284,10 +308,6 @@ ssize_t filemap_write(struct file *file, const char *buf, size_t count, vfs_loff
     up_write(&obj->lock);
 
     folio_put(folio);
-    if (*ppos + n > inode->i_size) {
-      inode->i_size = *ppos + n;
-      obj->size = inode->i_size;
-    }
 
     buf += n;
     count -= n;

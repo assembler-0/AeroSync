@@ -14,7 +14,6 @@
 
 void devtmpfs_init(void);
 
-int devtmpfs_register_device(const char *name, vfs_mode_t mode, dev_t dev,
-                          const struct file_operations *fops, void *private_data);
+int devtmpfs_register_device(const char *name, const char *category, vfs_mode_t mode, dev_t dev);
 
 #endif /* AEROSYNC_FS_DEVTMPFS_H */

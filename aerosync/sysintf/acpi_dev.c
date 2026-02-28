@@ -95,7 +95,7 @@ static ACPI_STATUS __no_cfi acpi_enum_callback(ACPI_HANDLE object,
 
     const char *name_ptr =
         (st == AE_OK) ? (const char *)buffer.Pointer : "????";
-    const char *acpi_prefix = STRINGIFY(CONFIG_ACPI_NAME_PREFIX);
+    const char *acpi_prefix = CONFIG_ACPI_NAME_PREFIX;
 
     if (acpi_prefix[0] != '\0') {
       device_set_name(&adev->dev, "%s_%s", acpi_prefix, name_ptr);
@@ -113,7 +113,7 @@ static ACPI_STATUS __no_cfi acpi_enum_callback(ACPI_HANDLE object,
     if (device_add(&adev->dev) != 0) {
       kfree(adev);
     } else {
-      printk(KERN_DEBUG ACPI_CLASS "discovered device %s (HID: %s)\n",
+      printk(ACPI_CLASS "discovered device %s (HID: %s)\n",
              adev->dev.name, adev->hid[0] ? adev->hid : "None");
     }
   }

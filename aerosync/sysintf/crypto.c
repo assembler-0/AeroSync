@@ -160,13 +160,13 @@ int crypto_rng_seed(struct crypto_tfm *tfm, const uint8_t *seed, size_t len) {
 
 /* --- System Interface (/runtime/devices/crypto) --- */
 
-static int crypto_dev_open(struct inode *inode, struct file *file) {
-  (void)inode; (void)file;
+static int crypto_dev_open(struct char_device *cdev) {
+  (void)cdev;
   return 0;
 }
 
-static ssize_t crypto_dev_read(struct file *file, char *buf, size_t count, off_t *off) {
-  (void)file; (void)off;
+static ssize_t crypto_dev_read(struct char_device *cdev, void *buf, size_t count, vfs_loff_t *ppos) {
+  (void)cdev; (void)ppos;
   uint8_t *tmp = kmalloc(count);
   if (!tmp) return -ENOMEM;
   struct crypto_tfm *tfm = crypto_alloc_tfm("hw_rng", CRYPTO_ALG_TYPE_RNG);
@@ -183,22 +183,29 @@ static ssize_t crypto_dev_read(struct file *file, char *buf, size_t count, off_t
   return count;
 }
 
-static struct file_operations crypto_fops = {
+static struct char_operations crypto_ops = {
   .open = crypto_dev_open,
-  .read = (void*)crypto_dev_read,
+  .read = crypto_dev_read,
 };
 
+static struct char_device crypto_cdev;
+
 int crypto_sysintf_init(void) {
-  const char *path = STRINGIFY(CONFIG_CRYPTO_DEV_PATH);
+  const char *path = CONFIG_CRYPTO_DEV_PATH;
   const char *devname = strrchr(path, '/');
   devname = devname ? devname + 1 : path;
 
-  int ret = devtmpfs_register_device(devname, S_IFCHR | 0666, MKDEV(10, 235), &crypto_fops, nullptr);
+  device_initialize(&crypto_cdev.dev);
+  device_set_name(&crypto_cdev.dev, "%s", devname);
+  crypto_cdev.ops = &crypto_ops;
+  crypto_cdev.dev_num = MKDEV(10, 235); /* MISC_MAJOR style */
+
+  int ret = char_device_register(&crypto_cdev);
   if (ret < 0) {
-    printk(KERN_ERR HAL_CLASS "failed to register crypto device at %s\n", path);
+    printk(KERN_ERR HAL_CLASS "failed to register crypto character device: %d\n", ret);
     return ret;
   }
     
-  printk(KERN_INFO HAL_CLASS "crypto interface registered at %s\n", path);
+  printk(KERN_INFO HAL_CLASS "crypto interface registered via driver model at %s\n", path);
   return 0;
 }

@@ -42,6 +42,7 @@ static DEFINE_SPINLOCK(ksm_mmlist_lock);
 static LIST_HEAD(ksm_mm_head);
 static struct rb_root ksm_stable_tree = RB_ROOT;
 static struct rb_root ksm_unstable_tree = RB_ROOT;
+bool ksm_enabled = false;
 
 static uint32_t calculate_page_hash(const void *addr) {
   uint32_t hash = 5381;
@@ -247,5 +248,6 @@ int ksm_init(void) {
     return -ENOMEM;
   }
   kthread_run(task);
+  ksm_enabled = true;
   return 0;
 }

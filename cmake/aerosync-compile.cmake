@@ -38,7 +38,6 @@ target_compile_options(aerosync.krnl PRIVATE
     >
 )
 
-# for acpica
 target_compile_definitions(aerosync.krnl PUBLIC
     __aerosync__
 )

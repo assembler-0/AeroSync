@@ -28,7 +28,7 @@ static mutex_t pty_lock;
 
 static struct class pty_slave_class = {
   .name = "pty_slave",
-  .dev_prefix = STRINGIFY(CONFIG_PTY_SLAVE_PREFIX),
+  .dev_prefix = CONFIG_PTY_SLAVE_PREFIX,
   .naming_scheme = NAMING_NUMERIC,
   .category = DEV_CAT_TTY,
   .flags = CLASS_FLAG_AUTO_DEVTMPFS,

@@ -490,8 +490,9 @@ void scheduler_tick(void);
 void check_preempt(void);
 void sched_move_task(struct task_struct *p);
 void schedule_tail(struct task_struct *prev);
-void idle_loop(void);
+void __noreturn idle_loop(void);
 
+int sched_vfs_init(void);
 void set_task_nice(struct task_struct *p, int nice);
 struct task_struct *find_task_by_pid(pid_t pid);
 

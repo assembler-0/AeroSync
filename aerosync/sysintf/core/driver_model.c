@@ -17,13 +17,14 @@
 #include <aerosync/sysintf/block.h>
 #include <lib/printk.h>
 #include <lib/string.h>
-#include <lib/string.h>
 #include <linux/container_of.h>
 #include <aerosync/kref.h>
 #include <mm/slub.h>
 #include <stdarg.h>
 #include <mm/vmalloc.h>
 #include <arch/x86_64/irq.h>
+#include <fs/devtmpfs.h>
+#include <fs/sysfs.h>
 
 static LIST_HEAD(global_device_list);
 static LIST_HEAD(global_class_list);
@@ -278,8 +279,6 @@ int device_set_name(struct device *dev, const char *fmt, ...) {
 
 EXPORT_SYMBOL(device_set_name);
 
-#include <fs/devtmpfs.h>
-
 static void generate_device_name(struct device *dev) {
   if (!dev->class || dev->name) return;
 
@@ -378,9 +377,19 @@ int __no_cfi device_add(struct device *dev) {
     }
 
     if (mode != 0) {
-      devtmpfs_register_device(dev->name, mode, rdev, nullptr, nullptr);
+      const char *category_path = nullptr;
+      switch (dev->class->category) {
+        case DEV_CAT_BLOCK: category_path = "block"; break;
+        case DEV_CAT_TTY:   category_path = "term"; break;
+        default:            category_path = "misc"; break;
+      }
+      devtmpfs_register_device(dev->name, category_path, mode, rdev);
     }
   }
+
+  /* Sysfs integration */
+  sysfs_register_device(dev);
+
   /* Create default attributes */
   if (dev->groups) {
     for (int i = 0; dev->groups[i]; i++) {
@@ -436,8 +445,8 @@ void __no_cfi device_del(struct device *dev) {
   /* Release all managed resources before detaching */
   devres_release_all(dev);
 
-  /* Remove attributes */
-  /* sysfs_remove_groups(&dev->kobj, dev->groups); */
+  /* Remove attributes from sysfs */
+  sysfs_unregister_device(dev);
 
   if (dev->driver) {
     if (dev->bus && dev->bus->remove)
@@ -628,7 +637,7 @@ static void dump_device_recursive(struct device *dev, int depth) {
 
 void dump_device_tree(void) {
   struct device *dev;
-  printk(KERN_INFO HAL_CLASS "[--- system device tree ---\n");
+  printk(KERN_INFO HAL_CLASS "[--- system device tree ---]\n");
   mutex_lock(&device_model_lock);
   list_for_each_entry(dev, &global_device_list, node) {
     if (!dev->parent) {

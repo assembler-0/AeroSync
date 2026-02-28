@@ -728,10 +728,10 @@ Loads ASRX modules (if present).
 #### 6. Init Process Execution
 
 ```c
-printk(KERN_DEBUG KERN_CLASS "attempting to run init process: %s\n", STRINGIFY(CONFIG_INIT_PATH));
-const int ret = run_init_process(STRINGIFY(CONFIG_INIT_PATH));
+printk(KERN_DEBUG KERN_CLASS "attempting to run init process: %s\n", CONFIG_INIT_PATH);
+const int ret = run_init_process(CONFIG_INIT_PATH);
 if (ret < 0) {
-    printk(KERN_ERR KERN_CLASS "failed to execute %s. (%s)\n", STRINGIFY(CONFIG_INIT_PATH), errname(ret));
+    printk(KERN_ERR KERN_CLASS "failed to execute %s. (%s)\n", CONFIG_INIT_PATH, errname(ret));
     printkln(KERN_ERR KERN_CLASS "attempted to kill init.");
 }
 ```

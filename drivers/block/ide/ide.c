@@ -219,7 +219,7 @@ static int ide_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
           block_device_assign_atapi_name(&ide->bdev, i * 2 + d);
         } else {
           /* Use configurable naming prefix */
-          block_device_assign_name(&ide->bdev, STRINGIFY(CONFIG_IDE_NAME_PREFIX), i * 2 + d);
+          block_device_assign_name(&ide->bdev, CONFIG_IDE_NAME_PREFIX, i * 2 + d);
         }
 
         ide->bdev.ops = &ide_ops;

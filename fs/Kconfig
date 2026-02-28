@@ -181,6 +181,14 @@ config INITRAMFS
     help
       Enable support for unpacking a CPIO archive into the rootfs.
 
+config VFS_TESTS
+    bool "VFS and MemFS integration tests"
+    depends on VFS
+    default n
+    help
+      Enable boot-time tests for VFS and memory-backed filesystems.
+      This verifies persistence, inode identity, and data consistency.
+
 config INITRD_NAME_MAX_SIZE
     int "Maximum name size for initramfs image"
     depends on INITRAMFS

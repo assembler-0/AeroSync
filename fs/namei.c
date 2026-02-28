@@ -9,6 +9,7 @@
 
 #include <aerosync/classes.h>
 #include <fs/vfs.h>
+#include <fs/file.h>
 #include <lib/string.h>
 #include <lib/printk.h>
 #include <mm/slub.h>
@@ -17,21 +18,28 @@
 #include <aerosync/errno.h>
 #include <aerosync/export.h>
 
+
 struct dentry *root_dentry = nullptr;
 
 /**
- * struct mount - Represents an instance of a mounted filesystem
+ * follow_mount - Follow mount points at a given dentry
  */
-static LIST_HEAD(mount_list);
-static DEFINE_SPINLOCK(mount_lock);
-
 static struct dentry *follow_mount(struct dentry *dentry) {
   struct mount *mnt;
   bool found;
 
+  if (!dentry) return nullptr;
+
   do {
     found = false;
     spinlock_lock(&mount_lock);
+    
+    /* Safety check for corrupted mount_list */
+    if (!mount_list.next || mount_list.next == (void*)1) {
+        spinlock_unlock(&mount_lock);
+        return dentry;
+    }
+
     list_for_each_entry(mnt, &mount_list, mnt_list) {
       if (mnt->mnt_mountpoint == dentry) {
         dentry = mnt->mnt_root;
@@ -76,10 +84,10 @@ int vfs_mkdir(struct inode *dir, struct dentry *dentry, vfs_mode_t mode) {
 EXPORT_SYMBOL(vfs_mkdir);
 
 int vfs_mknod(struct inode *dir, struct dentry *dentry, vfs_mode_t mode, dev_t dev) {
-  if (!dir->i_op || !dir->i_op->create)
+  if (!dir->i_op || !dir->i_op->mknod)
     return -EPERM;
 
-  int ret = dir->i_op->create(dir, dentry, mode);
+  int ret = dir->i_op->mknod(dir, dentry, mode, dev);
   if (ret == 0 && list_empty(&dentry->d_child)) {
     list_add_tail(&dentry->d_child, &dentry->d_parent->d_subdirs);
   }
@@ -132,8 +140,10 @@ int vfs_rename(struct inode *old_dir, struct dentry *old_dentry,
     if (!list_empty(&old_dentry->d_child))
       list_del_init(&old_dentry->d_child);
     
-    old_dentry->d_parent = new_dentry->d_parent;
+    struct dentry *old_parent = old_dentry->d_parent;
+    old_dentry->d_parent = dget(new_dentry->d_parent);
     list_add_tail(&old_dentry->d_child, &old_dentry->d_parent->d_subdirs);
+    dput(old_parent);
   }
   return ret;
 }
@@ -252,6 +262,14 @@ static struct dentry *link_path_walk(const char *path, unsigned int flags, int *
   const char *next = path;
 
   while ((next = get_next_component(next, component)) != nullptr) {
+    /* 1. Handle mount points on current directory before proceeding */
+    struct dentry *mounted = follow_mount(curr);
+    if (mounted != curr) {
+      struct dentry *old = curr;
+      curr = dget(mounted);
+      dput(old);
+    }
+
     if (flags & LOOKUP_PARENT) {
       /* Peek at next component */
       const char *peek = next;
@@ -275,13 +293,6 @@ static struct dentry *link_path_walk(const char *path, unsigned int flags, int *
       continue;
     }
 
-    /* Handle mount points */
-    struct dentry *mounted = follow_mount(curr);
-    if (mounted != curr) {
-      dput(curr);
-      curr = dget(mounted);
-    }
-
     if (!curr->d_inode || !curr->d_inode->i_op || !curr->d_inode->i_op->lookup) {
       dput(curr);
       return nullptr;
@@ -290,7 +301,7 @@ static struct dentry *link_path_walk(const char *path, unsigned int flags, int *
     struct qstr qname = {.name = (const unsigned char *) component, .len = (uint32_t) strlen(component)};
 
     /* Check if it's already in dentry cache subdirs */
-    struct dentry *child;
+    struct dentry *child = nullptr;
     bool found = false;
     list_for_each_entry(child, &curr->d_subdirs, d_child) {
       if (strcmp((const char *) child->d_name.name, component) == 0) {
@@ -309,26 +320,38 @@ static struct dentry *link_path_walk(const char *path, unsigned int flags, int *
         return nullptr;
       }
 
-      new_dentry->d_parent = curr;
+      /* Parent reference for new_dentry. Note: we don't dget(curr) yet, we'll do it if it succeeds. */
+      new_dentry->d_parent = curr; // WEAK REFERENCE for now, or just dget it.
+      dget(curr);
+
       struct dentry *result = curr->d_inode->i_op->lookup(curr->d_inode, new_dentry, 0);
 
       if (result == nullptr) {
-        dput(new_dentry);
-        dput(curr);
+        /* Lookup failed to find the entry. Clean up and return. */
+        new_dentry->d_parent = nullptr; // Unlink before dput
+        dput(curr); // Release the ref we gave to d_parent
+        dput(new_dentry); // Release initial ref from d_alloc
+        dput(curr); // Release walk reference
         return nullptr;
       }
 
       if (result != new_dentry) {
-        dput(new_dentry);
+        /* Filesystem returned a different dentry */
         struct dentry *old = curr;
         curr = dget(result);
-        dput(old);
+        
+        new_dentry->d_parent = nullptr;
+        dput(old); // Release ref we gave to new_dentry->d_parent
+        dput(new_dentry); // Release initial ref
+        
+        dput(old); // Release walk reference
       } else {
+        /* Successfully used our new dentry. Add to subdirs. */
         list_add_tail(&new_dentry->d_child, &curr->d_subdirs);
         struct dentry *old = curr;
         curr = dget(new_dentry);
-        dput(old);
-        dput(new_dentry);
+        dput(old); // Release walk reference
+        dput(new_dentry); // Release initial ref
       }
     }
 
@@ -347,11 +370,12 @@ static struct dentry *link_path_walk(const char *path, unsigned int flags, int *
     }
   }
 
-  struct dentry *final = follow_mount(curr);
-  if (final != curr) {
-    dget(final);
-    dput(curr);
-    return final;
+  /* Handle mount point on the final component */
+  struct dentry *final_mounted = follow_mount(curr);
+  if (final_mounted != curr) {
+    struct dentry *old = curr;
+    curr = dget(final_mounted);
+    dput(old);
   }
 
   return curr;
@@ -362,7 +386,13 @@ struct dentry *d_alloc_pseudo(struct super_block *sb, const struct qstr *name) {
   if (!dentry) return nullptr;
 
   dentry->d_name.name = (unsigned char *) kstrdup((const char *) name->name);
+  if (!dentry->d_name.name) {
+      kfree(dentry);
+      return nullptr;
+  }
   dentry->d_name.len = name->len;
+  dentry->d_inode = nullptr;
+  dentry->d_parent = nullptr;
   spinlock_init(&dentry->d_lock);
   atomic_set(&dentry->d_count, 1);
   INIT_LIST_HEAD(&dentry->d_subdirs);
@@ -373,56 +403,47 @@ struct dentry *d_alloc_pseudo(struct super_block *sb, const struct qstr *name) {
   return dentry;
 }
 
-static void split_path(const char *path, char *parent_path, char *name) {
-  const char *last_slash = strrchr(path, '/');
-  if (!last_slash) {
-    strcpy(parent_path, ".");
-    strcpy(name, path);
-  } else if (last_slash == path) {
-    strcpy(parent_path, "/");
-    strcpy(name, path + 1);
-  } else {
-    size_t len = last_slash - path;
-    strncpy(parent_path, path, len);
-    parent_path[len] = '\0';
-    strcpy(name, last_slash + 1);
-  }
-}
-
 int do_mkdir(const char *path, vfs_mode_t mode) {
-  char parent_path[1024];
-  char name[256];
-  split_path(path, parent_path, name);
-
-  struct dentry *parent = vfs_path_lookup(parent_path, 0);
+  struct dentry *parent = vfs_path_lookup(path, LOOKUP_PARENT);
   if (!parent) return -ENOENT;
 
+  const char *last_slash = strrchr(path, '/');
+  const char *name = last_slash ? last_slash + 1 : path;
+
   struct qstr qname = {.name = (const unsigned char *) name, .len = (uint32_t) strlen(name)};
+  
+  /* Check if it already exists */
+  struct dentry *existing;
+  list_for_each_entry(existing, &parent->d_subdirs, d_child) {
+      if (strcmp((const char*)existing->d_name.name, name) == 0) {
+          dput(parent);
+          return -EEXIST;
+      }
+  }
+
   struct dentry *dentry = d_alloc_pseudo(parent->d_inode->i_sb, &qname);
   if (!dentry) {
     dput(parent);
     return -ENOMEM;
   }
 
-  dentry->d_parent = parent;
+  dentry->d_parent = dget(parent); // Parent reference
   int ret = vfs_mkdir(parent->d_inode, dentry, mode);
-  if (ret != 0) {
-    dput(dentry);
-  }
-
+  
+  dput(dentry);
   dput(parent);
+  
   return ret;
 }
 
 EXPORT_SYMBOL(do_mkdir);
 
 int do_mknod(const char *path, vfs_mode_t mode, dev_t dev) {
-  char parent_path[1024];
-  char name[256];
-  split_path(path, parent_path, name);
-
-  struct dentry *parent = vfs_path_lookup(parent_path, 0);
+  struct dentry *parent = vfs_path_lookup(path, LOOKUP_PARENT);
   if (!parent) return -ENOENT;
+
+  const char *last_slash = strrchr(path, '/');
+  const char *name = last_slash ? last_slash + 1 : path;
 
   struct qstr qname = {.name = (const unsigned char *) name, .len = (uint32_t) strlen(name)};
   struct dentry *dentry = d_alloc_pseudo(parent->d_inode->i_sb, &qname);
@@ -431,30 +452,26 @@ int do_mknod(const char *path, vfs_mode_t mode, dev_t dev) {
     return -ENOMEM;
   }
 
-  dentry->d_parent = parent;
+  dentry->d_parent = dget(parent); // Parent reference
   int ret = vfs_mknod(parent->d_inode, dentry, mode, dev);
-  if (ret != 0) {
-    dput(dentry);
-  }
-
+  
+  dput(dentry);
   dput(parent);
+  
   return ret;
 }
 
 EXPORT_SYMBOL(do_mknod);
 
 int do_unlink(const char *path) {
-  char parent_path[1024];
-  char name[256];
-  split_path(path, parent_path, name);
-
-  struct dentry *parent = vfs_path_lookup(parent_path, 0);
-  if (!parent) return -ENOENT;
-
   struct dentry *dentry = vfs_path_lookup(path, 0);
-  if (!dentry) {
-    dput(parent);
-    return -ENOENT;
+  if (!dentry) return -ENOENT;
+
+  struct dentry *parent = dget(dentry->d_parent);
+  if (!parent || !parent->d_inode) {
+    if (parent) dput(parent);
+    dput(dentry);
+    return -EINVAL;
   }
 
   int ret = vfs_unlink(parent->d_inode, dentry);
@@ -466,17 +483,14 @@ int do_unlink(const char *path) {
 EXPORT_SYMBOL(do_unlink);
 
 int do_rmdir(const char *path) {
-  char parent_path[1024];
-  char name[256];
-  split_path(path, parent_path, name);
-
-  struct dentry *parent = vfs_path_lookup(parent_path, 0);
-  if (!parent) return -ENOENT;
-
   struct dentry *dentry = vfs_path_lookup(path, 0);
-  if (!dentry) {
-    dput(parent);
-    return -ENOENT;
+  if (!dentry) return -ENOENT;
+
+  struct dentry *parent = dget(dentry->d_parent);
+  if (!parent || !parent->d_inode) {
+    if (parent) dput(parent);
+    dput(dentry);
+    return -EINVAL;
   }
 
   int ret = vfs_rmdir(parent->d_inode, dentry);
@@ -488,44 +502,27 @@ int do_rmdir(const char *path) {
 EXPORT_SYMBOL(do_rmdir);
 
 int do_rename(const char *oldpath, const char *newpath) {
-  char *old_parent_path = nullptr, *new_parent_path = nullptr;
-  char *old_name = nullptr, *new_name = nullptr;
-  struct dentry *old_parent = nullptr, *new_parent = nullptr;
-  struct dentry *old_dentry = nullptr, *new_dentry = nullptr;
-  int ret = -ENOMEM;
+  struct dentry *old_parent = vfs_path_lookup(oldpath, LOOKUP_PARENT);
+  if (!old_parent) return -ENOENT;
 
-  if (strcmp(oldpath, newpath) == 0) return 0;
-
-  old_parent_path = kmalloc(1024);
-  new_parent_path = kmalloc(1024);
-  old_name = kmalloc(256);
-  new_name = kmalloc(256);
-
-  if (!old_parent_path || !new_parent_path || !old_name || !new_name)
-    goto out;
-
-  split_path(oldpath, old_parent_path, old_name);
-  split_path(newpath, new_parent_path, new_name);
-
-  old_parent = vfs_path_lookup(old_parent_path, 0);
-  if (!old_parent) {
-    ret = -ENOENT;
-    goto out;
-  }
-
-  new_parent = vfs_path_lookup(new_parent_path, 0);
+  struct dentry *new_parent = vfs_path_lookup(newpath, LOOKUP_PARENT);
   if (!new_parent) {
-    ret = -ENOENT;
-    goto out;
+      dput(old_parent);
+      return -ENOENT;
   }
 
-  old_dentry = vfs_path_lookup(oldpath, 0);
+  struct dentry *old_dentry = vfs_path_lookup(oldpath, 0);
   if (!old_dentry) {
-    ret = -ENOENT;
-    goto out;
+      dput(old_parent);
+      dput(new_parent);
+      return -ENOENT;
   }
 
-  new_dentry = vfs_path_lookup(newpath, 0);
+  const char *last_slash = strrchr(newpath, '/');
+  const char *new_name = last_slash ? last_slash + 1 : newpath;
+  struct qstr qname = {.name = (const unsigned char *) new_name, .len = (uint32_t) strlen(new_name)};
+
+  struct dentry *new_dentry = vfs_path_lookup(newpath, 0);
   if (new_dentry) {
 #ifdef CONFIG_VFS_RENAME_OVERWRITE
     /* Unlink or rmdir the existing destination if it's the same type */
@@ -535,51 +532,50 @@ int do_rename(const char *oldpath, const char *newpath) {
       } else if (!S_ISDIR(old_dentry->d_inode->i_mode) && !S_ISDIR(new_dentry->d_inode->i_mode)) {
         vfs_unlink(new_parent->d_inode, new_dentry);
       } else {
-        /* Mixed types - usually error */
-        ret = -EISDIR; // Or -ENOTDIR
-        goto out;
+        dput(new_dentry);
+        dput(old_dentry);
+        dput(old_parent);
+        dput(new_parent);
+        return -EISDIR;
       }
     }
     dput(new_dentry);
     new_dentry = nullptr;
 #else
-    /* Fail if destination exists */
-    ret = -EEXIST;
-    goto out;
+    dput(new_dentry);
+    dput(old_dentry);
+    dput(old_parent);
+    dput(new_parent);
+    return -EEXIST;
 #endif
   }
 
-  struct qstr qname = {.name = (const unsigned char *) new_name, .len = (uint32_t) strlen(new_name)};
   new_dentry = d_alloc_pseudo(new_parent->d_inode->i_sb, &qname);
   if (!new_dentry) {
-    ret = -ENOMEM;
-    goto out;
+    dput(old_dentry);
+    dput(old_parent);
+    dput(new_parent);
+    return -ENOMEM;
   }
-  new_dentry->d_parent = new_parent;
+  new_dentry->d_parent = dget(new_parent); // Parent reference
 
-  ret = vfs_rename(old_parent->d_inode, old_dentry, new_parent->d_inode, new_dentry);
+  int ret = vfs_rename(old_parent->d_inode, old_dentry, new_parent->d_inode, new_dentry);
 
-out:
-  if (new_dentry) dput(new_dentry);
-  if (old_dentry) dput(old_dentry);
-  if (old_parent) dput(old_parent);
-  if (new_parent) dput(new_parent);
-  kfree(old_parent_path);
-  kfree(new_parent_path);
-  kfree(old_name);
-  kfree(new_name);
+  dput(new_dentry);
+  dput(old_dentry);
+  dput(old_parent);
+  dput(new_parent);
   return ret;
 }
 
 EXPORT_SYMBOL(do_rename);
 
 int do_symlink(const char *oldpath, const char *newpath) {
-  char parent_path[1024];
-  char name[256];
-  split_path(newpath, parent_path, name);
-
-  struct dentry *parent = vfs_path_lookup(parent_path, 0);
+  struct dentry *parent = vfs_path_lookup(newpath, LOOKUP_PARENT);
   if (!parent) return -ENOENT;
+
+  const char *last_slash = strrchr(newpath, '/');
+  const char *name = last_slash ? last_slash + 1 : newpath;
 
   struct qstr qname = {.name = (const unsigned char *) name, .len = (uint32_t) strlen(name)};
   struct dentry *dentry = d_alloc_pseudo(parent->d_inode->i_sb, &qname);
@@ -588,13 +584,12 @@ int do_symlink(const char *oldpath, const char *newpath) {
     return -ENOMEM;
   }
 
-  dentry->d_parent = parent;
+  dentry->d_parent = dget(parent); // Parent reference
   int ret = vfs_symlink(parent->d_inode, dentry, oldpath);
-  if (ret != 0) {
-    dput(dentry);
-  }
-
+  
+  dput(dentry);
   dput(parent);
+  
   return ret;
 }
 

@@ -92,6 +92,10 @@ void vm_object_free(struct vm_object *obj) {
   xa_for_each(&obj->page_tree, index, folio) {
     xa_erase(&obj->page_tree, index);
     if (folio && !xa_is_err(folio)) {
+      /* Sanity check: Skip poisoned entries */
+      if (unlikely((uintptr_t)folio == 0xadadadadadadadad || (uintptr_t)folio == 0xadadadadadadadac))
+        continue;
+
       if ((uintptr_t) folio & 0x1) {
 #ifdef CONFIG_MM_ZMM
         zmm_free_handle((zmm_handle_t) ((uintptr_t) folio & ~0x1));
@@ -577,7 +581,7 @@ static void vm_object_readahead(struct vm_object *obj, struct vm_area_struct *vm
 
     /* For now, just allocate and trigger read.
      * Ideally this would be pushed to a workqueue to be truly async. */
-    int nid = vma->preferred_node;
+    int nid = vma ? vma->preferred_node : obj->preferred_node;
     if (nid == -1) nid = this_node();
 
     struct folio *ra_folio = alloc_pages_node(nid, GFP_KERNEL | __GFP_NOWARN, 0);

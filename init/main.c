@@ -69,6 +69,7 @@
 #include <mm/vmalloc.h>
 #include <aerosync/sysintf/acpica.h>
 #include <mm/zmm.h>
+#include <mm/vfs.h>
 
 static alignas(16) struct task_struct bsp_task;
 
@@ -131,17 +132,23 @@ kernel_init(void *unused) {
   aerosync_core_init(ksm_init);
 
 #ifdef MM_HARDENING
-  aerosync_core_init(mm_scrubber_init);
+  if (!cmdline_find_option_bool(current_cmdline, "disable-mm-scrubber"))
+    aerosync_core_init(mm_scrubber_init);
+#endif
+
+#ifdef CONFIG_VFS_TESTS
+  if (cmdline_find_option_bool(current_cmdline, "vfstest"))
+    vfs_run_tests();
 #endif
 
   aerosync_extra_init(system_load_modules);
 
   printk(KERN_DEBUG KERN_CLASS "attempting to run init process: %s\n",
-         STRINGIFY(CONFIG_INIT_PATH));
-  const int ret = run_init_process(STRINGIFY(CONFIG_INIT_PATH));
+         CONFIG_INIT_PATH);
+  const int ret = run_init_process(CONFIG_INIT_PATH);
   if (ret < 0) {
     printk(KERN_ERR KERN_CLASS "failed to execute %s. (%s)\n",
-           STRINGIFY(CONFIG_INIT_PATH), errname(ret));
+           CONFIG_INIT_PATH, errname(ret));
     printkln(KERN_ERR KERN_CLASS "attempted to kill init.");
   }
 
@@ -150,9 +157,7 @@ kernel_init(void *unused) {
 
   printkln(KERN_CLASS "AeroSync global initialization done.");
 
-  while (1) {
-    idle_loop();
-  }
+  idle_loop();
 }
 
 /**
@@ -292,7 +297,11 @@ no_cmdline:
 #endif
 
   aerosync_core_init(vfs_init);
+
   aerosync_core_init(resdomain_init);
+
+  aerosync_core_init(sched_vfs_init);
+  aerosync_core_init(mm_vfs_init);
 
 #ifdef INCLUDE_MM_TESTS
   if (cmdline_find_option_bool(current_cmdline, "mtest")) {
@@ -321,9 +330,11 @@ no_cmdline:
   fkx_init_module_class(FKX_IC_CLASS);
   aerosync_core_init(ic_register_lapic_get_id_early);
 
+  uint64_t early_start = get_time_ns();
   aerosync_core_init(acpica_kernel_init_early);
 
   aerosync_core_init(acpi_tables_init);
+  printk(KERN_CLASS "acpica init early took: %lld n\n", (get_time_ns() - early_start));
 
   interrupt_controller_t ic_type;
   aerosync_core_init_status_ret(ic_install, ic_type);
@@ -340,9 +351,12 @@ no_cmdline:
   aerosync_core_init(timer_init_subsystem);
 
   // -- initialize the rest of ACPI (ACPICA) ---
+  uint64_t late_start = get_time_ns();
   aerosync_core_init(acpica_kernel_init_late);
   aerosync_extra_init(acpi_power_init);
-  aerosync_core_init(acpi_bus_enumerate);
+  printk(KERN_CLASS "acpica init late took: %lld ns\n", (get_time_ns() - late_start));
+  if (cmdline_find_option_bool(current_cmdline, "acpi_enum"))
+    aerosync_core_init(acpi_bus_enumerate);
 
   fkx_init_module_class(FKX_DRIVER_CLASS);
 

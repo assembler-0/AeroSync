@@ -48,6 +48,9 @@ struct pseudo_node {
     
     struct rw_semaphore lock; /* Protects children */
     struct resdomain *rd;     /* Resource domain to charge */
+
+    /* Cleanup callback */
+    void (*destroy_node)(struct pseudo_node *node);
 };
 
 /**

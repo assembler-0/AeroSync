@@ -17,7 +17,7 @@
 
 static struct class tty_class = {
     .name = "tty",
-    .dev_prefix = STRINGIFY(CONFIG_SERIAL_NAME_PREFIX),
+    .dev_prefix = CONFIG_SERIAL_NAME_PREFIX,
     .naming_scheme = NAMING_NUMERIC,
     .category = DEV_CAT_TTY,
     .flags = CLASS_FLAG_AUTO_DEVTMPFS,

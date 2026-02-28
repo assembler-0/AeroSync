@@ -34,7 +34,9 @@ function(add_fkx_module MODULE_NAME)
     # Ensure the signer and key header are ready before the module
     add_dependencies(${MODULE_NAME} fkx_signer fkx_key_header)
 
-    target_compile_definitions(${MODULE_NAME} PUBLIC __aerosync__)
+    target_compile_definitions(${MODULE_NAME} PUBLIC
+            __aerosync__
+    )
 
     target_include_directories(${MODULE_NAME} PRIVATE
         ${CMAKE_SOURCE_DIR}

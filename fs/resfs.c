@@ -79,7 +79,12 @@ static ssize_t resfs_subtree_control_write(struct file *file, const char *buf, s
   struct resdomain *rd = file->f_inode->i_fs_info;
   char kbuf[128];
   if (count >= sizeof(kbuf)) return -EINVAL;
-  if (copy_from_user(kbuf, buf, count)) return -EFAULT;
+  
+  if (file->f_mode & FMODE_KERNEL) {
+      memcpy(kbuf, buf, count);
+  } else {
+      if (copy_from_user(kbuf, buf, count)) return -EFAULT;
+  }
   kbuf[count] = 0;
 
   /* Simplified parser: +name or -name */
@@ -138,7 +143,12 @@ static ssize_t resfs_procs_write(struct file *file, const char *buf, size_t coun
   struct resdomain *rd = file->f_inode->i_fs_info;
   char kbuf[16];
   if (count >= sizeof(kbuf)) return -EINVAL;
-  if (copy_from_user(kbuf, buf, count)) return -EFAULT;
+  
+  if (file->f_mode & FMODE_KERNEL) {
+      memcpy(kbuf, buf, count);
+  } else {
+      if (copy_from_user(kbuf, buf, count)) return -EFAULT;
+  }
   kbuf[count] = 0;
 
   int pid;

@@ -9,6 +9,7 @@
 
 #include <fs/pseudo_fs.h>
 #include <fs/vfs.h>
+#include <fs/file.h>
 #include <mm/slub.h>
 #include <lib/string.h>
 #include <aerosync/errno.h>
@@ -16,6 +17,7 @@
 #include <aerosync/rw_semaphore.h>
 #include <aerosync/resdomain.h>
 #include <aerosync/sched/sched.h>
+#include <aerosync/mutex.h>
 
 static atomic_t next_pseudo_ino = ATOMIC_INIT(1);
 
@@ -34,12 +36,12 @@ static ssize_t pseudo_readlink(struct dentry *dentry, char *buf, size_t bufsiz) 
   size_t len = strlen(node->symlink_target);
   if (len > bufsiz) len = bufsiz;
   memcpy(buf, node->symlink_target, len);
-  return len;
+  return (ssize_t) len;
 }
 
 static const char *pseudo_follow_link(struct dentry *dentry, void **cookie) {
   struct pseudo_node *node = dentry->d_inode->i_fs_info;
-  if (!node || !node->symlink_target) return ERR_PTR(-EINVAL);
+  if (!node || !node->symlink_target) return (const char *) ERR_PTR(-EINVAL);
   *cookie = nullptr;
   return node->symlink_target;
 }
@@ -71,11 +73,6 @@ static int pseudo_iterate(struct file *file, struct dir_context *ctx) {
   struct rb_node *n;
   vfs_loff_t i = 2;
 
-  /*
-   * Note: RB-tree iteration is O(n).
-   * Ideally we would jump to the right node for 'pos', but RB-tree doesn't support random access efficiently.
-   * For pseudo-fs, directory sizes are usually small.
-   */
   for (n = rb_first(&parent->children); n; n = rb_next(n)) {
     if (i >= ctx->pos) {
       struct pseudo_node *node = rb_entry(n, struct pseudo_node, rb_node);
@@ -117,35 +114,40 @@ static struct dentry *pseudo_lookup(struct inode *dir, struct dentry *dentry, ui
   match = rb_find((const char *) dentry->d_name.name, &parent->children, pseudo_cmp);
   if (match) {
     struct pseudo_node *node = rb_entry(match, struct pseudo_node, rb_node);
-    struct inode *inode = new_inode(dir->i_sb);
-    if (!inode) {
-      up_read(&parent->lock);
-      return nullptr;
-    }
+    struct inode *inode = node->inode;
 
-    inode->i_ino = node->i_ino;
-
-    if (node->init_inode) {
-      node->init_inode(inode, node);
+    if (inode) {
+      iget(inode);
     } else {
-      inode->i_mode = node->mode;
-      if (S_ISLNK(node->mode)) {
-        inode->i_op = &pseudo_symlink_iop;
-      } else if (S_ISDIR(node->mode)) {
-        inode->i_op = node->iop ? node->iop : dir->i_op;
-        inode->i_fop = &pseudo_dir_fops;
-      } else {
-        inode->i_op = node->iop;
-        inode->i_fop = node->fop;
+      inode = new_inode(dir->i_sb);
+      if (!inode) {
+        up_read(&parent->lock);
+        return nullptr;
       }
-    }
 
-    inode->i_fs_info = node;
-    inode->i_atime = inode->i_mtime = inode->i_ctime = current_time(inode);
+      inode->i_ino = node->i_ino;
+      inode->i_fs_info = node; /* ALWAYS point to pseudo_node */
+
+      if (node->init_inode) {
+        node->init_inode(inode, node);
+      } else {
+        inode->i_mode = node->mode;
+        if (S_ISLNK(node->mode)) {
+          inode->i_op = &pseudo_symlink_iop;
+        } else if (S_ISDIR(node->mode)) {
+          inode->i_op = node->iop ? node->iop : dir->i_op;
+          inode->i_fop = &pseudo_dir_fops;
+        } else {
+          inode->i_op = node->iop;
+          inode->i_fop = node->fop;
+        }
+      }
+
+      inode->i_atime = inode->i_mtime = inode->i_ctime = current_time(inode);
+      node->inode = inode;
+    }
 
     dentry->d_inode = inode;
-    node->inode = inode;
-
     up_read(&parent->lock);
     return dentry;
   }
@@ -158,6 +160,20 @@ static struct inode_operations pseudo_dir_iop = {
   .lookup = pseudo_lookup,
 };
 
+/* --- Superblock Operations --- */
+
+static void pseudo_destroy_inode(struct inode *inode) {
+  struct pseudo_node *node = inode->i_fs_info;
+  if (node) {
+    node->inode = nullptr;
+  }
+  kfree(inode);
+}
+
+static struct super_operations pseudo_sops = {
+  .destroy_inode = pseudo_destroy_inode,
+};
+
 /* --- Registration API --- */
 
 static int pseudo_fill_super(struct super_block *sb, void *data) {
@@ -165,6 +181,7 @@ static int pseudo_fill_super(struct super_block *sb, void *data) {
   sb->s_magic = 0x50534555; /* "PSEU" */
   sb->s_blocksize = PAGE_SIZE;
   sb->s_fs_info = info;
+  sb->s_op = &pseudo_sops;
 
   struct inode *root_inode = new_inode(sb);
   if (!root_inode) return -ENOMEM;
@@ -206,7 +223,10 @@ static int pseudo_mount(struct file_system_type *fs_type, const char *dev_name, 
   }
 
   extern struct list_head super_blocks;
+  extern struct mutex sb_mutex;
+  mutex_lock(&sb_mutex);
   list_add_tail(&sb->sb_list, &super_blocks);
+  mutex_unlock(&sb_mutex);
   return 0;
 }
 
@@ -232,6 +252,7 @@ int pseudo_fs_register(struct pseudo_fs_info *info) {
   rwsem_init(&info->root->lock);
 
   /* Root is owned by root domain */
+  extern struct resdomain root_resdomain;
   info->root->rd = &root_resdomain;
 
   info->fs_type.name = info->name;
@@ -257,6 +278,7 @@ struct pseudo_node *pseudo_fs_create_node(struct pseudo_fs_info *fs,
                                           const struct file_operations *fops,
                                           void *private_data) {
   /* Charge memory to current task's resdomain */
+  extern struct resdomain root_resdomain;
   struct resdomain *rd = current ? current->rd : &root_resdomain;
 
   if (resdomain_charge_mem(rd, sizeof(struct pseudo_node), false) < 0) {
@@ -388,6 +410,10 @@ void pseudo_fs_remove_node(struct pseudo_fs_info *fs, struct pseudo_node *node) 
   if (node->symlink_target) {
     resdomain_uncharge_mem(node->rd, strlen(node->symlink_target) + 1);
     kfree(node->symlink_target);
+  }
+
+  if (node->destroy_node) {
+    node->destroy_node(node);
   }
 
   struct resdomain *rd = node->rd;

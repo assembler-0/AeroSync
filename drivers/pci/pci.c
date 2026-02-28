@@ -177,7 +177,7 @@ static void pci_scan_device(struct pci_bus *bus, uint8_t devfn) {
     dev->dev.dma_ops = (struct dma_map_ops *)&direct_dma_ops;
   }
   
-  const char *pci_prefix = STRINGIFY(CONFIG_PCI_NAME_PREFIX);
+  const char *pci_prefix = CONFIG_PCI_NAME_PREFIX;
   if (pci_prefix[0] != '\0') {
     device_set_name(&dev->dev, "%s_%04x:%02x:%02x.%d", pci_prefix, bus->segment, bus->number, PCI_SLOT(devfn), PCI_FUNC(devfn));
   } else {

@@ -3,7 +3,6 @@
 #include <aerosync/types.h>
 #include <aerosync/spinlock.h>
 #include <aerosync/atomic.h>
-#include <linux/list.h>
 #include <aerosync/wait.h>
 
 // Forward declarations for VFS structures
@@ -204,6 +203,7 @@ struct inode_operations {
     fn(int, unlink, struct inode *dir, struct dentry *dentry);
     fn(int, mkdir, struct inode *dir, struct dentry *dentry, vfs_mode_t mode);
     fn(int, rmdir, struct inode *dir, struct dentry *dentry);
+    fn(int, mknod, struct inode *dir, struct dentry *dentry, vfs_mode_t mode, dev_t dev);
     fn(int, rename, struct inode *old_dir, struct dentry *old_dentry,
                          struct inode *new_dir, struct dentry *new_dentry);
     fn(int, setattr, struct dentry *dentry, vfs_mode_t mode, vfs_loff_t size);
@@ -270,6 +270,9 @@ struct pollfd {
 #define POLLHUP     0x0010
 #define POLLNVAL    0x0020
 
+extern struct list_head mount_list;
+extern spinlock_t mount_lock;
+
 int vfs_mount(const char *dev_name, const char *dir_name, const char *type, unsigned long flags, void *data);
 int vfs_init(void);
 int register_filesystem(struct file_system_type *fs_type);
@@ -283,13 +286,15 @@ int vfs_fstat(struct file *file, struct stat *statbuf);
 int vfs_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
 uint32_t vfs_poll(struct file *file, poll_table *pt);
 
-struct inode *new_inode(struct super_block *sb);
-void iput(struct inode *inode);
-void iget(struct inode *inode);
-
-void dput(struct dentry *dentry);
-struct dentry *dget(struct dentry *dentry);
-struct dentry *d_alloc_pseudo(struct super_block *sb, const struct qstr *name);
+/* VFS core functions */
+struct file *vfs_open(const char *path, int flags, int mode);
+ssize_t vfs_read(struct file *file, char *buf, size_t count, vfs_loff_t *pos);
+ssize_t vfs_write(struct file *file, const char *buf, size_t count, vfs_loff_t *pos);
+ssize_t kernel_read(struct file *file, void *buf, size_t count, vfs_loff_t *pos);
+ssize_t kernel_write(struct file *file, const void *buf, size_t count, vfs_loff_t *pos);
+int vfs_close(struct file *file);
+vfs_loff_t vfs_llseek(struct file *file, vfs_loff_t offset, int whence);
+struct dentry *vfs_path_lookup(const char *path, unsigned int flags);
 
 ssize_t simple_read_from_buffer(void *to, size_t count, vfs_loff_t *ppos, const void *from, size_t available);
 struct dentry *simple_lookup(struct inode *dir, struct dentry *dentry, uint32_t flags);
@@ -354,5 +359,7 @@ int sys_mount(const char *dev_name, const char *dir_name, const char *type, unsi
 #define VFS_EVENT_ATTRIB 0x08
 
 void vfs_notify_change(struct dentry *dentry, uint32_t event);
+
+void vfs_run_tests(void);
 
 struct timespec current_time(struct inode *inode);

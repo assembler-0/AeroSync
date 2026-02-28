@@ -23,8 +23,6 @@
 #undef  ACPI_DEBUGGER
 #undef  ACPI_DISASSEMBLER
 
-#define ACPI_DEBUG_OUTPUT
-
 #define ACPI_MUTEX_TYPE                 ACPI_OSL_MUTEX
 
 #define ACPI_OFFSET(d, f)               __builtin_offsetof(d, f)

@@ -33,7 +33,7 @@ static struct resdomain_subsys_state *cpu_css_alloc(struct resdomain *rd) {
   /* Initialize bandwidth */
   spinlock_init(&cs->bandwidth.lock);
   cs->bandwidth.period = 100 * 1000000ULL; /* 100ms default */
-  cs->bandwidth.quota = (uint64_t) -1;      /* Unlimited */
+  cs->bandwidth.quota = (uint64_t) -1; /* Unlimited */
   cs->bandwidth.runtime = 0;
   INIT_LIST_HEAD(&cs->bandwidth.throttled_cfs_rq);
 
@@ -136,7 +136,11 @@ static ssize_t resfs_cpu_weight_write(struct file *file, const char *buf, size_t
   struct cpu_rd_state *cs = (struct cpu_rd_state *) rd->subsys[RD_SUBSYS_CPU];
   char kbuf[32];
   if (count >= sizeof(kbuf)) return -EINVAL;
-  if (copy_from_user(kbuf, buf, count)) return -EFAULT;
+  if (file->f_mode & FMODE_KERNEL) {
+    memcpy(kbuf, buf, count);
+  } else {
+    if (copy_from_user(kbuf, buf, count)) return -EFAULT;
+  }
   kbuf[count] = 0;
   unsigned long val;
   if (kstrtoul(kbuf, 10, &val)) return -EINVAL;
@@ -157,7 +161,8 @@ static ssize_t resfs_cpu_max_read(struct file *file, char *buf, size_t count, vf
   if (cs->bandwidth.quota == (uint64_t) -1)
     len = snprintf(kbuf, sizeof(kbuf), "max %llu\n", (unsigned long long) cs->bandwidth.period);
   else
-    len = snprintf(kbuf, sizeof(kbuf), "%llu %llu\n", (unsigned long long) cs->bandwidth.quota, (unsigned long long) cs->bandwidth.period);
+    len = snprintf(kbuf, sizeof(kbuf), "%llu %llu\n", (unsigned long long) cs->bandwidth.quota,
+                   (unsigned long long) cs->bandwidth.period);
   return simple_read_from_buffer(buf, count, ppos, kbuf, (size_t) len);
 }
 
@@ -167,7 +172,11 @@ static ssize_t resfs_cpu_max_write(struct file *file, const char *buf, size_t co
   struct cpu_rd_state *cs = (struct cpu_rd_state *) rd->subsys[RD_SUBSYS_CPU];
   char kbuf[64];
   if (count >= sizeof(kbuf)) return -EINVAL;
-  if (copy_from_user(kbuf, buf, count)) return -EFAULT;
+  if (file->f_mode & FMODE_KERNEL) {
+    memcpy(kbuf, buf, count);
+  } else {
+    if (copy_from_user(kbuf, buf, count)) return -EFAULT;
+  }
   kbuf[count] = 0;
 
   char s_quota[32], s_period[32];
@@ -253,7 +262,11 @@ static ssize_t resfs_mem_max_write(struct file *file, const char *buf, size_t co
   struct mem_rd_state *ms = (struct mem_rd_state *) rd->subsys[RD_SUBSYS_MEM];
   char kbuf[32];
   if (count >= sizeof(kbuf)) return -EINVAL;
-  if (copy_from_user(kbuf, buf, count)) return -EFAULT;
+  if (file->f_mode & FMODE_KERNEL) {
+    memcpy(kbuf, buf, count);
+  } else {
+    if (copy_from_user(kbuf, buf, count)) return -EFAULT;
+  }
   kbuf[count] = 0;
   unsigned long long val;
   if (strncmp(kbuf, "max", 3) == 0) {
@@ -332,7 +345,11 @@ static ssize_t resfs_pid_max_write(struct file *file, const char *buf, size_t co
   struct pid_rd_state *ps = (struct pid_rd_state *) rd->subsys[RD_SUBSYS_PID];
   char kbuf[32];
   if (count >= sizeof(kbuf)) return -EINVAL;
-  if (copy_from_user(kbuf, buf, count)) return -EFAULT;
+  if (file->f_mode & FMODE_KERNEL) {
+    memcpy(kbuf, buf, count);
+  } else {
+    if (copy_from_user(kbuf, buf, count)) return -EFAULT;
+  }
   kbuf[count] = 0;
   int val;
   if (strncmp(kbuf, "max", 3) == 0) {
@@ -421,7 +438,11 @@ static ssize_t resfs_files_max_write(struct file *file, const char *buf, size_t 
   struct files_rd_state *fs = (struct files_rd_state *) rd->subsys[RD_SUBSYS_FILES];
   char kbuf[32];
   if (count >= sizeof(kbuf)) return -EINVAL;
-  if (copy_from_user(kbuf, buf, count)) return -EFAULT;
+  if (file->f_mode & FMODE_KERNEL) {
+    memcpy(kbuf, buf, count);
+  } else {
+    if (copy_from_user(kbuf, buf, count)) return -EFAULT;
+  }
   kbuf[count] = 0;
   int val;
   if (strncmp(kbuf, "max", 3) == 0) {
@@ -538,7 +559,11 @@ static ssize_t resfs_io_weight_write(struct file *file, const char *buf, size_t 
   struct io_rd_state *ios = (struct io_rd_state *) rd->subsys[RD_SUBSYS_IO];
   char kbuf[32];
   if (count >= sizeof(kbuf)) return -EINVAL;
-  if (copy_from_user(kbuf, buf, count)) return -EFAULT;
+  if (file->f_mode & FMODE_KERNEL) {
+    memcpy(kbuf, buf, count);
+  } else {
+    if (copy_from_user(kbuf, buf, count)) return -EFAULT;
+  }
   kbuf[count] = 0;
   unsigned long val;
   if (kstrtoul(kbuf, 10, &val)) return -EINVAL;
@@ -708,7 +733,7 @@ int __no_cfi resdomain_charge_mem(struct resdomain *rd, uint64_t bytes, bool for
   if (!ms) return 0;
 
   uint64_t usage = atomic64_read(&ms->usage);
-  
+
   /* 
    * HARD LIMIT ENFORCEMENT:
    * If we exceed the limit, try direct reclaim before failing.
@@ -720,19 +745,19 @@ int __no_cfi resdomain_charge_mem(struct resdomain *rd, uint64_t bytes, bool for
      * We call into the memory management system to attempt to free pages.
      */
     extern size_t try_to_free_pages(struct pglist_data *pgdat, size_t nr_to_reclaim, gfp_t gfp_mask);
-    
+
     size_t nr_to_reclaim = (bytes + PAGE_SIZE - 1) >> PAGE_SHIFT;
     /* Try to reclaim from all online nodes */
     for (int i = 0; i < MAX_NUMNODES; i++) {
-        if (node_data[i]) {
-            try_to_free_pages(node_data[i], nr_to_reclaim, GFP_KERNEL);
-        }
+      if (node_data[i]) {
+        try_to_free_pages(node_data[i], nr_to_reclaim, GFP_KERNEL);
+      }
     }
 
     /* Re-check usage after reclaim */
     usage = atomic64_read(&ms->usage);
     if (usage + bytes > ms->max) {
-        return -ENOMEM;
+      return -ENOMEM;
     }
 #else
     return -ENOMEM;

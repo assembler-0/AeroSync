@@ -48,7 +48,8 @@ LIST_HEAD(inodes); // List of all active inodes
 LIST_HEAD(dentries); // List of all active dentries (dentry cache)
 
 // Mutexes to protect global lists
-static struct mutex sb_mutex;
+struct mutex sb_mutex;
+EXPORT_SYMBOL(sb_mutex);
 static struct mutex inode_mutex;
 static struct mutex dentry_mutex;
 
@@ -58,7 +59,9 @@ static struct mutex dentry_mutex;
 static char initramfs_path[INITRD_NAME_MAX_SIZE];
 
 LIST_HEAD(mount_list);
-static struct mutex mount_mutex;
+EXPORT_SYMBOL(mount_list);
+DEFINE_SPINLOCK(mount_lock);
+EXPORT_SYMBOL(mount_lock);
 
 LIST_HEAD(file_systems); // List of all registered file system types
 static struct mutex fs_type_mutex;
@@ -79,11 +82,10 @@ int vfs_init(void) {
   INIT_LIST_HEAD(&file_systems);
   INIT_LIST_HEAD(&mount_list);
 
-  // Initialize mutexes
+  // Initialize mutexes and locks
   mutex_init(&sb_mutex);
   mutex_init(&inode_mutex);
   mutex_init(&dentry_mutex);
-  mutex_init(&mount_mutex);
   mutex_init(&fs_type_mutex);
 
   extern void tmpfs_init(void);
@@ -104,6 +106,7 @@ int vfs_init(void) {
   // Mount tmpfs as the base rootfs
   int mount_ret = vfs_mount(nullptr, "/", "tmpfs", 0, nullptr);
   if (mount_ret < 0) {
+    printk(KERN_ERR VFS_CLASS "Failed to mount root tmpfs: %d\n", mount_ret);
     return mount_ret;
   }
 
@@ -130,25 +133,37 @@ int vfs_init(void) {
   devtmpfs_init();
 
 #ifdef CONFIG_DEVTMPFS_MOUNT
-  vfs_mount(nullptr, STRINGIFY(CONFIG_DEVTMPFS_MOUNT_PATH), "devtmpfs", 0, nullptr);
+  mount_ret = vfs_mount(nullptr, CONFIG_DEVTMPFS_MOUNT_PATH, "devtmpfs", 0, nullptr);
+  if (mount_ret < 0) {
+      printk(KERN_ERR VFS_CLASS "Failed to mount devtmpfs at %s: %d\n", CONFIG_DEVTMPFS_MOUNT_PATH, mount_ret);
+  }
 #endif
 #endif
 
 #ifdef CONFIG_SYSFS
 #ifdef CONFIG_SYSFS_MOUNT
-  vfs_mount(nullptr, STRINGIFY(CONFIG_SYSFS_MOUNT_PATH), "sysfs", 0, nullptr);
+  mount_ret = vfs_mount(nullptr, CONFIG_SYSFS_MOUNT_PATH, "sysfs", 0, nullptr);
+  if (mount_ret < 0) {
+      printk(KERN_ERR VFS_CLASS "Failed to mount sysfs at %s: %d\n", CONFIG_SYSFS_MOUNT_PATH, mount_ret);
+  }
 #endif
 #endif
 
 #ifdef CONFIG_PROCFS
 #ifdef CONFIG_PROCFS_MOUNT
-  vfs_mount(nullptr, STRINGIFY(CONFIG_PROCFS_MOUNT_PATH), "proc", 0, nullptr);
+  mount_ret = vfs_mount(nullptr, CONFIG_PROCFS_MOUNT_PATH, "proc", 0, nullptr);
+  if (mount_ret < 0) {
+      printk(KERN_ERR VFS_CLASS "Failed to mount procfs at %s: %d\n", CONFIG_PROCFS_MOUNT_PATH, mount_ret);
+  }
 #endif
 #endif
 
 #ifdef CONFIG_RESFS
 #ifdef CONFIG_RESFS_MOUNT
-  vfs_mount(nullptr, STRINGIFY(CONFIG_RESFS_MOUNT_PATH), "resfs", 0, nullptr);
+  mount_ret = vfs_mount(nullptr, CONFIG_RESFS_MOUNT_PATH, "resfs", 0, nullptr);
+  if (mount_ret < 0) {
+      printk(KERN_ERR VFS_CLASS "Failed to mount resfs at %s: %d\n", CONFIG_RESFS_MOUNT_PATH, mount_ret);
+  }
 #endif
 #endif
 
@@ -170,27 +185,34 @@ int vfs_mount(const char *dev_name, const char *dir_name, const char *type, unsi
       if (root_dentry) {
         mountpoint = vfs_path_lookup(dir_name, 0);
         if (!mountpoint) {
-          /* Auto-create parent directories if they don't exist */
+          /* Auto-create parent and mountpoint directories if they don't exist */
           if (strcmp(dir_name, "/") != 0) {
-            char *p_copy = kstrdup(dir_name);
-            if (p_copy) {
-              char *slash = strrchr(p_copy, '/');
-              if (slash && slash != p_copy) {
-                *slash = '\0';
-                do_mkdir(p_copy, 0755);
+            char *path_copy = kstrdup(dir_name);
+            if (path_copy) {
+              char *p = path_copy;
+              if (*p == '/') p++;
+              
+              while ((p = strchr(p, '/')) != nullptr) {
+                *p = '\0';
+                do_mkdir(path_copy, 0755);
+                *p = '/';
+                p++;
               }
-              kfree(p_copy);
+              do_mkdir(path_copy, 0755);
+              kfree(path_copy);
             }
             mountpoint = vfs_path_lookup(dir_name, 0);
           }
 
           if (!mountpoint) {
+            printk(KERN_ERR VFS_CLASS "Mount failure: mountpoint %s could not be created/found\n", dir_name);
             mutex_unlock(&fs_type_mutex);
             return -ENOENT;
           }
         }
       } else if (strcmp(dir_name, "/") != 0) {
         /* Cannot mount anywhere else if root is not yet mounted */
+        printk(KERN_ERR VFS_CLASS "Mount failure: cannot mount %s at %s before rootfs\n", type, dir_name);
         mutex_unlock(&fs_type_mutex);
         return -ENOENT;
       }
@@ -199,29 +221,33 @@ int vfs_mount(const char *dev_name, const char *dir_name, const char *type, unsi
       if (ret == 0) {
         /* Record the mount */
         struct mount *mnt = kzalloc(sizeof(struct mount));
+        
+        mutex_lock(&sb_mutex);
         struct super_block *sb = list_last_entry(&super_blocks, struct super_block, sb_list);
+        mutex_unlock(&sb_mutex);
 
         mnt->mnt_sb = sb;
         mnt->mnt_root = dget(sb->s_root);
-        mnt->mnt_mountpoint = mountpoint; // lookup returned a ref
-
+        
         if (strcmp(dir_name, "/") == 0 && !root_dentry) {
           root_dentry = dget(sb->s_root);
+          mnt->mnt_mountpoint = nullptr; /* Initial root mount has no mountpoint */
+        } else {
+          mnt->mnt_mountpoint = mountpoint; // mountpoint already holds a ref from lookup
         }
 
-        /* Ensure the mount point points to the new root if it was a root mount */
-        if (mountpoint == nullptr && strcmp(dir_name, "/") == 0) {
-          mnt->mnt_mountpoint = dget(sb->s_root);
-        }
-
-        mutex_lock(&mount_mutex);
+        spinlock_lock(&mount_lock);
         list_add_tail(&mnt->mnt_list, &mount_list);
-        mutex_unlock(&mount_mutex);
+        spinlock_unlock(&mount_lock);
       } else {
+        printk(KERN_ERR VFS_CLASS "Mount failure: %s mount() op returned %d\n", type, ret);
         if (mountpoint) dput(mountpoint);
       }
       break;
     }
+  }
+  if (ret == -ENODEV) {
+      printk(KERN_ERR VFS_CLASS "Mount failure: filesystem type %s not registered\n", type);
   }
   mutex_unlock(&fs_type_mutex);
 
@@ -689,7 +715,7 @@ struct file *__no_cfi vfs_open(const char *path, int flags, int mode) {
         dput(parent);
         return nullptr;
       }
-      dentry->d_parent = parent;
+      dentry->d_parent = dget(parent); // Parent reference
     }
 
     int ret = vfs_create(parent->d_inode, dentry, mode);
@@ -737,10 +763,6 @@ struct file *__no_cfi vfs_open(const char *path, int flags, int mode) {
 }
 
 EXPORT_SYMBOL(vfs_open);
-
-extern ssize_t filemap_read(struct file *file, char *buf, size_t count, vfs_loff_t *ppos);
-
-extern ssize_t filemap_write(struct file *file, const char *buf, size_t count, vfs_loff_t *ppos);
 
 ssize_t __no_cfi vfs_read(struct file *file, char *buf, size_t count, vfs_loff_t *pos) {
   if (!file) return -EBADF;
@@ -805,6 +827,9 @@ int __no_cfi vfs_close(struct file *file) {
   if (!file) return -EINVAL;
   if (file->f_op && file->f_op->release) {
     file->f_op->release(file->f_inode, file);
+  }
+  if (file->f_dentry) {
+    dput(file->f_dentry);
   }
   kfree(file);
   return 0;
@@ -1029,7 +1054,14 @@ static ssize_t blkdev_read(struct file *file, char *buf, size_t count, vfs_loff_
   int ret = block_read(bdev, kbuf, start_sector, sector_count);
   if (ret == 0) {
     size_t to_copy = (count < sector_count * bdev->block_size) ? count : sector_count * bdev->block_size;
-    copy_to_user(buf, kbuf, to_copy);
+    if (file->f_mode & FMODE_KERNEL) {
+        memcpy(buf, kbuf, to_copy);
+    } else {
+        if (copy_to_user(buf, kbuf, to_copy)) {
+            kfree(kbuf);
+            return -EFAULT;
+        }
+    }
     *ppos += to_copy;
     ret = to_copy;
   } else {
@@ -1050,9 +1082,13 @@ static ssize_t blkdev_write(struct file *file, const char *buf, size_t count, vf
   void *kbuf = kmalloc(sector_count * bdev->block_size);
   if (!kbuf) return -ENOMEM;
 
-  if (copy_from_user(kbuf, buf, count) != 0) {
-    kfree(kbuf);
-    return -EFAULT;
+  if (file->f_mode & FMODE_KERNEL) {
+      memcpy(kbuf, buf, count);
+  } else {
+      if (copy_from_user(kbuf, buf, count) != 0) {
+          kfree(kbuf);
+          return -EFAULT;
+      }
   }
 
   int ret = block_write(bdev, kbuf, start_sector, sector_count);
@@ -1180,6 +1216,8 @@ void dput(struct dentry *dentry) {
   if (!dentry) return;
 
   if (atomic_dec_and_test(&dentry->d_count)) {
+    struct dentry *parent = dentry->d_parent; // SAVE PARENT
+
     /* Remove from parent's subdirectory list */
     if (!list_empty(&dentry->d_child)) {
       list_del(&dentry->d_child);
@@ -1193,8 +1231,12 @@ void dput(struct dentry *dentry) {
     if (dentry->d_inode) {
       iput(dentry->d_inode);
     }
-    kfree((void *) dentry->d_name.name);
+    if (dentry->d_name.name) {
+        kfree((void *) dentry->d_name.name);
+    }
     kfree(dentry);
+
+    if (parent) dput(parent); // RECURSE
   }
 }
 
@@ -1205,7 +1247,13 @@ ssize_t simple_read_from_buffer(void *to, size_t count, vfs_loff_t *ppos, const 
   if (pos < 0) return -EINVAL;
   if (pos >= available || !count) return 0;
   if (count > available - pos) count = available - pos;
-  if (copy_to_user(to, from + pos, count)) return -EFAULT;
+
+  if ((uintptr_t)to >= vmm_get_max_user_address()) {
+      memcpy(to, from + pos, count);
+  } else {
+      if (copy_to_user(to, from + pos, count)) return -EFAULT;
+  }
+
   *ppos = pos + count;
   return count;
 }

@@ -12,3 +12,6 @@
 - `kaslrinfo`: logs kernel base
 - `mm_page_lvl`: log cmdline
 - `fwinfo`: log info from smbio
+- `acpi_enum`: enumerate and log acpi bus
+- `vfstest`: run vfs tests (depends on CONFIG_VFS_TESTS)
+- `disable-mm-scrubber`: disable mm_scrubberd thread (depends on MM_HARDENING)

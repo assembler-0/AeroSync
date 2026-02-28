@@ -9,8 +9,8 @@
 
 #include <fs/fs_struct.h>
 #include <fs/vfs.h>
+#include <fs/file.h>
 #include <mm/slub.h>
-#include <aerosync/sched/sched.h>
 
 struct fs_struct *copy_fs_struct(struct fs_struct *old_fs) {
   struct fs_struct *new_fs = kzalloc(sizeof(struct fs_struct));

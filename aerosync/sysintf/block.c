@@ -29,7 +29,7 @@ static struct class block_class = {
 
 static struct class ide_class = {
     .name = "ide",
-    .dev_prefix = STRINGIFY(CONFIG_IDE_NAME_PREFIX),
+    .dev_prefix = CONFIG_IDE_NAME_PREFIX,
     .naming_scheme = NAMING_ALPHABETIC,
     .category = DEV_CAT_BLOCK,
     .flags = CLASS_FLAG_AUTO_DEVTMPFS,
@@ -37,7 +37,7 @@ static struct class ide_class = {
 
 static struct class sata_class = {
     .name = "sata",
-    .dev_prefix = STRINGIFY(CONFIG_SATA_NAME_PREFIX),
+    .dev_prefix = CONFIG_SATA_NAME_PREFIX,
     .naming_scheme = NAMING_ALPHABETIC,
     .category = DEV_CAT_BLOCK,
     .flags = CLASS_FLAG_AUTO_DEVTMPFS,
@@ -45,7 +45,7 @@ static struct class sata_class = {
 
 static struct class nvme_class = {
     .name = "nvme",
-    .dev_prefix = STRINGIFY(CONFIG_NVME_NAME_PREFIX),
+    .dev_prefix = CONFIG_NVME_NAME_PREFIX,
     .naming_scheme = NAMING_NUMERIC,
     .category = DEV_CAT_BLOCK,
     .flags = CLASS_FLAG_AUTO_DEVTMPFS,
@@ -53,7 +53,7 @@ static struct class nvme_class = {
 
 static struct class cdrom_class = {
     .name = "cdrom",
-    .dev_prefix = STRINGIFY(CONFIG_CDROM_NAME_PREFIX),
+    .dev_prefix = CONFIG_CDROM_NAME_PREFIX,
     .naming_scheme = NAMING_NUMERIC,
     .category = DEV_CAT_BLOCK,
     .flags = CLASS_FLAG_AUTO_DEVTMPFS,
@@ -122,11 +122,11 @@ int block_device_assign_name(struct block_device *dev, const char *prefix, int i
     /* 
      * Strategy: Match prefix to subclass.
      */
-    if (strcmp(prefix, STRINGIFY(CONFIG_IDE_NAME_PREFIX)) == 0) {
+    if (strcmp(prefix, CONFIG_IDE_NAME_PREFIX) == 0) {
         dev->dev.class = &ide_class;
-    } else if (strcmp(prefix, STRINGIFY(CONFIG_SATA_NAME_PREFIX)) == 0) {
+    } else if (strcmp(prefix, CONFIG_SATA_NAME_PREFIX) == 0) {
         dev->dev.class = &sata_class;
-    } else if (strcmp(prefix, STRINGIFY(CONFIG_NVME_NAME_PREFIX)) == 0) {
+    } else if (strcmp(prefix, CONFIG_NVME_NAME_PREFIX) == 0) {
         dev->dev.class = &nvme_class;
     }
     

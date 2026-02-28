@@ -3,45 +3,70 @@
  * AeroSync monolithic kernel
  *
  * @file fs/devtmpfs.c
- * @brief Device Temporary Filesystem
+ * @brief Device Temporary Filesystem (based on tmpfs)
  * @copyright (C) 2026 assembler-0
  */
 
 #ifdef CONFIG_DEVTMPFS
 
-#include <fs/pseudo_fs.h>
+#include <fs/vfs.h>
+#include <fs/devtmpfs.h>
+#include <fs/tmpfs.h>
 #include <aerosync/errno.h>
 #include <lib/printk.h>
 #include <lib/string.h>
-#include <fs/vfs.h>
-#include <fs/devtmpfs.h>
+#include <mm/slub.h>
+#include <aerosync/mutex.h>
 
-static struct pseudo_fs_info devtmpfs_info = {
-  .name = "devtmpfs",
-};
+static struct super_block *devtmpfs_sb = nullptr;
 
-static void devtmpfs_init_inode(struct inode *inode, struct pseudo_node *pnode) {
-  inode->i_mode = pnode->mode;
-  inode->i_rdev = (dev_t) (uintptr_t) pnode->private_data;
-  init_special_inode(inode, inode->i_mode, inode->i_rdev);
-}
+static int devtmpfs_mount(struct file_system_type *fs_type, const char *dev_name, const char *dir_name,
+                       unsigned long flags, void *data) {
+  (void) dev_name; (void) dir_name; (void) flags; (void) fs_type;
+  struct super_block *sb = kzalloc(sizeof(struct super_block));
+  if (!sb) return -ENOMEM;
 
-int devtmpfs_register_device(const char *name, vfs_mode_t mode, dev_t dev,
-                          const struct file_operations *fops, void *private_data) {
-  if (!devtmpfs_info.root) return -ENODEV;
+  int ret = tmpfs_fill_super(sb, data);
+  if (ret) {
+    kfree(sb);
+    return ret;
+  }
 
-  struct pseudo_node *node = pseudo_fs_create_node(&devtmpfs_info, nullptr, name, mode, fops, private_data);
-  if (!node) return -ENOMEM;
+  extern struct list_head super_blocks;
+  extern struct mutex sb_mutex;
+  mutex_lock(&sb_mutex);
+  list_add_tail(&sb->sb_list, &super_blocks);
+  mutex_unlock(&sb_mutex);
 
-  node->init_inode = devtmpfs_init_inode;
-  /* Store dev_t in private_data for the callback */
-  node->private_data = (void *) (uintptr_t) dev;
-
+  devtmpfs_sb = sb;
   return 0;
 }
 
+static void devtmpfs_kill_sb(struct super_block *sb) {
+  if (devtmpfs_sb == sb) devtmpfs_sb = nullptr;
+  tmpfs_type.kill_sb(sb);
+}
+
+static struct file_system_type devtmpfs_type = {
+  .name = "devtmpfs",
+  .mount = devtmpfs_mount,
+  .kill_sb = devtmpfs_kill_sb,
+};
+
+int devtmpfs_register_device(const char *name, const char *category, vfs_mode_t mode, dev_t dev) {
+  if (!devtmpfs_sb) return -ENODEV;
+
+  struct tmpfs_node *parent = nullptr;
+  if (category) {
+      parent = tmpfs_mkdir_kern(devtmpfs_sb, nullptr, category, 0755);
+      if (!parent) return -ENOMEM;
+  }
+
+  return tmpfs_create_kern(devtmpfs_sb, parent, name, mode, dev);
+}
+
 void devtmpfs_init(void) {
-  pseudo_fs_register(&devtmpfs_info);
+  register_filesystem(&devtmpfs_type);
 }
 
 #endif

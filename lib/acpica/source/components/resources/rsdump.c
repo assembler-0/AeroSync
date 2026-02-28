@@ -657,7 +657,7 @@ AcpiRsDumpAddressCommon (
 
 
    /* Decode the type-specific flags */
-
+#ifdef ACPI_DEBUG_OUTPUT
     switch (Resource->Address.ResourceType)
     {
     case ACPI_MEMORY_RANGE:
@@ -685,6 +685,7 @@ AcpiRsDumpAddressCommon (
     /* Decode the general flags */
 
     AcpiRsDumpDescriptor (Resource, AcpiRsDumpGeneralFlags);
+#endif
 }
 
 
