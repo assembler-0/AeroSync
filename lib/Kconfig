@@ -14,10 +14,6 @@ config INTERVAL_TREE_SPAN_ITER
     bool "Enable interval tree span interation"
     default y
 
-config QUEUE_MACRO_DEBUG_ASSERTIONS
-    bool "Enable bsd queue assertions"
-    default n
-
 config OPTIMIZED_STRING
     bool "Enable optimized string functions"
     default y

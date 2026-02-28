@@ -1,6 +1,5 @@
 #pragma once
 
-#include <aerosync/types.h>
 #include <aerosync/compiler.h>
 
 /**

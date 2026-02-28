@@ -27,6 +27,7 @@
 #include <aerosync/ksymtab.h>
 #include <aerosync/panic.h>
 #include <aerosync/percpu.h>
+#include <aerosync/sysintf/acpica.h>
 #include <aerosync/rcu.h>
 #include <aerosync/resdomain.h>
 #include <aerosync/sched/process.h>
@@ -67,7 +68,6 @@
 #include <mm/vm_object.h>
 #include <mm/vma.h>
 #include <mm/vmalloc.h>
-#include <aerosync/sysintf/acpica.h>
 #include <mm/zmm.h>
 #include <mm/vfs.h>
 
@@ -330,11 +330,9 @@ no_cmdline:
   fkx_init_module_class(FKX_IC_CLASS);
   aerosync_core_init(ic_register_lapic_get_id_early);
 
-  uint64_t early_start = get_time_ns();
   aerosync_core_init(acpica_kernel_init_early);
 
   aerosync_core_init(acpi_tables_init);
-  printk(KERN_CLASS "acpica init early took: %lld n\n", (get_time_ns() - early_start));
 
   interrupt_controller_t ic_type;
   aerosync_core_init_status_ret(ic_install, ic_type);
@@ -351,10 +349,8 @@ no_cmdline:
   aerosync_core_init(timer_init_subsystem);
 
   // -- initialize the rest of ACPI (ACPICA) ---
-  uint64_t late_start = get_time_ns();
   aerosync_core_init(acpica_kernel_init_late);
   aerosync_extra_init(acpi_power_init);
-  printk(KERN_CLASS "acpica init late took: %lld ns\n", (get_time_ns() - late_start));
   if (cmdline_find_option_bool(current_cmdline, "acpi_enum"))
     aerosync_core_init(acpi_bus_enumerate);
 
