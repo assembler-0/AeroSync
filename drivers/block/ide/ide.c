@@ -15,6 +15,7 @@
 #include <aerosync/classes.h>
 #include <arch/x86_64/io.h>
 #include <arch/x86_64/irq.h>
+#include <arch/x86_64/cpu.h>
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <mm/slub.h>
@@ -111,40 +112,64 @@ static int ide_identify(struct ide_device *ide) {
 static int ide_read(struct block_device *bdev, void *buffer, uint64_t start_sector, uint32_t sector_count) {
   struct ide_device *ide = (struct ide_device *) bdev;
   if (ide->atapi) {
-    int ret = ide_atapi_read_dma(ide, (uint32_t) start_sector, sector_count, buffer);
-    if (ret == -ENOSYS || ret == -EIO) {
-      ret = ide_atapi_read(ide, (uint32_t) start_sector, sector_count, buffer);
+    /* ATAPI DMA also relies on interrupts */
+    if (irqs_enabled()) {
+      int ret = ide_atapi_read_dma(ide, (uint32_t) start_sector, sector_count, buffer);
+      if (ret != -ENOSYS && ret != -EIO) return ret;
     }
-    return ret;
+    return ide_atapi_read(ide, (uint32_t) start_sector, sector_count, buffer);
   }
 
   /* Prefer DMA, fallback to PIO */
-
-  int ret = ide_read_dma(ide, start_sector, sector_count, buffer);
-  if (ret == -ENOSYS || ret == -EIO) {
-    ide_read_pio(ide, start_sector, sector_count, buffer);
-    ret = 0;
+  if (irqs_enabled()) {
+    int ret = ide_read_dma(ide, start_sector, sector_count, buffer);
+    if (ret != -ENOSYS && ret != -EIO) return ret;
   }
 
-  return ret;
+  ide_read_pio(ide, start_sector, sector_count, buffer);
+  return 0;
 }
 
 static int ide_write(struct block_device *bdev, const void *buffer, uint64_t start_sector, uint32_t sector_count) {
   struct ide_device *ide = (struct ide_device *) bdev;
 
-  int ret = ide_write_dma(ide, start_sector, sector_count, (void *) buffer);
-  if (ret == -ENOSYS || ret == -EIO) {
-    ide_write_pio(ide, start_sector, sector_count, buffer);
-    ret = 0;
+  if (irqs_enabled()) {
+    int ret = ide_write_dma(ide, start_sector, sector_count, (void *) buffer);
+    if (ret != -ENOSYS && ret != -EIO) return ret;
   }
 
-  return ret;
+  ide_write_pio(ide, start_sector, sector_count, buffer);
+  return 0;
 }
 
 static const struct block_operations ide_ops = {
   .read = ide_read,
   .write = ide_write,
 };
+
+int ide_reset_channel(struct ide_channel *chan) {
+  /* Trigger Software Reset (SRST) */
+  outb(chan->ctrl_base + ATA_REG_CONTROL, 0x04);
+  delay_us(10);
+  outb(chan->ctrl_base + ATA_REG_CONTROL, 0x00);
+  delay_us(10);
+
+  /* Wait for BSY to clear - reset can take a long time (up to 31s per spec)
+   * but we use a reasonable 2s for boot-time probe. */
+  uint64_t timeout = get_time_ns() + 2000000000ULL;
+  while (inb(chan->io_base + ATA_REG_STATUS) & ATA_SR_BSY) {
+    if (get_time_ns() > timeout) return -ETIMEDOUT;
+    cpu_relax();
+  }
+
+  uint8_t error = inb(chan->io_base + ATA_REG_ERROR);
+  if (error != 0x01 && error != 0x81) {
+    /* 0x01/0x81 are standard post-reset codes, but some emulators vary.
+     * We mostly care that BSY is clear. */
+  }
+
+  return 0;
+}
 
 static int ide_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
   printk(KERN_INFO ATA_CLASS "probing IDE Controller at %02x:%02x.%d\n",
@@ -199,6 +224,9 @@ static int ide_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
     mutex_init(&chan->lock);
     init_completion(&chan->done);
 
+    /* Reset channel before discovery */
+    ide_reset_channel(chan);
+
     /* Register IRQ */
     irq_install_handler(chan->irq, ide_irq_handler);
     ic_enable_irq(chan->irq);
@@ -236,14 +264,6 @@ static int ide_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
         if (block_device_register(&ide->bdev) == 0) {
           printk(KERN_INFO ATA_CLASS "Found %s: %s (%llu MB)\n",
                  ide->bdev.dev.name, ide->model, (ide->sectors * ide->bdev.block_size) / 1024 / 1024);
-#ifdef CONFIG_BLOCK_PARTITION
-          /* Scan for partitions */
-          int parts = block_partition_scan(&ide->bdev);
-          if (parts > 0) {
-            printk(KERN_INFO ATA_CLASS "  %s: detected %d partitions\n",
-                   ide->bdev.dev.name, parts);
-          }
-#endif
         }
       } else {
         kfree(ide);
@@ -252,6 +272,20 @@ static int ide_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
 
     /* Re-enable IRQs */
     outb(chan->ctrl_base + ATA_REG_CONTROL, 0x00);
+
+    /* Now that interrupts are enabled on the drive, scan for partitions */
+#ifdef CONFIG_BLOCK_PARTITION
+    for (int d = 0; d < 2; d++) {
+      struct ide_device *ide = chan->devices[d];
+      if (!ide) continue;
+
+      int parts = block_partition_scan(&ide->bdev);
+      if (parts > 0) {
+        printk(KERN_INFO ATA_CLASS "  %s: detected %d partitions\n",
+               ide->bdev.dev.name, parts);
+      }
+    }
+#endif
   }
 
   return 0;

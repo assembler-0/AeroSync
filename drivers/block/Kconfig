@@ -4,7 +4,7 @@ menu "block"
 
 config BLOCK_PARTITION
     bool "Enable support for partitions"
-    default n
+    default y
     help
       Enable partitions support for block devices
 

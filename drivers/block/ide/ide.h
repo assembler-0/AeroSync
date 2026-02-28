@@ -135,6 +135,8 @@ int ide_write_dma(struct ide_device *dev, uint64_t lba, uint32_t count, const vo
 
 int ide_atapi_read_dma(struct ide_device *ide, uint32_t lba, uint32_t count, void *buf);
 
+int ide_reset_channel(struct ide_channel *chan);
+
 #define IDE_TIMEOUT_NS (5000000000ULL) /* 5 seconds */
 
 /* Helper to wait for BSY to clear with timeout */

@@ -1070,21 +1070,14 @@ int sched_init_task(struct task_struct *initial_task) {
   INIT_LIST_HEAD(&initial_task->sibling);
 
   /* Add initial task to global task list */
+  /* We don't add initial_task to the list because we switch to the per-cpu copy immediately */
+  /*
   extern struct list_head task_list;
   extern spinlock_t tasklist_lock;
   irq_flags_t tflags = spinlock_lock_irqsave(&tasklist_lock);
   list_add_tail_rcu(&initial_task->tasks, &task_list);
   spinlock_unlock_irqrestore(&tasklist_lock, tflags);
-
-  rq->curr = initial_task;
-  // rq->idle = initial_task; // Will be set in sched_init_ap for APs, logic for
-  // BSP?
-  /* BSP idle task needs to be distinct from init task usually.
-     Here "initial_task" is the one running at boot.
-     We usually fork init from it. Then this task becomes idle loop task.
   */
-  rq->idle = initial_task;
-  set_current(initial_task);
 
   /* Init per-cpu idle_task storage */
   struct task_struct *idle = this_cpu_ptr(idle_task);
@@ -1099,6 +1092,8 @@ int sched_init_task(struct task_struct *initial_task) {
 
   /* Point rq->idle to the permanent storage */
   rq->idle = idle;
+  rq->curr = idle;
+  set_current(idle);
   return 0;
 }
 
