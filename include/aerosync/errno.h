@@ -202,7 +202,7 @@ static inline bool __must_check IS_ERR(__force const void* ptr) {
   return IS_ERR_VALUE((unsigned long)ptr);
 }
 
-#define IS_ERR_INT(x) ((x) < 0 && (x) <= MAX_ERRNO)
+#define IS_ERR_INT(x) unlikely((x) < 0 && (x) <= MAX_ERRNO)
 
 static inline bool __must_check IS_ERR_OR_NULL(__force const void* ptr) {
   return unlikely(!ptr) || IS_ERR_VALUE((unsigned long)ptr);

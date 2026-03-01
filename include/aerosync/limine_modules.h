@@ -60,7 +60,7 @@ int lmm_init(const struct limine_module_response *response);
 void lmm_for_each_module(lmm_type_t type, void (*callback)(struct lmm_entry *entry, void *data), void *data);
 
 /**
- * @brief Find a module by name (path basename)
+ * @brief Find a module by name (path, normalized path, or basename)
  */
 struct lmm_entry *lmm_find_module(const char *name);
 

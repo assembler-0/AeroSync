@@ -54,6 +54,15 @@ static lmm_type_t lmm_probe_file(const struct limine_file *file) {
   for (size_t i = 0; i < g_lmm_prober_count; i++) {
     lmm_type_t type = LMM_TYPE_UNKNOWN;
     int score = g_lmm_probers[i](file, &type);
+    
+    /* If a prober explicitly returns 0 for a type that was guessed by extension,
+     * it means the magic check failed. We should demote the best_score if it 
+     * matches that type. */
+    if (score == 0 && type == best_type) {
+      best_score = -1;
+      best_type = LMM_TYPE_UNKNOWN;
+    }
+
     if (score > best_score) {
       best_score = score;
       best_type = type;
@@ -121,12 +130,49 @@ void lmm_for_each_module(lmm_type_t type, void (*callback)(struct lmm_entry *ent
   }
 }
 
+/**
+ * @brief Find a module by name or path.
+ * 
+ * This function performs a multi-tiered search:
+ * 1. Exact path match (e.g., "/module/initrd.cpio" == "/module/initrd.cpio")
+ * 2. Slash-normalized match (e.g., "module/initrd.cpio" == "/module/initrd.cpio")
+ * 3. Basename match (e.g., "initrd.cpio" == "/module/initrd.cpio")
+ * 
+ * @param name The name or path to search for.
+ * @return struct lmm_entry* Pointer to the entry if found, nullptr otherwise.
+ */
 struct lmm_entry *lmm_find_module(const char *name) {
   struct lmm_entry *entry;
+  if (!name || name[0] == '\0') {
+    return nullptr;
+  }
+
   list_for_each_entry(entry, &g_lmm_entries, list) {
-    const char *filename = strrchr(entry->file->path, '/');
-    if (filename) filename++;
-    else filename = entry->file->path;
+    const char *path = entry->file->path;
+
+    /* 1. Exact match */
+    if (strcmp(path, name) == 0) {
+      return entry;
+    }
+
+    /* 2. Slash-normalized match 
+     * Handles cases where the bootloader or user is inconsistent with leading slashes.
+     */
+    const char *p1 = (path[0] == '/') ? path + 1 : path;
+    const char *p2 = (name[0] == '/') ? name + 1 : name;
+    if (strcmp(p1, p2) == 0) {
+      return entry;
+    }
+
+    /* 3. Basename match (fallback for convenience) 
+     * Allows finding "/module/foo.fkx" by just specifying "foo.fkx".
+     */
+    const char *filename = strrchr(path, '/');
+    if (filename) {
+      filename++;
+    } else {
+      filename = path;
+    }
 
     if (strcmp(filename, name) == 0) {
       return entry;

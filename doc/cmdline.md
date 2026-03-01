@@ -8,6 +8,7 @@
 - `dumpdevtree`: dump the device tree
 - `nosmp`: disable SMP (depends on CONFIG_SYMETRIC_MP)
 - `initrd=VAL`: VAL is path to initrd
+- `initrd_debug`: enable detailed logging of initramfs record discovery
 - `bootinfo`: display some limine boot info
 - `kaslrinfo`: logs kernel base
 - `mm_page_lvl`: log cmdline
@@ -15,3 +16,4 @@
 - `acpi_enum`: enumerate and log acpi bus
 - `vfstest`: run vfs tests (depends on CONFIG_VFS_TESTS)
 - `disable-mm-scrubber`: disable mm_scrubberd thread (depends on MM_HARDENING)
+- `init=VAL`: VAL is path to init process (absolute path in initrd)

@@ -1356,7 +1356,7 @@ void pmm_verify(void) {
           struct page *page;
           list_for_each_entry(page, &z->free_area[order].free_list[mt], list) {
             if (unlikely(!PageBuddy(page))) {
-              panic("PMM: Page in free list without PageBuddy set! (pfn %lu)\n",
+              panic("PMM: Page in free list without PageBuddy set! (pfn %lu)",
                     (unsigned long)(page - mem_map));
             }
             if (unlikely(page->order != order)) {

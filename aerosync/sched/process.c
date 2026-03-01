@@ -18,6 +18,15 @@
  * GNU General Public License for more details.
  */
 
+#include <aerosync/errno.h>
+#include <aerosync/fkx/fkx.h>
+#include <aerosync/kref.h>
+#include <aerosync/resdomain.h>
+#include <aerosync/resource.h>
+#include <aerosync/sched/cpumask.h>
+#include <aerosync/sched/process.h>
+#include <aerosync/sched/sched.h>
+#include <aerosync/signal.h>
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/entry.h>
 #include <arch/x86_64/fpu.h>
@@ -25,39 +34,29 @@
 #include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/mm/vmm.h>
 #include <arch/x86_64/percpu.h>
-#include <aerosync/fkx/fkx.h>
-#include <aerosync/sched/cpumask.h>
-#include <aerosync/sched/process.h>
-#include <aerosync/sched/sched.h>
+#include <fs/file.h>
+#include <fs/fs_struct.h>
 #include <lib/id_alloc.h>
 #include <lib/string.h>
+#include <lib/uaccess.h>
+#include <linux/container_of.h>
 #include <mm/slub.h>
 #include <mm/vma.h>
 #include <mm/vmalloc.h>
-#include <lib/string.h>
-#include <fs/file.h>
-#include <aerosync/signal.h>
-#include <aerosync/errno.h>
-#include <aerosync/kref.h>
-#include <aerosync/resource.h>
-#include <lib/uaccess.h>
-#include <fs/fs_struct.h>
-#include <linux/container_of.h>
-#include <aerosync/resdomain.h>
 
 #include <aerosync/pid_ns.h>
 
-#include <linux/rculist.h>
 #include <aerosync/wait.h>
+#include <linux/rculist.h>
 
 /*
  * Process/Thread Management
  */
 
-/* 
+/*
  * Industry standard for x86_64 is 16KB (4 pages).
- * Note: If reporting modern Windows OSI to firmware on physical hardware, 
- * ACPICA interpreter recursion combined with shared IRQ stacks may require 
+ * Note: If reporting modern Windows OSI to firmware on physical hardware,
+ * ACPICA interpreter recursion combined with shared IRQ stacks may require
  * 32KB (8 pages) to prevent random page faults.
  */
 #define THREAD_STACK_SIZE (PAGE_SIZE * 4)
@@ -69,7 +68,7 @@ static kmem_cache_t *task_struct_cachep;
  * Kthread Pre-allocation Pool
  *
  * This system maintains a pool of pre-allocated stacks to make kthread_create
- * almost instantaneous. A background worker refills the pool using bulk 
+ * almost instantaneous. A background worker refills the pool using bulk
  * allocation to minimize TLB shootdowns.
  */
 #define KTHREAD_POOL_TARGET 64
@@ -85,22 +84,25 @@ static struct {
   atomic_t count;
 } kthread_stack_pool;
 
-static struct task_struct * __no_cfi __kthread_create(int (*threadfn)(void *data), void *data,
-                                   const char *namefmt, va_list ap);
+static struct task_struct *__no_cfi __kthread_create(
+    int (*threadfn)(void *data), void *data, const char *namefmt, va_list ap);
 
 static void refill_kthread_stack_pool(void) {
   int current_count = atomic_read(&kthread_stack_pool.count);
-  if (current_count >= KTHREAD_POOL_TARGET) return;
+  if (current_count >= KTHREAD_POOL_TARGET)
+    return;
 
   int to_alloc = KTHREAD_POOL_TARGET - current_count;
   void *stacks[KTHREAD_POOL_TARGET];
-  
+
   /* Use bulk stack allocator to minimize TLB shootdowns (1 IPI vs 64) */
   int allocated = vmalloc_bulk_stacks(to_alloc, NUMA_NO_NODE, stacks);
-  if (allocated <= 0) return;
+  if (allocated <= 0)
+    return;
 
   for (int i = 0; i < allocated; i++) {
-    struct kthread_stack_node *node = kmalloc(sizeof(struct kthread_stack_node));
+    struct kthread_stack_node *node =
+        kmalloc(sizeof(struct kthread_stack_node));
     if (!node) {
       vfree(stacks[i]);
       continue;
@@ -112,8 +114,9 @@ static void refill_kthread_stack_pool(void) {
     do {
       old_head = kthread_stack_pool.head;
       node->next = old_head;
-    } while (atomic64_cmpxchg((atomic64_t *)&kthread_stack_pool.head, (long)old_head, (long)node) != (long)old_head);
-    
+    } while (atomic64_cmpxchg((atomic64_t *)&kthread_stack_pool.head,
+                              (long)old_head, (long)node) != (long)old_head);
+
     atomic_inc(&kthread_stack_pool.count);
   }
 }
@@ -123,7 +126,9 @@ static DECLARE_WAIT_QUEUE_HEAD(kthread_pool_wait);
 static int kthread_pool_worker_fn(void *unused) {
   (void)unused;
   for (;;) {
-    wait_event_interruptible(kthread_pool_wait, atomic_read(&kthread_stack_pool.count) < KTHREAD_POOL_LOW);
+    wait_event_interruptible(kthread_pool_wait,
+                             atomic_read(&kthread_stack_pool.count) <
+                                 KTHREAD_POOL_LOW);
     refill_kthread_stack_pool();
   }
   return 0;
@@ -135,18 +140,20 @@ static void *pop_stack_from_pool(void) {
 
   do {
     node = kthread_stack_pool.head;
-    if (!node) return nullptr;
+    if (!node)
+      return nullptr;
     next = node->next;
-  } while (atomic64_cmpxchg((atomic64_t *)&kthread_stack_pool.head, (long)node, (long)next) != (long)node);
+  } while (atomic64_cmpxchg((atomic64_t *)&kthread_stack_pool.head, (long)node,
+                            (long)next) != (long)node);
 
   void *stack = node->stack;
   kfree(node);
   int remaining = atomic_dec_return(&kthread_stack_pool.count);
-  
+
   if (remaining < KTHREAD_POOL_LOW) {
     wake_up_interruptible(&kthread_pool_wait);
   }
-  
+
   return stack;
 }
 
@@ -170,11 +177,11 @@ static void *alloc_kstack(int node) {
     spinlock_unlock_irqrestore(&pool->lock, flags);
     return stack;
   }
-  
+
   /* Pool empty, try bulk refill to avoid multiple TLB shootdowns */
   void *new_stacks[STACK_POOL_SIZE];
   int allocated = vmalloc_bulk_stacks(STACK_POOL_SIZE, node, new_stacks);
-  
+
   if (allocated > 0) {
     stack = new_stacks[0];
     for (int i = 1; i < allocated; i++) {
@@ -183,7 +190,7 @@ static void *alloc_kstack(int node) {
     spinlock_unlock_irqrestore(&pool->lock, flags);
     return stack;
   }
-  
+
   spinlock_unlock_irqrestore(&pool->lock, flags);
 
   /* Fallback to single allocation if bulk fails */
@@ -191,7 +198,8 @@ static void *alloc_kstack(int node) {
 }
 
 static void free_kstack(void *stack) {
-  if (!stack) return;
+  if (!stack)
+    return;
   struct stack_pool *pool = this_cpu_ptr(kstack_pools);
 
   irq_flags_t flags = spinlock_lock_irqsave(&pool->lock);
@@ -221,11 +229,13 @@ static DECLARE_WAIT_QUEUE_HEAD(kthread_create_wait);
 static int kthreadd(void *unused) {
   (void)unused;
   for (;;) {
-    wait_event_interruptible(kthread_create_wait, !list_empty(&kthread_create_list));
+    wait_event_interruptible(kthread_create_wait,
+                             !list_empty(&kthread_create_list));
 
     irq_flags_t flags = spinlock_lock_irqsave(&kthread_create_lock);
     while (!list_empty(&kthread_create_list)) {
-      struct kthread_create_info *info = list_first_entry(&kthread_create_list, struct kthread_create_info, list);
+      struct kthread_create_info *info = list_first_entry(
+          &kthread_create_list, struct kthread_create_info, list);
       list_del(&info->list);
       spinlock_unlock_irqrestore(&kthread_create_lock, flags);
 
@@ -244,7 +254,8 @@ static int kthreadd(void *unused) {
 }
 
 void kthread_init(void) {
-  task_struct_cachep = kmem_cache_create("task_struct", sizeof(struct task_struct), 0, SLAB_HWCACHE_ALIGN);
+  task_struct_cachep = kmem_cache_create(
+      "task_struct", sizeof(struct task_struct), 0, SLAB_HWCACHE_ALIGN);
 
   int cpu;
   for_each_possible_cpu(cpu) {
@@ -258,7 +269,8 @@ void kthread_init(void) {
   atomic_set(&kthread_stack_pool.count, 0);
 
   /* Start pool worker - use __kthread_create directly as pool is not ready */
-  kthread_run(__kthread_create(kthread_pool_worker_fn, nullptr, "kthread_pool", (va_list){0}));
+  kthread_run(__kthread_create(kthread_pool_worker_fn, nullptr, "kthread_pool",
+                               (va_list){0}));
 
   kthread_run(kthread_create(kthreadd, nullptr, "kthreadd"));
 }
@@ -281,10 +293,11 @@ static void free_task_rcu(struct rcu_head *rcu) {
 }
 
 struct pid_namespace init_pid_ns = {
-  .kref = KREF_INIT(2), /* 2 refs: one for init_task, one for being permanent */
-  .parent = nullptr,
-  .level = 0,
-  .child_reaper = nullptr,
+    .kref =
+        KREF_INIT(2), /* 2 refs: one for init_task, one for being permanent */
+    .parent = nullptr,
+    .level = 0,
+    .child_reaper = nullptr,
 };
 
 int pid_allocator_init(void) {
@@ -302,7 +315,8 @@ int pid_allocator_init(void) {
 
 struct pid_namespace *create_pid_namespace(struct pid_namespace *parent) {
   struct pid_namespace *ns = kzalloc(sizeof(struct pid_namespace));
-  if (!ns) return nullptr;
+  if (!ns)
+    return nullptr;
 
   kref_init(&ns->kref);
   ns->parent = parent; /* TODO: get_pid_ns(parent) */
@@ -325,7 +339,8 @@ void put_pid_ns(struct pid_namespace *ns) {
 }
 
 static inline void get_pid_ns(struct pid_namespace *ns) {
-  if (ns) kref_get(&ns->kref);
+  if (ns)
+    kref_get(&ns->kref);
 }
 
 pid_t pid_ns_alloc(struct pid_namespace *ns) {
@@ -336,7 +351,8 @@ void pid_ns_free(struct pid_namespace *ns, pid_t pid) {
   ida_free(&ns->pid_ida, pid);
 }
 
-static pid_t alloc_pid_for_task(struct task_struct *task, struct pid_namespace *ns) {
+static pid_t alloc_pid_for_task(struct task_struct *task,
+                                struct pid_namespace *ns) {
   /* For now, we only allocate in the active namespace.
      A full implementation would allocate in all parent namespaces. */
   return pid_ns_alloc(ns);
@@ -345,11 +361,11 @@ static pid_t alloc_pid_for_task(struct task_struct *task, struct pid_namespace *
 static void release_pid(pid_t pid) { ida_free(&pid_ida, pid); }
 
 // Defined in switch.asm
-struct task_struct * __no_cfi __switch_to(struct thread_struct *prev,
-                                struct thread_struct *next);
+struct task_struct *__no_cfi __switch_to(struct thread_struct *prev,
+                                         struct thread_struct *next);
 
-struct task_struct * __no_cfi switch_to(struct task_struct *prev,
-                              struct task_struct *next) {
+struct task_struct *__no_cfi switch_to(struct task_struct *prev,
+                                       struct task_struct *next) {
   if (prev == next)
     return prev;
 
@@ -357,7 +373,8 @@ struct task_struct * __no_cfi switch_to(struct task_struct *prev,
 }
 
 // Entry point for new kernel threads
-void __no_cfi __used kthread_entry_stub(int (*threadfn)(void *data), void *data) {
+void __no_cfi __used kthread_entry_stub(int (*threadfn)(void *data),
+                                        void *data) {
   cpu_sti(); // Enable interrupts as we are starting a fresh thread
   const int ret = threadfn(data);
   sys_exit(ret);
@@ -367,8 +384,7 @@ void __no_cfi __used kthread_entry_stub(int (*threadfn)(void *data), void *data)
  * copy_process - The core of fork/clone/kthread_create.
  * Creates a new task and copies/shares resources from the parent.
  */
-struct task_struct *copy_process(uint64_t clone_flags,
-                                 uint64_t stack_start,
+struct task_struct *copy_process(uint64_t clone_flags, uint64_t stack_start,
                                  struct task_struct *parent) {
   struct task_struct *p;
 
@@ -428,7 +444,7 @@ struct task_struct *copy_process(uint64_t clone_flags,
 
   // Initialize basic fields
   p->state = TASK_RUNNING;
-  p->cpu = (int) smp_get_id();
+  p->cpu = (int)smp_get_id();
   p->flags = 0;
   p->preempt_count = 0;
   p->parent = parent;
@@ -445,7 +461,8 @@ struct task_struct *copy_process(uint64_t clone_flags,
   INIT_LIST_HEAD(&p->pi_list);
 
   // Setup memory management
-  if (!parent) return nullptr;
+  if (!parent)
+    return nullptr;
 
   if (clone_flags & CLONE_VM) {
     p->mm = parent->mm;
@@ -468,14 +485,15 @@ struct task_struct *copy_process(uint64_t clone_flags,
   }
 
   // Setup files
-  extern struct files_struct *copy_files(struct files_struct *old_files);
+  extern struct files_struct *copy_files(struct files_struct * old_files);
   if (clone_flags & CLONE_FILES) {
     p->files = parent->files;
     atomic_inc(&p->files->count);
   } else {
     p->files = copy_files(parent->files);
     if (!p->files) {
-      if (p->mm && p->mm != parent->mm) mm_put(p->mm);
+      if (p->mm && p->mm != parent->mm)
+        mm_put(p->mm);
       free_kstack(p->stack);
       release_pid(p->pid);
       free_task_struct(p);
@@ -486,7 +504,8 @@ struct task_struct *copy_process(uint64_t clone_flags,
   // Setup fs_struct
   if (clone_flags & CLONE_FS) {
     p->fs = parent->fs;
-    if (p->fs) atomic_inc(&p->fs->count);
+    if (p->fs)
+      atomic_inc(&p->fs->count);
   } else {
     p->fs = copy_fs_struct(parent->fs);
   }
@@ -569,32 +588,35 @@ struct task_struct *kthread_create(int (*threadfn)(void *data), void *data,
   va_end(ap);
 
   // Setup stack for ret_from_kernel_thread
-  uint64_t *sp = (uint64_t *) ((uint8_t *) p->stack + (PAGE_SIZE * 4));
-  *(--sp) = (uint64_t) ret_from_kernel_thread;
-  *(--sp) = 0; // rbx
-  *(--sp) = 0; // rbp
-  *(--sp) = (uint64_t) threadfn; // r12
-  *(--sp) = (uint64_t) data; // r13
-  *(--sp) = 0; // r14
-  *(--sp) = 0; // r15
+  uint64_t *sp = (uint64_t *)((uint8_t *)p->stack + (PAGE_SIZE * 4));
+  *(--sp) = (uint64_t)ret_from_kernel_thread;
+  *(--sp) = 0;                  // rbx
+  *(--sp) = 0;                  // rbp
+  *(--sp) = (uint64_t)threadfn; // r12
+  *(--sp) = (uint64_t)data;     // r13
+  *(--sp) = 0;                  // r14
+  *(--sp) = 0;                  // r15
 
-  p->thread.rsp = (uint64_t) sp;
+  p->thread.rsp = (uint64_t)sp;
   p->thread.rflags = 0x202;
 
   return p;
 }
 
 void kthread_stop(struct task_struct *k) {
-  if (!k) return;
+  if (!k)
+    return;
   send_signal(SIGKILL, k);
 }
 
-struct task_struct * __no_cfi __kthread_create(int (*threadfn)(void *data), void *data,
-                                   const char *namefmt, va_list ap) {
+struct task_struct *__no_cfi __kthread_create(int (*threadfn)(void *data),
+                                              void *data, const char *namefmt,
+                                              va_list ap) {
   struct task_struct *curr = get_current();
 
   struct task_struct *p = copy_process(CLONE_VM, 0, curr);
-  if (!p) return nullptr;
+  if (!p)
+    return nullptr;
 
   p->flags |= PF_KTHREAD;
   p->mm = nullptr;
@@ -611,16 +633,16 @@ struct task_struct * __no_cfi __kthread_create(int (*threadfn)(void *data), void
   vsnprintf(p->comm, sizeof(p->comm), namefmt, ap);
 
   // Setup stack for ret_from_kernel_thread
-  uint64_t *sp = (uint64_t *) ((uint8_t *) p->stack + (PAGE_SIZE * 4));
-  *(--sp) = (uint64_t) ret_from_kernel_thread;
-  *(--sp) = 0; // rbx
-  *(--sp) = 0; // rbp
-  *(--sp) = (uint64_t) threadfn; // r12
-  *(--sp) = (uint64_t) data; // r13
-  *(--sp) = 0; // r14
-  *(--sp) = 0; // r15
+  uint64_t *sp = (uint64_t *)((uint8_t *)p->stack + (PAGE_SIZE * 4));
+  *(--sp) = (uint64_t)ret_from_kernel_thread;
+  *(--sp) = 0;                  // rbx
+  *(--sp) = 0;                  // rbp
+  *(--sp) = (uint64_t)threadfn; // r12
+  *(--sp) = (uint64_t)data;     // r13
+  *(--sp) = 0;                  // r14
+  *(--sp) = 0;                  // r15
 
-  p->thread.rsp = (uint64_t) sp;
+  p->thread.rsp = (uint64_t)sp;
   p->thread.rflags = 0x202;
 
   return p;
@@ -629,15 +651,18 @@ struct task_struct * __no_cfi __kthread_create(int (*threadfn)(void *data), void
 EXPORT_SYMBOL(kthread_create);
 
 void __no_cfi kthread_run(struct task_struct *k) {
-  if (k) wake_up_new_task(k);
+  if (k)
+    wake_up_new_task(k);
 }
 
 EXPORT_SYMBOL(kthread_run);
 
-pid_t __no_cfi do_fork(uint64_t clone_flags, uint64_t stack_start, struct syscall_regs *regs) {
+pid_t __no_cfi do_fork(uint64_t clone_flags, uint64_t stack_start,
+                       struct syscall_regs *regs) {
   struct task_struct *curr = get_current();
   struct task_struct *p = copy_process(clone_flags, stack_start, curr);
-  if (!p) return -ENOMEM;
+  if (!p)
+    return -ENOMEM;
 
   pid_t pid = p->pid;
 
@@ -645,16 +670,18 @@ pid_t __no_cfi do_fork(uint64_t clone_flags, uint64_t stack_start, struct syscal
    * For fork/clone, we copy the parent's kernel stack content.
    * The syscall_regs are located at the top of the parent's stack.
    */
-  uint64_t *parent_sp = (uint64_t *) regs;
+  uint64_t *parent_sp = (uint64_t *)regs;
   // Calculate how many bytes are used on the stack (from regs to top)
-  size_t stack_used = (uint64_t) ((uint8_t *) curr->stack + (PAGE_SIZE * 4)) - (uint64_t) parent_sp;
+  size_t stack_used = (uint64_t)((uint8_t *)curr->stack + (PAGE_SIZE * 4)) -
+                      (uint64_t)parent_sp;
 
   // Position of regs on the child's stack
-  uint64_t *child_regs_ptr = (uint64_t *) ((uint8_t *) p->stack + (PAGE_SIZE * 4) - stack_used);
+  uint64_t *child_regs_ptr =
+      (uint64_t *)((uint8_t *)p->stack + (PAGE_SIZE * 4) - stack_used);
   memcpy(child_regs_ptr, parent_sp, stack_used);
 
   // Child returns 0 in RAX
-  struct syscall_regs *child_regs = (struct syscall_regs *) child_regs_ptr;
+  struct syscall_regs *child_regs = (struct syscall_regs *)child_regs_ptr;
   child_regs->rax = 0;
 
   // If stack_start is provided (clone), update it in child_regs
@@ -664,8 +691,8 @@ pid_t __no_cfi do_fork(uint64_t clone_flags, uint64_t stack_start, struct syscal
 
   // Setup child's switch_to context
   // We want it to pop r15..rbx and then ret to ret_from_fork
-  uint64_t *sp = (uint64_t *) child_regs_ptr;
-  *(--sp) = (uint64_t) ret_from_fork;
+  uint64_t *sp = (uint64_t *)child_regs_ptr;
+  *(--sp) = (uint64_t)ret_from_fork;
   *(--sp) = 0; // rbx
   *(--sp) = 0; // rbp
   *(--sp) = 0; // r12
@@ -673,7 +700,7 @@ pid_t __no_cfi do_fork(uint64_t clone_flags, uint64_t stack_start, struct syscal
   *(--sp) = 0; // r14
   *(--sp) = 0; // r15
 
-  p->thread.rsp = (uint64_t) sp;
+  p->thread.rsp = (uint64_t)sp;
   p->thread.rflags = 0x202;
 
   wake_up_new_task(p);
@@ -691,23 +718,25 @@ static void reparent_children(struct task_struct *parent) {
   struct task_struct *reaper = parent->nsproxy->child_reaper;
 
   if (reaper == parent) {
-    /* If the reaper itself is exiting, move children to global init or parent reaper */
+    /* If the reaper itself is exiting, move children to global init or parent
+     * reaper */
     if (parent->nsproxy->parent)
       reaper = parent->nsproxy->parent->child_reaper;
     else
       reaper = find_task_by_pid(1); /* Fallback to global init */
   }
 
-  if (!reaper || reaper == parent) return;
+  if (!reaper || reaper == parent)
+    return;
 
   list_for_each_entry_safe(child, tmp, &parent->children, sibling) {
     list_del(&child->sibling);
     child->parent = reaper;
     list_add_tail(&child->sibling, &reaper->children);
-    
+
     if (child->state == TASK_ZOMBIE) {
-        /* If child was already zombie, notify the new parent */
-        send_signal(SIGCHLD, reaper);
+      /* If child was already zombie, notify the new parent */
+      send_signal(SIGCHLD, reaper);
     }
   }
 }
@@ -718,6 +747,11 @@ void sys_exit(int error_code) {
   /* 1. Mark as exiting to prevent further allocations/interrupts handling */
   curr->flags |= PF_EXITING;
   curr->exit_code = error_code;
+
+  if (curr->pid <= 2 || strncmp(curr->comm, "init", 4) == 0) {
+    panic("Init process (PID %d) terminated with exit code %d (Signal/Crash)\n",
+          curr->pid, error_code);
+  }
 
   /* 2. Release Memory Management context */
   if (curr->mm) {
@@ -747,7 +781,7 @@ void sys_exit(int error_code) {
 
   /* 5. Handle process hierarchy */
   spinlock_lock(&tasklist_lock);
-  
+
   /* Reparent my children */
   reparent_children(curr);
 
@@ -759,7 +793,7 @@ void sys_exit(int error_code) {
     send_signal(SIGCHLD, curr->parent);
     /* Wake up parent waiting in wait4 */
     if (curr->parent->signal) {
-        wake_up_interruptible(&curr->parent->signal->wait_chldexit);
+      wake_up_interruptible(&curr->parent->signal->wait_chldexit);
     }
   }
 
@@ -775,17 +809,22 @@ void sys_exit(int error_code) {
 }
 
 void free_task(struct task_struct *task) {
-  if (!task) return;
+  if (!task)
+    return;
 
   irq_flags_t flags = spinlock_lock_irqsave(&tasklist_lock);
   list_del_rcu(&task->tasks);
   list_del(&task->sibling);
   spinlock_unlock_irqrestore(&tasklist_lock, flags);
 
-  if (task->pid >= 0) release_pid(task->pid);
-  if (task->thread.fpu) fpu_free(task->thread.fpu);
-  if (task->mm) mm_put(task->mm);
-  if (task->stack) vfree(task->stack);
+  if (task->pid >= 0)
+    release_pid(task->pid);
+  if (task->thread.fpu)
+    fpu_free(task->thread.fpu);
+  if (task->mm)
+    mm_put(task->mm);
+  if (task->stack)
+    vfree(task->stack);
 
   if (task->files) {
     if (atomic_dec_and_test(&task->files->count)) {
@@ -879,20 +918,21 @@ struct task_struct *process_spawn(int (*entry)(void *), void *data,
                                   const char *name) {
   struct task_struct *curr = get_current();
   struct task_struct *p = copy_process(0, 0, curr);
-  if (!p) return nullptr;
+  if (!p)
+    return nullptr;
 
   strncpy(p->comm, name, sizeof(p->comm));
 
-  uint64_t *sp = (uint64_t *) ((uint8_t *) p->stack + (PAGE_SIZE * 4));
-  *(--sp) = (uint64_t) ret_from_kernel_thread;
-  *(--sp) = 0; // rbx
-  *(--sp) = 0; // rbp
-  *(--sp) = (uint64_t) entry; // r12
-  *(--sp) = (uint64_t) data; // r13
-  *(--sp) = 0; // r14
-  *(--sp) = 0; // r15
+  uint64_t *sp = (uint64_t *)((uint8_t *)p->stack + (PAGE_SIZE * 4));
+  *(--sp) = (uint64_t)ret_from_kernel_thread;
+  *(--sp) = 0;               // rbx
+  *(--sp) = 0;               // rbp
+  *(--sp) = (uint64_t)entry; // r12
+  *(--sp) = (uint64_t)data;  // r13
+  *(--sp) = 0;               // r14
+  *(--sp) = 0;               // r15
 
-  p->thread.rsp = (uint64_t) sp;
+  p->thread.rsp = (uint64_t)sp;
   wake_up_new_task(p);
 
   return p;
@@ -901,8 +941,12 @@ struct task_struct *process_spawn(int (*entry)(void *), void *data,
 EXPORT_SYMBOL(process_spawn);
 
 int do_execve(const char *filename, char **argv, char **envp) {
+  printk(KERN_DEBUG "[exec] do_execve: %s\n", filename);
   struct file *file = vfs_open(filename, O_RDONLY, 0);
-  if (!file) return -ENOENT;
+  if (!file)
+    return -ENOENT;
+
+  printk(KERN_DEBUG "[exec] vfs_open OK: %llx\n", (uint64_t)file);
 
   int retval = do_execve_file(file, filename, argv, envp);
   vfs_close(file);
@@ -919,12 +963,14 @@ int run_init_process(const char *init_filename) {
 EXPORT_SYMBOL(run_init_process);
 
 #ifdef CONFIG_UNSAFE_USER_TASK_SPAWN
-struct task_struct * __deprecated spawn_user_process_raw(void *data, size_t len, const char *name) {
+struct task_struct *__deprecated spawn_user_process_raw(void *data, size_t len,
+                                                        const char *name) {
   unmet_function_deprecation(spawn_user_process_raw);
 
   struct task_struct *curr = get_current();
   struct task_struct *p = copy_process(0, 0, curr);
-  if (!p) return nullptr;
+  if (!p)
+    return nullptr;
 
   strncpy(p->comm, name, sizeof(p->comm));
   p->flags &= ~PF_KTHREAD;
@@ -939,23 +985,29 @@ struct task_struct * __deprecated spawn_user_process_raw(void *data, size_t len,
 
   /* Map code and copy buffer content */
   uint64_t code_addr = 0x400000; // Standard base for simple ELFs/bins
-  if (mm_populate_user_range(p->mm, code_addr, len, VM_READ | VM_WRITE | VM_EXEC | VM_USER, data, len) != 0) {
+  if (mm_populate_user_range(p->mm, code_addr, len,
+                             VM_READ | VM_WRITE | VM_EXEC | VM_USER, data,
+                             len) != 0) {
     free_task(p);
     return nullptr;
   }
 
   /* Map user stack */
-  uint64_t stack_top = vmm_get_max_user_address() - PAGE_SIZE; // Dynamic canonical stack top
+  uint64_t stack_top =
+      vmm_get_max_user_address() - PAGE_SIZE; // Dynamic canonical stack top
   uint64_t stack_size = PAGE_SIZE * 16;
   uint64_t stack_base = stack_top - stack_size;
-  if (mm_populate_user_range(p->mm, stack_base, stack_size, VM_READ | VM_WRITE | VM_USER | VM_STACK, nullptr, 0) != 0) {
+  if (mm_populate_user_range(p->mm, stack_base, stack_size,
+                             VM_READ | VM_WRITE | VM_USER | VM_STACK, nullptr,
+                             0) != 0) {
     free_task(p);
     return nullptr;
   }
 
   /* Setup kernel stack for ret_from_user_thread */
   /* We push a cpu_regs structure onto the kernel stack */
-  cpu_regs *regs = (cpu_regs *) ((uint8_t *) p->stack + (PAGE_SIZE * 4) - sizeof(cpu_regs));
+  cpu_regs *regs =
+      (cpu_regs *)((uint8_t *)p->stack + (PAGE_SIZE * 4) - sizeof(cpu_regs));
   memset(regs, 0, sizeof(cpu_regs));
 
   regs->rip = code_addr;
@@ -964,15 +1016,16 @@ struct task_struct * __deprecated spawn_user_process_raw(void *data, size_t len,
   regs->ss = USER_DATA_SELECTOR | 3;
   regs->rflags = 0x202; // IF=1, bit 1 is reserved and must be 1
 
-  /* segments are not used in 64-bit but we set them for safety/iret frame consistency if needed */
+  /* segments are not used in 64-bit but we set them for safety/iret frame
+   * consistency if needed */
   regs->ds = regs->es = regs->fs = regs->gs = (USER_DATA_SELECTOR | 3);
 
   /* ret_from_user_thread expects rax to be 'prev' but for the very first switch
    * it will be passed from __switch_to return.
    * The stack layout should match what ret_from_user_thread expects.
    */
-  uint64_t *sp = (uint64_t *) regs;
-  *(--sp) = (uint64_t) ret_from_user_thread;
+  uint64_t *sp = (uint64_t *)regs;
+  *(--sp) = (uint64_t)ret_from_user_thread;
   *(--sp) = 0; // rbx
   *(--sp) = 0; // rbp
   *(--sp) = 0; // r12
@@ -980,7 +1033,7 @@ struct task_struct * __deprecated spawn_user_process_raw(void *data, size_t len,
   *(--sp) = 0; // r14
   *(--sp) = 0; // r15
 
-  p->thread.rsp = (uint64_t) sp;
+  p->thread.rsp = (uint64_t)sp;
 
   wake_up_new_task(p);
   return p;
@@ -993,112 +1046,116 @@ EXPORT_SYMBOL(spawn_user_process_raw);
  * Wait for a child process to change state
  */
 static long do_wait(pid_t pid, int *status, int options, struct rusage *ru) {
-    struct task_struct *p = current;
-    struct task_struct *child, *safe;
-    int retval;
+  struct task_struct *p = current;
+  struct task_struct *child, *safe;
+  int retval;
 
-    if (options & ~(WNOHANG | WUNTRACED | WCONTINUED | __WNOTHREAD | __WCLONE | __WALL))
-        return -EINVAL;
+  if (options &
+      ~(WNOHANG | WUNTRACED | WCONTINUED | __WNOTHREAD | __WCLONE | __WALL))
+    return -EINVAL;
 
-    DECLARE_WAITQUEUE(wait, current);
-    add_wait_queue(&p->signal->wait_chldexit, &wait);
+  DECLARE_WAITQUEUE(wait, current);
+  add_wait_queue(&p->signal->wait_chldexit, &wait);
 
 repeat:
-    retval = -ECHILD;
+  retval = -ECHILD;
 
-    /* Global lock is heavy but safe for now. Ideally use p->sighand->lock */
-    irq_flags_t flags = spinlock_lock_irqsave(&tasklist_lock);
+  /* Global lock is heavy but safe for now. Ideally use p->sighand->lock */
+  irq_flags_t flags = spinlock_lock_irqsave(&tasklist_lock);
 
-    list_for_each_entry_safe(child, safe, &p->children, sibling) {
-        /* Filter by PID */
-        if (pid > 0) {
-            if (child->pid != pid) continue;
-        } else if (pid == 0) {
-            if (child->tgid != p->tgid) continue;
-        } else if (pid < -1) {
-            if (child->tgid != -pid) continue;
+  list_for_each_entry_safe(child, safe, &p->children, sibling) {
+    /* Filter by PID */
+    if (pid > 0) {
+      if (child->pid != pid)
+        continue;
+    } else if (pid == 0) {
+      if (child->tgid != p->tgid)
+        continue;
+    } else if (pid < -1) {
+      if (child->tgid != -pid)
+        continue;
+    }
+
+    /* Found a candidate child */
+    if (retval == -ECHILD)
+      retval = 0;
+
+    /* Check for ZOMBIE (exited) */
+    if (child->state == TASK_ZOMBIE) {
+      pid_t pid_val = child->pid;
+      if (status) {
+        int code = (child->exit_code << 8) & 0xFF00; /* Normal exit */
+        /* TODO: Handle signal termination encoding */
+        if (copy_to_user(status, &code, sizeof(int))) {
+          retval = -EFAULT;
+          spinlock_unlock_irqrestore(&tasklist_lock, flags);
+          goto end;
         }
+      }
 
-        /* Found a candidate child */
-        if (retval == -ECHILD) retval = 0;
+      if (ru) {
+        /* TODO: Aggregate usage from child */
+      }
 
-        /* Check for ZOMBIE (exited) */
-        if (child->state == TASK_ZOMBIE) {
-            pid_t pid_val = child->pid;
-            if (status) {
-                int code = (child->exit_code << 8) & 0xFF00; /* Normal exit */
-                /* TODO: Handle signal termination encoding */
-                if (copy_to_user(status, &code, sizeof(int))) {
-                    retval = -EFAULT;
-                    spinlock_unlock_irqrestore(&tasklist_lock, flags);
-                    goto end;
-                }
-            }
-            
-            if (ru) {
-                /* TODO: Aggregate usage from child */
-            }
+      /* Release the zombie */
+      free_task(child);
+      retval = pid_val;
+      spinlock_unlock_irqrestore(&tasklist_lock, flags);
+      goto end;
+    }
 
-            /* Release the zombie */
-            free_task(child);
-            retval = pid_val;
-            spinlock_unlock_irqrestore(&tasklist_lock, flags);
-            goto end;
+    /* Check for STOPPED */
+    if ((options & WUNTRACED) && (child->state == TASK_STOPPED)) {
+      /* We need a flag to say if we already reported this stop */
+      /* For now, simplified: always report */
+      pid_t pid_val = child->pid;
+      if (status) {
+        int code = 0x7F; /* WIFSTOPPED */
+        /* Signal number in high bits? verify format */
+        if (copy_to_user(status, &code, sizeof(int))) {
+          retval = -EFAULT;
+          spinlock_unlock_irqrestore(&tasklist_lock, flags);
+          goto end;
         }
-
-        /* Check for STOPPED */
-        if ((options & WUNTRACED) && (child->state == TASK_STOPPED)) {
-            /* We need a flag to say if we already reported this stop */
-            /* For now, simplified: always report */
-            pid_t pid_val = child->pid;
-            if (status) {
-                int code = 0x7F; /* WIFSTOPPED */
-                /* Signal number in high bits? verify format */
-                if (copy_to_user(status, &code, sizeof(int))) {
-                    retval = -EFAULT;
-                    spinlock_unlock_irqrestore(&tasklist_lock, flags);
-                    goto end;
-                }
-            }
-            retval = pid_val;
-            spinlock_unlock_irqrestore(&tasklist_lock, flags);
-            goto end;
-        }
+      }
+      retval = pid_val;
+      spinlock_unlock_irqrestore(&tasklist_lock, flags);
+      goto end;
     }
+  }
 
-    spinlock_unlock_irqrestore(&tasklist_lock, flags);
+  spinlock_unlock_irqrestore(&tasklist_lock, flags);
 
-    if (retval == -ECHILD) {
-        /* No children matched the PID spec */
-        goto end;
-    }
+  if (retval == -ECHILD) {
+    /* No children matched the PID spec */
+    goto end;
+  }
 
-    if (options & WNOHANG) {
-        retval = 0;
-        goto end;
-    }
+  if (options & WNOHANG) {
+    retval = 0;
+    goto end;
+  }
 
-    set_current_state(TASK_INTERRUPTIBLE);
-    schedule();
+  set_current_state(TASK_INTERRUPTIBLE);
+  schedule();
 
-    if (signal_pending(current)) {
-        retval = -ERESTARTSYS;
-        goto end;
-    }
-    
-    goto repeat;
+  if (signal_pending(current)) {
+    retval = -ERESTARTSYS;
+    goto end;
+  }
+
+  goto repeat;
 
 end:
-    remove_wait_queue(&p->signal->wait_chldexit, &wait);
-    set_current_state(TASK_RUNNING);
-    return retval;
+  remove_wait_queue(&p->signal->wait_chldexit, &wait);
+  set_current_state(TASK_RUNNING);
+  return retval;
 }
 
 long sys_wait4(pid_t pid, int *status, int options, struct rusage *ru) {
-    return do_wait(pid, status, options, ru);
+  return do_wait(pid, status, options, ru);
 }
 
 long sys_waitpid(pid_t pid, int *status, int options) {
-    return do_wait(pid, status, options, nullptr);
+  return do_wait(pid, status, options, nullptr);
 }
-

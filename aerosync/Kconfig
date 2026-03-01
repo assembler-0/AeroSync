@@ -16,6 +16,10 @@ config KDB
       Call kdb function after panic, effiectively handling
       kernel control to KDB
 
+config PANIC_ON_INIT_FAIL
+    bool "Panic on init spawn failure"
+    default n
+
 menu "synchronization"
 
 config TICKET_SPINLOCKS

@@ -30,7 +30,7 @@ if(AEROSYNC_INITRD)
     string(APPEND LIMINE_MODULES "    module_path: boot():/module/${INITRD_NAME}\n")
     set(INITRD_COPY_COMMAND COMMAND ${CMAKE_COMMAND} -E copy ${AEROSYNC_INITRD} ${CMAKE_CURRENT_BINARY_DIR}/bootdir/module/${INITRD_NAME})
     set(INITRD_DEPENDENCY ${AEROSYNC_INITRD})
-    set(AEROSYNC_INITRD_CMDLINE "initrd=${INITRD_NAME}")
+    set(AEROSYNC_INITRD_CMDLINE "initrd=/module/${INITRD_NAME}")
 endif()
 
 configure_file(

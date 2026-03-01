@@ -24,7 +24,7 @@
 #include <aerosync/export.h>
 #include <aerosync/panic.h>
 #include <aerosync/resdomain.h>
-#include <aerosync/timer.h>
+#include <arch/x86_64/tsc.h>
 #include <arch/x86_64/mm/paging.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/mm/tlb.h>
@@ -102,6 +102,7 @@ static void vma_cache_update(struct mm_struct *mm, struct vm_area_struct *vma) {
  * ======================================================================= */
 
 static struct kmem_cache *vma_cachep;
+static struct crypto_tfm *vma_aslr_rng = nullptr;
 
 int vma_cache_init(void) {
   vma_cachep =
@@ -110,6 +111,14 @@ int vma_cache_init(void) {
   if (!vma_cachep) {
     return -ENOMEM;
   }
+
+  /* Pre-initialize ASLR RNG to prevent deadlocks in VMA allocation path */
+  vma_aslr_rng = crypto_alloc_tfm("sw_rng", CRYPTO_ALG_TYPE_RNG);
+  if (!vma_aslr_rng) {
+    printk(KERN_WARNING VMA_CLASS
+           "Failed to allocate ASLR RNG, falling back to TSC\n");
+  }
+
   return 0;
 }
 
@@ -252,7 +261,7 @@ struct mm_struct *mm_create(void) {
     return nullptr;
   }
 
-  /* Initialize PTL for the new PML4 root */
+  /* Initialize PTL for the new PML root */
   struct page *pg = phys_to_page(pml_root_phys);
   spinlock_init(&pg->ptl);
 
@@ -1125,7 +1134,6 @@ uint64_t do_mmap(struct mm_struct *mm, uint64_t addr, size_t len, uint64_t prot,
 
   /* 5. Handle File-backed or SHM mapping */
   if (file) {
-    extern int vfs_mmap(struct file * file, struct vm_area_struct * vma);
     int ret = vfs_mmap(file, vma);
     if (ret < 0) {
       vma_free(vma);
@@ -1876,30 +1884,15 @@ uint64_t vma_find_free_region_aligned(struct mm_struct *mm, size_t size,
    * This prevents excessive fragmentation in small heaps.
    */
   if ((range_end - range_start) > (total_needed + 0x1000000)) {
-    // 16MB threshold
-    static struct crypto_tfm *vma_aslr_rng = nullptr;
-    static DEFINE_SPINLOCK(vma_aslr_lock);
     uint64_t max_offset = range_end - range_start - total_needed;
     uint64_t offset = 0;
 
-    if (unlikely(!vma_aslr_rng)) {
-      spinlock_lock(&vma_aslr_lock);
-      if (!vma_aslr_rng) {
-        vma_aslr_rng = crypto_alloc_tfm("hw_rng", CRYPTO_ALG_TYPE_RNG);
-        if (!vma_aslr_rng)
-          vma_aslr_rng = crypto_alloc_tfm("sw_rng", CRYPTO_ALG_TYPE_RNG);
-      }
-      spinlock_unlock(&vma_aslr_lock);
-    }
-
     if (likely(vma_aslr_rng)) {
-      irq_flags_t flags = spinlock_lock_irqsave(&vma_aslr_lock);
       crypto_rng_generate(vma_aslr_rng, (uint8_t *)&offset, sizeof(offset));
-      spinlock_unlock_irqrestore(&vma_aslr_lock, flags);
       range_start += ALIGN(offset % max_offset, alignment);
     } else {
       /* Fallback to RDTSc bit mix */
-      uint64_t tsc = __builtin_ia32_rdtsc();
+      uint64_t tsc = rdtsc();
       tsc ^= (tsc >> 21);
       tsc ^= (tsc << 37);
       tsc ^= (tsc >> 4);

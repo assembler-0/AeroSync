@@ -13,37 +13,37 @@
 #define KERN_RAW "$8$"
 
 #ifdef CONFIG_PRINTK_COLOR
-#define ANS_RESET     "\033[0m"
-#define ANS_RED       "\033[31m"
-#define ANS_GREEN     "\033[32m"
-#define ANS_YELLOW    "\033[33m"
-#define ANS_BLUE      "\033[34m"
-#define ANS_MAGENTA   "\033[35m"
-#define ANS_CYAN      "\033[36m"
-#define ANS_WHITE     "\033[37m"
-#define ANS_BRED      "\033[91m"
-#define ANS_BGREEN    "\033[92m"
-#define ANS_BYELLOW   "\033[93m"
-#define ANS_BBLUE     "\033[94m"
-#define ANS_BMAGENTA  "\033[95m"
-#define ANS_BCYAN     "\033[96m"
-#define ANS_BWHITE    "\033[97m"
+#define ANS_RESET "\033[0m"
+#define ANS_RED "\033[31m"
+#define ANS_GREEN "\033[32m"
+#define ANS_YELLOW "\033[33m"
+#define ANS_BLUE "\033[34m"
+#define ANS_MAGENTA "\033[35m"
+#define ANS_CYAN "\033[36m"
+#define ANS_WHITE "\033[37m"
+#define ANS_BRED "\033[91m"
+#define ANS_BGREEN "\033[92m"
+#define ANS_BYELLOW "\033[93m"
+#define ANS_BBLUE "\033[94m"
+#define ANS_BMAGENTA "\033[95m"
+#define ANS_BCYAN "\033[96m"
+#define ANS_BWHITE "\033[97m"
 #else
-#define ANS_RESET     ""
-#define ANS_RED       ""
-#define ANS_GREEN     ""
-#define ANS_YELLOW    ""
-#define ANS_BLUE      ""
-#define ANS_MAGENTA   ""
-#define ANS_CYAN      ""
-#define ANS_WHITE     ""
-#define ANS_BRED      ""
-#define ANS_BGREEN    ""
-#define ANS_BYELLOW   ""
-#define ANS_BBLUE     ""
-#define ANS_BMAGENTA  ""
-#define ANS_BCYAN     ""
-#define ANS_BWHITE    ""
+#define ANS_RESET ""
+#define ANS_RED ""
+#define ANS_GREEN ""
+#define ANS_YELLOW ""
+#define ANS_BLUE ""
+#define ANS_MAGENTA ""
+#define ANS_CYAN ""
+#define ANS_WHITE ""
+#define ANS_BRED ""
+#define ANS_BGREEN ""
+#define ANS_BYELLOW ""
+#define ANS_BBLUE ""
+#define ANS_BMAGENTA ""
+#define ANS_BCYAN ""
+#define ANS_BWHITE ""
 #endif
 
 // Print functions (*ln functions implicitlt adds a newline)
@@ -56,7 +56,7 @@ int vprintkln(const char *fmt, va_list args);
 
 typedef struct printk_backend {
   const char *name;
-  int priority;              // bigger = preferred
+  int priority; // bigger = preferred
   fn(void, putc, char c);
   fn(int, probe, void);
   fn(int, init, void *payload);
@@ -66,10 +66,12 @@ typedef struct printk_backend {
   fn(int, resume, void);
 } printk_backend_t;
 
-static int generic_backend_init(void *payload) { (void)payload; return 0; }
+static int generic_backend_init(void *payload) {
+  (void)payload;
+  return 0;
+}
 
 #define PRINTK_BACKEND_NAME(b) (b ? b->name : nullptr)
-
 
 // Initialize printing subsystem
 void printk_register_backend(const printk_backend_t *backend);
@@ -107,7 +109,8 @@ void printk_enable(void);
 /**
  * @function printk_auto_select_backend(1) - select best backend
  * @param not exclude backend name
- * @exception printk_auto_select_backend will never return the current active backend
+ * @exception printk_auto_select_backend will never return the current active
+ * backend
  */
 const printk_backend_t *printk_auto_select_backend(const char *not);
 
@@ -118,42 +121,50 @@ int __must_check printk_init_async(void);
 
 typedef struct ratelimit_state {
   spinlock_t lock;
-  int interval;      // interval in ms
-  int burst;         // max messages in interval
-  int printed;       // messages printed in current interval
-  int missed;        // messages dropped
-  uint64_t begin;    // interval start time in ns
+  int interval;   // interval in ms
+  int burst;      // max messages in interval
+  int printed;    // messages printed in current interval
+  int missed;     // messages dropped
+  uint64_t begin; // interval start time in ns
 } ratelimit_state_t;
 
-#define RATELIMIT_STATE_INIT(name, interval_ms, burst_count) { \
-  .lock = 0, \
-  .interval = interval_ms, \
-  .burst = burst_count, \
-  .printed = 0, \
-  .missed = 0, \
-  .begin = 0 \
-}
+#define RATELIMIT_STATE_INIT(name, interval_ms, burst_count)                   \
+  {.lock = 0,                                                                  \
+   .interval = interval_ms,                                                    \
+   .burst = burst_count,                                                       \
+   .printed = 0,                                                               \
+   .missed = 0,                                                                \
+   .begin = 0}
 
-#define DEFINE_RATELIMIT_STATE(name, interval_ms, burst_count) \
+#define DEFINE_RATELIMIT_STATE(name, interval_ms, burst_count)                 \
   ratelimit_state_t name = RATELIMIT_STATE_INIT(name, interval_ms, burst_count)
 
 int ___ratelimit(ratelimit_state_t *rs, const char *func);
 
-#define printk_ratelimited(rs, fmt, ...) ({ \
-  int __ret = 0; \
-  if (___ratelimit(rs, __func__)) \
-    __ret = printk(fmt, ##__VA_ARGS__); \
-  __ret; \
-})
+#define printk_ratelimited(rs, fmt, ...)                                       \
+  ({                                                                           \
+    int __ret = 0;                                                             \
+    if (___ratelimit(rs, __func__))                                            \
+      __ret = printk(fmt, ##__VA_ARGS__);                                      \
+    __ret;                                                                     \
+  })
 
-#define pr_emerg_ratelimited(rs, fmt, ...) printk_ratelimited(rs, KERN_EMERG fmt, ##__VA_ARGS__)
-#define pr_alert_ratelimited(rs, fmt, ...) printk_ratelimited(rs, KERN_ALERT fmt, ##__VA_ARGS__)
-#define pr_crit_ratelimited(rs, fmt, ...) printk_ratelimited(rs, KERN_CRIT fmt, ##__VA_ARGS__)
-#define pr_err_ratelimited(rs, fmt, ...) printk_ratelimited(rs, KERN_ERR fmt, ##__VA_ARGS__)
-#define pr_warn_ratelimited(rs, fmt, ...) printk_ratelimited(rs, KERN_WARNING fmt, ##__VA_ARGS__)
-#define pr_notice_ratelimited(rs, fmt, ...) printk_ratelimited(rs, KERN_NOTICE fmt, ##__VA_ARGS__)
-#define pr_info_ratelimited(rs, fmt, ...) printk_ratelimited(rs, KERN_INFO fmt, ##__VA_ARGS__)
-#define pr_debug_ratelimited(rs, fmt, ...) printk_ratelimited(rs, KERN_DEBUG fmt, ##__VA_ARGS__)
+#define pr_emerg_ratelimited(rs, fmt, ...)                                     \
+  printk_ratelimited(rs, KERN_EMERG fmt, ##__VA_ARGS__)
+#define pr_alert_ratelimited(rs, fmt, ...)                                     \
+  printk_ratelimited(rs, KERN_ALERT fmt, ##__VA_ARGS__)
+#define pr_crit_ratelimited(rs, fmt, ...)                                      \
+  printk_ratelimited(rs, KERN_CRIT fmt, ##__VA_ARGS__)
+#define pr_err_ratelimited(rs, fmt, ...)                                       \
+  printk_ratelimited(rs, KERN_ERR fmt, ##__VA_ARGS__)
+#define pr_warn_ratelimited(rs, fmt, ...)                                      \
+  printk_ratelimited(rs, KERN_WARNING fmt, ##__VA_ARGS__)
+#define pr_notice_ratelimited(rs, fmt, ...)                                    \
+  printk_ratelimited(rs, KERN_NOTICE fmt, ##__VA_ARGS__)
+#define pr_info_ratelimited(rs, fmt, ...)                                      \
+  printk_ratelimited(rs, KERN_INFO fmt, ##__VA_ARGS__)
+#define pr_debug_ratelimited(rs, fmt, ...)                                     \
+  printk_ratelimited(rs, KERN_DEBUG fmt, ##__VA_ARGS__)
 
 #define pr_emerg(fmt, ...) printk(KERN_EMERG fmt, ##__VA_ARGS__)
 #define pr_alert(fmt, ...) printk(KERN_ALERT fmt, ##__VA_ARGS__)
@@ -163,3 +174,4 @@ int ___ratelimit(ratelimit_state_t *rs, const char *func);
 #define pr_notice(fmt, ...) printk(KERN_NOTICE fmt, ##__VA_ARGS__)
 #define pr_info(fmt, ...) printk(KERN_INFO fmt, ##__VA_ARGS__)
 #define pr_debug(fmt, ...) printk(KERN_DEBUG fmt, ##__VA_ARGS__)
+#define pr_cont(fmt, ...) printk(KERN_RAW fmt, ##__VA_ARGS__)

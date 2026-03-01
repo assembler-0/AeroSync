@@ -5,6 +5,8 @@
  * @file mm/filemap.c
  * @brief Advanced Unified Buffer Cache (UBC) & Page Cache implementation
  * @copyright (C) 2025-2026 assembler-0
+ *
+ * This file is part of the AeroSync kernel.
  */
 
 #include <mm/vm_object.h>
@@ -140,7 +142,12 @@ int filemap_fault(struct vm_object *obj, struct vm_area_struct *vma, struct vm_f
   }
   up_read(&obj->lock);
 
-  /* 2. Slow path: Readahead and Read */
+  /* 2. Bounds check - use rounded up size to support partial pages */
+  if (vmf->pgoff >= ((obj->size + PAGE_SIZE - 1) >> PAGE_SHIFT)) {
+    return VM_FAULT_SIGSEGV;
+  }
+
+  /* 3. Slow path: Readahead and Read */
   ubc_readahead(obj, vmf->pgoff);
 
   /* Allocate for current fault */

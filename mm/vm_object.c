@@ -309,7 +309,8 @@ static int anon_obj_fault(struct vm_object *obj, struct vm_area_struct *vma, str
   down_read(&obj->lock);
 
   // 1. Bounds check
-  if (vmf->pgoff >= (obj->size >> PAGE_SHIFT)) {
+  // Use DIV_ROUND_UP equivalent for size check to allow partial pages at EOF
+  if (vmf->pgoff >= ((obj->size + PAGE_SIZE - 1) >> PAGE_SHIFT)) {
     up_read(&obj->lock);
     return VM_FAULT_SIGSEGV;
   }
@@ -634,7 +635,7 @@ static int vnode_obj_fault(struct vm_object *obj, struct vm_area_struct *vma, st
   up_read(&obj->lock);
 
   /* 2. Bounds check */
-  if (vmf->pgoff >= (obj->size >> PAGE_SHIFT)) return VM_FAULT_SIGSEGV;
+  if (vmf->pgoff >= ((obj->size + PAGE_SIZE - 1) >> PAGE_SHIFT)) return VM_FAULT_SIGSEGV;
 
   /* 3. Allocate a new folio */
   int nid = vma ? vma->preferred_node : obj->preferred_node;
@@ -1223,7 +1224,7 @@ void vm_obj_stress_test(void) {
   /* 1. Create a base object */
   struct vm_object *base = vm_object_anon_create(PAGE_SIZE * 4);
   if (!base) {
-    panic(VMM_CLASS "vm_object: Failed to create base object\n");
+    panic(VMM_CLASS "vm_object: Failed to create base object");
     return;
   }
 
@@ -1241,7 +1242,7 @@ void vm_obj_stress_test(void) {
   for (int i = 0; i < levels; i++) {
     struct vm_object *shadow = vm_object_shadow_create(curr, 0, PAGE_SIZE * 4);
     if (!shadow) {
-      panic(VMM_CLASS "vm_object: Failed at shadow level %d\n", i);
+      panic(VMM_CLASS "vm_object: Failed at shadow level %d", i);
       break;
     }
     
@@ -1261,7 +1262,7 @@ void vm_obj_stress_test(void) {
         /* Verify data */
         uint8_t *data = pmm_phys_to_virt(folio_to_phys(vmf.folio));
         if (data[0] != 0xAA) {
-          panic(VMM_CLASS "vm_object: Data corruption at level %d!\n", i);
+          panic(VMM_CLASS "vm_object: Data corruption at level %d", i);
         }
         folio_put(vmf.folio);
       }

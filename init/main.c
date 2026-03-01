@@ -27,13 +27,13 @@
 #include <aerosync/ksymtab.h>
 #include <aerosync/panic.h>
 #include <aerosync/percpu.h>
-#include <aerosync/sysintf/acpica.h>
 #include <aerosync/rcu.h>
 #include <aerosync/resdomain.h>
 #include <aerosync/sched/process.h>
 #include <aerosync/sched/sched.h>
 #include <aerosync/softirq.h>
 #include <aerosync/sysintf/acpi.h>
+#include <aerosync/sysintf/acpica.h>
 #include <aerosync/sysintf/device.h>
 #include <aerosync/sysintf/fw.h>
 #include <aerosync/sysintf/ic.h>
@@ -65,11 +65,11 @@
 #include <mm/ksm.h>
 #include <mm/shm.h>
 #include <mm/slub.h>
+#include <mm/vfs.h>
 #include <mm/vm_object.h>
 #include <mm/vma.h>
 #include <mm/vmalloc.h>
 #include <mm/zmm.h>
-#include <mm/vfs.h>
 
 static alignas(16) struct task_struct bsp_task;
 
@@ -85,11 +85,11 @@ static int __late_init __noinline __sysv_abi system_load_extensions(void) {
     }
   } else {
     printk(KERN_NOTICE FKX_CLASS
-           "no modules found via LMM"
-           ", you probably do not want this"
-           ", this build of AeroSync does not have "
-           "any built-in hardware drivers"
-           ", expect exponential lack of hardware support.\n");
+      "no modules found via LMM"
+      ", you probably do not want this"
+      ", this build of AeroSync does not have "
+      "any built-in hardware drivers"
+      ", expect exponential lack of hardware support.\n");
     return -ENOSYS;
   }
   return 0;
@@ -108,7 +108,7 @@ static int __late_init __noinline __sysv_abi system_load_modules(void) {
 
 static int __late_init __noreturn __noinline __sysv_abi
 kernel_init(void *unused) {
-  (void)unused;
+  (void) unused;
 
   printk(KERN_INFO KERN_CLASS "finishing system initialization\n");
   fkx_init_module_class(FKX_GENERIC_CLASS);
@@ -143,19 +143,33 @@ kernel_init(void *unused) {
 
   aerosync_extra_init(system_load_modules);
 
-  printk(KERN_DEBUG KERN_CLASS "attempting to run init process: %s\n",
-         CONFIG_INIT_PATH);
-  const int ret = run_init_process(CONFIG_INIT_PATH);
-  if (ret < 0) {
-    printk(KERN_ERR KERN_CLASS "failed to execute %s. (%s)\n",
-           CONFIG_INIT_PATH, errname(ret));
-    printkln(KERN_ERR KERN_CLASS "attempted to kill init.");
-  }
-
   if (cmdline_find_option_bool(current_cmdline, "fwinfo"))
     fw_dump_hardware_info();
 
-  printkln(KERN_CLASS "AeroSync global initialization done.");
+  printk(KERN_CLASS "AeroSync global initialization done.\n");
+
+  char init_path[128];
+  cmdline_find_option(current_cmdline, "init", init_path, sizeof(init_path));
+  if (init_path[0] == '\0') {
+    strcpy(init_path, CONFIG_INIT_PATH);
+  }
+
+  printk(KERN_DEBUG KERN_CLASS "attempting to run init process: %s\n",
+         init_path);
+
+  const int ret = run_init_process(init_path);
+  if (ret < 0)
+#ifdef CONFIG_PANIC_ON_INIT_FAIL
+    panic(KERN_CLASS "attempted to kill init (%s). (%s)", init_path, errname(ret));
+#else
+    printk(KERN_ALERT KERN_CLASS "attempted to kill init (%s). (%s)", init_path, errname(ret));
+#endif
+  else {
+    struct task_struct *curr = get_current();
+    uint8_t *kstack_top = (uint8_t *) curr->stack + (PAGE_SIZE * 4);
+    cpu_regs *regs = (struct cpu_regs *) (kstack_top - sizeof(struct cpu_regs));
+    enter_userspace(regs);
+  }
 
   idle_loop();
 }
@@ -193,8 +207,8 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
   if (get_executable_file_request()->response &&
       get_executable_file_request()->response->executable_file) {
     aerosync_core_init(
-        ksymtab_init,
-        get_executable_file_request()->response->executable_file->address);
+      ksymtab_init,
+      get_executable_file_request()->response->executable_file->address);
   }
 
   if (get_cmdline_request()->response) {
@@ -214,11 +228,11 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
       printk(KERN_CLASS
              "bootloader info: %s %s exec_usec: %llu init_usec: %llu\n",
              get_bootloader_info_request()->response->name
-                 ? get_bootloader_info_request()->response->name
-                 : "(null)",
+               ? get_bootloader_info_request()->response->name
+               : "(null)",
              get_bootloader_info_request()->response->version
-                 ? get_bootloader_info_request()->response->version
-                 : "(null-version)",
+               ? get_bootloader_info_request()->response->version
+               : "(null-version)",
              get_bootloader_performance_request()->response->exec_usec,
              get_bootloader_performance_request()->response->init_usec);
     }
@@ -226,18 +240,18 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
     if (get_fw_request()->response) {
       printk(FW_CLASS "firmware type: %s\n",
              get_fw_request()->response->firmware_type ==
-                     LIMINE_FIRMWARE_TYPE_EFI64
-                 ? "UEFI (64-bit)"
-             : get_fw_request()->response->firmware_type ==
-                     LIMINE_FIRMWARE_TYPE_EFI32
-                 ? "UEFI (32-bit)"
-             : get_fw_request()->response->firmware_type ==
+             LIMINE_FIRMWARE_TYPE_EFI64
+               ? "UEFI (64-bit)"
+               : get_fw_request()->response->firmware_type ==
+                 LIMINE_FIRMWARE_TYPE_EFI32
+                   ? "UEFI (32-bit)"
+                   : get_fw_request()->response->firmware_type ==
                      LIMINE_FIRMWARE_TYPE_X86BIOS
-                 ? "BIOS (x86)"
-             : get_fw_request()->response->firmware_type ==
-                     LIMINE_FIRMWARE_TYPE_SBI
-                 ? "SBI"
-                 : "(unknown)");
+                       ? "BIOS (x86)"
+                       : get_fw_request()->response->firmware_type ==
+                         LIMINE_FIRMWARE_TYPE_SBI
+                           ? "SBI"
+                           : "(unknown)");
     }
   }
 
@@ -254,14 +268,14 @@ no_cmdline:
   }
 
   unmet_cond_crit(!get_memmap_request()->response ||
-                  !get_hhdm_request()->response);
+    !get_hhdm_request()->response);
 
   aerosync_core_init(cpu_features_init);
   aerosync_core_init(pmm_init, get_memmap_request()->response,
                      get_hhdm_request()->response->offset,
                      get_rsdp_request()->response
-                         ? get_rsdp_request()->response->address
-                         : nullptr);
+                     ? get_rsdp_request()->response->address
+                     : nullptr);
   aerosync_core_init(lru_init);
   aerosync_core_init(vmm_init);
   aerosync_core_init(slab_init);

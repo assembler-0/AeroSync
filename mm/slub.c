@@ -158,7 +158,7 @@ static void check_redzone(kmem_cache_t *s, void *obj) {
     return;
   uint64_t *redzone = (uint64_t *)((char *)obj + s->inuse);
   if (unlikely(*redzone != STACK_CANARY_VALUE)) {
-    panic("SLUB: Redzone corruption detected in %s at %p\n", s->name, obj);
+    panic("SLUB: Redzone corruption detected in %s at %p", s->name, obj);
   }
 #else
   (void)s; (void)obj;
@@ -1174,7 +1174,7 @@ int slab_init(void) {
 
 void *kmalloc_node(size_t size, int node) {
   if (unlikely(size > SLAB_MAX_SIZE))
-    return vmalloc(size);
+    return vmalloc_node(size, node);
 
   int idx = kmalloc_index(size);
   if (unlikely(idx < 0))

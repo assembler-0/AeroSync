@@ -1502,7 +1502,7 @@ int vmm_init(void) {
 }
 
 void vmm_test(void) {
-  printk(KERN_DEBUG VMM_CLASS "Running VMM Production Stress Test...\n");
+  printk(KERN_DEBUG VMM_CLASS "Running VMM Stress Test...\n");
 
   /* Test 1: Basic Map/Unmap (Existing logic, cleaned up) */
   uint64_t test_virt = 0xDEADC0DE000;
@@ -1572,7 +1572,7 @@ void vmm_test(void) {
   mm_destroy(hp_mm);
   printk(KERN_DEBUG VMM_CLASS "  - Huge Page Shatter Stress: OK\n");
 
-  printk(KERN_DEBUG VMM_CLASS "VMM Production Stress Test Passed.\n");
+  printk(KERN_DEBUG VMM_CLASS "VMM Stress Test Passed.\n");
 }
 
 /**

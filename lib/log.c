@@ -18,15 +18,15 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x86_64/tsc.h>
 #include <aerosync/compiler.h>
+#include <aerosync/export.h>
 #include <aerosync/sched/process.h>
 #include <aerosync/sched/sched.h>
 #include <aerosync/spinlock.h>
-#include <aerosync/export.h>
+#include <arch/x86_64/tsc.h>
 #include <lib/log.h>
-#include <linux/kfifo.h>
 #include <lib/string.h>
+#include <linux/kfifo.h>
 
 // Simple global ring buffer for log messages, Linux-like but minimal
 
@@ -57,7 +57,8 @@ static int klogd_thread(void *data);
 static DEFINE_KFIFO(klog_fifo, uint8_t, KLOG_RING_SIZE);
 
 static int klog_console_level = KLOG_INFO;
-static log_sink_putc_t klog_console_sink = nullptr; // defaults to ring buffer only
+static log_sink_putc_t klog_console_sink =
+    nullptr; // defaults to ring buffer only
 static DEFINE_SPINLOCK(klog_lock);
 
 // Serialize immediate console output across CPUs to prevent mangled lines
@@ -126,7 +127,8 @@ int log_try_init_async(void) {
   if (klog_async_enabled)
     return 1;
   // If scheduler isn't available or kthread creation fails, return 0.
-  struct task_struct *t = kthread_create(klogd_thread, nullptr, "kthread/klogd");
+  struct task_struct *t =
+      kthread_create(klogd_thread, nullptr, "kthread/klogd");
   if (!t)
     return 0;
   kthread_run(t);
@@ -137,14 +139,9 @@ int log_try_init_async(void) {
 #endif
 
 static const char *const klog_prefixes[] = {
-  [KLOG_EMERG] = "[0] ",
-  [KLOG_ALERT] = "[1] ",
-  [KLOG_CRIT] = "[2] ",
-  [KLOG_ERR] = "[3] ",
-  [KLOG_WARNING] = "[4] ",
-  [KLOG_NOTICE] = "[5] ",
-  [KLOG_INFO] = "[6] ",
-  [KLOG_DEBUG] = "[7] ",
+    [KLOG_EMERG] = "[0] ", [KLOG_ALERT] = "[1] ",   [KLOG_CRIT] = "[2] ",
+    [KLOG_ERR] = "[3] ",   [KLOG_WARNING] = "[4] ", [KLOG_NOTICE] = "[5] ",
+    [KLOG_INFO] = "[6] ",  [KLOG_DEBUG] = "[7] ",
 };
 
 static void __no_cfi console_emit_prefix_ts(int level, uint64_t ts_ns) {
@@ -189,18 +186,11 @@ static void log_flush_fifo_locked(void) {
   while (!kfifo_is_empty(&klog_fifo)) {
     klog_hdr_t hdr;
     irq_flags_t flags = spinlock_lock_irqsave(&klog_lock);
-    
+
     // Peek at header
     if (kfifo_out_peek(&klog_fifo, (void *)&hdr, sizeof(hdr)) < sizeof(hdr)) {
       spinlock_unlock_irqrestore(&klog_lock, flags);
       break;
-    }
-
-    if (hdr.flags & KLOGF_SYNC_EMITTED) {
-      // Already printed, just skip it in the FIFO
-      kfifo_skip_count(&klog_fifo, sizeof(hdr) + hdr.len);
-      spinlock_unlock_irqrestore(&klog_lock, flags);
-      continue;
     }
 
     // Read the record fully
@@ -208,20 +198,32 @@ static void log_flush_fifo_locked(void) {
     size_t to_read = hdr.len;
     if (to_read > sizeof(out_buf) - 1)
       to_read = sizeof(out_buf) - 1;
-    
-    unsigned int n = kfifo_out(&klog_fifo, (void *)out_buf, (unsigned int)to_read);
+
+    unsigned int n =
+        kfifo_out(&klog_fifo, (void *)out_buf, (unsigned int)to_read);
     if (n < hdr.len) {
       kfifo_skip_count(&klog_fifo, hdr.len - n);
     }
     spinlock_unlock_irqrestore(&klog_lock, flags);
 
     if (hdr.level <= effective_console_level || hdr.level == KLOG_RAW) {
-      if (hdr.level != KLOG_RAW) console_emit_prefix_ts(hdr.level, hdr.ts_ns);
+      if (hdr.level != KLOG_RAW)
+        console_emit_prefix_ts(hdr.level, hdr.ts_ns);
       for (unsigned int i = 0; i < n; i++)
         klog_console_sink(out_buf[i]);
     }
   }
 }
+
+void log_flush(void) {
+  if (!klog_console_sink)
+    return;
+
+  irq_flags_t f = spinlock_lock_irqsave(&klog_console_lock);
+  log_flush_fifo_locked();
+  spinlock_unlock_irqrestore(&klog_console_lock, f);
+}
+EXPORT_SYMBOL(log_flush);
 
 static int klog_sync_threshold = KLOG_ERR; // ERR and above stay synchronous
 
@@ -287,16 +289,6 @@ int __no_cfi log_write_str(int level, const char *msg) {
     do_sync_emit = 0;
 
   uint8_t flags_hdr = 0;
-  if (do_sync_emit) {
-    irq_flags_t f;
-    f = spinlock_lock_irqsave(&klog_console_lock);
-    if (level != KLOG_RAW) console_emit_prefix_ts(level, ts_ns);
-    const char *p = msg;
-    while (*p)
-      klog_console_sink(*p++);
-    spinlock_unlock_irqrestore(&klog_console_lock, f);
-    flags_hdr |= KLOGF_SYNC_EMITTED;
-  }
 
   // Always store in kfifo regardless of sink presence
   irq_flags_t flags;
@@ -314,6 +306,9 @@ int __no_cfi log_write_str(int level, const char *msg) {
   kfifo_in(&klog_fifo, (void *)msg, (unsigned int)len);
 
   spinlock_unlock_irqrestore(&klog_lock, flags);
+
+  if (do_sync_emit)
+    log_flush();
 
   if (percpu_ready())
     this_cpu_dec(printk_recursion);
@@ -348,12 +343,14 @@ int log_init_async(void) {
     spinlock_unlock_irqrestore(&klog_lock, f);
   }
 
-  struct task_struct *t = kthread_create(klogd_thread, nullptr, "kthread/klogd");
+  struct task_struct *t =
+      kthread_create(klogd_thread, nullptr, "kthread/klogd");
   if (t) {
     kthread_run(t);
     klogd_task = t;
     klog_async_enabled = 1;
-  } else return -ENOMEM;
+  } else
+    return -ENOMEM;
   return 0;
 }
 
