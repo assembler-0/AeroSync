@@ -25,12 +25,42 @@
 #include <aerosync/fkx/fkx.h>
 #include <aerosync/panic.h>
 #include <lib/printk.h>
+#include <aerosync/atomic.h>
+#include <arch/x86_64/smp.h>
 
 static const panic_ops_t *registered_backends[MAX_PANIC_HANDLERS];
 static int num_registered_backends = 0;
 static const panic_ops_t *active_backend = nullptr;
 
+static atomic_t panic_cpu = ATOMIC_INIT(-1);
+
 #define transfer_active_control(fn) fn()
+
+/**
+ * __panic_smp_check - Arbitrate which CPU handles the panic
+ * 
+ * Returns true if the current CPU is the "master" panic CPU.
+ * Returns false if the current CPU should immediately halt.
+ */
+static bool __no_cfi __panic_smp_check(void) {
+    int cpu = (int)smp_get_id();
+    int expected = -1;
+
+    if (atomic_try_cmpxchg(&panic_cpu, &expected, cpu)) {
+        /* We are the first to panic, we are the master */
+        __x86_64_smp_send_stop();
+        return true;
+    }
+
+    if (expected == cpu) {
+        /* Recursion during panic! */
+        return true; 
+    }
+
+    /* Someone else is already panicking, just stop */
+    system_hlt();
+    return false;
+}
 
 void __no_cfi panic_register_handler(const panic_ops_t *ops) {
   if (num_registered_backends >= MAX_PANIC_HANDLERS) {
@@ -83,6 +113,8 @@ void __no_cfi panic_switch_handler(const char *name) {
 }
 
 void __no_cfi __exit __noinline __sysv_abi panic(const char *msg, ...) {
+  if (!__panic_smp_check()) __unreachable();
+
   va_list va;
   va_start(va, msg);
   char buff[128];
@@ -99,6 +131,8 @@ void __no_cfi __exit __noinline __sysv_abi panic(const char *msg, ...) {
 EXPORT_SYMBOL(panic);
 
 void __no_cfi __exit __noinline __noreturn __sysv_abi panic_exception(cpu_regs *regs) {
+  if (!__panic_smp_check()) __unreachable();
+
   active_backend->panic_exception(regs);
 #ifdef CONFIG_KDB
   if (active_backend->kdb)
@@ -110,6 +144,8 @@ void __no_cfi __exit __noinline __noreturn __sysv_abi panic_exception(cpu_regs *
 EXPORT_SYMBOL(panic_exception);
 
 void __no_cfi __exit __noinline __noreturn __sysv_abi panic_early() {
+  if (!__panic_smp_check()) __unreachable();
+
   active_backend->panic_early();
 #ifdef CONFIG_KDB
   if (active_backend->kdb)

@@ -382,6 +382,34 @@ uint32_t smp_get_id(void) {
 }
 EXPORT_SYMBOL(smp_get_id);
 
+void __x86_64_smp_send_stop(void) {
+  if (!smp_is_active())
+    return;
+
+  int this_cpu = (int)smp_get_id();
+  for (int i = 0; i < (int)smp_get_cpu_count(); i++) {
+    if (i == this_cpu)
+      continue;
+
+    /* 
+     * Send NMI to other CPUs.
+     * Vector is technically ignored for NMI delivery mode, 
+     * but we use 2 as it is the architectural NMI vector.
+     * Delivery mode 4 (bits 8-10) is NMI.
+     */
+    ic_send_ipi(lapic_get_id_for_cpu(i), 2, 4 << 8);
+  }
+
+  /* 
+   * A short delay to allow other CPUs to enter the NMI handler
+   * and halt before we proceed with the master panic report.
+   */
+  for (volatile int i = 0; i < 1000000; i++) {
+    cpu_relax();
+  }
+}
+EXPORT_SYMBOL(__x86_64_smp_send_stop);
+
 int lapic_to_cpu(uint8_t lapic_id) {
   for (int i = 0; i < smp_get_cpu_count(); i++) {
     if (*per_cpu_ptr(cpu_apic_id, i) == (int) lapic_id) {

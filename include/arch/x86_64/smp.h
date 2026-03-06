@@ -16,6 +16,8 @@ uint32_t smp_get_id(void);
 
 int smp_is_active();
 
+void __x86_64_smp_send_stop(void);
+
 /* --- Scalable SMP Cross-CPU Calls --- */
 
 typedef void (*smp_call_func_t)(void *info);
