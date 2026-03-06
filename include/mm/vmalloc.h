@@ -181,7 +181,7 @@ extern const struct vmap_block_class vmap_block_classes[VMAP_BLOCK_CLASSES];
  * vmap_node: Per-NUMA node vmalloc management.
  * With Maple Tree, provides O(1) gap finding.
  */
-alignas(64) struct vmap_node {
+struct vmap_node {
 #ifdef CONFIG_VMALLOC_MAPLE_TREE
   struct maple_tree va_mt; /* Maple tree for address management */
 #else
@@ -199,13 +199,13 @@ alignas(64) struct vmap_node {
 
   uint64_t last_flush_time; /* For lazy flush timeout */
   int nid;
-};
+} __aligned(CACHE_LINE_SIZE);
 
 /*
  * vmap_pcp: Enhanced per-CPU virtual address cache.
  * Multiple size bins for better hit rate, batch refill for efficiency.
  */
-alignas(64) struct vmap_pcp {
+struct vmap_pcp {
   spinlock_t lock;
 
   /* Size-class bins: bin[i] holds ranges of (1 << i) pages */
@@ -222,7 +222,7 @@ alignas(64) struct vmap_pcp {
   unsigned long misses;
   unsigned long refills;
 #endif
-};
+} __aligned(CACHE_LINE_SIZE);
 
 /*
  * vmap_block_queue: Per-CPU queue of vmap_blocks with free space.

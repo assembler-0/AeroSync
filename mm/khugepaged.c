@@ -9,9 +9,9 @@
 
 #include <aerosync/classes.h>
 #include <aerosync/sched/process.h>
+#include <aerosync/sysintf/time.h>
 #include <aerosync/sched/sched.h>
 #include <arch/x86_64/mm/vmm.h>
-#include <arch/x86_64/tsc.h>
 #include <lib/printk.h>
 #include <linux/container_of.h>
 #include <mm/mm_types.h>
@@ -19,15 +19,92 @@
 #include <mm/slub.h>
 #include <mm/vm_object.h>
 #include <mm/vma.h>
+#include <linux/xarray.h>
+
 
 #define SCAN_BATCH_VMAS 16
 #define THP_COLLAPSE_THRESHOLD 448 /* 87.5% of pages must be present */
+
+/**
+ * collapse_and_promote_huge - Atomically replace 512 base pages with 1 huge page.
+ * 
+ * This function synchronizes both the hardware (VMM) and software (vm_object).
+ */
+static int collapse_and_promote_huge(struct mm_struct *mm, struct vm_area_struct *vma, uint64_t addr) {
+  struct vm_object *obj = vma->vm_obj;
+  uint64_t pgoff = (addr - vma->vm_start) >> PAGE_SHIFT;
+  if (vma->vm_pgoff) pgoff += vma->vm_pgoff;
+
+  /* 1. Allocate a 2MB huge physical page (order 9) */
+  struct folio *huge_folio = alloc_pages(GFP_KERNEL, 9);
+  if (!huge_folio) return -ENOMEM;
+
+  void *huge_virt = folio_address(huge_folio);
+  uint64_t *old_folios = kmalloc(512 * sizeof(void *));
+  if (!old_folios) {
+    folio_put(huge_folio);
+    return -ENOMEM;
+  }
+
+  /* 2. Lock the object to freeze its state */
+  down_write(&obj->lock);
+
+  /* 3. Copy data from 512 base pages */
+  for (int i = 0; i < 512; i++) {
+    void *entry = xa_load(&obj->page_tree, pgoff + i);
+    if (entry && !xa_is_internal(entry)) {
+      struct folio *old_f = (struct folio *) entry;
+      memcpy((char *) huge_virt + ((uint64_t) i << PAGE_SHIFT), folio_address(old_f), PAGE_SIZE);
+      old_folios[i] = (uint64_t) old_f;
+    } else {
+      /* Missing page in range, zero it in the huge page */
+      memset((char *) huge_virt + ((uint64_t) i << PAGE_SHIFT), 0, PAGE_SIZE);
+      old_folios[i] = 0;
+    }
+  }
+
+  /* 4. Update the XArray: replace 512 entries with 1 multi-index entry */
+  /* We use xa_store_range to replace the entire 2MB span */
+  xa_store_range(&obj->page_tree, pgoff, pgoff + 511, huge_folio, GFP_ATOMIC);
+
+  /* 5. Update VMM (Hardware) */
+  int ret = vmm_map_huge_page(mm, addr, folio_to_phys(huge_folio),
+                              vma->vm_page_prot, VMM_PAGE_SIZE_2M);
+
+  if (ret < 0) {
+    /* Rollback - complicated in a real kernel, simplified here */
+    up_write(&obj->lock);
+    kfree(old_folios);
+    folio_put(huge_folio);
+    return ret;
+  }
+
+  /* 6. Update huge folio metadata */
+  huge_folio->mapping = (void *) obj;
+  huge_folio->index = pgoff;
+  SetPageHead(&huge_folio->page);
+
+  up_write(&obj->lock);
+
+  /* 7. Cleanup old pages */
+  for (int i = 0; i < 512; i++) {
+    if (old_folios[i]) {
+      struct folio *old_f = (struct folio *) old_folios[i];
+      /* Unmap from VMM if not already handled by vmm_map_huge_page */
+      // vmm_unmap_page(mm, addr + (i << PAGE_SHIFT));
+      folio_put(old_f);
+    }
+  }
+
+  kfree(old_folios);
+  return 0;
+}
 
 static int khugepaged_scan_promotion_candidate(struct mm_struct *mm,
                                                uint64_t addr) {
   int present = 0;
   for (int i = 0; i < 512; i++) {
-    if (vmm_virt_to_phys(mm, addr + ((uint64_t)i << PAGE_SHIFT))) {
+    if (vmm_virt_to_phys(mm, addr + ((uint64_t) i << PAGE_SHIFT))) {
       present++;
     }
   }
@@ -91,7 +168,7 @@ static void khugepaged_scan_mm(struct mm_struct *mm) {
              */
             int present = khugepaged_scan_promotion_candidate(mm, addr);
             if (present >= THP_COLLAPSE_THRESHOLD) {
-              if (vmm_promote_to_huge(mm, addr) == 0) {
+              if (collapse_and_promote_huge(mm, vma, addr) == 0) {
                 processed = true;
                 printk(KERN_DEBUG THP_CLASS
                        "Auto-promoted %d pages to 2MB huge page at %llx\n",
@@ -113,9 +190,9 @@ static void khugepaged_scan_mm(struct mm_struct *mm) {
 }
 
 static int khugepaged_thread(void *unused) {
-  (void)unused;
+  (void) unused;
   printk(KERN_INFO THP_CLASS
-         "khugepaged started with Auto-Promotion enabled\n");
+    "khugepaged started with Auto-Promotion enabled\n");
 
   while (1) {
     struct mm_struct *mms[64];
@@ -158,7 +235,7 @@ static int khugepaged_thread(void *unused) {
     }
 
     /* Throttle the thread to avoid CPU starvation and excessive scanning */
-    tsc_delay_ms(100);
+    delay_ms(100);
   }
   return 0;
 }

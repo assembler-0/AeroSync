@@ -53,11 +53,32 @@ int vprintk(const char *fmt, va_list args);
 int vprintkln(const char *fmt, va_list args);
 
 #include <aerosync/spinlock.h>
+#include <lib/log.h>
+
+static inline const char *klog_level_to_ansi(int level) {
+#ifdef CONFIG_PRINTK_COLOR
+  switch (level) {
+    case KLOG_EMERG:
+    case KLOG_ALERT:
+    case KLOG_CRIT:
+    case KLOG_ERR: return ANS_BRED;
+    case KLOG_WARNING: return ANS_BYELLOW;
+    case KLOG_NOTICE: return ANS_BCYAN;
+    case KLOG_INFO: return ANS_BWHITE;
+    case KLOG_DEBUG: return ANS_WHITE;
+    default: return ANS_RESET;
+  }
+#else
+  (void)level;
+  return "";
+#endif
+}
 
 typedef struct printk_backend {
   const char *name;
   int priority; // bigger = preferred
-  fn(void, putc, char c);
+  fn(void, putc, char c, int level);
+  fn(void, write, const char *buf, size_t len, int level);
   fn(int, probe, void);
   fn(int, init, void *payload);
   fn(void, cleanup, void);

@@ -145,6 +145,7 @@ static int __wake_up_common_lock(struct wait_queue_head *wq_head, unsigned int m
 int __wake_up(struct wait_queue_head *wq_head, unsigned int mode,
 	      int nr_exclusive, void *key)
 {
+	smp_mb();
 	return __wake_up_common_lock(wq_head, mode, nr_exclusive, 0, key);
 }
 EXPORT_SYMBOL(__wake_up);

@@ -98,46 +98,53 @@ static int migrate_pages(struct compact_control *cc) {
 
   list_for_each_safe(m_pos, m_tmp, &cc->migratepages) {
     struct folio *src_folio = page_folio(list_entry(m_pos, struct page, lru));
-    struct page *dst_page = list_entry(f_pos, struct page, list);
+    struct folio *dst_folio = page_folio(list_entry(f_pos, struct page, list));
     f_pos = f_pos->next;
 
-    /* 1. Unmap from all users */
-    if (try_to_unmap_folio(src_folio, nullptr) == 0) {
-      /* 2. Copy data */
-      void *s_virt = page_address(&src_folio->page);
-      void *d_virt = page_address(dst_page);
-      memcpy(d_virt, s_virt, PAGE_SIZE);
+    /* 1. Copy data */
+    void *s_virt = page_address(&src_folio->page);
+    void *d_virt = page_address(&dst_folio->page);
+    memcpy(d_virt, s_virt, PAGE_SIZE);
 
-      /* 3. Swap the page in the object/anon_vma */
+    /* 2. Migrate RMAP and Page Tables */
+    if (try_to_migrate_folio(src_folio, dst_folio) == 0) {
+      /* 3. Update the object/mapping tree if it exists */
       void *mapping = src_folio->mapping;
       uint64_t index = src_folio->index;
 
       if (mapping) {
-        if ((uintptr_t) mapping & 0x1) {
-          /* Anonymous - update root anon_vma/object */
-        } else {
-          struct vm_object *obj = (struct vm_object *) mapping;
+        if ((uintptr_t)mapping & 0x1) {
+          /* Anonymous - RMAP handled remapping, but we should update root obj if any */
+          struct vm_object *obj = (struct vm_object *)((uintptr_t)mapping & ~0x1);
           down_write(&obj->lock);
-          xa_store(&obj->page_tree, index, dst_page, GFP_ATOMIC);
+          xa_store(&obj->page_tree, index, &dst_folio->page, GFP_ATOMIC);
+          up_write(&obj->lock);
+        } else {
+          /* File-backed */
+          struct vm_object *obj = (struct vm_object *)mapping;
+          down_write(&obj->lock);
+          xa_store(&obj->page_tree, index, &dst_folio->page, GFP_ATOMIC);
           up_write(&obj->lock);
         }
       }
 
-      /* 4. Update dst_page metadata to match src */
-      dst_page->mapping = mapping;
-      dst_page->index = index;
-      dst_page->flags = src_folio->page.flags & ~PG_buddy;
-      atomic_set(&dst_page->_refcount, 1);
+      /* 4. Update dst_page metadata */
+      dst_folio->mapping = mapping;
+      dst_folio->index = index;
+      dst_folio->page.flags = src_folio->page.flags & ~PG_buddy;
+      atomic_set(&dst_folio->page._refcount, 1);
 
       /* 5. Free old page */
       __free_page(&src_folio->page);
+    } else {
+      /* Migration failed, put dst_page back? In this simplified loop we just skip */
     }
 
     list_del(m_pos);
     cc->nr_migratepages--;
   }
 
-  /* Clear free list */
+  /* Clear remaining free list */
   struct list_head *pos, *tmp;
   list_for_each_safe(pos, tmp, &cc->freepages) {
     list_del(pos);

@@ -131,6 +131,16 @@ int cpu_features_init_ap(void) {
     uint64_t cr4 = read_cr4();
     cr4 |= CR4_OSFXSR | CR4_OSXMMEXCPT;
     write_cr4(cr4);
+    
+    uint64_t verify_cr4 = read_cr4();
+    if (!(verify_cr4 & CR4_OSFXSR)) {
+      g_cpu_features.sse = false;
+      g_cpu_features.sse2 = false;
+      g_cpu_features.sse3 = false;
+      g_cpu_features.ssse3 = false;
+      g_cpu_features.sse41 = false;
+      g_cpu_features.sse42 = false;
+    }
   }
 
   // Enable AVX
@@ -206,6 +216,10 @@ int cpu_features_init(void) {
   cpuid(0, &eax, &ebx, &ecx, &edx);
   uint32_t max_leaf = eax;
 
+#ifdef CONFIG_BOCHS_COMPAT
+  printk(CPU_CLASS "Bochs compatibility mode active - limiting CPU features\n");
+#endif
+
   if (max_leaf >= 1) {
     cpuid(1, &eax, &ebx, &ecx, &edx);
 
@@ -225,12 +239,27 @@ int cpu_features_init(void) {
     if (ecx & (1 << 20))
       g_cpu_features.sse42 = true;
 
+#ifdef CONFIG_BOCHS_COMPAT
+    // Bochs cannot properly emulate SSE3+
+    g_cpu_features.sse3 = false;
+    g_cpu_features.ssse3 = false;
+    g_cpu_features.sse41 = false;
+    g_cpu_features.sse42 = false;
+#endif
+
     if (ecx & (1 << 26))
       g_cpu_features.xsave = true;
     if (ecx & (1 << 27))
       g_cpu_features.osxsave = true;
     if (ecx & (1 << 28))
       g_cpu_features.avx = true;
+
+#ifdef CONFIG_BOCHS_COMPAT
+    // Bochs cannot emulate AVX
+    g_cpu_features.xsave = false;
+    g_cpu_features.osxsave = false;
+    g_cpu_features.avx = false;
+#endif
 
     if (ecx & (1 << 12))
       g_cpu_features.fma = true;
@@ -271,6 +300,14 @@ int cpu_features_init(void) {
       g_cpu_features.erms = true;
     if (edx & (1 << 4))
       g_cpu_features.fsrm = true;
+
+#ifdef CONFIG_BOCHS_COMPAT
+    // Bochs cannot emulate advanced features
+    g_cpu_features.bmi1 = false;
+    g_cpu_features.bmi2 = false;
+    g_cpu_features.avx2 = false;
+    g_cpu_features.avx512f = false;
+#endif
   }
 
   // Check extended features
@@ -303,6 +340,18 @@ int cpu_features_init(void) {
     uint64_t cr4 = read_cr4();
     cr4 |= CR4_OSFXSR | CR4_OSXMMEXCPT;
     write_cr4(cr4);
+    
+    // Verify SSE was enabled
+    uint64_t verify_cr4 = read_cr4();
+    if (!(verify_cr4 & CR4_OSFXSR)) {
+      printk(CPU_CLASS "WARNING: Failed to enable SSE (CR4.OSFXSR not set)\n");
+      g_cpu_features.sse = false;
+      g_cpu_features.sse2 = false;
+      g_cpu_features.sse3 = false;
+      g_cpu_features.ssse3 = false;
+      g_cpu_features.sse41 = false;
+      g_cpu_features.sse42 = false;
+    }
   }
 
   // Enable AVX

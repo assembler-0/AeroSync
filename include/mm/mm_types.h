@@ -209,5 +209,12 @@ struct mm_struct {
   int preferred_node; /* Default NUMA node for this address space */
 
   struct cpumask cpu_mask; /* CPUs currently using this mm */
+  uint64_t tlb_gen[64];    /* TLB generation per CPU (for lazy PCID flush) */
   struct resdomain *rd;    /* Resource domain for this address space */
+
+  /* Batched TLB shootdown */
+  struct list_head tlb_batch_list;  /* Pending TLB invalidations */
+  atomic_t tlb_batch_count;         /* Current batch size */
+  spinlock_t tlb_batch_lock;        /* Protects batch list */
+#define TLB_BATCH_THRESHOLD 32        /* Flush after this many entries */
 };

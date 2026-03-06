@@ -14,4 +14,15 @@ config ATOMIC_LINUX_COMPAT
     help
       Enables Linux-style atomic operations
 
+config BOCHS_COMPAT
+    bool "Bochs emulator compatibility mode"
+    default n
+    help
+      Enable compatibility mode for Bochs x86 emulator.
+      Disables SSE/SSE2/SSE3+ instruction generation and runtime
+      CPU feature enablement that Bochs cannot properly emulate.
+      
+      Only enable this when building specifically for Bochs testing.
+      This will reduce performance on real hardware.
+
 endmenu

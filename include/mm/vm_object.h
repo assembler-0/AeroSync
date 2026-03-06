@@ -3,6 +3,7 @@
 #include <mm/mm_types.h>
 #include <aerosync/rw_semaphore.h>
 #include <aerosync/atomic.h>
+#include <aerosync/workqueue.h>
 
 typedef enum {
   VM_OBJECT_ANON,
@@ -31,8 +32,6 @@ struct vm_object_operations {
   int (*write_folios)(struct vm_object *obj, struct folio **folios, uint32_t count);
   void (*free)(struct vm_object *obj);
 };
-
-#include <linux/xarray.h>
 
 /**
  * struct vm_object - The "Page Cache" anchor.
@@ -77,8 +76,11 @@ struct vm_object {
 
   /* Shadow chain management */
   uint16_t shadow_depth;            /* Current depth in shadow chain */
-  uint16_t collapse_threshold;      /* Auto-collapse at this depth (default: 8) */
+  uint16_t collapse_threshold;      /* Auto-collapse at this depth (default: 4) */
+  uint8_t eager_copy_threshold;     /* Force eager copy beyond this depth (default: 4) */
   atomic_t shadow_children;         /* Number of shadows pointing to us */
+  unsigned long last_collapse;      /* Timestamp of last collapse attempt */
+  struct work_struct collapse_work; /* Async collapse workqueue handle */
 
   /* Readahead / UBC State */
   struct {

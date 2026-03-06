@@ -186,6 +186,11 @@ void mm_init(struct mm_struct *mm) {
   cpumask_clear(&mm->cpu_mask);
   atomic_set(&mm->mmap_seq, 0);
 
+  /* Batched TLB shootdown */
+  INIT_LIST_HEAD(&mm->tlb_batch_list);
+  atomic_set(&mm->tlb_batch_count, 0);
+  spinlock_init(&mm->tlb_batch_lock);
+
   /* Initialize memory layout fields */
   mm->start_code = 0;
   mm->end_code = 0;

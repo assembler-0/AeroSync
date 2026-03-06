@@ -193,6 +193,7 @@ static int linearfb_char_ioctl(struct char_device *cdev, uint32_t cmd, void *arg
 }
 
 static int linearfb_char_mmap(struct char_device *cdev, struct vm_area_struct *vma) {
+  if (!cdev || !vma) return -EINVAL;
   struct linearfb_device *dev = cdev->private_data;
   if (!dev) return -ENODEV;
 
@@ -1083,7 +1084,7 @@ static void __exit __noinline __sysv_abi linearfb_panic_early(void) {
 
 static const panic_ops_t linearfb_panic_ops = {
   .name = "linearfb_panic",
-  .prio = 200,
+  .prio = 00,
   .panic = linearfb_panic,
   .panic_exception = linearfb_panic_exception,
   .panic_early = linearfb_panic_early,
@@ -1186,10 +1187,55 @@ void linearfb_cleanup(void) {
 }
 
 /* printk backend glue */
+static void fb_backend_putc(char c, int level) {
+    const char *ansi = klog_level_to_ansi(level);
+    if (level != KLOG_RAW && *ansi) {
+        while (*ansi) linearfb_console_putc(*ansi++);
+    }
+
+    linearfb_console_putc(c);
+
+    if (level != KLOG_RAW && *ansi && c != '\n') {
+        const char *reset = ANS_RESET;
+        while (*reset) linearfb_console_putc(*reset++);
+    }
+}
+
+static void fb_backend_write(const char *buf, size_t len, int level) {
+    if (len == 0) return;
+
+    const char *ansi = klog_level_to_ansi(level);
+    bool has_color = (level != KLOG_RAW && *ansi);
+
+    if (has_color) {
+        while (*ansi) linearfb_console_putc(*ansi++);
+    }
+
+    size_t effective_len = len;
+    bool trailing_newline = (buf[len - 1] == '\n');
+    if (trailing_newline && has_color) {
+        effective_len--;
+    }
+
+    for (size_t i = 0; i < effective_len; i++) {
+        linearfb_console_putc(buf[i]);
+    }
+
+    if (has_color) {
+        const char *reset = ANS_RESET;
+        while (*reset) linearfb_console_putc(*reset++);
+    }
+
+    if (trailing_newline && has_color) {
+        linearfb_console_putc('\n');
+    }
+}
+
 static printk_backend_t fb_backend = {
   .name = "linearfb",
   .priority = 100,
-  .putc = linearfb_console_putc,
+  .putc = fb_backend_putc,
+  .write = fb_backend_write,
   .probe = linearfb_probe,
   .init = linearfb_init_standard,
   .cleanup = linearfb_cleanup,

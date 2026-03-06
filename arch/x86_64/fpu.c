@@ -132,6 +132,14 @@ int fpu_init(void) {
   cr4 = read_cr4();
   cr4 |= CR4_OSFXSR | CR4_OSXMMEXCPT;
 
+#ifdef CONFIG_BOCHS_COMPAT
+  /* Bochs does not support XSAVE - force FXSAVE mode */
+  has_xsave = false;
+  has_xsaveopt = false;
+  xstate_size = 512;
+  write_cr4(cr4);
+  printk(KERN_DEBUG FPU_CLASS "Bochs mode: Using FXSAVE only\n");
+#else
   /* Check for XSAVE support */
   cpuid_count(1, 0, &eax, &ebx, &ecx, &edx);
   if (ecx & CPUID_01_ECX_XSAVE) {
@@ -174,6 +182,7 @@ int fpu_init(void) {
     write_cr4(cr4);
     printk(KERN_DEBUG FPU_CLASS "Using FXSAVE (no XSAVE support)\n");
   }
+#endif
 
   /* Initialize FPU */
   __asm__ volatile("fninit");
@@ -184,7 +193,7 @@ void fpu_init_task(struct fpu_state* fpu) {
   if (!fpu)
     return;
 
-  memset(fpu->state, 0, XSTATE_MAX_SIZE);
+  memset(fpu->state, 0, xstate_size);
 
   /* Set up default x87 FPU control word (double precision, all exceptions
    * masked) */
@@ -222,6 +231,10 @@ void fpu_save(struct fpu_state* fpu) {
   if (!fpu)
     return;
 
+#ifdef CONFIG_BOCHS_COMPAT
+  /* Bochs: Always use FXSAVE */
+  fxsave(fpu->state);
+#else
   if (has_xsave) {
     if (has_xsaveopt) {
       xsaveopt(fpu->state, xstate_mask);
@@ -233,18 +246,24 @@ void fpu_save(struct fpu_state* fpu) {
   else {
     fxsave(fpu->state);
   }
+#endif
 }
 
 void fpu_restore(struct fpu_state* fpu) {
   if (!fpu)
     return;
 
+#ifdef CONFIG_BOCHS_COMPAT
+  /* Bochs: Always use FXRSTOR */
+  fxrstor(fpu->state);
+#else
   if (has_xsave) {
     xrstor(fpu->state, xstate_mask);
   }
   else {
     fxrstor(fpu->state);
   }
+#endif
 }
 
 void fpu_copy(struct fpu_state* dst, const struct fpu_state* src) {

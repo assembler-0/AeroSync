@@ -28,6 +28,7 @@
 #include <arch/x86_64/mm/tlb.h>
 #include <arch/x86_64/mm/vmm.h>
 #include <lib/printk.h>
+#include <lib/uaccess.h>
 #include <lib/string.h>
 #include <linux/container_of.h>
 #include <linux/list.h>
@@ -41,6 +42,8 @@
 #include <mm/vma.h>
 #include <mm/workingset.h>
 #include <mm/zone.h>
+#include <mm/tlb_batch.h>
+
 
 /* LRU Management */
 #ifdef CONFIG_MM_LRU
@@ -559,7 +562,7 @@ int folio_referenced(struct folio *folio) {
 
   /* Single batched TLB shootdown for all cleared accessed bits */
   if (flush_mm && flush_start < flush_end) {
-    vmm_tlb_shootdown(flush_mm, flush_start, flush_end);
+    tlb_batch_add(flush_mm, flush_start, flush_end);
   }
 
   return referenced;
@@ -1280,7 +1283,7 @@ const struct vm_operations_struct shmem_vm_ops = {
 /**
  * migrate_folio_to_node - Physically move a folio to a different NUMA node.
  */
-static int migrate_folio_to_node(struct folio *folio, int nid) {
+int migrate_folio_to_node(struct folio *folio, int nid) {
   if (!folio || folio->node == nid)
     return 0;
 
@@ -1488,4 +1491,167 @@ int handle_mm_fault(struct vm_area_struct *vma, uint64_t address,
   }
 
   return 0;
+}
+
+/**
+ * try_to_migrate_folio - Move a folio to a new physical destination.
+ * 
+ * This is the heart of memory compaction. It unmaps the old folio from all
+ * users and immediately remaps the new folio in its place, while holding
+ * the mapping locks to prevent concurrent faults.
+ */
+int try_to_migrate_folio(struct folio *old_folio, struct folio *new_folio) {
+  void *mapping = old_folio->mapping;
+  if (!mapping) return -EINVAL;
+
+  rcu_read_lock();
+
+  if ((uintptr_t)mapping & 0x1) {
+    /* Anonymous migration */
+    struct anon_vma *av = (struct anon_vma *)((uintptr_t)mapping & ~0x1);
+    if (!av) { rcu_read_unlock(); return -EINVAL; }
+
+    irq_flags_t flags = spinlock_lock_irqsave(&av->lock);
+    struct anon_vma_chain *avc;
+
+    list_for_each_entry(avc, &av->head, same_anon_vma) {
+      struct vm_area_struct *vma = avc->vma;
+      if (!vma || !vma->vm_mm) continue;
+
+      uint64_t address = vma->vm_start + (old_folio->index << PAGE_SHIFT);
+      if (address < vma->vm_start || address >= vma->vm_end) continue;
+
+      /* Unmap old and map new - atomic swap from process perspective */
+      if (vma->vm_mm->pml_root) {
+        vmm_unmap_page(vma->vm_mm, address);
+        vmm_map_page(vma->vm_mm, address, folio_to_phys(new_folio), vma->vm_page_prot);
+      }
+    }
+
+    spinlock_unlock_irqrestore(&av->lock, flags);
+  } else {
+    /* File-backed migration */
+    struct vm_object *obj = (struct vm_object *)mapping;
+    down_write(&obj->lock);
+    struct vm_area_struct *vma;
+    struct interval_tree_node *node;
+
+    for (node = interval_tree_iter_first(&obj->i_mmap, old_folio->index, old_folio->index);
+         node; node = interval_tree_iter_next(node, old_folio->index, old_folio->index)) {
+      vma = container_of(node, struct vm_area_struct, obj_node);
+      uint64_t address = vma->vm_start + ((old_folio->index - vma->vm_pgoff) << PAGE_SHIFT);
+
+      if (vma->vm_mm->pml_root) {
+        vmm_unmap_page(vma->vm_mm, address);
+        vmm_map_page(vma->vm_mm, address, folio_to_phys(new_folio), vma->vm_page_prot);
+      }
+    }
+    up_write(&obj->lock);
+  }
+
+  rcu_read_unlock();
+  return 0;
+}
+/**
+ * sys_move_pages - Move pages of a process to different NUMA nodes.
+ * @pid:    Target process PID (currently only '0' or current->pid supported).
+ * @nr_pages: Number of pages to move.
+ * @pages:  Array of user-space addresses.
+ * @nodes:  Array of target node IDs.
+ * @status: Array to store status of each move (optional).
+ * @flags:  Migration flags (e.g., MPOL_MF_MOVE).
+ */
+int sys_move_pages(pid_t pid, unsigned long nr_pages, void **pages,
+                   const int *nodes, int *status, int flags) {
+  if (pid != 0 && pid != current->pid) {
+    /* For now, only support moving own pages */
+    return -EPERM;
+  }
+
+  struct mm_struct *mm = current->mm;
+  if (!mm) return -EINVAL;
+
+  int moved = 0;
+  for (unsigned long i = 0; i < nr_pages; i++) {
+    void *addr;
+    int node;
+    if (copy_from_user(&addr, &pages[i], sizeof(void *))) return -EFAULT;
+    if (copy_from_user(&node, &nodes[i], sizeof(int))) return -EFAULT;
+
+    if (node < 0 || node >= MAX_NUMNODES || !node_data[node]) {
+      if (status) {
+        int err = -ENODEV;
+        copy_to_user(&status[i], &err, sizeof(int));
+      }
+      continue;
+    }
+
+    /* 1. Find the VMA and folio */
+    down_read(&mm->mmap_lock);
+    struct vm_area_struct *vma = vma_find(mm, (uint64_t)addr);
+    if (!vma || (uint64_t)addr < vma->vm_start) {
+      up_read(&mm->mmap_lock);
+      if (status) {
+        int err = -EFAULT;
+        copy_to_user(&status[i], &err, sizeof(int));
+      }
+      continue;
+    }
+
+    struct folio *old_folio = nullptr;
+    if (vma->vm_obj) {
+      uint64_t pgoff = ((uint64_t)addr - vma->vm_start) >> PAGE_SHIFT;
+      old_folio = xa_load(&vma->vm_obj->page_tree, vma->vm_pgoff + pgoff);
+    }
+    up_read(&mm->mmap_lock);
+
+    if (!old_folio || xa_is_err(old_folio)) {
+      if (status) {
+        int err = -ENOENT;
+        copy_to_user(&status[i], &err, sizeof(int));
+      }
+      continue;
+    }
+
+    /* 2. Check if already on the correct node */
+    if (old_folio->node == node) {
+      if (status) {
+        int err = node;
+        copy_to_user(&status[i], &err, sizeof(int));
+      }
+      continue;
+    }
+
+    /* 3. Allocate a new folio on the target node */
+    struct folio *new_folio = alloc_pages_node(node, GFP_KERNEL | __GFP_ZERO, old_folio->page.order);
+    if (!new_folio) {
+      if (status) {
+        int err = -ENOMEM;
+        copy_to_user(&status[i], &err, sizeof(int));
+      }
+      continue;
+    }
+
+    /* 4. Perform migration */
+    int ret = try_to_migrate_folio(old_folio, new_folio);
+    if (ret == 0) {
+      /* Update VMA/VM Object state - swap folios in XArray */
+      if (vma->vm_obj) {
+        uint64_t pgoff = ((uint64_t)addr - vma->vm_start) >> PAGE_SHIFT;
+        down_write(&vma->vm_obj->lock);
+        xa_store(&vma->vm_obj->page_tree, vma->vm_pgoff + pgoff, new_folio, GFP_KERNEL);
+        up_write(&vma->vm_obj->lock);
+      }
+      
+      /* Release old folio */
+      folio_put(old_folio);
+      moved++;
+      if (status) copy_to_user(&status[i], &node, sizeof(int));
+    } else {
+      folio_put(new_folio);
+      if (status) copy_to_user(&status[i], &ret, sizeof(int));
+    }
+  }
+
+  return moved;
 }

@@ -201,6 +201,8 @@ void __no_cfi sched_move_task(struct task_struct *p) {
 
 EXPORT_SYMBOL(sched_move_task);
 
+static DEFINE_PER_CPU(uint64_t, current_tlb_gen);
+
 static void switch_mm(struct mm_struct *prev, struct mm_struct *next,
                       struct task_struct *tsk) {
   int cpu = smp_get_id();
@@ -213,7 +215,19 @@ static void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 
   if (next && next->pml_root) {
     cpumask_set_cpu(cpu, &next->cpu_mask);
-    vmm_switch_pml_root((uint64_t) next->pml_root);
+    
+    /* PCID-Based Lazy Flush Check */
+    uint64_t next_gen = __atomic_load_n(&next->tlb_gen[cpu], __ATOMIC_ACQUIRE);
+    uint64_t *curr_gen_ptr = this_cpu_ptr(current_tlb_gen);
+    
+    if (*curr_gen_ptr != next_gen) {
+        /* Versions differ: full flush (normal CR3 load) */
+        vmm_switch_pml_root((uint64_t) next->pml_root);
+        *curr_gen_ptr = next_gen;
+    } else {
+        /* Versions match: partial flush (CR3 with NOFLUSH bit) */
+        vmm_switch_pml_root_pcid((uint64_t) next->pml_root, 0, true);
+    }
   } else {
     vmm_switch_pml_root(g_kernel_pml_root);
   }
@@ -1048,6 +1062,7 @@ int sched_init_task(struct task_struct *initial_task) {
   initial_task->se.exec_start_ns = get_time_ns();
   initial_task->se.cfs_rq = &rq->cfs;
   initial_task->se.parent = nullptr;
+  RB_CLEAR_NODE(&initial_task->se.run_node);
   
   extern struct pid_namespace init_pid_ns;
   initial_task->nsproxy = &init_pid_ns;
@@ -1089,6 +1104,7 @@ int sched_init_task(struct task_struct *initial_task) {
   INIT_LIST_HEAD(&idle->sibling);
   INIT_LIST_HEAD(&idle->pi_waiters);
   INIT_LIST_HEAD(&idle->pi_list);
+  RB_CLEAR_NODE(&idle->se.run_node);
 
   /* Point rq->idle to the permanent storage */
   rq->idle = idle;
@@ -1123,6 +1139,7 @@ int sched_init_ap(void) {
   INIT_LIST_HEAD(&idle->tasks);
   INIT_LIST_HEAD(&idle->children);
   INIT_LIST_HEAD(&idle->sibling);
+  RB_CLEAR_NODE(&idle->se.run_node);
 
   struct rq *rq = this_rq();
 

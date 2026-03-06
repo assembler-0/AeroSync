@@ -29,7 +29,7 @@
         "STACK_PROTECTION_ALL": "ON",
         "SANITIZER": "ON",
         "LTO": "ON",
-        "CFI_ENABLE": "ON",
+        "CFI_ENABLE": "OFF",
         "STRIP": "ON"
       }
     },
@@ -63,7 +63,7 @@
         "STACK_PROTECTION_ALL": "ON",
         "SANITIZER": "ON",
         "LTO": "ON",
-        "CFI_ENABLE": "ON",
+        "CFI_ENABLE": "OFF",
         "STRIP": "OFF"
       }
     },
@@ -78,7 +78,7 @@
         "DSYM_LEVEL": "3",
         "STACK_PROTECTION": "ON",
         "STACK_PROTECTION_ALL": "OFF",
-        "CFI_ENABLE": "ON",
+        "CFI_ENABLE": "OFF",
         "STRIP": "OFF"
       }
     }

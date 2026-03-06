@@ -57,8 +57,8 @@ static int klogd_thread(void *data);
 static DEFINE_KFIFO(klog_fifo, uint8_t, KLOG_RING_SIZE);
 
 static int klog_console_level = KLOG_INFO;
-static log_sink_putc_t klog_console_sink =
-    nullptr; // defaults to ring buffer only
+static log_sink_putc_t klog_console_sink = nullptr;
+static log_sink_write_t klog_console_write = nullptr;
 static DEFINE_SPINLOCK(klog_lock);
 
 // Serialize immediate console output across CPUs to prevent mangled lines
@@ -86,13 +86,15 @@ static void drop_oldest(uint32_t need) {
   }
 }
 
-void log_init(const log_sink_putc_t backend) {
+void log_init(const log_sink_putc_t putc, const log_sink_write_t write) {
   // Static initialization handles the klog_fifo.
-  klog_console_sink = backend;
+  klog_console_sink = putc;
+  klog_console_write = write;
 }
 
-void log_set_console_sink(log_sink_putc_t sink) {
-  klog_console_sink = sink;
+void log_set_console_sink(log_sink_putc_t putc, log_sink_write_t write) {
+  klog_console_sink = putc;
+  klog_console_write = write;
   /* If console sink has already indicated it is async-capable, try to
      start the background klogd so console emission can be deferred. */
 #ifdef ASYNC_PRINTK
@@ -115,7 +117,7 @@ void log_set_console_async_hint(int is_async) {
   /* If the sink is async-capable and a sink is already registered,
      attempt to bring up the background consumer. */
 #ifdef ASYNC_PRINTK
-  if (klog_console_sink_async_hint && klog_console_sink)
+  if (klog_console_sink_async_hint && (klog_console_sink || klog_console_write))
     log_try_init_async();
 #endif
 }
@@ -145,14 +147,18 @@ static const char *const klog_prefixes[] = {
 };
 
 static void __no_cfi console_emit_prefix_ts(int level, uint64_t ts_ns) {
-  if (!klog_console_sink)
+  if (!klog_console_sink && !klog_console_write)
     return;
 
   const char *pfx = (level >= 0 && level < 8) ? klog_prefixes[level]
                                               : klog_prefixes[KLOG_INFO];
 
-  while (*pfx)
-    klog_console_sink(*pfx++);
+  if (klog_console_write) {
+    klog_console_write(pfx, strlen(pfx), level);
+  } else {
+    while (*pfx)
+      klog_console_sink(*pfx++, level);
+  }
 
   // Add Timestamp [    0.000000]
   if (tsc_freq_get() > 0) {
@@ -164,9 +170,13 @@ static void __no_cfi console_emit_prefix_ts(int level, uint64_t ts_ns) {
     char ts_buf[48];
     snprintf(ts_buf, sizeof(ts_buf), "[%5llu.%06llu] ", s, us);
 
-    char *t = ts_buf;
-    while (*t)
-      klog_console_sink(*t++);
+    if (klog_console_write) {
+        klog_console_write(ts_buf, strlen(ts_buf), level);
+    } else {
+        char *t = ts_buf;
+        while (*t)
+          klog_console_sink(*t++, level);
+    }
   }
 }
 
@@ -175,7 +185,7 @@ static void __no_cfi console_emit_prefix_ts(int level, uint64_t ts_ns) {
  * MUST be called with klog_console_lock held.
  */
 static void log_flush_fifo_locked(void) {
-  if (!klog_console_sink)
+  if (!klog_console_sink && !klog_console_write)
     return;
 
   char out_buf[512];
@@ -209,14 +219,19 @@ static void log_flush_fifo_locked(void) {
     if (hdr.level <= effective_console_level || hdr.level == KLOG_RAW) {
       if (hdr.level != KLOG_RAW)
         console_emit_prefix_ts(hdr.level, hdr.ts_ns);
-      for (unsigned int i = 0; i < n; i++)
-        klog_console_sink(out_buf[i]);
+      
+      if (klog_console_write) {
+        klog_console_write(out_buf, n, hdr.level);
+      } else {
+        for (unsigned int i = 0; i < n; i++)
+          klog_console_sink(out_buf[i], hdr.level);
+      }
     }
   }
 }
 
 void log_flush(void) {
-  if (!klog_console_sink)
+  if (!klog_console_sink && !klog_console_write)
     return;
 
   irq_flags_t f = spinlock_lock_irqsave(&klog_console_lock);
@@ -279,7 +294,7 @@ int __no_cfi log_write_str(int level, const char *msg) {
   if (klog_debug_enabled)
     effective_console_level = KLOG_DEBUG;
 
-  if (klog_console_sink && level <= effective_console_level) {
+  if ((klog_console_sink || klog_console_write) && level <= effective_console_level) {
     do_sync_emit = ((!klog_async_enabled && !klog_console_sink_async_hint) ||
                     (level <= klog_sync_threshold));
   }

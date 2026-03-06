@@ -6,11 +6,12 @@
 #include <aerosync/sched/cpumask.h>
 #include <aerosync/wait.h>
 #include <linux/rcupdate.h>
+#include <mm/page.h>
 
 /**
  * struct rcu_node - Hierarchical RCU node
  */
-alignas(64) struct rcu_node {
+struct rcu_node {
     spinlock_t lock;
     unsigned long gp_seq;      /* Grace period sequence number */
     unsigned long completed_seq;
@@ -22,7 +23,7 @@ alignas(64) struct rcu_node {
     int level;
     int grp_start;             /* First CPU/node in this group */
     int grp_last;              /* Last CPU/node in this group */
-};
+} __aligned(CACHE_LINE_SIZE);
 
 /**
  * struct rcu_state - Global RCU state

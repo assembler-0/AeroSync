@@ -44,6 +44,27 @@ function(add_asrx_module MODULE_NAME)
    	    >
    	)
 
+    # ----------------------------------------------------------------------------
+    # Bochs Compatibility Mode
+    # ----------------------------------------------------------------------------
+    if(CONFIG_BOCHS_COMPAT)
+        message(STATUS "Bochs compatibility mode enabled for ${MODULE_NAME}")
+        target_compile_options(${MODULE_NAME} PRIVATE
+            $<$<COMPILE_LANGUAGE:C>:
+                -mno-sse
+                -mno-sse2
+                -mno-sse3
+                -mno-ssse3
+                -mno-sse4.1
+                -mno-sse4.2
+                -mno-avx
+                -mno-avx2
+                -mno-bmi
+                -mno-bmi2
+            >
+        )
+    endif()
+
     if(COMPILER_IDENTIFIER STREQUAL "clang")
         target_compile_options(${MODULE_NAME} PRIVATE
             $<$<COMPILE_LANGUAGE:C>:

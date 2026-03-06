@@ -66,13 +66,16 @@ static uint64_t pgt_cache_alloc(int nid) {
   }
   preempt_enable();
 
-  /* Cache empty - allocate and zero synchronously */
-  struct folio *folio = alloc_pages_node(nid, GFP_KERNEL, 0);
+  /* Cache empty - allocate pre-zeroed if possible, otherwise zero synchronously */
+  struct folio *folio = alloc_pages_node(nid, GFP_KERNEL | __GFP_ZERO, 0);
   if (!folio)
     return 0;
 
   uint64_t phys = folio_to_phys(folio);
-  memset(phys_to_virt(phys), 0, PAGE_SIZE);
+  /* 
+   * alloc_pages_node with __GFP_ZERO will return a pre-zeroed page from
+   * the background pool if available, bypassing memset() here.
+   */
   return phys;
 }
 
@@ -82,12 +85,11 @@ void pgt_cache_refill(void) {
   struct pgt_cache *cache = this_cpu_ptr(pgt_cache);
 
   while (cache->count < PGT_CACHE_SIZE) {
-    struct folio *folio = alloc_pages_node(-1, GFP_KERNEL | __GFP_NOWARN, 0);
+    struct folio *folio = alloc_pages_node(-1, GFP_KERNEL | __GFP_NOWARN | __GFP_ZERO, 0);
     if (!folio)
       break;
 
     uint64_t phys = folio_to_phys(folio);
-    memset(phys_to_virt(phys), 0, PAGE_SIZE);
     cache->pages[cache->count++] = phys;
   }
   preempt_enable();

@@ -41,7 +41,7 @@
  * It must be 64-byte aligned for XSAVE.
  */
 struct fpu_state {
-  alignas(64) uint8_t state[XSTATE_MAX_SIZE];
+  uint8_t state[XSTATE_MAX_SIZE] __aligned(CACHE_LINE_SIZE);
 };
 
 /**

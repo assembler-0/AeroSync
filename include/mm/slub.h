@@ -25,15 +25,13 @@
 #endif
 #endif
 
-#define CACHE_LINE_SIZE 64
-
 /* SLUB flags */
 #define SLAB_POISON 0x00000800UL
 #define SLAB_RED_ZONE 0x00002000UL
 #define SLAB_HWCACHE_ALIGN 0x00008000UL
 #define SLAB_TYPESAFE_BY_RCU 0x00080000UL /* RCU-free slabs */
 
-alignas(CACHE_LINE_SIZE) struct kmem_cache_cpu {
+struct kmem_cache_cpu {
   void *freelist;    /* Pointer to next available object */
   unsigned long tid; /* Transaction ID for lockless cmpxchg */
   struct page *page; /* The slab from which we are allocating */
@@ -41,7 +39,7 @@ alignas(CACHE_LINE_SIZE) struct kmem_cache_cpu {
   /* Magazine Layer (BSD/XNU Hybrid) */
   void *mag[SLAB_MAG_SIZE];
   int mag_count;
-};
+} __aligned(CACHE_LINE_SIZE);
 
 struct kmem_cache_node {
   spinlock_t list_lock;

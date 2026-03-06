@@ -26,6 +26,7 @@
 #include <mm/slub.h>
 #include <mm/vma.h>
 #include <mm/vm_object.h>
+#include <mm/vm_tuning.h>
 #include <mm/page.h>
 #include <mm/zmm.h>
 #include <aerosync/resdomain.h>
@@ -53,12 +54,11 @@ struct vm_object *vm_object_alloc(vm_object_type_t type) {
 
   /* Shadow chain management defaults */
   obj->shadow_depth = 0;
-#ifdef CONFIG_MM_SHADOW_DEPTH_LIMIT
-  obj->collapse_threshold = CONFIG_MM_SHADOW_DEPTH_LIMIT;
-#else
-  obj->collapse_threshold = 8;
-#endif
+  obj->collapse_threshold = VM_COLLAPSE_THRESHOLD();
+  obj->eager_copy_threshold = VM_EAGER_COPY_THRESHOLD();
   atomic_set(&obj->shadow_children, 0);
+  obj->last_collapse = 0;
+  INIT_WORK(&obj->collapse_work, nullptr);
 
   /* NUMA */
   obj->preferred_node = -1; /* No preference */
@@ -1176,6 +1176,47 @@ EXPORT_SYMBOL(vm_object_device_create);
 int vm_object_cow_prepare(struct vm_area_struct *vma, struct vm_area_struct *new_vma) {
   struct vm_object *old_obj = vma->vm_obj;
   if (!old_obj) return 0;
+
+  /*
+   * EAGER COPY OPTIMIZATION:
+   * If shadow depth exceeds threshold, perform eager page copying
+   * instead of creating another shadow layer. This prevents
+   * O(n) fault latency in deeply forked processes.
+   */
+  if (old_obj->shadow_depth >= old_obj->eager_copy_threshold) {
+    /* Flatten: copy all pages from the chain into a new base object */
+    struct vm_object *new_obj = vm_object_anon_create(vma_size(vma));
+    if (!new_obj) return -ENOMEM;
+
+    down_read(&old_obj->lock);
+    unsigned long index;
+    void *entry;
+    xa_for_each(&old_obj->page_tree, index, entry) {
+      if (xa_is_err(entry) || !entry) continue;
+      
+      /* Only copy real folios, skip compressed/swapped */
+      if (((uintptr_t)entry & 0x3) == 0) {
+        struct folio *src = (struct folio *)entry;
+        struct folio *dst = alloc_pages(GFP_KERNEL, src->page.order);
+        if (dst) {
+          memcpy(folio_address(dst), folio_address(src), folio_size(src));
+          vm_object_add_folio(new_obj, index, dst);
+          atomic_long_inc(&new_obj->nr_pages);
+        }
+      }
+    }
+    up_read(&old_obj->lock);
+
+    new_vma->vm_obj = new_obj;
+    new_vma->vm_pgoff = 0;
+    vma_obj_node_setup(new_vma);
+    down_write(&new_obj->lock);
+    interval_tree_insert(&new_vma->obj_node, &new_obj->i_mmap);
+    up_write(&new_obj->lock);
+
+    /* Parent keeps old object */
+    return 0;
+  }
 
   /*
    * Preemptive Collapse.

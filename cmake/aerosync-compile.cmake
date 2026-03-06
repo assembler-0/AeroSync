@@ -54,6 +54,27 @@ if(COMPILER_IDENTIFIER STREQUAL "clang")
 endif()
 
 # ----------------------------------------------------------------------------
+# Bochs Compatibility Mode
+# ----------------------------------------------------------------------------
+if(CONFIG_BOCHS_COMPAT)
+    message(STATUS "Bochs compatibility mode enabled for aerosync.krnl")
+    target_compile_options(aerosync.krnl PRIVATE
+        $<$<COMPILE_LANGUAGE:C>:
+            -mno-sse
+            -mno-sse2
+            -mno-sse3
+            -mno-ssse3
+            -mno-sse4.1
+            -mno-sse4.2
+            -mno-avx
+            -mno-avx2
+            -mno-bmi
+            -mno-bmi2
+        >
+    )
+endif()
+
+# ----------------------------------------------------------------------------
 # optimizations
 # ----------------------------------------------------------------------------
 target_compile_options(aerosync.krnl PRIVATE

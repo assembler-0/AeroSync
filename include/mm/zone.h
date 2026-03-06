@@ -65,7 +65,14 @@ struct free_area {
 #ifdef CONFIG_MM_PMM_PCP_HOT_COLD
 #define PCP_LIST_HOT 0
 #define PCP_LIST_COLD 1
+#ifdef CONFIG_MM_PMM_PCP_CACHE_COLORING
+#define PCP_COLOR_BITS 4
+#define PCP_COLORS (1 << PCP_COLOR_BITS)
+#define PCP_LIST_COLORED 2
+#define PCP_LISTS (2 + PCP_COLORS)
+#else
 #define PCP_LISTS 2
+#endif
 #else
 #define PCP_LISTS 1
 #endif
@@ -103,7 +110,7 @@ struct per_cpu_pages {
 #define PMM_INLINE inline
 #endif
 
-alignas(64) struct zone {
+struct zone {
   /* Cache line 0: Hot allocation path (read-write) */
   spinlock_t lock;
   unsigned long nr_free_pages;
@@ -115,6 +122,10 @@ alignas(64) struct zone {
 
   /* Cache line 1: Free area management */
   struct free_area free_area[MAX_ORDER];
+
+  /* Background pre-zeroed pages list */
+  struct list_head zero_list;
+  unsigned long nr_zero_pages;
 
   /* Cache line 2+: Per-CPU page frame cache */
   struct per_cpu_pages pageset[MAX_CPUS];
@@ -187,7 +198,7 @@ alignas(64) struct zone {
 #endif
 #endif
   atomic_long_t vm_stat[32];
-};
+} __aligned(CACHE_LINE_SIZE);
 
 #ifndef MAX_NUMNODES
 #ifndef CONFIG_MAX_NUMNODES
@@ -218,7 +229,7 @@ struct lrugen {
   atomic_t gen_counter;
 };
 
-alignas(64) struct pglist_data {
+struct pglist_data {
   struct zone node_zones[MAX_NR_ZONES];
   struct zonelist node_zonelists[MAX_NR_ZONES];
 
@@ -233,7 +244,7 @@ alignas(64) struct pglist_data {
   /* LRU Management */
   spinlock_t lru_lock;
   struct lrugen lrugen;
-};
+} __aligned(CACHE_LINE_SIZE);
 
 extern struct pglist_data *node_data[MAX_NUMNODES];
 
@@ -254,6 +265,10 @@ extern struct zone managed_zones[MAX_NR_ZONES];
 void free_area_init(void);
 void pmm_verify(void);
 void build_all_zonelists(void);
+int kzeropaged_init(void);
+int pmm_init_late(void);
+void pmm_perform_zero_pool_test(void);
+int ktiered_init(void);
 
 struct folio *alloc_pages(gfp_t gfp_mask, unsigned int order);
 struct folio *alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order);
@@ -265,6 +280,13 @@ void free_pcp_pages(struct zone *zone, int count, struct list_head *list,
                     int order);
 
 void __free_pages(struct page *page, unsigned int order);
+
+void free_pages_bulk_array(unsigned long nr_pages, struct page **pages);
+unsigned long alloc_pages_bulk_array(int nid, gfp_t gfp_mask,
+                                     unsigned int order, unsigned long nr_pages,
+                                     struct page **pages_array);
+
+int migrate_folio_to_node(struct folio *folio, int nid);
 
 /* Boot-only: bypasses poisoning, PCP, locking. Single-threaded init only. */
 void __free_pages_boot_core(struct page *page, unsigned int order);

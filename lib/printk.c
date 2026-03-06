@@ -65,8 +65,8 @@ int __no_cfi printk_auto_configure(void *payload, const int reinit) {
 
   if (!best) {
     // Fallback to internal kfifo only
-    if (reinit) log_set_console_sink(nullptr);
-    else log_init(nullptr);
+    if (reinit) log_set_console_sink(nullptr, nullptr);
+    else log_init(nullptr, nullptr);
     
     // We can still printk, it will go to kfifo
     active_backend = nullptr;
@@ -81,18 +81,18 @@ int __no_cfi printk_auto_configure(void *payload, const int reinit) {
 
   if (!printk_disabled) {
     if (reinit) {
-      log_set_console_sink(best->putc);
+      log_set_console_sink(best->putc, best->write);
     } else {
-      log_init(best->putc);
+      log_init(best->putc, best->write);
     }
     
     printk(KERN_CLASS "printk backend selected: %s (prio=%d)\n",
             best->name, best->priority);
   } else {
     if (reinit) {
-      log_set_console_sink(nullptr);
+      log_set_console_sink(nullptr, nullptr);
     } else {
-      log_init(nullptr);
+      log_init(nullptr, nullptr);
     }
   }
   return 0;
@@ -135,7 +135,7 @@ int __no_cfi printk_set_sink(const char *backend_name, bool cleanup) {
       last_active_backend = b;
       
       if (!printk_disabled) {
-        log_set_console_sink(b->putc);
+        log_set_console_sink(b->putc, b->write);
       }
       return 0;
     }
@@ -156,7 +156,7 @@ void printk_disable(void) {
   printk_disabled = true;
   last_active_backend = active_backend;
   active_backend = nullptr;
-  log_set_console_sink(nullptr);
+  log_set_console_sink(nullptr, nullptr);
 }
 EXPORT_SYMBOL(printk_disable);
 
@@ -197,7 +197,7 @@ void __no_cfi printk_shutdown(void) {
   }
   active_backend = nullptr;
   last_active_backend = nullptr;
-  log_set_console_sink(nullptr);
+  log_set_console_sink(nullptr, nullptr);
 }
 EXPORT_SYMBOL(printk_shutdown);
 

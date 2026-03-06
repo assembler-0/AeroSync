@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aerosync/atomic.h>
+#include <aerosync/compiler.h>
 #include <aerosync/types.h>
 #include <linux/list.h>
 
@@ -16,6 +17,7 @@
 #define PG_dirty (1 << 8)     /* Page has been modified and needs writeback */
 #define PG_locked (1 << 9)    /* Page is locked (bit-spinlock for SLUB) */
 #define PG_poisoned (1 << 10) /* Page has been poisoned by kernel */
+#define PG_zeroed (1 << 11)   /* Page has been pre-zeroed by background thread */
 
 /* MGLRU flags (bits 50-53) */
 #define LRU_GEN_MASK 0x7ULL
@@ -30,15 +32,19 @@ struct kmem_cache;
 
 /**
  * struct page - Represents a physical page frame
+ *
+ * This structure is exactly 64 bytes (one cache line) to minimize overhead
+ * and optimize memory access.
  */
 struct page {
-  unsigned long flags; /* Page flags */
+  unsigned long flags; /* Page flags (0-8) */
 
   union {
-    struct list_head list; /* List node for free lists / generic */
+    struct list_head list; /* List node for free lists / generic (8-24) */
     struct list_head lru;  /* Node in active/inactive lists */
   };
 
+  /* Metadata union: Mutually exclusive usage (24-40) */
   union {
     struct {
       /* Page cache and anonymous pages */
@@ -49,35 +55,52 @@ struct page {
     struct {
       /* Compound page head pointer (for tails) */
       struct page *head;
+      unsigned long _unused_1;
     };
 
     struct {
       /* SLUB */
       struct kmem_cache *slab_cache;
       void *freelist; /* First free object */
-      union {
-        unsigned counters;
+    };
 
-        struct {
-          unsigned inuse : 16;
-          unsigned objects : 15;
-          unsigned frozen : 1;
-        };
-      };
+    struct {
+      /* Split page table lock */
+      spinlock_t ptl;
+      unsigned long _unused_2;
     };
   };
 
-  uint16_t order;       /* Order of the block (Buddy/Folio) */
-  uint16_t migratetype; /* Migration type for Buddy */
-  uint32_t zone;        /* Memory zone (if any) */
-  uint32_t node;        /* NUMA node ID */
-  atomic_t _refcount;   /* Reference count */
+  /* Secondary metadata union (40-48) */
+  union {
+    void *private; /* Generic private data (e.g. for swap/filesystems) */
 
-  struct resdomain *rd; /* Resource domain that owns this page */
+    /* SLUB counters - unionized with private to save space */
+    struct {
+      unsigned short inuse;
+      unsigned short objects;
+      unsigned char frozen;
+      unsigned char _pad;
+    };
+    unsigned int counters;
+  };
 
-  /* Split page table lock */
-  spinlock_t ptl;
-};
+  struct resdomain *rd; /* Resource domain that owns this page (48-56) */
+
+  atomic_t _refcount; /* Reference count (56-60) */
+
+  /* Topology metadata (60-64) - Packed into remaining 32 bits */
+  struct {
+    unsigned order : 6;       /* Order of the block (0-63) */
+    unsigned migratetype : 4; /* Migration type for Buddy */
+    unsigned zone : 6;        /* Memory zone index */
+    unsigned node : 16;       /* NUMA node ID */
+  } __packed;
+} __packed __aligned(CACHE_LINE_SIZE);
+
+static_assert(sizeof(struct page) == 64, "struct page must be exactly 64 bytes");
+static_assert(alignof(struct page) == 64,
+               "struct page must be cache-line aligned");
 
 /**
  * struct folio - Represents a contiguous set of pages managed as a unit.
@@ -89,18 +112,20 @@ struct folio {
   union {
     struct {
       unsigned long flags;
-
       union {
         struct list_head lru;
       };
-
       void *mapping;
       unsigned long index;
       void *private;
-      unsigned int order;
-      uint32_t zone;
-      uint32_t node;
+      struct resdomain *rd;
       atomic_t _refcount;
+      struct {
+        unsigned order : 6;
+        unsigned migratetype : 4;
+        unsigned zone : 6;
+        unsigned node : 16;
+      } __packed;
     };
 
     struct page page;
@@ -247,3 +272,7 @@ static inline uint64_t page_to_phys(struct page *page) {
 /* LRU management */
 void folio_add_lru(struct folio *folio);
 void lru_batch_flush_cpu(void);
+
+/* syscall */
+int sys_move_pages(pid_t pid, unsigned long nr_pages, void **pages,
+                   const int *nodes, int *status, int flags);

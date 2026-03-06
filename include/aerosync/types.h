@@ -67,3 +67,7 @@ typedef int64_t s64;
 #define BITS_PER_LONG 64
 #define BITS_PER_LONG_LONG 64
 
+#ifndef CACHE_LINE_SIZE
+#define CACHE_LINE_SIZE 64
+#endif
+

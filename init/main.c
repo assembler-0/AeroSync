@@ -70,8 +70,9 @@
 #include <mm/vma.h>
 #include <mm/vmalloc.h>
 #include <mm/zmm.h>
+#include <mm/swap.h>
 
-static alignas(16) struct task_struct bsp_task;
+static struct task_struct bsp_task __aligned(16);
 
 static int __late_init __noinline __sysv_abi system_load_extensions(void) {
   if (lmm_get_count() > 0) {
@@ -122,10 +123,14 @@ kernel_init(void *unused) {
   }
 #endif
 
+  aerosync_core_init(pmm_init_late);
   aerosync_core_init(zmm_init);
+  aerosync_core_init(kzeropaged_init);
+  aerosync_core_init(swap_init);
   aerosync_core_init(shm_init);
   aerosync_core_init(kswapd_init);
   aerosync_core_init(kcompactd_init);
+  aerosync_core_init(ktiered_init);
   aerosync_core_init(khugepaged_init);
   aerosync_core_init(vm_writeback_init);
   aerosync_core_init(kvmap_purged_init);
@@ -142,6 +147,16 @@ kernel_init(void *unused) {
 #endif
 
   aerosync_extra_init(system_load_modules);
+
+  /* Auto-enable swap if requested via cmdline */
+  char boot_swap[128];
+  if (cmdline_find_option(current_cmdline, "swapfile", boot_swap, sizeof(boot_swap)) > 0) {
+    printk(KERN_INFO SWAP_CLASS "Auto-enabling swap from cmdline: %s\n", boot_swap);
+    int sw_ret = sys_swapon(boot_swap, 0);
+    if (sw_ret < 0) {
+      printk(KERN_ERR SWAP_CLASS "Failed to auto-enable swap: %s\n", errname(sw_ret));
+    }
+  }
 
   if (cmdline_find_option_bool(current_cmdline, "fwinfo"))
     fw_dump_hardware_info();
@@ -162,12 +177,12 @@ kernel_init(void *unused) {
 #ifdef CONFIG_PANIC_ON_INIT_FAIL
     panic(KERN_CLASS "attempted to kill init (%s). (%s)", init_path, errname(ret));
 #else
-    printk(KERN_ALERT KERN_CLASS "attempted to kill init (%s). (%s)", init_path, errname(ret));
+    printk(KERN_ALERT KERN_CLASS "attempted to kill init (%s). (%s)\n", init_path, errname(ret));
 #endif
   else {
     struct task_struct *curr = get_current();
     uint8_t *kstack_top = (uint8_t *) curr->stack + (PAGE_SIZE * 4);
-    cpu_regs *regs = (struct cpu_regs *) (kstack_top - sizeof(struct cpu_regs));
+    const auto regs = (struct cpu_regs *) (kstack_top - sizeof(struct cpu_regs));
     enter_userspace(regs);
   }
 
@@ -326,6 +341,7 @@ no_cmdline:
     vmalloc_test();
     vmalloc_dump();
     vm_obj_stress_test();
+    pmm_perform_zero_pool_test();
   }
 #endif
 
@@ -377,6 +393,7 @@ no_cmdline:
 
   aerosync_core_init(smp_init, ic_type);
   aerosync_core_init(softirq_init);
+  aerosync_core_init(workqueue_init);
 
 #ifdef ASYNC_PRINTK
   aerosync_core_init(printk_init_async);

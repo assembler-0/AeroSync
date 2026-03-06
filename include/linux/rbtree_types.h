@@ -1,11 +1,13 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #pragma once
 
-alignas(sizeof(long)) struct rb_node {
+#include <aerosync/compiler.h>
+
+struct rb_node {
   unsigned long  __rb_parent_color;
   struct rb_node *rb_right;
   struct rb_node *rb_left;
-};
+} __aligned(sizeof(long));
 /* The alignment might seem pointless, but allegedly CRIS needs it */
 
 struct rb_root {

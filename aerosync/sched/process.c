@@ -941,12 +941,9 @@ struct task_struct *process_spawn(int (*entry)(void *), void *data,
 EXPORT_SYMBOL(process_spawn);
 
 int do_execve(const char *filename, char **argv, char **envp) {
-  printk(KERN_DEBUG "[exec] do_execve: %s\n", filename);
   struct file *file = vfs_open(filename, O_RDONLY, 0);
   if (!file)
     return -ENOENT;
-
-  printk(KERN_DEBUG "[exec] vfs_open OK: %llx\n", (uint64_t)file);
 
   int retval = do_execve_file(file, filename, argv, envp);
   vfs_close(file);

@@ -257,6 +257,7 @@ int pmm_init(void *memmap_response_ptr, uint64_t hhdm_offset, void *rsdp) {
         node_start < 1048576 ? 1048576 : node_start;
     if (node_end > 1048576) {
       unsigned long start = node_start < 1048576 ? 1048576 : node_start;
+      unsigned long end = node_end < 1048576 ? node_end : 1048576;
       pgdat->node_zones[ZONE_NORMAL].spanned_pages = node_end - start;
     } else {
       pgdat->node_zones[ZONE_NORMAL].spanned_pages = 0;
@@ -599,6 +600,11 @@ int pmm_init_cpu(void) {
 #ifdef CONFIG_MM_PMM_PCP_HOT_COLD
         INIT_LIST_HEAD(&pcp->lists[o][PCP_LIST_HOT]);
         INIT_LIST_HEAD(&pcp->lists[o][PCP_LIST_COLD]);
+#ifdef CONFIG_MM_PMM_PCP_CACHE_COLORING
+        for (int c = 0; c < PCP_COLORS; c++) {
+          INIT_LIST_HEAD(&pcp->lists[o][PCP_LIST_COLORED + c]);
+        }
+#endif
 #else
         INIT_LIST_HEAD(&pcp->lists[o][0]);
 #endif
@@ -607,6 +613,11 @@ int pmm_init_cpu(void) {
       pcp->count = 0;
       pcp->high = 64;
       pcp->batch = 16;
+
+#ifdef CONFIG_MM_PMM_PCP_CACHE_COLORING
+      pcp->color = cpu % PCP_COLORS;
+      pcp->color_mask = PCP_COLORS - 1;
+#endif
 
 #ifdef CONFIG_MM_PMM_PCP_DYNAMIC
       pcp->high_min = 32;

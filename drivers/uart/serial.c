@@ -26,6 +26,7 @@
 #include <fs/devtmpfs.h>
 #include <aerosync/sysintf/device.h>
 #include <aerosync/sysintf/tty.h>
+#include <lib/log.h>
 
 // Serial port register offsets
 #define SERIAL_DATA_REG     0
@@ -58,6 +59,50 @@
 static uint16_t serial_port = COM1;
 static int serial_initialized = 0;
 
+static void serial_backend_putc(char c, int level) {
+    const char *ansi = klog_level_to_ansi(level);
+    if (level != KLOG_RAW && *ansi) {
+        while (*ansi) serial_write_char(*ansi++);
+    }
+
+    serial_write_char(c);
+
+    if (level != KLOG_RAW && *ansi && c != '\n') {
+        const char *reset = ANS_RESET;
+        while (*reset) serial_write_char(*reset++);
+    }
+}
+
+static void serial_backend_write(const char *buf, size_t len, int level) {
+    if (len == 0) return;
+
+    const char *ansi = klog_level_to_ansi(level);
+    bool has_color = (level != KLOG_RAW && *ansi);
+
+    if (has_color) {
+        while (*ansi) serial_write_char(*ansi++);
+    }
+
+    // Check if the buffer ends with a newline
+    size_t effective_len = len;
+    bool trailing_newline = (buf[len - 1] == '\n');
+    if (trailing_newline && has_color) {
+        effective_len--; // Print the newline after the reset
+    }
+
+    for (size_t i = 0; i < effective_len; i++) {
+        serial_write_char(buf[i]);
+    }
+
+    if (has_color) {
+        const char *reset = ANS_RESET;
+        while (*reset) serial_write_char(*reset++);
+    }
+
+    if (trailing_newline && has_color) {
+        serial_write_char('\n');
+    }
+}
 /* Character Device Implementation */
 static int serial_char_open(struct char_device *cdev) {
   (void) cdev;
@@ -124,7 +169,8 @@ int serial_is_initialized(void) {
 static printk_backend_t serial_backend = {
   .name = "serial",
   .priority = 50,
-  .putc = serial_write_char,
+  .putc = serial_backend_putc,
+  .write = serial_backend_write,
   .probe = serial_probe,
   .init = serial_init_standard,
   .cleanup = serial_cleanup,
@@ -178,17 +224,17 @@ int serial_init_port(uint16_t port) {
   outb(port + SERIAL_LCR_REG, SERIAL_LCR_8BITS | SERIAL_LCR_NOPARITY | SERIAL_LCR_1STOP);
   outb(port + SERIAL_FIFO_REG,
        SERIAL_FIFO_ENABLE | SERIAL_FIFO_CLEAR_RX | SERIAL_FIFO_CLEAR_TX | SERIAL_FIFO_TRIGGER_14);
-  
+
   /* Initial MCR state */
   outb(port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2);
-  
-  /* 
+
+  /*
    * Loopback test: bit 4 of MCR enables internal loopback.
    * We write a pattern and expect it back. Some hardware needs a moment.
    */
   outb(port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2 | 0x10);
   outb(port + SERIAL_DATA_REG, 0xAE);
-  
+
   bool success = false;
   for (int i = 0; i < 100; i++) {
     if (inb(port + SERIAL_DATA_REG) == 0xAE) {

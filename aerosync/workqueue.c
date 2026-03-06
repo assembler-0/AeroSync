@@ -21,6 +21,8 @@ static struct workqueue_struct *system_wq;
 static int __no_cfi worker_thread(void *data) {
   struct workqueue_struct *wq = data;
 
+  printk(KERN_DEBUG KERN_CLASS "workqueue worker thread started: %s\n", wq->name);
+
   while (1) {
     wait_event(wq->wait, !list_empty(&wq->worklist));
 
@@ -43,6 +45,28 @@ static int __no_cfi worker_thread(void *data) {
   return 0;
 }
 
+static int ensure_worker_thread(struct workqueue_struct *wq) {
+  if (atomic_read(&wq->worker_created))
+    return 0;
+
+  if (atomic_cmpxchg(&wq->worker_created, 0, 1) != 0)
+    return 0;
+
+  printk(KERN_DEBUG KERN_CLASS "Creating workqueue worker: %s\n", wq->name);
+
+  wq->worker = kthread_create(worker_thread, wq, "wq/%s", wq->name);
+  if (!wq->worker) {
+    atomic_set(&wq->worker_created, 0);
+    return -ENOMEM;
+  }
+
+  wq->worker->flags |= PF_WQ_WORKER;
+  kthread_run(wq->worker);
+
+  printk(KERN_DEBUG KERN_CLASS "Workqueue worker created: %s\n", wq->name);
+  return 0;
+}
+
 struct workqueue_struct *create_workqueue(const char *name) {
   struct workqueue_struct *wq = kzalloc(sizeof(struct workqueue_struct));
   if (!wq) return nullptr;
@@ -51,15 +75,7 @@ struct workqueue_struct *create_workqueue(const char *name) {
   INIT_LIST_HEAD(&wq->worklist);
   spinlock_init(&wq->lock);
   init_waitqueue_head(&wq->wait);
-
-  wq->worker = kthread_create(worker_thread, wq, "wq/%s", name);
-  if (!wq->worker) {
-    kfree(wq);
-    return nullptr;
-  }
-
-  wq->worker->flags |= PF_WQ_WORKER;
-  kthread_run(wq->worker);
+  atomic_set(&wq->worker_created, 0);
 
   return wq;
 }
@@ -69,10 +85,16 @@ bool queue_work(struct workqueue_struct *wq, struct work_struct *work) {
     return false; // Already pending
   }
 
+  if (ensure_worker_thread(wq) < 0) {
+    __atomic_clear(&work->flags, __ATOMIC_RELEASE);
+    return false;
+  }
+
   irq_flags_t flags = spinlock_lock_irqsave(&wq->lock);
   list_add_tail(&work->entry, &wq->worklist);
   spinlock_unlock_irqrestore(&wq->lock, flags);
 
+  smp_mb();
   wake_up(&wq->wait);
   return true;
 }
@@ -82,10 +104,13 @@ bool schedule_work(struct work_struct *work) {
 }
 
 int workqueue_init(void) {
+  printk(KERN_DEBUG KERN_CLASS "Initializing workqueue subsystem (lazy mode)\n");
+
   system_wq = create_workqueue("system");
   if (!system_wq) {
     return -ENOMEM;
   }
-  printk(KERN_INFO KERN_CLASS "System workqueue initialized.\n");
+
+  printk(KERN_INFO KERN_CLASS "System workqueue initialized (worker will be created on first use).\n");
   return 0;
 }

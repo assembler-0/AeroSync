@@ -95,6 +95,14 @@ config MM_SWAP_READAHEAD
       values improve sequential access patterns but waste bandwidth
       for random access.
 
+config MM_SWAP_DEFAULT_SIZE_MB
+    int "Default Swapfile Size (MB)"
+    default 64
+    range 4 4096
+    help
+      The default size in Megabytes for a newly created swapfile when
+      using the 'swapfile=' command line parameter if the file is empty.
+
 endmenu
 
 config MM_SPF
@@ -143,6 +151,15 @@ config MM_HARDENING
       Enables additional memory manager hardening features such as page
       poisoning and redzone checks. Highly affects performance, use only for
       testing purposes.
+
+menu "tlb tuning"
+
+config MM_TLB_BATCH_SIZE
+    int "TLB Shootdown Batch Size"
+    default 32
+    range 8 256
+
+endmenu
 
 menu "shadow chain tuning"
 

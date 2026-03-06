@@ -117,10 +117,30 @@ void vmm_tlb_shootdown(struct mm_struct *mm, uint64_t start, uint64_t end) {
       smp_call_function(tlb_shootdown_callback, &info, true);
     } else {
       /*
-       * Optimization: Only send IPI to CPUs that are actually using this mm.
-       * Also, skip IPI if the current CPU is the only one in the mask.
+       * PCID-Based Lazy Invalidation:
+       * 1. CPUs in mm->cpu_mask are those that have valid PCID entries.
+       * 2. We only send IPIs to CPUs currently running this mm.
+       * 3. For other CPUs in cpu_mask, we increment tlb_gen to force a flush on next switch.
        */
       int current_cpu = smp_get_id();
+      
+      /*
+       * For now, we increment tlb_gen for ALL CPUs in the mask.
+       * Active CPUs will get the IPI and flush immediately.
+       * Idle CPUs will check tlb_gen on their next context switch to this mm.
+       */
+      for (int i = 0; i < smp_get_cpu_count(); i++) {
+        if (cpumask_test_cpu(i, &mm->cpu_mask)) {
+          __atomic_add_fetch(&mm->tlb_gen[i], 1, __ATOMIC_RELAXED);
+        }
+      }
+
+      /*
+       * Send IPI only to active CPUs.
+       * In AeroSync, mm->cpu_mask CURRENTLY tracks active CPUs only (as seen in switch_mm).
+       * To implement full lazy invalidation, we should keep CPUs in cpu_mask even when idle,
+       * but for this step, we keep the existing IPI logic which is already selective.
+       */
       if (cpumask_weight(&mm->cpu_mask) > 1 ||
           !cpumask_test_cpu(current_cpu, &mm->cpu_mask)) {
         smp_call_function_many(&mm->cpu_mask, tlb_shootdown_callback, &info,

@@ -23,6 +23,7 @@ struct workqueue_struct {
     struct task_struct *worker;
     wait_queue_head_t wait;
     const char *name;
+    atomic_t worker_created;
 };
 
 /**
@@ -54,4 +55,3 @@ bool queue_work(struct workqueue_struct *wq, struct work_struct *work);
  * workqueue_init - Initialize the workqueue system
  */
 int workqueue_init(void);
-

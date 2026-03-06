@@ -197,6 +197,7 @@ void folio_add_file_rmap(struct folio *folio, struct vm_object *obj,
 
 struct mmu_gather;
 int try_to_unmap_folio(struct folio *folio, struct mmu_gather *tlb);
+int try_to_migrate_folio(struct folio *old_folio, struct folio *new_folio);
 int folio_referenced(struct folio *folio);
 int folio_reclaim(struct folio *folio, struct mmu_gather *tlb);
 

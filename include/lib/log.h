@@ -14,11 +14,12 @@
 #define KLOG_RAW 8
 
 // Console sink management
-fnd(void, log_sink_putc_t, char c);
+fnd(void, log_sink_putc_t, char c, int level);
+fnd(void, log_sink_write_t, const char *buf, size_t len, int level);
 
-void log_init(log_sink_putc_t backend);
+void log_init(log_sink_putc_t putc, log_sink_write_t write);
 
-void log_set_console_sink(log_sink_putc_t sink);
+void log_set_console_sink(log_sink_putc_t putc, log_sink_write_t write);
 
 /*Mark that the system is panicking to allow bypassing locks*/
 void log_mark_panic(void);

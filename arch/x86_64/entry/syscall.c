@@ -33,6 +33,7 @@
 #include <lib/printk.h>
 #include <lib/uaccess.h>
 #include <mm/slub.h>
+#include <mm/swap.h>
 #include <mm/userfaultfd.h>
 #include <mm/vma.h>
 
@@ -641,6 +642,47 @@ static void sys_ftruncate_handler(struct syscall_regs *regs) {
   REGS_RETURN_VAL(regs, sys_ftruncate(fd, length));
 }
 
+static void sys_swapon_handler(struct syscall_regs *regs) {
+  const char *path_user = (const char *)regs->rdi;
+  int flags = (int)regs->rsi;
+
+  char *path = kmalloc(4096);
+  if (!path) {
+    REGS_RETURN_VAL(regs, -ENOMEM);
+    return;
+  }
+
+  if (copy_from_user(path, path_user, 4096) != 0) {
+    kfree(path);
+    REGS_RETURN_VAL(regs, -EFAULT);
+    return;
+  }
+
+  int ret = sys_swapon(path, flags);
+  kfree(path);
+  REGS_RETURN_VAL(regs, ret);
+}
+
+static void sys_swapoff_handler(struct syscall_regs *regs) {
+  const char *path_user = (const char *)regs->rdi;
+
+  char *path = kmalloc(4096);
+  if (!path) {
+    REGS_RETURN_VAL(regs, -ENOMEM);
+    return;
+  }
+
+  if (copy_from_user(path, path_user, 4096) != 0) {
+    kfree(path);
+    REGS_RETURN_VAL(regs, -EFAULT);
+    return;
+  }
+
+  int ret = sys_swapoff(path);
+  kfree(path);
+  REGS_RETURN_VAL(regs, ret);
+}
+
 static void sys_mount_handler(struct syscall_regs *regs) {
   const char *dev_name = (const char *)regs->rdi;
   const char *dir_name = (const char *)regs->rsi;
@@ -691,6 +733,8 @@ static sys_call_ptr_t syscall_table[] = {
     [92] = sys_chown_handler,
     [133] = sys_mknod_handler,
     [165] = sys_mount_handler,
+    [167] = sys_swapon_handler,
+    [168] = sys_swapoff_handler,
     [200] = sys_tkill,
     [234] = sys_tgkill,
     [323] = sys_userfaultfd,

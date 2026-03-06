@@ -346,6 +346,10 @@ static void dequeue_task_fair(struct rq* rq, struct task_struct* p, int flags) {
   if (!se->on_rq)
     return;
 
+  /* Guard: Idle tasks should never be dequeued via CFS */
+  if (!cfs_rq || RB_EMPTY_NODE(&se->run_node))
+    return;
+
   update_curr_fair(rq);
 
   /* Normalize vruntime if migrating */
@@ -356,6 +360,7 @@ static void dequeue_task_fair(struct rq* rq, struct task_struct* p, int flags) {
   /* Only remove from tree if it is NOT current (current is already removed) */
   if (!task_is_curr) {
     __dequeue_entity(cfs_rq, se);
+    RB_CLEAR_NODE(&se->run_node);
   }
 
   se->on_rq = 0;
@@ -404,6 +409,7 @@ static struct task_struct* pick_next_task_fair(struct rq* rq) {
 
     /* Remove from tree to mark as running */
     __dequeue_entity(cfs_rq, se);
+    RB_CLEAR_NODE(&se->run_node);
 
     /*
      * We need to update the execution start time for the whole hierarchy

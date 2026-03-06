@@ -27,6 +27,8 @@
 #include <mm/page.h>
 #include <mm/slub.h>
 #include <mm/gfp.h>
+#include <fs/vfs.h>
+#include <fs/file.h>
 #include <lib/string.h>
 #include <lib/printk.h>
 #include <aerosync/errno.h>
@@ -68,7 +70,7 @@ int swap_init(void) {
     swap_info[i] = nullptr;
   }
 
-  printk(KERN_INFO "swap: " "Swap subsystem initialized (max %d devices)\n",
+  printk(KERN_INFO SWAP_CLASS "Swap subsystem initialized (max %d devices)\n",
          MAX_SWAPFILES);
   return 0;
 }
@@ -244,28 +246,21 @@ int swap_writepage(struct folio *folio, swp_entry_t entry) {
     return -EINVAL;
 
   struct swap_info_struct *si = swap_info[type];
-  if (!si)
+  if (!si || !si->swap_file)
     return -EINVAL;
 
-  /*
-   * NOTE: Actual I/O to block device requires integration with
-   * the block layer (submit_bio).
-   *
-   * In a production implementation:
-   *   1. Build a bio for the swap page
-   *   2. Calculate the sector from offset
-   *   3. Submit async I/O
-   *   4. Handle completion callback
-   */
-  if (si->flags & SWP_SYNTHETIC) {
-      /* Synthetic swap for testing: just mark as in cache */
-      folio->flags |= (1UL << 20); /* PG_swapcache */
-      return 0;
+  /* Calculate offset in file (offset * PAGE_SIZE) */
+  vfs_loff_t pos = (vfs_loff_t)offset << PAGE_SHIFT;
+  
+  /* Perform kernel write to the swap file */
+  ssize_t ret = kernel_write(si->swap_file, folio_address(folio), PAGE_SIZE, &pos);
+  if (ret != PAGE_SIZE) {
+    printk(KERN_ERR SWAP_CLASS "Failed to write page to swap %s at offset %lu, ret=%ld\n",
+           si->name, offset, (long)ret);
+    return ret < 0 ? (int)ret : -EIO;
   }
 
-  /* Real I/O would go here */
-  return -EIO;
-
+  folio->flags |= (1UL << 20); /* PG_swapcache */
   return 0;
 }
 
@@ -285,11 +280,12 @@ struct folio *swap_readpage(swp_entry_t entry) {
     return folio;
 
   unsigned int type = swp_type(entry);
+  unsigned long offset = swp_offset(entry);
   if (type >= MAX_SWAPFILES)
     return nullptr;
 
   struct swap_info_struct *si = swap_info[type];
-  if (!si)
+  if (!si || !si->swap_file)
     return nullptr;
 
   /* Allocate a new folio */
@@ -297,17 +293,16 @@ struct folio *swap_readpage(swp_entry_t entry) {
   if (!folio)
     return nullptr;
 
-  /*
-   * NOTE: Actual I/O from block device requires bio submission.
-   * Similar to swap_writepage, this would submit a read bio.
-   */
-  if (si->flags & SWP_SYNTHETIC) {
-      /* Synthetic swap: return zeroed page (simulates successful read) */
-      memset(folio_address(folio), 0, PAGE_SIZE);
-  } else {
-      /* Real I/O would go here */
-      folio_put(folio);
-      return nullptr;
+  /* Calculate offset in file */
+  vfs_loff_t pos = (vfs_loff_t)offset << PAGE_SHIFT;
+
+  /* Perform kernel read from the swap file */
+  ssize_t ret = kernel_read(si->swap_file, folio_address(folio), PAGE_SIZE, &pos);
+  if (ret != PAGE_SIZE) {
+    printk(KERN_ERR SWAP_CLASS "Failed to read page from swap %s at offset %lu, ret=%ld\n",
+           si->name, offset, (long)ret);
+    folio_put(folio);
+    return nullptr;
   }
 
   /* Add to swap cache for concurrent access */
@@ -491,20 +486,54 @@ int sys_swapon(const char *path, int flags) {
   memcpy(si->name, path, len);
   si->name[len] = '\0';
 
-  /*
-   * NOTE: Actual swap device initialization requires reading the swap header
-   * from the block device or file.
-   */
+  /* Open the swap file */
+  si->swap_file = vfs_open(path, O_RDWR | O_DSYNC | O_CREAT, 0);
+  if (!si->swap_file) {
+    kfree(si);
+    return -ENOENT;
+  }
+
   if (flags & SWP_SYNTHETIC) {
-      /* Create a synthetic swap device for testing/benchmarking */
       si->flags |= SWP_SYNTHETIC;
   }
 
-  /* Placeholder: Allocate 256MB of swap (65536 pages) */
-  unsigned long nr_pages = 65536;
+  /* Get file size to determine nr_pages */
+  struct stat st;
+  int ret = vfs_fstat(si->swap_file, &st);
+  if (ret < 0) {
+    vfs_close(si->swap_file);
+    kfree(si);
+    return ret;
+  }
+
+  /* If file is empty, pre-allocate space (default for auto-swap) */
+  if (st.st_size == 0) {
+#ifdef CONFIG_MM_SWAP_DEFAULT_SIZE_MB
+    size_t default_size = (size_t)CONFIG_MM_SWAP_DEFAULT_SIZE_MB * 1024 * 1024;
+#else
+    size_t default_size = 64 * 1024 * 1024;
+#endif
+    struct inode *inode = si->swap_file->f_inode;
+    if (inode->i_op && inode->i_op->setattr) {
+        inode->i_op->setattr(si->swap_file->f_dentry, -1, (vfs_loff_t)default_size);
+    } else {
+        inode->i_size = (vfs_loff_t)default_size;
+    }
+    st.st_size = (vfs_loff_t)default_size;
+    printk(KERN_INFO SWAP_CLASS "Pre-allocated new swapfile %s to %zu MB\n", 
+           si->name, default_size >> 20);
+  }
+
+  unsigned long nr_pages = st.st_size >> PAGE_SHIFT;
+  if (nr_pages < 10) { /* Too small */
+    vfs_close(si->swap_file);
+    kfree(si);
+    return -EINVAL;
+  }
 
   si->swap_map = kmalloc(nr_pages);
   if (!si->swap_map) {
+    vfs_close(si->swap_file);
     kfree(si);
     return -ENOMEM;
   }
@@ -526,10 +555,10 @@ int sys_swapon(const char *path, int flags) {
   atomic_long_add(nr_pages - 1, &total_swap_pages);
   atomic_long_add(nr_pages - 1, &nr_swap_pages);
 
-  si->flags = SWP_USED | SWP_WRITEOK | SWP_SYNTHETIC;
+  si->flags |= SWP_USED | SWP_WRITEOK;
   spin_unlock(&swap_lock);
 
-  printk(KERN_INFO "swap: " "Activated swap: %s (%lu pages, priority %d)\n",
+  printk(KERN_INFO SWAP_CLASS "Activated swap: %s (%lu pages, priority %d)\n",
          si->name, nr_pages - 1, si->prio);
 
   return 0;
@@ -571,13 +600,18 @@ int sys_swapoff(const char *path) {
   atomic_long_sub(atomic_long_read(&si->total_pages), &total_swap_pages);
   atomic_long_sub(atomic_long_read(&si->total_pages) -
                   atomic_long_read(&si->inuse_pages), &nr_swap_pages);
+  
+  if (si->swap_file) {
+    vfs_close(si->swap_file);
+  }
+  
   spin_unlock(&swap_lock);
 
   /* Free resources */
   kfree(si->swap_map);
   kfree(si);
 
-  printk(KERN_INFO "swap: " "Deactivated swap: %s\n", path);
+  printk(KERN_INFO SWAP_CLASS "Deactivated swap: %s\n", path);
 
   return 0;
 }
