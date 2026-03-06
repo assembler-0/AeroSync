@@ -15,10 +15,6 @@
 #include <aerosync/sysintf/ic.h>
 #include <arch/x86_64/cpu.h>
 
-#define PIT_CMD_PORT 0x43
-#define PIT_CH0_PORT 0x40
-#define PIT_CH1_PORT 0x41
-#define PIT_CH2_PORT 0x42
 
 static uint32_t global_pit_frequency = IC_DEFAULT_TICK; 
 static uint16_t pit_reload_value = 0;

@@ -23,48 +23,13 @@
 #include <aerosync/classes.h>
 #include <lib/printk.h>
 #include <aerosync/fkx/fkx.h>
+#include <drivers/timer/pit.h>
 
 static uint64_t tsc_freq = 0;
 static uint64_t tsc_boot_offset = 0;
 
 int tsc_calibrate_early(void) {
-  uint32_t eax, ebx, ecx, edx;
-
-  /* ---------- Tier 1: CPUID 0x15 ---------- */
-  cpuid(0x15, &eax, &ebx, &ecx, &edx);
-
-  if (eax && ebx) {
-    uint64_t crystal_hz = ecx;
-
-    /* 
-     * On many modern Intel CPUs (Skylake+), the crystal frequency is 24MHz 
-     * but CPUID.15H:ECX might be 0. 
-     */
-    if (crystal_hz == 0) {
-      /* 
-       * Assume 24MHz as a safe default for modern Intel.
-       * Some Atom CPUs use 19.2MHz, but Core CPUs use 24MHz.
-       */
-      crystal_hz = 24000000;
-    }
-
-    uint64_t tsc_hz = (crystal_hz * ebx) / eax;
-    tsc_freq = tsc_hz;
-    return 0;
-  }
-
-  /* ---------- Tier 2: CPUID 0x16 ---------- */
-  cpuid(0x16, &eax, &ebx, &ecx, &edx);
-
-  if (eax) {
-    /* eax = base frequency in MHz */
-    tsc_freq = (uint64_t)eax * 1000000;
-    return 0;
-  }
-
-  /* ---------- Tier 3: Trust me bro fallback ---------- */
-  /* Assume ~3GHz */
-  tsc_freq = 3000000000;
+  __i_pit_source_calibrate_tsc();
   return 0;
 }
 

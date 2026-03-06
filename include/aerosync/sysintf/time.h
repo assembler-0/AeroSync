@@ -2,7 +2,7 @@
 /**
  * AeroSync monolithic kernel
  *
- * @file include/drivers/timer/time.h
+ * @file include/aerosync/sysintf/time.h
  * @brief Unified Time Subsystem interface
  * @copyright (C) 2025-2026 assembler-0
  *

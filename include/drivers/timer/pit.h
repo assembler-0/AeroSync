@@ -8,10 +8,20 @@
 #define PIT_CH1_PORT 0x41
 #define PIT_CH2_PORT 0x42
 
+#define PIT_CMD_PORT 0x43
+#define PIT_CH0_PORT 0x40
+#define PIT_CH1_PORT 0x41
+#define PIT_CH2_PORT 0x42
+
+/* drivers/timer/pit.c */
 void pit_init(void);
 void pit_set_frequency(uint32_t frequency);
 void pit_wait(uint32_t ms);
 void pit_calibrate_tsc(void);
+
+/* drivers/builtin/timer/pit.c */
+void __i_pit_set_frequency(uint32_t frequency);
+int __i_pit_source_calibrate_tsc(void);
 
 // Time Subsystem Integration
 struct time_source; // forward declare

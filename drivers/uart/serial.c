@@ -60,49 +60,50 @@ static uint16_t serial_port = COM1;
 static int serial_initialized = 0;
 
 static void serial_backend_putc(char c, int level) {
-    const char *ansi = klog_level_to_ansi(level);
-    if (level != KLOG_RAW && *ansi) {
-        while (*ansi) serial_write_char(*ansi++);
-    }
+  const char *ansi = klog_level_to_ansi(level);
+  if (level != KLOG_RAW && *ansi) {
+    while (*ansi) serial_write_char(*ansi++);
+  }
 
-    serial_write_char(c);
+  serial_write_char(c);
 
-    if (level != KLOG_RAW && *ansi && c != '\n') {
-        const char *reset = ANS_RESET;
-        while (*reset) serial_write_char(*reset++);
-    }
+  if (level != KLOG_RAW && *ansi && c != '\n') {
+    const char *reset = ANS_RESET;
+    while (*reset) serial_write_char(*reset++);
+  }
 }
 
 static void serial_backend_write(const char *buf, size_t len, int level) {
-    if (len == 0) return;
+  if (len == 0) return;
 
-    const char *ansi = klog_level_to_ansi(level);
-    bool has_color = (level != KLOG_RAW && *ansi);
+  const char *ansi = klog_level_to_ansi(level);
+  bool has_color = (level != KLOG_RAW && *ansi);
 
-    if (has_color) {
-        while (*ansi) serial_write_char(*ansi++);
-    }
+  if (has_color) {
+    while (*ansi) serial_write_char(*ansi++);
+  }
 
-    // Check if the buffer ends with a newline
-    size_t effective_len = len;
-    bool trailing_newline = (buf[len - 1] == '\n');
-    if (trailing_newline && has_color) {
-        effective_len--; // Print the newline after the reset
-    }
+  // Check if the buffer ends with a newline
+  size_t effective_len = len;
+  bool trailing_newline = (buf[len - 1] == '\n');
+  if (trailing_newline && has_color) {
+    effective_len--; // Print the newline after the reset
+  }
 
-    for (size_t i = 0; i < effective_len; i++) {
-        serial_write_char(buf[i]);
-    }
+  for (size_t i = 0; i < effective_len; i++) {
+    serial_write_char(buf[i]);
+  }
 
-    if (has_color) {
-        const char *reset = ANS_RESET;
-        while (*reset) serial_write_char(*reset++);
-    }
+  if (has_color) {
+    const char *reset = ANS_RESET;
+    while (*reset) serial_write_char(*reset++);
+  }
 
-    if (trailing_newline && has_color) {
-        serial_write_char('\n');
-    }
+  if (trailing_newline && has_color) {
+    serial_write_char('\n');
+  }
 }
+
 /* Character Device Implementation */
 static int serial_char_open(struct char_device *cdev) {
   (void) cdev;
