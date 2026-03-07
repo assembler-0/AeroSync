@@ -224,3 +224,24 @@ static inline void *kcalloc(size_t n, size_t size, gfp_t flags) {
   return kmalloc_array(n, size, flags | __GFP_ZERO);
 }
 
+/**
+ * kvmalloc - allocate memory
+ * size < SLAB_MAX_SIZE (128K) ? kmalloc : vmalloc
+ * @param size size for allocation
+ * @return pointer to allocated memory or nullptr
+ */
+void *kvmalloc(size_t size);
+
+/**
+ * kvfree - free memory allocated by kvmalloc
+ * @param addr pointer to free
+ */
+void kvfree(void *addr);
+
+/**
+ * kvzalloc - allocate zeroed memory
+ * size < SLAB_MAX_SIZE (128K) ? kzalloc : vzalloc
+ * @param size size for allocation
+ * @return pointer to allocated memory or nullptr
+ */
+void *kvzalloc(size_t size);

@@ -292,26 +292,19 @@ AcpiOsReleaseMutex(
 void *
 AcpiOsAllocate(
   ACPI_SIZE Size) {
-  return Size > SLAB_MAX_SIZE ? vmalloc(Size) : kmalloc(Size);
+  return kvmalloc(Size);
 }
 
 void *
 AcpiOsAllocateZeroed(
   ACPI_SIZE Size) {
-  return Size > SLAB_MAX_SIZE ? vzalloc(Size) : kzalloc(Size);
+  return kvzalloc(Size);
 }
 
 void
 AcpiOsFree(
   void *Memory) {
-  if (!Memory)
-    return;
-  const uint64_t addr = (uintptr_t) Memory;
-  if (is_vmalloc_addr(addr)) {
-    vfree(Memory);
-  } else {
-    kfree(Memory);
-  }
+  kvfree(Memory);
 }
 
 static void *
