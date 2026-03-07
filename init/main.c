@@ -41,6 +41,9 @@
 #include <aerosync/timer.h>
 #include <aerosync/types.h>
 #include <aerosync/version.h>
+#include <aerosync/font.h>
+#include <aerosync/drm/drm.h>
+#include <aerosync/drm/drm_console.h>
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/entry.h>
 #include <arch/x86_64/features/features.h>
@@ -73,6 +76,20 @@
 #include <mm/swap.h>
 
 static struct task_struct bsp_task __aligned(16);
+static char boot_swap[128] = {0};
+static char init_path[128] = {0};
+
+/**
+ * @brief Initialize standard kernel libraries and built-in resources.
+ */
+static int stdklib_init(void) {
+  font_vga_8x16_register();
+  font_sun12x22_register();
+  font_sun8x16_register();
+  maple_tree_init();
+  radix_tree_init();
+  return 0;
+}
 
 static int __late_init __noinline __sysv_abi system_load_extensions(void) {
   if (lmm_get_count() > 0) {
@@ -91,7 +108,7 @@ static int __late_init __noinline __sysv_abi system_load_extensions(void) {
       ", this build of AeroSync does not have "
       "any built-in hardware drivers"
       ", expect exponential lack of hardware support.\n");
-    return -ENOSYS;
+    return -ENOENT;
   }
   return 0;
 }
@@ -102,7 +119,7 @@ static int __late_init __noinline __sysv_abi system_load_modules(void) {
     lmm_for_each_module(LMM_TYPE_ASRX, lmm_load_asrx_callback, nullptr);
   } else {
     printk(KERN_NOTICE ASRX_CLASS "no modules found via LMM\n");
-    return -ENOSYS;
+    return -ENOENT;
   }
   return 0;
 }
@@ -149,10 +166,9 @@ kernel_init(void *unused) {
   aerosync_extra_init(system_load_modules);
 
   /* Auto-enable swap if requested via cmdline */
-  char boot_swap[128];
   if (cmdline_find_option(current_cmdline, "swapfile", boot_swap, sizeof(boot_swap)) > 0) {
     printk(KERN_INFO SWAP_CLASS "Auto-enabling swap from cmdline: %s\n", boot_swap);
-    int sw_ret = sys_swapon(boot_swap, 0);
+    const int sw_ret = sys_swapon(boot_swap, 0);
     if (sw_ret < 0) {
       printk(KERN_ERR SWAP_CLASS "Failed to auto-enable swap: %s\n", errname(sw_ret));
     }
@@ -163,7 +179,6 @@ kernel_init(void *unused) {
 
   printk(KERN_CLASS "AeroSync global initialization done.\n");
 
-  char init_path[128];
   cmdline_find_option(current_cmdline, "init", init_path, sizeof(init_path));
   if (init_path[0] == '\0') {
     strcpy(init_path, CONFIG_INIT_PATH);
@@ -181,6 +196,7 @@ kernel_init(void *unused) {
 #endif
   else {
     struct task_struct *curr = get_current();
+    // todo: this looks scary asf
     uint8_t *kstack_top = (uint8_t *) curr->stack + (PAGE_SIZE * 4);
     const auto regs = (struct cpu_regs *) (kstack_top - sizeof(struct cpu_regs));
     enter_userspace(regs);
@@ -228,8 +244,6 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   if (get_cmdline_request()->response) {
     printkln(KERN_CLASS "cmdline: %s", current_cmdline);
-  } else {
-    goto no_cmdline;
   }
 
   if (cmdline_find_option_bool(current_cmdline, "bootinfo")) {
@@ -274,8 +288,6 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
     printk(KERN_CLASS "system pagination level: %d\n", vmm_get_paging_levels());
   }
 
-no_cmdline:
-
   if (get_date_at_boot_request()->response) {
     uint64_t boot_ts = get_date_at_boot_request()->response->timestamp;
     printk(KERN_CLASS "unix timestamp: %lld\n", boot_ts);
@@ -294,9 +306,8 @@ no_cmdline:
   aerosync_core_init(lru_init);
   aerosync_core_init(vmm_init);
   aerosync_core_init(slab_init);
-  aerosync_core_init(maple_tree_init);
+  aerosync_core_init(stdklib_init);
   aerosync_core_init(vma_cache_init);
-  aerosync_core_init(radix_tree_init);
 
   aerosync_core_init(setup_per_cpu_areas);
   aerosync_core_init(rcu_init);
@@ -332,7 +343,7 @@ no_cmdline:
   aerosync_core_init(sched_vfs_init);
   aerosync_core_init(mm_vfs_init);
 
-#ifdef INCLUDE_MM_TESTS
+#ifdef CONFIG_INCLUDE_MM_TESTS
   if (cmdline_find_option_bool(current_cmdline, "mtest")) {
     pmm_test();
     vmm_test();
@@ -347,6 +358,9 @@ no_cmdline:
 
   aerosync_core_init(fw_init);
   aerosync_core_init(crypto_init);
+
+  aerosync_core_init(simpledrm_init);
+  aerosync_core_init(drm_console_init_default);
 
   /* load all FKX images */
   aerosync_core_init(system_load_extensions);

@@ -44,12 +44,18 @@ file(GLOB DRIVER_SOURCES "drivers/*.c")
 file(GLOB_RECURSE DRIVER_ACPI_SOURCES "drivers/acpi/*.c")
 file(GLOB_RECURSE DRIVER_BUILTINS_SOURCES "drivers/builtins/*.c")
 file(GLOB_RECURSE DRIVER_QEMU_SOURCES "drivers/qemu/*.c")
+file(GLOB_RECURSE DRIVER_DRM_SOURCES "drivers/graphics/drm/*.c")
 list(APPEND DRIVER_SOURCES
     ${DRIVER_ACPI_SOURCES}
     ${DRIVER_BUILTINS_SOURCES}
     ${DRIVER_QEMU_SOURCES}
+    ${DRIVER_DRM_SOURCES}
 )
 file(GLOB LIB_SOURCES "lib/*.c")
+file(GLOB_RECURSE LIB_FONT_SOURCES "lib/fonts/*.c")
+list(APPEND LIB_SOURCES
+    ${LIB_FONT_SOURCES}
+)
 file(GLOB MM_SOURCES "mm/*.c")
 file(GLOB_RECURSE MM_SAN_SOURCES "mm/san/*.c")
 list(APPEND MM_SOURCES

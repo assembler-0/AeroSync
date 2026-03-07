@@ -6,7 +6,6 @@ function(include_ifdef config path)
     endif()
 endfunction()
 
-include_ifdef(CONFIG_EXT_DRM_RENDERER drivers/graphics/drm/linearfb/linearfb.cmake)
 include_ifdef(CONFIG_EXT_UART drivers/uart/uart.cmake)
 include_ifdef(CONFIG_EXT_INTEL_IOMMU drivers/iommu/vtd.cmake)
 include_ifdef(CONFIG_EXT_IDE_ATA drivers/block/ide/ide.cmake)

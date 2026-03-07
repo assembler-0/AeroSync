@@ -132,7 +132,8 @@
 
 ///@section Display & Graphics
 #define VIDEO_CLASS "[aerosync::driver::video] "    // VGA / VESA / GOP / Framebuffer
-#define GPU_CLASS "[aerosync::driver::video::gpu] " // Hardware Acceleration
+#define DRM_CLASS "[aerosync::driver::video::drm] "
+#define GPU_CLASS "[aerosync::driver::video::drm::gpu] " // Hardware Acceleration
 #define TTY_CLASS "[aerosync::driver::video::tty] " // Terminal / Console output
 #define PTY_CLASS "[aerosync::driver::video::pty] " // Terminal / Console output
 
