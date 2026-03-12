@@ -84,7 +84,6 @@ config LOG_DEVICE_TREE
 source "drivers/acpi/Kconfig"
 source "drivers/block/Kconfig"
 source "drivers/graphics/Kconfig"
-source "drivers/iommu/Kconfig"
 source "drivers/uart/Kconfig"
 source "drivers/fw/Kconfig"
 

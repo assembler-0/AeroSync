@@ -36,20 +36,16 @@ enum device_category {
     DEV_CAT_FB
 };
 
+#include <linux/rcupdate.h>
+
 /**
  * struct class - device classification structure
  * @name: name of the class (e.g. "input", "sound", "graphics")
- * @dev_prefix: prefix for device names (e.g. "ttyS")
- * @naming_scheme: how to generate the suffix
- * @category: device type category for automatic node creation
- * @flags: class flags
- * @devices: list of devices belonging to this class
- * @lock: lock for the devices list
- * @ida: ID allocator for unique device naming
- * @dev_name: legacy template for naming
- * @dev_probe: triggered when a device is added to this class
- * @dev_release: triggered when a device is removed from this class
- * @shutdown: optional callback at shutdown
+ * @is_singleton: if true, the core tracks the 'active' device
+ * @active_ops: [RCU] The active interface operations for this class
+ * @active_dev: The device currently providing the active interface
+ * @service_lock: Mutex protecting service re-evaluation
+ * @evaluate: function to compare two devices to find the 'best' one
  */
 struct class {
   const char *name;
@@ -58,19 +54,30 @@ struct class {
   enum device_category category;
   uint32_t flags;
 
+  bool is_singleton;
+  void *active_ops; /* RCU protected */
+  struct device *active_dev;
+  mutex_t service_lock;
+
+  int (*evaluate)(struct device *a, struct device *b);
+
   struct list_head devices;
   mutex_t lock;
   struct ida ida;
   
-  // Keep dev_name for legacy template support if needed, but prefere prefix
   const char *dev_name;
 
   int (*dev_probe)(struct device *dev);
   void (*dev_release)(struct device *dev);
   void (*shutdown)(struct class *cls);
 
-  struct list_head node; /* internal node in global class list */
+  struct list_head node;
 };
+
+/**
+ * class_get_active_interface - Get the RCU-protected active interface for a class
+ */
+void *class_get_active_interface(struct class *cls);
 
 /**
  * class_register - register a new class

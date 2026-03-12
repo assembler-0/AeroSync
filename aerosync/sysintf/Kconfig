@@ -1,46 +1,58 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
-menu "system interface (sysintf) & driver model (udm)"
+menu "unified driver model (udm) & system interfaces"
 
-config SYSINTF
-    bool "System Interface Layer"
+config UDM_CORE
+    bool "Unified Driver Model (UDM) Core"
     default y
     help
-      Core system interface layer for AeroSync.
-      Provides the Unified Driver Model (UDM), handling devices,
-      drivers, buses, and classes.
+      The core infrastructure for device, driver, bus, and class
+      management. This is the foundation of the AeroSync hardware
+      abstraction layer.
+
+config SYSINTF
+    bool "Legacy System Interface Compatibility"
+    select UDM_CORE
+    default y
+    help
+      Enables the unified subsystem APIs (Block, PCI, TTY, etc.) 
+      that were formerly part of the standalone sysintf layer.
+      These are now natively integrated into UDM.
 
 config UDM_BLOCK
     bool "Block Device Subsystem"
-    depends on SYSINTF
+    depends on UDM_CORE
     default y
     help
       Enable support for block devices (disks, partitions).
+      Provides the unified block_read/write/flush API.
 
 config UDM_CHAR
     bool "Character Device Subsystem"
-    depends on SYSINTF
+    depends on UDM_CORE
     default y
     help
       Enable support for character devices (terminals, serial, etc.).
 
 config UDM_PCI
     bool "PCI Bus Support"
-    depends on SYSINTF
+    depends on UDM_CORE
     default y
     help
-      Enable UDM support for the PCI bus.
+      Enable UDM support for the PCI bus, including dynamic
+      config space access provider selection.
 
 config UDM_ACPI
     bool "ACPI Device Support"
-    depends on SYSINTF
+    depends on UDM_CORE
     default y
     help
-      Enable UDM support for ACPI-enumerated devices.
+      Enable UDM support for ACPI-enumerated devices and the
+      ACPI bus type.
 
 config UDM_PLATFORM
     bool "Platform Bus Support"
-    depends on SYSINTF
+    depends on UDM_CORE
     default y
     help
       Enable support for the Platform Bus, used for non-discoverable
@@ -48,7 +60,7 @@ config UDM_PLATFORM
 
 config UDM_MANAGED_RESOURCES
     bool "Managed Device Resources (devres)"
-    depends on SYSINTF
+    depends on UDM_CORE
     default y
     help
       Enable support for managed resources (devm_* API). This allows
@@ -57,7 +69,7 @@ config UDM_MANAGED_RESOURCES
 
 config DEBUG_DRIVER_MODEL
     bool "Driver Model Debugging"
-    depends on SYSINTF
+    depends on UDM_CORE
     default n
     help
       Enable verbose logging for device/driver registration,
@@ -65,22 +77,21 @@ config DEBUG_DRIVER_MODEL
 
 config SYS_BUS_DEBUG
     bool "Bus Debugging"
-    depends on SYSINTF
+    depends on UDM_CORE
     default n
     help
       Enable specific debugging for bus registration and enumeration.
 
 config UDM_ORCHESTRATION
-    bool "Unified Driver Management (UDM) Orchestration"
-    depends on SYSINTF
+    bool "Global Lifecycle Orchestration"
+    depends on UDM_CORE
     default y
     help
       Enable high-level driver orchestration APIs for system-wide
-      driver lifecycle management. Provides functions like
-      udm_suspend_all(), udm_stop_all(), udm_shutdown_all().
+      driver lifecycle management (suspend_all, resume_all, etc.).
 
 config DEBUG_UDM
-    bool "UDM Debugging"
+    bool "UDM Lifecycle Debugging"
     depends on UDM_ORCHESTRATION
     default n
     help

@@ -21,7 +21,7 @@
 #include <aerosync/classes.h>
 #include <aerosync/compiler.h>
 #include <aerosync/errno.h>
-#include <aerosync/fkx/fkx.h>
+#include <aerosync/export.h>
 #include <arch/x86_64/mm/layout.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/mm/vmm.h>

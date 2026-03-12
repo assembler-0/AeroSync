@@ -3,7 +3,7 @@
  * AeroSync monolithic kernel
  *
  * @file aerosync/sysintf/fw.c
- * @brief Generic Firmware Interface Subsystem Implementation
+ * @brief Generic Firmware Interface Subsystem Implementation (Unified Model)
  * @copyright (C) 2025-2026 assembler-0
  */
 
@@ -18,6 +18,7 @@ struct class fw_class = {
   .name = "firmware",
   .dev_prefix = "fw",
   .naming_scheme = NAMING_NUMERIC,
+  .is_singleton = true,
 };
 
 static int __init __no_cfi dump_mem_device_cb(void *header, void *data) {
@@ -61,7 +62,7 @@ void __no_cfi fw_dump_hardware_info(void) {
   if (!dev) return;
 
   struct firmware_device *fw = (struct firmware_device *)dev;
-  struct smbios_ops *ops = (struct smbios_ops *)fw->ops;
+  struct smbios_ops *ops = (struct smbios_ops *)dev->ops;
   if (!ops) {
     put_device(dev);
     return;
@@ -137,6 +138,8 @@ int fw_init(void) {
 
 int firmware_device_register(struct firmware_device *fw_dev) {
   fw_dev->pdev.dev.class = &fw_class;
+  /* ops is already set in the caller usually, but we ensure it's tracked in dev->ops */
+  fw_dev->pdev.dev.ops = fw_dev->ops;
   return device_register(&fw_dev->pdev.dev);
 }
 

@@ -1,8 +1,8 @@
-///SPDX-License-Identifier: GPL-2.0-only
+/// SPDX-License-Identifier: GPL-2.0-only
 /**
  * AeroSync monolithic kernel
  *
- * @file drivers/apic/ioapic.c
+ * @file arch/x86_64/drivers/apic/ioapic.c
  * @brief I/O APIC driver implementation
  * @copyright (C) 2025-2026 assembler-0
  *
@@ -18,13 +18,13 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x86_64/mm/paging.h>
-#include <drivers/apic/ioapic.h>
+#include <acpi.h>
 #include <aerosync/classes.h>
-#include <aerosync/fkx/fkx.h>
- #include <acpi.h>
-#include <mm/vmalloc.h>
+#include <aerosync/export.h>
+#include <arch/x86_64/drivers/apic/ioapic.h>
+#include <arch/x86_64/mm/paging.h>
 #include <lib/printk.h>
+#include <mm/vmalloc.h>
 
 static volatile uint32_t *ioapic_base = nullptr;
 
@@ -45,14 +45,15 @@ static uint32_t ioapic_read(uint8_t reg) {
 
 int ioapic_init(uint64_t phys_addr) {
   // Map the I/O APIC into virtual memory.
-  ioapic_base = (volatile uint32_t *) ioremap(phys_addr, PAGE_SIZE);
+  ioapic_base = (volatile uint32_t *)ioremap(phys_addr, PAGE_SIZE);
 
   if (!ioapic_base) {
     printk(KERN_ERR APIC_CLASS "Failed to map I/O APIC MMIO.\n");
     return 0;
   }
 
-  printk(KERN_DEBUG APIC_CLASS "IOAPIC Mapped at: 0x%llx (Phys: 0x%llx)\n", (uint64_t) ioapic_base, phys_addr);
+  printk(KERN_DEBUG APIC_CLASS "IOAPIC Mapped at: 0x%llx (Phys: 0x%llx)\n",
+         (uint64_t)ioapic_base, phys_addr);
 
   // Read the I/O APIC version to verify it's working
   uint32_t version_reg = ioapic_read(IOAPIC_REG_VER);
@@ -62,25 +63,26 @@ int ioapic_init(uint64_t phys_addr) {
 }
 
 void ioapic_write_entry(uint8_t index, uint64_t data) {
-  ioapic_write(IOAPIC_REG_TABLE + index * 2, (uint32_t) data);
-  ioapic_write(IOAPIC_REG_TABLE + index * 2 + 1, (uint32_t) (data >> 32));
+  ioapic_write(IOAPIC_REG_TABLE + index * 2, (uint32_t)data);
+  ioapic_write(IOAPIC_REG_TABLE + index * 2 + 1, (uint32_t)(data >> 32));
 }
 
 uint64_t ioapic_read_entry(uint8_t index) {
   uint64_t data = ioapic_read(IOAPIC_REG_TABLE + index * 2);
-  data |= ((uint64_t) ioapic_read(IOAPIC_REG_TABLE + index * 2 + 1)) << 32;
+  data |= ((uint64_t)ioapic_read(IOAPIC_REG_TABLE + index * 2 + 1)) << 32;
   return data;
 }
 
 void ioapic_mask_gsi(uint32_t gsi) {
   // To disable, we set the mask bit (bit 16)
-  // We overwrite with just the mask bit set (clearing everything else) for safety/simplicity
-  // consistent with original driver.
+  // We overwrite with just the mask bit set (clearing everything else) for
+  // safety/simplicity consistent with original driver.
   ioapic_write_entry(gsi, (1 << 16));
 }
 
-void ioapic_set_gsi_redirect(uint32_t gsi, uint8_t vector, uint32_t dest_apic_id, uint16_t flags, int dest_mode_logical,
-                             int is_x2apic) {
+void ioapic_set_gsi_redirect(uint32_t gsi, uint8_t vector,
+                             uint32_t dest_apic_id, uint16_t flags,
+                             int dest_mode_logical, int is_x2apic) {
   uint64_t redirect_entry = vector;
 
   // Delivery Mode: Fixed (000)
@@ -134,10 +136,10 @@ void ioapic_set_gsi_redirect(uint32_t gsi, uint8_t vector, uint32_t dest_apic_id
   // Destination field
   if (is_x2apic) {
     // x2APIC format: destination in bits 32-63
-    redirect_entry |= ((uint64_t) dest_apic_id << 32);
+    redirect_entry |= ((uint64_t)dest_apic_id << 32);
   } else {
     // xAPIC format: destination in bits 56-63
-    redirect_entry |= ((uint64_t) (dest_apic_id & 0xFF) << 56);
+    redirect_entry |= ((uint64_t)(dest_apic_id & 0xFF) << 56);
   }
 
   ioapic_write_entry(gsi, redirect_entry);

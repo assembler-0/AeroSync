@@ -36,22 +36,6 @@ enum udm_driver_state {
 };
 
 /**
- * struct udm_ops - Extended driver lifecycle operations
- */
-struct udm_ops {
-  int (*suspend)(struct device *dev);
-  int (*resume)(struct device *dev);
-  int (*stop)(struct device *dev);
-  int (*restart)(struct device *dev);
-  void (*emergency_stop)(struct device *dev);
-};
-
-/**
- * udm_register_ops - Register UDM operations for a device
- */
-int udm_register_ops(struct device *dev, const struct udm_ops *ops);
-
-/**
  * udm_suspend_all - Suspend all drivers in the system
  * @return 0 on success, negative error code on failure
  */
@@ -108,4 +92,4 @@ int udm_resume_device(struct device *dev);
 /**
  * udm_init - Initialize UDM subsystem
  */
-void udm_init(void);
+int udm_init(void);

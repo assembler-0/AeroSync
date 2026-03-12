@@ -7,16 +7,15 @@
  * @copyright (C) 2025-2026 assembler-0
  */
 
-#include <drivers/timer/pit.h>
+#include <aerosync/export.h>
+#include <aerosync/sysintf/ic.h>
 #include <aerosync/sysintf/time.h>
-#include <aerosync/fkx/fkx.h>
+#include <arch/x86_64/cpu.h>
 #include <arch/x86_64/io.h>
 #include <arch/x86_64/tsc.h>
-#include <aerosync/sysintf/ic.h>
-#include <arch/x86_64/cpu.h>
+#include <drivers/timer/pit.h>
 
-
-static uint32_t global_pit_frequency = IC_DEFAULT_TICK; 
+static uint32_t global_pit_frequency = IC_DEFAULT_TICK;
 static uint16_t pit_reload_value = 0;
 
 void pit_set_frequency(uint32_t frequency) {
@@ -121,9 +120,7 @@ void pit_calibrate_tsc(void) { pit_source_calibrate_tsc(); }
 
 const time_source_t *pit_get_time_source(void) { return &pit_time_source; }
 
-void pit_wait(uint32_t ms) {
-  pit_wait_internal(ms);
-}
+void pit_wait(uint32_t ms) { pit_wait_internal(ms); }
 
 EXPORT_SYMBOL(pit_wait);
 EXPORT_SYMBOL(pit_get_time_source);

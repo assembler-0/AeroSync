@@ -86,3 +86,8 @@ int nvram_init(void) {
 
   return platform_device_register(&nvram_fw_dev.pdev);
 }
+
+void nvram_deinit(void) {
+  platform_device_unregister(&nvram_fw_dev.pdev);
+  platform_driver_unregister(&nvram_driver);
+}

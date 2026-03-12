@@ -71,6 +71,9 @@ struct device {
   struct class *class;         /* class this device belongs to */
   struct list_head class_node; /* node in class->devices list */
 
+  uint16_t service_priority;   /* Priority for providing class service */
+  void *ops;                   /* Unified interface operations for this device */
+
   struct dma_map_ops *dma_ops;
 
   void (*release)(struct device *dev);
@@ -164,6 +167,11 @@ int device_set_name(struct device *dev, const char *fmt, ...);
  * Returns a reference to the device (must be put_device'd)
  */
 struct device *device_find_by_name(const char *name);
+
+/**
+ * device_find_by_platform_data - find a device by its platform specific data handle
+ */
+struct device *device_find_by_platform_data(const void *data);
 
 /**
  * device_create_file - Create an attribute file (fake sysfs)

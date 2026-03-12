@@ -14,3 +14,8 @@
  * @return 0 on success, negative error code otherwise.
  */
 int drm_console_init_default(void);
+
+/**
+ * @brief Signal that the primary DRM device is ready for console output.
+ */
+void drm_console_signal_ready(void);

@@ -2,27 +2,25 @@
 /**
  * AeroSync monolithic kernel
  *
- * @file drivers/iommu/intel/vtd.c
+ * @file arch/x86_64/drivers/iommu/intel/vtd.c
  * @brief Intel VT-d IOMMU FKX Module
  * @copyright (C) 2025-2026 assembler-0
  */
 
-#include <drivers/iommu/intel-iommu.h>
-#include <aerosync/sysintf/dmar.h>
+#include <aerosync/classes.h>
+#include <aerosync/export.h>
 #include <aerosync/sysintf/device.h>
 #include <aerosync/sysintf/dma.h>
+#include <aerosync/sysintf/dmar.h>
 #include <aerosync/sysintf/iommu.h>
-#include <aerosync/sysintf/pci.h>
-#include <aerosync/classes.h>
-#include <aerosync/fkx/fkx.h>
 #include <arch/x86_64/cpu.h>
+#include <arch/x86_64/drivers/iommu/intel-iommu.h>
+#include <arch/x86_64/mm/pmm.h>
 #include <lib/printk.h>
-#include <mm/vmalloc.h>
+#include <lib/string.h>
 #include <mm/slub.h>
 #include <mm/vma.h>
-#include <arch/x86_64/mm/vmm.h>
-#include <arch/x86_64/mm/pmm.h>
-#include <lib/string.h>
+#include <mm/vmalloc.h>
 
 static LIST_HEAD(s_iommus);
 
@@ -36,7 +34,8 @@ static inline unsigned int vtd_get_order(size_t size) {
   return order;
 }
 
-static inline void vtd_write32(struct intel_iommu *iommu, uint32_t reg, uint32_t val) {
+static inline void vtd_write32(struct intel_iommu *iommu, uint32_t reg,
+                               uint32_t val) {
   *(volatile uint32_t *)((uintptr_t)iommu->reg_virt + reg) = val;
 }
 
@@ -44,7 +43,8 @@ static inline uint32_t vtd_read32(struct intel_iommu *iommu, uint32_t reg) {
   return *(volatile uint32_t *)((uintptr_t)iommu->reg_virt + reg);
 }
 
-static inline void vtd_write64(struct intel_iommu *iommu, uint32_t reg, uint64_t val) {
+static inline void vtd_write64(struct intel_iommu *iommu, uint32_t reg,
+                               uint64_t val) {
   *(volatile uint64_t *)((uintptr_t)iommu->reg_virt + reg) = val;
 }
 
@@ -52,38 +52,45 @@ static inline uint64_t vtd_read64(struct intel_iommu *iommu, uint32_t reg) {
   return *(volatile uint64_t *)((uintptr_t)iommu->reg_virt + reg);
 }
 
-#define CAP_C(c)                (((c) >> 25) & 1ULL)
+#define CAP_C(c) (((c) >> 25) & 1ULL)
 
-static inline void vtd_flush_cache(struct intel_iommu *iommu, void *addr, size_t size) {
-  if (CAP_C(iommu->cap)) return;
-  
+static inline void vtd_flush_cache(struct intel_iommu *iommu, void *addr,
+                                   size_t size) {
+  if (CAP_C(iommu->cap))
+    return;
+
   uintptr_t start = (uintptr_t)addr & ~(64UL - 1);
   uintptr_t end = (uintptr_t)addr + size;
-  
+
   for (; start < end; start += 64) {
-    __asm__ volatile("clflush (%0)" :: "r"(start) : "memory");
+    __asm__ volatile("clflush (%0)" ::"r"(start) : "memory");
   }
 }
 
-static int vtd_wait_status(struct intel_iommu *iommu, uint32_t reg, uint32_t mask, bool set) {
+static int vtd_wait_status(struct intel_iommu *iommu, uint32_t reg,
+                           uint32_t mask, bool set) {
   int timeout = 1000000; // 1s approx
   while (timeout--) {
     uint32_t val = vtd_read32(iommu, reg);
-    if (!!(val & mask) == set) return 0;
+    if (!!(val & mask) == set)
+      return 0;
     cpu_relax();
   }
   return -ETIMEDOUT;
 }
 
-struct intel_iommu *find_iommu_for_device(uint16_t segment, uint8_t bus, uint8_t devfn) {
+struct intel_iommu *find_iommu_for_device(uint16_t segment, uint8_t bus,
+                                          uint8_t devfn) {
   struct intel_iommu *iommu;
   list_for_each_entry(iommu, &s_iommus, node) {
-    if (iommu->segment != segment) continue;
+    if (iommu->segment != segment)
+      continue;
 
     /* Check explicit device list */
     dmar_dev_t *dev;
     list_for_each_entry(dev, &iommu->devices, node) {
-      if (dev->bus == bus && dev->devfn == devfn) return iommu;
+      if (dev->bus == bus && dev->devfn == devfn)
+        return iommu;
     }
 
     /* If it has INCLUDE_ALL, it's the fallback for this segment */
@@ -96,40 +103,52 @@ struct intel_iommu *find_iommu_for_device(uint16_t segment, uint8_t bus, uint8_t
 
 /* --- DMA Ops implementation --- */
 
-static void *vtd_alloc_coherent(struct device *dev, size_t size, dma_addr_t *dma_handle, gfp_t gfp) {
+static void *vtd_alloc_coherent(struct device *dev, size_t size,
+                                dma_addr_t *dma_handle, gfp_t gfp) {
   auto folio = alloc_pages(gfp | ___GFP_ZERO, vtd_get_order(size));
-  if (!folio) return nullptr;
+  if (!folio)
+    return nullptr;
 
   *dma_handle = folio_to_phys(folio);
   return page_address(&folio->page);
 }
 
-static void vtd_free_coherent(struct device *dev, size_t size, void *cpu_addr, dma_addr_t dma_handle) {
+static void vtd_free_coherent(struct device *dev, size_t size, void *cpu_addr,
+                              dma_addr_t dma_handle) {
   (void)dev;
   __free_pages(phys_to_page((uintptr_t)cpu_addr), vtd_get_order(size));
 }
 
-static dma_addr_t vtd_map_page(struct device *dev, struct page *page, unsigned long offset, size_t size, enum dma_data_direction dir) {
-  (void)dev; (void)size; (void)dir;
+static dma_addr_t vtd_map_page(struct device *dev, struct page *page,
+                               unsigned long offset, size_t size,
+                               enum dma_data_direction dir) {
+  (void)dev;
+  (void)size;
+  (void)dir;
   return page_to_phys(page) + offset;
 }
 
-static void vtd_unmap_page(struct device *dev, dma_addr_t dma_addr, size_t size, enum dma_data_direction dir) {
-  (void)dev; (void)dma_addr; (void)size; (void)dir;
+static void vtd_unmap_page(struct device *dev, dma_addr_t dma_addr, size_t size,
+                           enum dma_data_direction dir) {
+  (void)dev;
+  (void)dma_addr;
+  (void)size;
+  (void)dir;
 }
 
 static const struct dma_map_ops vtd_dma_ops = {
-  .alloc = vtd_alloc_coherent,
-  .free = vtd_free_coherent,
-  .map_page = vtd_map_page,
-  .unmap_page = vtd_unmap_page,
+    .alloc = vtd_alloc_coherent,
+    .free = vtd_free_coherent,
+    .map_page = vtd_map_page,
+    .unmap_page = vtd_unmap_page,
 };
 
 /* --- IOMMU Ops implementation --- */
 
 static int vtd_domain_init(struct iommu_domain *domain) {
   auto folio = alloc_pages(GFP_KERNEL | ___GFP_ZERO, 0);
-  if (!folio) return -ENOMEM;
+  if (!folio)
+    return -ENOMEM;
 
   domain->pgtable = (uintptr_t)page_address(&folio->page);
   return 0;
@@ -142,37 +161,50 @@ static void vtd_domain_free(struct iommu_domain *domain) {
 }
 
 static int vtd_attach_dev(struct iommu_domain *domain, struct device *dev) {
-  (void)domain; (void)dev;
+  (void)domain;
+  (void)dev;
   return 0;
 }
 
-static int vtd_map(struct iommu_domain *domain, uint64_t iova, uint64_t paddr, size_t size, int prot) {
-  (void)domain; (void)iova; (void)paddr; (void)size; (void)prot;
+static int vtd_map(struct iommu_domain *domain, uint64_t iova, uint64_t paddr,
+                   size_t size, int prot) {
+  (void)domain;
+  (void)iova;
+  (void)paddr;
+  (void)size;
+  (void)prot;
   return 0;
 }
 
 static const struct iommu_ops vtd_iommu_ops = {
-  .domain_init = vtd_domain_init,
-  .domain_free = vtd_domain_free,
-  .attach_dev = vtd_attach_dev,
-  .map = vtd_map,
+    .domain_init = vtd_domain_init,
+    .domain_free = vtd_domain_free,
+    .attach_dev = vtd_attach_dev,
+    .map = vtd_map,
 };
 
 static int vtd_invalidate_context_global(struct intel_iommu *iommu) {
-  vtd_write64(iommu, DMAR_CCMD_REG, (1ULL << 61) | (1ULL << 63)); // Global Invalidation + Submit
-  return vtd_wait_status(iommu, DMAR_CCMD_REG + 4, (1U << 31), false); // Wait for ICC bit (63 - 32 = 31)
+  vtd_write64(iommu, DMAR_CCMD_REG,
+              (1ULL << 61) | (1ULL << 63)); // Global Invalidation + Submit
+  return vtd_wait_status(iommu, DMAR_CCMD_REG + 4, (1U << 31),
+                         false); // Wait for ICC bit (63 - 32 = 31)
 }
 
 static int vtd_invalidate_iotlb_global(struct intel_iommu *iommu) {
   uint32_t offset = (uint32_t)ECAP_IRO(iommu->ecap) << 4;
-  vtd_write64(iommu, offset + 8, (1ULL << 60) | (1ULL << 63) | (1ULL << 57)); // Global Invalidation + Submit + IVT
-  return vtd_wait_status(iommu, offset + 8 + 4, (1U << 31), false); // Wait for IVT bit (63 - 32 = 31)
+  vtd_write64(iommu, offset + 8,
+              (1ULL << 60) | (1ULL << 63) |
+                  (1ULL << 57)); // Global Invalidation + Submit + IVT
+  return vtd_wait_status(iommu, offset + 8 + 4, (1U << 31),
+                         false); // Wait for IVT bit (63 - 32 = 31)
 }
 
 static void vtd_set_gcmd(struct intel_iommu *iommu, uint32_t bit, bool enable) {
   uint32_t status = vtd_read32(iommu, DMAR_GSTS_REG);
-  if (enable) status |= bit;
-  else status &= ~bit;
+  if (enable)
+    status |= bit;
+  else
+    status &= ~bit;
   vtd_write32(iommu, DMAR_GCMD_REG, status);
 }
 
@@ -182,17 +214,18 @@ static void vtd_check_faults(struct intel_iommu *iommu) {
     uint32_t fri = (fsts >> 8) & 0xff;
     uint64_t frcd_lo = vtd_read64(iommu, DMAR_FRCD_REG + fri * 16);
     uint64_t frcd_hi = vtd_read64(iommu, DMAR_FRCD_REG + fri * 16 + 8);
-    
-    printk(KERN_ERR IOMMU_CLASS "IOMMU Fault! FSTS: 0x%x, FRCD: 0x%llx 0x%llx\n",
+
+    printk(KERN_ERR IOMMU_CLASS "IOMMU Fault FSTS: 0x%x, FRCD: 0x%llx 0x%llx\n",
            fsts, frcd_hi, frcd_lo);
-    
+
     /* Clear fault bits */
     vtd_write32(iommu, DMAR_FSTS_REG, fsts);
   }
 }
 
 /* Forward declarations */
-static void vtd_setup_passthrough(struct intel_iommu *iommu, uint8_t bus, uint8_t devfn);
+static void vtd_setup_passthrough(struct intel_iommu *iommu, uint8_t bus,
+                                  uint8_t devfn);
 static void vtd_setup_bus_passthrough(struct intel_iommu *iommu, uint8_t bus);
 
 /**
@@ -200,13 +233,15 @@ static void vtd_setup_bus_passthrough(struct intel_iommu *iommu, uint8_t bus);
  */
 static int iommu_init_unit(struct intel_iommu *iommu) {
   iommu->reg_virt = ioremap(iommu->reg_phys, PAGE_SIZE);
-  if (!iommu->reg_virt) return -ENOMEM;
+  if (!iommu->reg_virt)
+    return -ENOMEM;
 
   uint32_t ver = vtd_read32(iommu, DMAR_VER_REG);
   iommu->cap = vtd_read64(iommu, DMAR_CAP_REG);
   iommu->ecap = vtd_read64(iommu, DMAR_ECAP_REG);
 
-  printk(KERN_INFO IOMMU_CLASS "Intel IOMMU v%d.%d (cap: 0x%llx, ecap: 0x%llx)\n",
+  printk(KERN_INFO IOMMU_CLASS
+         "Intel IOMMU v%d.%d (cap: 0x%llx, ecap: 0x%llx)\n",
          ver >> 4, ver & 0xf, iommu->cap, iommu->ecap);
 
   auto folio = alloc_pages(GFP_KERNEL | ___GFP_ZERO, 0);
@@ -216,9 +251,9 @@ static int iommu_init_unit(struct intel_iommu *iommu) {
   }
 
   iommu->root_entry = (struct root_entry *)page_address(&folio->page);
-  
-  /* 
-   * Pre-populate tables before enabling IOMMU 
+
+  /*
+   * Pre-populate tables before enabling IOMMU
    */
   if (iommu->flags & 1) { // INCLUDE_PCI_ALL
     for (int b = 0; b < 256; b++) {
@@ -237,7 +272,7 @@ static int iommu_init_unit(struct intel_iommu *iommu) {
   vtd_write64(iommu, DMAR_RTADDR_REG, root_phys);
   vtd_flush_cache(iommu, iommu->root_entry, PAGE_SIZE);
   vtd_set_gcmd(iommu, DMAR_GCMD_SRTP, true);
-  
+
   if (vtd_wait_status(iommu, DMAR_GSTS_REG, DMAR_GSTS_RTPS, true) < 0) {
     printk(KERN_ERR IOMMU_CLASS "Failed to set root table pointer\n");
     __free_pages(&folio->page, 0);
@@ -262,22 +297,27 @@ static int iommu_init_unit(struct intel_iommu *iommu) {
   return 0;
 }
 
-static struct context_entry *vtd_get_context_entry(struct intel_iommu *iommu, uint8_t bus, uint8_t devfn) {
+static struct context_entry *vtd_get_context_entry(struct intel_iommu *iommu,
+                                                   uint8_t bus, uint8_t devfn) {
   struct root_entry *re = &iommu->root_entry[bus];
   if (!(re->lo & ROOT_PRESENT)) {
     auto folio = alloc_pages(GFP_KERNEL | ___GFP_ZERO, 0);
-    if (!folio) return nullptr;
+    if (!folio)
+      return nullptr;
     re->lo = folio_to_phys(folio) | ROOT_PRESENT;
     vtd_flush_cache(iommu, re, sizeof(*re));
     vtd_invalidate_context_global(iommu);
   }
-  struct context_entry *ce = (struct context_entry *)pmm_phys_to_virt(re->lo & PAGE_MASK);
+  struct context_entry *ce =
+      (struct context_entry *)pmm_phys_to_virt(re->lo & PAGE_MASK);
   return &ce[devfn];
 }
 
-static void vtd_setup_passthrough(struct intel_iommu *iommu, uint8_t bus, uint8_t devfn) {
+static void vtd_setup_passthrough(struct intel_iommu *iommu, uint8_t bus,
+                                  uint8_t devfn) {
   auto ce = vtd_get_context_entry(iommu, bus, devfn);
-  if (!ce) return;
+  if (!ce)
+    return;
 
   if (ECAP_PT(iommu->ecap)) {
     ce->lo = CONTEXT_PRESENT | CONTEXT_TT_PASSTHROUGH;
@@ -286,7 +326,8 @@ static void vtd_setup_passthrough(struct intel_iommu *iommu, uint8_t bus, uint8_
     printk(KERN_DEBUG IOMMU_CLASS "device %02x:%02x.%x set to passthrough\n",
            bus, devfn >> 3, devfn & 7);
   } else {
-    printk(KERN_WARNING IOMMU_CLASS "Hardware does not support passthrough for %02x:%02x.%x\n",
+    printk(KERN_WARNING IOMMU_CLASS
+           "Hardware does not support passthrough for %02x:%02x.%x\n",
            bus, devfn >> 3, devfn & 7);
   }
 }
@@ -296,13 +337,16 @@ static void vtd_setup_bus_passthrough(struct intel_iommu *iommu, uint8_t bus) {
   if (!(re->lo & ROOT_PRESENT)) {
     auto folio = alloc_pages(GFP_KERNEL | ___GFP_ZERO, 0);
     if (!folio) {
-      printk(KERN_ERR IOMMU_CLASS "Failed to allocate context table for bus %02x\n", bus);
+      printk(KERN_ERR IOMMU_CLASS
+             "Failed to allocate context table for bus %02x\n",
+             bus);
       return;
     }
     re->lo = folio_to_phys(folio) | ROOT_PRESENT;
     vtd_flush_cache(iommu, re, sizeof(*re));
-    
-    struct context_entry *ce = (struct context_entry *)pmm_phys_to_virt(re->lo & PAGE_MASK);
+
+    struct context_entry *ce =
+        (struct context_entry *)pmm_phys_to_virt(re->lo & PAGE_MASK);
     if (ECAP_PT(iommu->ecap)) {
       for (int i = 0; i < 256; i++) {
         ce[i].lo = CONTEXT_PRESENT | CONTEXT_TT_PASSTHROUGH;
@@ -314,7 +358,7 @@ static void vtd_setup_bus_passthrough(struct intel_iommu *iommu, uint8_t bus) {
   }
 }
 
-static int vtd_mod_init(void) {
+int x86_64_vtd_iommu_init(void) {
   auto units = dmar_get_units();
   if (list_empty(units)) {
     printk(KERN_ERR IOMMU_CLASS "No Intel VT-d units found\n");
@@ -324,7 +368,8 @@ static int vtd_mod_init(void) {
   dmar_unit_t *dmar_unit;
   list_for_each_entry(dmar_unit, units, node) {
     auto iommu = (struct intel_iommu *)kmalloc(sizeof(struct intel_iommu));
-    if (!iommu) continue;
+    if (!iommu)
+      continue;
 
     memset(iommu, 0, sizeof(*iommu));
     iommu->reg_phys = dmar_unit->address;
@@ -346,7 +391,8 @@ static int vtd_mod_init(void) {
 
     if (iommu_init_unit(iommu) == 0) {
       list_add_tail(&iommu->node, &s_iommus);
-      printk(KERN_INFO IOMMU_CLASS "Intel VT-d Unit @ 0x%llx initialized\n", iommu->reg_phys);
+      printk(KERN_INFO IOMMU_CLASS "Intel VT-d Unit @ 0x%llx initialized\n",
+             iommu->reg_phys);
     } else {
       /* Clean up devices list */
       dmar_dev_t *tmp_dev, *n;
@@ -364,16 +410,3 @@ static int vtd_mod_init(void) {
 
   return list_empty(&s_iommus) ? -ENODEV : 0;
 }
-
-FKX_MODULE_DEFINE(
-  vtd,
-  "1.0.0",
-  "assembler-0",
-  "Intel VT-d IOMMU Driver",
-  0,
-  FKX_DRIVER_CLASS,
-  KSYM_LICENSE_GPL,
-  FKX_SUBCLASS_IOMMU,
-  FKX_SUBCLASS_PCI,
-  vtd_mod_init
-);

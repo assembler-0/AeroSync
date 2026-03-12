@@ -30,6 +30,7 @@
 #include <mm/slub.h>
 #include <mm/vma.h>
 #include <mm/vmalloc.h>
+#include <aerosync/sysintf/pci.h>
 
 
 /* --- OSL Initialization --- */

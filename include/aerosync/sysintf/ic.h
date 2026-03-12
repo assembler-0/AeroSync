@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aerosync/types.h>
+#include <aerosync/compiler.h>
 
 typedef enum {
   INTC_PIC,
@@ -29,6 +30,18 @@ typedef struct {
   fn(void, shutdown, void);
   fn(void, send_ipi, uint8_t dest_apic_id, uint8_t vector, uint32_t delivery_mode);
   fn(uint8_t, get_id, void);
+
+  /**
+   * @brief Prepare the controller for removal/unloading.
+   * Called before synchronize_rcu during a transfer.
+   */
+  fn(void, prepare_removal, void);
+
+  /**
+   * @brief Optional: Handover state from a previous controller.
+   */
+  fn(int, handover, void *prev_ops);
+
   uint32_t priority;
 } interrupt_controller_interface_t;
 
@@ -36,6 +49,7 @@ typedef struct {
 
 // Unified interrupt controller interface
 void ic_register_controller(const interrupt_controller_interface_t* controller);
+void ic_unregister_controller(const interrupt_controller_interface_t* controller);
 interrupt_controller_t __must_check ic_install(int *status); // returns initialized controller type
 int ic_ap_init(void);
 void ic_shutdown_controller(void);

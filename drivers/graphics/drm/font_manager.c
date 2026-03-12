@@ -40,11 +40,12 @@ const struct font_desc *font_find(const char *name) {
 const struct font_desc *font_get_default(int xres, int yres) {
   if (num_fonts == 0) return nullptr;
 
-  char cmdline_buff[64];
+  char cmdline_buff[64] = {0};
   cmdline_find_option(current_cmdline, "font", cmdline_buff, sizeof(cmdline_buff));
 
-  const struct font_desc *best;
+  const struct font_desc *best = nullptr;
   if (cmdline_buff[0]) best = font_find(cmdline_buff);
+
   if (best) return best;
   best = fonts[0];
 

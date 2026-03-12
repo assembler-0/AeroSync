@@ -3,7 +3,7 @@
  * AeroSync monolithic kernel
  *
  * @file aerosync/sysintf/acpi_dev.c
- * @brief ACPI Namespace Device Enumerator using ACPICA
+ * @brief ACPI Namespace Device Enumerator (Unified Model)
  * @copyright (C) 2025-2026 assembler-0
  */
 
@@ -35,6 +35,7 @@ static int acpi_bus_match(struct device *dev, struct device_driver *drv) {
   struct acpi_device *adev = to_acpi_dev(dev);
   struct acpi_driver *adrv = to_acpi_driver(drv);
 
+  /* If driver specifies a HID, it must match the device's Hardware ID */
   if (adev->hid[0] && adrv->hid && strcmp(adev->hid, adrv->hid) == 0)
     return 1;
   return 0;
@@ -55,8 +56,6 @@ struct bus_type acpi_bus_type = {
     .probe = acpi_bus_probe,
 };
 
-static bool acpi_bus_registered = false;
-
 static void acpi_dev_release(struct device *dev) {
   struct acpi_device *adev = to_acpi_dev(dev);
   kfree(adev);
@@ -66,55 +65,45 @@ static ACPI_STATUS __no_cfi acpi_enum_callback(ACPI_HANDLE object,
                                                uint32_t nesting_level,
                                                void *context,
                                                void **return_value) {
-  (void)nesting_level;
-  (void)context;
-  (void)return_value;
-
+  (void)nesting_level; (void)context; (void)return_value;
   ACPI_DEVICE_INFO *info;
-  ACPI_STATUS st;
+  if (ACPI_FAILURE(AcpiGetObjectInfo(object, &info))) return AE_OK;
 
-  st = AcpiGetObjectInfo(object, &info);
-  if (ACPI_FAILURE(st))
-    return AE_OK;
-
-  if (info->Type == ACPI_TYPE_DEVICE) {
+  if (info->Type == ACPI_TYPE_DEVICE || info->Type == ACPI_TYPE_PROCESSOR) {
     struct acpi_device *adev = kzalloc(sizeof(struct acpi_device));
-    if (!adev) {
-      ACPI_FREE(info);
-      return AE_OK;
-    }
+    if (!adev) { ACPI_FREE(info); return AE_OK; }
 
-    adev->handle = object;
     device_initialize(&adev->dev);
+    adev->handle = object;
+    adev->dev.platform_data = object; /* Store handle for lookup */
     adev->dev.bus = &acpi_bus_type;
     adev->dev.release = acpi_dev_release;
 
-    // Get name from handle
+    /* Topological Parenting: Find the parent device in the UDM tree by its handle */
+    ACPI_HANDLE parent_handle;
+    if (ACPI_SUCCESS(AcpiGetParent(object, &parent_handle))) {
+        struct device *parent_dev = device_find_by_platform_data(parent_handle);
+        if (parent_dev) {
+            adev->dev.parent = parent_dev;
+            /* device_add will handle get_device(parent) and list addition */
+        }
+    }
+
     ACPI_BUFFER buffer = {ACPI_ALLOCATE_BUFFER, nullptr};
-    st = AcpiGetName(object, ACPI_SINGLE_NAME, &buffer);
-
-    const char *name_ptr =
-        (st == AE_OK) ? (const char *)buffer.Pointer : "????";
-    const char *acpi_prefix = CONFIG_ACPI_NAME_PREFIX;
-
-    if (acpi_prefix[0] != '\0') {
-      device_set_name(&adev->dev, "%s_%s", acpi_prefix, name_ptr);
+    if (ACPI_SUCCESS(AcpiGetName(object, ACPI_SINGLE_NAME, &buffer))) {
+        device_set_name(&adev->dev, "ACPI_%s", (char*)buffer.Pointer);
+        if (buffer.Pointer) ACPI_FREE(buffer.Pointer);
     } else {
-      device_set_name(&adev->dev, "%s", name_ptr);
+        device_set_name(&adev->dev, "ACPI_DEV_%p", object);
     }
 
-    if (buffer.Pointer)
-      ACPI_FREE(buffer.Pointer);
-
-    if (info->Valid & ACPI_VALID_HID) {
-      strncpy(adev->hid, info->HardwareId.String, 15);
-    }
+    if (info->Valid & ACPI_VALID_HID) strncpy(adev->hid, info->HardwareId.String, 15);
 
     if (device_add(&adev->dev) != 0) {
-      kfree(adev);
+        kfree(adev);
     } else {
-      printk(ACPI_CLASS "discovered device %s (HID: %s)\n",
-             adev->dev.name, adev->hid[0] ? adev->hid : "None");
+        printk(KERN_DEBUG ACPI_CLASS "Discovered device %s (HID: %s)\n",
+               adev->dev.name, adev->hid[0] ? adev->hid : "None");
     }
   }
 
@@ -123,13 +112,14 @@ static ACPI_STATUS __no_cfi acpi_enum_callback(ACPI_HANDLE object,
 }
 
 int acpi_bus_enumerate(void) {
-  if (!acpi_bus_registered) {
+  static bool registered = false;
+  if (!registered) {
     bus_register(&acpi_bus_type);
-    acpi_bus_registered = true;
+    registered = true;
   }
-
-  printk(KERN_INFO ACPI_CLASS "enumerating ACPI namespace...\n");
-  AcpiWalkNamespace(ACPI_TYPE_DEVICE, ACPI_ROOT_OBJECT, ACPI_UINT32_MAX,
+  
+  printk(KERN_INFO ACPI_CLASS "Enumerating ACPI namespace...\n");
+  AcpiWalkNamespace(ACPI_TYPE_ANY, ACPI_ROOT_OBJECT, ACPI_UINT32_MAX,
                     acpi_enum_callback, nullptr, nullptr, nullptr);
   return 0;
 }

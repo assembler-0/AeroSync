@@ -37,6 +37,9 @@ typedef struct time_source {
   // Initialize the hardware
   int (*init)(void);
 
+  // Stop the hardware (for unloading/transfer)
+  void (*stop)(void);
+
   // Get the frequency of the counter in Hz
   uint64_t (*get_frequency)(void);
 
@@ -44,10 +47,10 @@ typedef struct time_source {
   uint64_t (*read_counter)(void);
 
   // Optional: Recalibrate TSC using this source
-  // Returns 0 on success, -1 on failure.
-  // Ideally, this function should take roughly 'wait_ns' nanoseconds to execute
-  // and return the calculated TSC frequency.
   int (*calibrate_tsc)(void);
+
+  // Optional: Handover state/offset from previous source
+  void (*handover)(const struct time_source *prev);
 } time_source_t;
 
 /**
@@ -55,6 +58,11 @@ typedef struct time_source {
  * @param source Pointer to the time source structure.
  */
 int time_register_source(const time_source_t *source);
+
+/**
+ * @brief Unregister a time source.
+ */
+int time_unregister_source(const time_source_t *source);
 
 /**
  * @brief Initialize the Time Subsystem, selecting the best available source.

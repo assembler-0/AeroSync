@@ -3,7 +3,7 @@
  * AeroSync monolithic kernel
  *
  * @file aerosync/sysintf/core/udm.c
- * @brief Unified Driver Management - Core orchestration
+ * @brief Unified Driver Management - Global Lifecycle Orchestration
  * @copyright (C) 2025-2026 assembler-0
  */
 
@@ -15,312 +15,137 @@
 #include <aerosync/export.h>
 #include <lib/printk.h>
 #include <linux/list.h>
-#include <mm/slub.h>
 
-struct udm_device_entry {
-  struct device *dev;
-  const struct udm_ops *ops;
-  enum udm_driver_state state;
-  struct list_head node;
-};
-
-static LIST_HEAD(udm_device_list);
-static mutex_t udm_lock;
+/* Global state tracking */
 static enum udm_state global_state = UDM_STATE_RUNNING;
 
-void udm_init(void) {
-  mutex_init(&udm_lock);
-  printk(KERN_INFO HAL_CLASS "Unified Driver Management initialized\n");
-}
-
-int udm_register_ops(struct device *dev, const struct udm_ops *ops) {
-  if (!dev || !ops) return -EINVAL;
-
-  struct udm_device_entry *entry = kmalloc(sizeof(*entry));
-  if (!entry) return -ENOMEM;
-
-  entry->dev = get_device(dev);
-  entry->ops = ops;
-  entry->state = UDM_DRIVER_ACTIVE;
-
-  mutex_lock(&udm_lock);
-  list_add_tail(&entry->node, &udm_device_list);
-  mutex_unlock(&udm_lock);
-
-#ifdef CONFIG_DEBUG_UDM
-  printk(KERN_DEBUG HAL_CLASS "Registered UDM ops for %s\n", dev->name);
-#endif
-
+int udm_init(void) {
+  printk(KERN_INFO HAL_CLASS "Unified Driver Management (UDM) Unification Complete\n");
   return 0;
 }
-EXPORT_SYMBOL(udm_register_ops);
 
 enum udm_state udm_get_state(void) {
   return global_state;
 }
 EXPORT_SYMBOL(udm_get_state);
 
-enum udm_driver_state udm_get_driver_state(struct device *dev) {
-  struct udm_device_entry *entry;
-  enum udm_driver_state state = UDM_DRIVER_ACTIVE;
+/* Helper to execute a lifecycle function on a device and its children */
+static int udm_exec_recursive(struct device *dev, int (*func)(struct device *dev), bool reverse) {
+  int ret = 0;
+  struct device *child;
 
-  mutex_lock(&udm_lock);
-  list_for_each_entry(entry, &udm_device_list, node) {
-    if (entry->dev == dev) {
-      state = entry->state;
-      break;
-    }
+  if (!reverse) {
+    ret = func(dev);
+    if (ret) return ret;
   }
-  mutex_unlock(&udm_lock);
 
-  return state;
-}
-EXPORT_SYMBOL(udm_get_driver_state);
-
-int __no_cfi udm_suspend_device(struct device *dev) {
-  struct udm_device_entry *entry;
-  int ret = -ENODEV;
-
-  mutex_lock(&udm_lock);
-  list_for_each_entry(entry, &udm_device_list, node) {
-    if (entry->dev == dev) {
-      if (entry->ops->suspend) {
-        ret = entry->ops->suspend(dev);
-        if (ret == 0) entry->state = UDM_DRIVER_SUSPENDED;
-        else entry->state = UDM_DRIVER_ERROR;
-      } else {
-        ret = 0;
-      }
-      break;
-    }
+  list_for_each_entry(child, &dev->children, child_node) {
+    ret = udm_exec_recursive(child, func, reverse);
+    if (ret && !reverse) return ret; /* Stop on error for forward ops (suspend) */
   }
-  mutex_unlock(&udm_lock);
+
+  if (reverse) {
+    ret = func(dev);
+  }
 
   return ret;
 }
-EXPORT_SYMBOL(udm_suspend_device);
 
-int __no_cfi udm_resume_device(struct device *dev) {
-  struct udm_device_entry *entry;
-  int ret = -ENODEV;
+/* --- Lifecycle Wrappers --- */
 
-  mutex_lock(&udm_lock);
-  list_for_each_entry(entry, &udm_device_list, node) {
-    if (entry->dev == dev) {
-      if (entry->ops->resume) {
-        ret = entry->ops->resume(dev);
-        if (ret == 0) entry->state = UDM_DRIVER_ACTIVE;
-        else entry->state = UDM_DRIVER_ERROR;
-      } else {
-        ret = 0;
-      }
-      break;
+static int dev_suspend_wrapper(struct device *dev) {
+  if (dev->driver && dev->driver->suspend) {
+    int r = dev->driver->suspend(dev);
+    if (r == 0) {
+      printk(KERN_DEBUG HAL_CLASS "Suspended %s\n", dev->name ? dev->name : "unnamed");
     }
+    return r;
   }
-  mutex_unlock(&udm_lock);
-
-  return ret;
+  return 0;
 }
-EXPORT_SYMBOL(udm_resume_device);
 
-int __no_cfi udm_suspend_all(void) {
-  struct udm_device_entry *entry;
-  int ret = 0, failed = 0;
+static int dev_resume_wrapper(struct device *dev) {
+  if (dev->driver && dev->driver->resume) {
+    int r = dev->driver->resume(dev);
+    if (r == 0) {
+      printk(KERN_DEBUG HAL_CLASS "Resumed %s\n", dev->name ? dev->name : "unnamed");
+    }
+    return r;
+  }
+  return 0;
+}
 
-  printk(KERN_INFO HAL_CLASS "Suspending all drivers...\n");
+static int dev_shutdown_wrapper(struct device *dev) {
+  if (dev->driver && dev->driver->shutdown) {
+    dev->driver->shutdown(dev);
+    printk(KERN_DEBUG HAL_CLASS "Shut down %s\n", dev->name ? dev->name : "unnamed");
+  }
+  return 0;
+}
 
-  mutex_lock(&udm_lock);
+/* --- Global Commands --- */
+
+extern struct list_head global_device_list;
+extern mutex_t device_model_lock;
+
+int udm_suspend_all(void) {
+  struct device *dev;
+  int ret = 0;
+
+  printk(KERN_INFO HAL_CLASS "UDM: Suspending all system devices...\n");
+  mutex_lock(&device_model_lock);
   global_state = UDM_STATE_SUSPENDING;
 
-  list_for_each_entry_reverse(entry, &udm_device_list, node) {
-    if (entry->state != UDM_DRIVER_ACTIVE) continue;
-
-    if (entry->ops->suspend) {
-      int r = entry->ops->suspend(entry->dev);
-      if (r != 0) {
-        printk(KERN_ERR HAL_CLASS "Failed to suspend %s: %d\n", 
-               entry->dev->name, r);
-        entry->state = UDM_DRIVER_ERROR;
-        failed++;
-        ret = r;
-      } else {
-        entry->state = UDM_DRIVER_SUSPENDED;
-#ifdef CONFIG_DEBUG_UDM
-        printk(KERN_DEBUG HAL_CLASS "Suspended %s\n", entry->dev->name);
-#endif
-      }
+  /* Suspend in reverse order (peripherals before core) */
+  list_for_each_entry_reverse(dev, &global_device_list, node) {
+    if (!dev->parent) { /* Start from roots, udm_exec_recursive handles the rest */
+      ret = udm_exec_recursive(dev, dev_suspend_wrapper, true);
+      if (ret) break;
     }
   }
 
-  if (failed == 0) {
-    global_state = UDM_STATE_SUSPENDED;
-    printk(KERN_INFO HAL_CLASS "All drivers suspended\n");
-  } else {
-    global_state = UDM_STATE_RUNNING;
-    printk(KERN_ERR HAL_CLASS "Suspend failed (%d drivers)\n", failed);
-  }
-
-  mutex_unlock(&udm_lock);
+  global_state = (ret == 0) ? UDM_STATE_SUSPENDED : UDM_STATE_RUNNING;
+  mutex_unlock(&device_model_lock);
   return ret;
 }
 EXPORT_SYMBOL(udm_suspend_all);
 
-int __no_cfi udm_resume_all(void) {
-  struct udm_device_entry *entry;
-  int ret = 0, failed = 0;
+int udm_resume_all(void) {
+  struct device *dev;
+  int ret = 0;
 
-  printk(KERN_INFO HAL_CLASS "Resuming all drivers...\n");
-
-  mutex_lock(&udm_lock);
+  printk(KERN_INFO HAL_CLASS "UDM: Resuming all system devices...\n");
+  mutex_lock(&device_model_lock);
   global_state = UDM_STATE_RESUMING;
 
-  list_for_each_entry(entry, &udm_device_list, node) {
-    if (entry->state != UDM_DRIVER_SUSPENDED) continue;
-
-    if (entry->ops->resume) {
-      int r = entry->ops->resume(entry->dev);
-      if (r != 0) {
-        printk(KERN_ERR HAL_CLASS "Failed to resume %s: %d\n",
-               entry->dev->name, r);
-        entry->state = UDM_DRIVER_ERROR;
-        failed++;
-        ret = r;
-      } else {
-        entry->state = UDM_DRIVER_ACTIVE;
-#ifdef CONFIG_DEBUG_UDM
-        printk(KERN_DEBUG HAL_CLASS "Resumed %s\n", entry->dev->name);
-#endif
-      }
+  /* Resume in forward order (core before peripherals) */
+  list_for_each_entry(dev, &global_device_list, node) {
+    if (!dev->parent) {
+      ret = udm_exec_recursive(dev, dev_resume_wrapper, false);
+      if (ret) break;
     }
   }
 
   global_state = UDM_STATE_RUNNING;
-  if (failed > 0) {
-    printk(KERN_ERR HAL_CLASS "Resume completed with %d errors\n", failed);
-  } else {
-    printk(KERN_INFO HAL_CLASS "All drivers resumed\n");
-  }
-
-  mutex_unlock(&udm_lock);
+  mutex_unlock(&device_model_lock);
   return ret;
 }
 EXPORT_SYMBOL(udm_resume_all);
 
-int __no_cfi udm_stop_all(void) {
-  struct udm_device_entry *entry;
-  int ret = 0, failed = 0;
+void udm_shutdown_all(void) {
+  struct device *dev;
 
-  printk(KERN_INFO HAL_CLASS "Stopping all drivers...\n");
-
-  mutex_lock(&udm_lock);
+  printk(KERN_INFO HAL_CLASS "UDM: Shutting down all system devices...\n");
+  mutex_lock(&device_model_lock);
   global_state = UDM_STATE_SHUTTING_DOWN;
 
-  list_for_each_entry_reverse(entry, &udm_device_list, node) {
-    if (entry->state == UDM_DRIVER_STOPPED) continue;
-
-    if (entry->ops->stop) {
-      int r = entry->ops->stop(entry->dev);
-      if (r != 0) {
-        printk(KERN_ERR HAL_CLASS "Failed to stop %s: %d\n",
-               entry->dev->name, r);
-        entry->state = UDM_DRIVER_ERROR;
-        failed++;
-        ret = r;
-      } else {
-        entry->state = UDM_DRIVER_STOPPED;
-#ifdef CONFIG_DEBUG_UDM
-        printk(KERN_DEBUG HAL_CLASS "Stopped %s\n", entry->dev->name);
-#endif
-      }
-    }
-  }
-
-  if (failed == 0) {
-    printk(KERN_INFO HAL_CLASS "All drivers stopped\n");
-  } else {
-    printk(KERN_ERR HAL_CLASS "Stop failed (%d drivers)\n", failed);
-  }
-
-  mutex_unlock(&udm_lock);
-  return ret;
-}
-EXPORT_SYMBOL(udm_stop_all);
-
-int __no_cfi udm_restart_all(void) {
-  struct udm_device_entry *entry;
-  int ret = 0, failed = 0;
-
-  printk(KERN_INFO HAL_CLASS "Restarting all drivers...\n");
-
-  mutex_lock(&udm_lock);
-
-  list_for_each_entry(entry, &udm_device_list, node) {
-    if (entry->state != UDM_DRIVER_STOPPED) continue;
-
-    if (entry->ops->restart) {
-      int r = entry->ops->restart(entry->dev);
-      if (r != 0) {
-        printk(KERN_ERR HAL_CLASS "Failed to restart %s: %d\n",
-               entry->dev->name, r);
-        entry->state = UDM_DRIVER_ERROR;
-        failed++;
-        ret = r;
-      } else {
-        entry->state = UDM_DRIVER_ACTIVE;
-#ifdef CONFIG_DEBUG_UDM
-        printk(KERN_DEBUG HAL_CLASS "Restarted %s\n", entry->dev->name);
-#endif
-      }
-    }
-  }
-
-  global_state = UDM_STATE_RUNNING;
-  if (failed > 0) {
-    printk(KERN_ERR HAL_CLASS "Restart completed with %d errors\n", failed);
-  } else {
-    printk(KERN_INFO HAL_CLASS "All drivers restarted\n");
-  }
-
-  mutex_unlock(&udm_lock);
-  return ret;
-}
-EXPORT_SYMBOL(udm_restart_all);
-
-void __no_cfi udm_shutdown_all(void) {
-  struct udm_device_entry *entry;
-
-  printk(KERN_INFO HAL_CLASS "Shutting down all drivers...\n");
-
-  mutex_lock(&udm_lock);
-  global_state = UDM_STATE_SHUTTING_DOWN;
-
-  list_for_each_entry_reverse(entry, &udm_device_list, node) {
-    if (entry->dev->driver && entry->dev->driver->shutdown) {
-      entry->dev->driver->shutdown(entry->dev);
-#ifdef CONFIG_DEBUG_UDM
-      printk(KERN_DEBUG HAL_CLASS "Shutdown %s\n", entry->dev->name);
-#endif
+  list_for_each_entry_reverse(dev, &global_device_list, node) {
+    if (!dev->parent) {
+      udm_exec_recursive(dev, dev_shutdown_wrapper, true);
     }
   }
 
   global_state = UDM_STATE_HALTED;
-  printk(KERN_INFO HAL_CLASS "All drivers shut down\n");
-
-  mutex_unlock(&udm_lock);
+  mutex_unlock(&device_model_lock);
 }
 EXPORT_SYMBOL(udm_shutdown_all);
-
-void __no_cfi udm_emergency_stop_all(void) {
-  struct udm_device_entry *entry;
-
-  printk(KERN_EMERG HAL_CLASS "EMERGENCY STOP - Halting all drivers\n");
-
-  list_for_each_entry_reverse(entry, &udm_device_list, node) {
-    if (entry->ops->emergency_stop) {
-      entry->ops->emergency_stop(entry->dev);
-    }
-  }
-
-  global_state = UDM_STATE_HALTED;
-}
-EXPORT_SYMBOL(udm_emergency_stop_all);

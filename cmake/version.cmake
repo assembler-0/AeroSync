@@ -2,7 +2,7 @@
 # AeroSync versioning system
 # ============================================================================
 execute_process(
-        COMMAND git describe --tags --dirty --always
+        COMMAND git describe --dirty --always
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         OUTPUT_VARIABLE GIT_DESCRIBE
         OUTPUT_STRIP_TRAILING_WHITESPACE

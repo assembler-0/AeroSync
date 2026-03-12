@@ -13,6 +13,7 @@
 #include <aerosync/panic.h>
 #include <aerosync/version.h>
 #include <aerosync/ksymtab.h>
+#include <aerosync/export.h>
 #include <arch/x86_64/smp.h>
 #include <lib/string.h>
 #include <lib/log.h>
@@ -457,6 +458,11 @@ static int drm_console_init(void *payload) {
   struct drm_device *dev = drm_get_primary();
   if (!dev) return -ENODEV;
 
+  /* Rationale: Prevent GPF if dev is partially initialized/poisoned */
+  if (unlikely(!dev->driver || !dev->fb.vaddr || !dev->fb.width || !dev->fb.height || !dev->fb.format.bpp)) {
+    return -EAGAIN;
+  }
+
   main_console.dev = dev;
   main_console.font = font_get_default((int)dev->fb.width, (int)dev->fb.height);
   if (!main_console.font) return -ENODEV;
@@ -479,7 +485,12 @@ static printk_backend_t drm_backend = {
   .init = drm_console_init
 };
 
+void drm_console_signal_ready(void) {
+  printk_backend_signal_ready(&drm_backend);
+}
+EXPORT_SYMBOL(drm_console_signal_ready);
+
 int drm_console_init_default(void) {
-  printk_register_backend(&drm_backend);
+  printk_register_backend_pending(&drm_backend);
   return 0;
 }

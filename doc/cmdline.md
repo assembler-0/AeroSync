@@ -18,3 +18,5 @@
 - `disable-mm-scrubber`: disable mm_scrubberd thread (depends on MM_HARDENING)
 - `init=VAL`: VAL is path to init process (absolute path in initrd)
 - `font=FONT`: choose builtin font to load (e.g. "font=VGA8x16", "font=SUN12x22", see lib/fonts for more details)
+- `headless`: run in headless mode (disables all kinds of on-screen rendering)
+- `printk_no_auto_switch`: disable automatic printk backend switching on new backend registration

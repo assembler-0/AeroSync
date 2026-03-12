@@ -213,6 +213,7 @@ void vma_test(void);
 
 /* VMA Cache for performance */
 int vma_cache_init(void);
+int vma_aslr_reseed(void);
 struct vm_area_struct *vma_cache_alloc(void);
 void vma_cache_free(struct vm_area_struct *vma);
 

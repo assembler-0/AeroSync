@@ -7,11 +7,11 @@
  * @copyright (C) 2025-2026 assembler-0
  */
 
-#include <drivers/timer/pit.h>
-#include <aerosync/fkx/fkx.h>
+#include <aerosync/export.h>
+#include <arch/x86_64/cpu.h>
 #include <arch/x86_64/io.h>
 #include <arch/x86_64/tsc.h>
-#include <arch/x86_64/cpu.h>
+#include <drivers/timer/pit.h>
 
 void __i_pit_wait_internal(uint32_t ms) {
   irq_flags_t flags = save_irq_flags();

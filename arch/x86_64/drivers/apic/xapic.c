@@ -2,7 +2,7 @@
 /**
  * AeroSync monolithic kernel
  *
- * @file drivers/apic/xapic.c
+ * @file arch/x86_64/drivers/apic/xapic.c
  * @brief xAPIC driver
  * @copyright (C) 2025-2026 assembler-0
  *
@@ -18,14 +18,14 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x86_64/mm/paging.h>
-#include <drivers/apic/apic_internal.h>
-#include <drivers/apic/xapic.h>
 #include <aerosync/classes.h>
-#include <aerosync/fkx/fkx.h>
-#include <mm/vmalloc.h>
 #include <aerosync/sysintf/madt.h>
+#include <arch/x86_64/drivers/apic/apic_internal.h>
+#include <arch/x86_64/drivers/apic/xapic.h>
+#include <arch/x86_64/mm/paging.h>
 #include <lib/printk.h>
+#include <mm/vmalloc.h>
+#include <aerosync/sysintf/time.h>
 
 // --- Register Definitions ---
 
@@ -182,19 +182,20 @@ static void xapic_timer_set_oneshot_op(uint32_t ticks) {
   xapic_write(XAPIC_LVT_TIMER, (1 << 16)); // Masked
   xapic_write(XAPIC_TIMER_DIV, 0x3);       // Divide by 16
   xapic_write(XAPIC_TIMER_INIT_COUNT, ticks);
-  xapic_write(XAPIC_LVT_TIMER, 32);        // Vector 32, Oneshot (00), Unmasked
+  xapic_write(XAPIC_LVT_TIMER, 32); // Vector 32, Oneshot (00), Unmasked
 }
 
 static void xapic_timer_set_periodic_op(uint32_t ticks) {
   xapic_write(XAPIC_LVT_TIMER, (1 << 16)); // Masked
   xapic_write(XAPIC_TIMER_DIV, 0x3);       // Divide by 16
   xapic_write(XAPIC_TIMER_INIT_COUNT, ticks);
-  xapic_write(XAPIC_LVT_TIMER, 32 | (1 << 17)); // Vector 32, Periodic (01), Unmasked
+  xapic_write(XAPIC_LVT_TIMER,
+              32 | (1 << 17)); // Vector 32, Periodic (01), Unmasked
 }
 
 static void xapic_timer_set_tsc_deadline_op(uint64_t tsc_deadline) {
   // Mode 2 (10b) is TSC-Deadline
-  xapic_write(XAPIC_LVT_TIMER, 32 | (2 << 17)); 
+  xapic_write(XAPIC_LVT_TIMER, 32 | (2 << 17));
   wrmsr(0x6E0, tsc_deadline); // IA32_TSC_DEADLINE MSR
 }
 
@@ -212,16 +213,15 @@ static void xapic_shutdown_op(void) {
 }
 
 const struct apic_ops xapic_ops = {
-  .name = "xAPIC",
-  .init_lapic = xapic_init_lapic,
-  .send_eoi = xapic_send_eoi_op,
-  .send_ipi = xapic_send_ipi_op,
-  .get_id = xapic_get_id_raw,
-  .timer_stop = xapic_timer_stop_op,
-  .timer_set_oneshot = xapic_timer_set_oneshot_op,
-  .timer_set_periodic = xapic_timer_set_periodic_op,
-  .timer_set_tsc_deadline = xapic_timer_set_tsc_deadline_op,
-  .shutdown = xapic_shutdown_op,
-  .read = xapic_read,
-  .write = xapic_write
-};
+    .name = "xAPIC",
+    .init_lapic = xapic_init_lapic,
+    .send_eoi = xapic_send_eoi_op,
+    .send_ipi = xapic_send_ipi_op,
+    .get_id = xapic_get_id_raw,
+    .timer_stop = xapic_timer_stop_op,
+    .timer_set_oneshot = xapic_timer_set_oneshot_op,
+    .timer_set_periodic = xapic_timer_set_periodic_op,
+    .timer_set_tsc_deadline = xapic_timer_set_tsc_deadline_op,
+    .shutdown = xapic_shutdown_op,
+    .read = xapic_read,
+    .write = xapic_write};

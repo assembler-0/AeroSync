@@ -7,7 +7,7 @@
  * @copyright (C) 2025-2026 assembler-0
  */
 
-#include <drivers/block/ide/ide.h>
+#include <drivers/block/ide.h>
 #include <arch/x86_64/io.h>
 #include <aerosync/sysintf/dma.h>
 #include <aerosync/errno.h>

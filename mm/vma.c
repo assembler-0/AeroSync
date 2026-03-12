@@ -112,15 +112,47 @@ int vma_cache_init(void) {
     return -ENOMEM;
   }
 
-  /* Pre-initialize ASLR RNG to prevent deadlocks in VMA allocation path */
+  /* 
+   * Early initialization: attempt to get a basic RNG.
+   * If this fails, we will retry in vma_aslr_reseed() later.
+   */
   vma_aslr_rng = crypto_alloc_tfm("sw_rng", CRYPTO_ALG_TYPE_RNG);
   if (!vma_aslr_rng) {
     printk(KERN_WARNING VMA_CLASS
-           "Failed to allocate ASLR RNG, falling back to TSC\n");
+           "Failed to allocate ASLR RNG (early), falling back to TSC\n");
   }
 
   return 0;
 }
+
+int vma_aslr_reseed(void) {
+  struct crypto_tfm *new_rng;
+  struct crypto_tfm *old_rng;
+
+  /* Try to get a high-quality hardware RNG first, then fallback to sw_rng */
+  new_rng = crypto_alloc_tfm("hw_rng", CRYPTO_ALG_TYPE_RNG);
+  if (!new_rng) {
+    new_rng = crypto_alloc_tfm("sw_rng", CRYPTO_ALG_TYPE_RNG);
+  }
+
+  if (!new_rng) {
+    printk(KERN_ERR VMA_CLASS "Failed to reseed ASLR RNG: no entropy source available\n");
+    return -ENOENT;
+  }
+
+  old_rng = vma_aslr_rng;
+  rcu_assign_pointer(vma_aslr_rng, new_rng);
+  
+  if (old_rng) {
+    synchronize_rcu();
+    crypto_free_tfm(old_rng);
+  }
+
+  printk(KERN_INFO VMA_CLASS "ASLR RNG reseeded successfully using %s\n", 
+         new_rng->alg->name);
+  return 0;
+}
+EXPORT_SYMBOL(vma_aslr_reseed);
 
 struct vm_area_struct *vma_cache_alloc_node(int nid) {
   return kmem_cache_alloc_node(vma_cachep, nid);

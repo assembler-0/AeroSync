@@ -2,7 +2,7 @@
 /**
  * AeroSync monolithic kernel
  *
- * @file include/drivers/iommu/intel-iommu.h
+ * @file include/arch/x86_64/drivers/iommu/intel-iommu.h
  * @brief Intel VT-d IOMMU definitions
  * @copyright (C) 2025-2026 assembler-0
  */
@@ -104,3 +104,5 @@ struct dmar_domain {
 };
 
 struct intel_iommu *find_iommu_for_device(uint16_t segment, uint8_t bus, uint8_t devfn);
+
+int x86_64_vtd_iommu_init(void);

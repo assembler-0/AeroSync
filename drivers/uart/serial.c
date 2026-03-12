@@ -1,291 +1,132 @@
-///SPDX-License-Identifier: GPL-2.0-only
+/// SPDX-License-Identifier: GPL-2.0-only
 /**
  * AeroSync monolithic kernel
  *
  * @file drivers/uart/serial.c
- * @brief serial UART printk backend
+ * @brief 8250/16550A UART hardware driver
  * @copyright (C) 2025-2026 assembler-0
- *
- * This file is part of the AeroSync kernel.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <aerosync/errno.h>
-#include <aerosync/fkx/fkx.h>
+#include <aerosync/asrx.h>
 #include <drivers/uart/serial.h>
 #include <arch/x86_64/io.h>
-#include <aerosync/sysintf/char.h>
-#include <fs/devtmpfs.h>
-#include <aerosync/sysintf/device.h>
-#include <aerosync/sysintf/tty.h>
-#include <lib/log.h>
 
-// Serial port register offsets
-#define SERIAL_DATA_REG     0
-#define SERIAL_IER_REG      1
-#define SERIAL_DIVISOR_LOW  0
-#define SERIAL_DIVISOR_HIGH 1
-#define SERIAL_FIFO_REG     2
-#define SERIAL_LCR_REG      3
-#define SERIAL_MCR_REG      4
-#define SERIAL_LSR_REG      5
-#define SERIAL_MSR_REG      6
+/* 8250 Register Offsets */
+#define UART_RX          0    /* In:  Receive buffer */
+#define UART_TX          0    /* Out: Transmit buffer */
+#define UART_IER         1    /* I/O: Interrupt Enable Register */
+#define UART_IIR         2    /* In:  Interrupt ID Register */
+#define UART_FCR         2    /* Out: FIFO Control Register */
+#define UART_LCR         3    /* I/O: Line Control Register */
+#define UART_MCR         4    /* I/O: Modem Control Register */
+#define UART_LSR         5    /* In:  Line Status Register */
+#define UART_MSR         6    /* In:  Modem Status Register */
+#define UART_SCR         7    /* I/O: Scratch Register */
+#define UART_DLL         0    /* Out: Divisor Latch Low (DLAB=1) */
+#define UART_DLM         1    /* Out: Divisor Latch High (DLAB=1) */
 
-#define SERIAL_LCR_DLAB     0x80
-#define SERIAL_LCR_8BITS    0x03
-#define SERIAL_LCR_1STOP    0x00
-#define SERIAL_LCR_NOPARITY 0x00
+/* LCR bits */
+#define UART_LCR_WLEN8   0x03 /* Word length: 8 bits */
+#define UART_LCR_STOP1   0x00 /* Stop bits: 1 */
+#define UART_LCR_PNONE   0x00 /* Parity: None */
+#define UART_LCR_DLAB    0x80 /* Divisor Latch Access Bit */
 
-#define SERIAL_LSR_DATA_READY    0x01
-#define SERIAL_LSR_TRANSMIT_EMPTY 0x20
+/* LSR bits */
+#define UART_LSR_DR      0x01 /* Data Ready */
+#define UART_LSR_THRE    0x20 /* Transmit-hold-register empty */
+#define UART_LSR_TEMT    0x40 /* Transmitter empty */
 
-#define SERIAL_FIFO_ENABLE      0x01
-#define SERIAL_FIFO_CLEAR_RX    0x02
-#define SERIAL_FIFO_CLEAR_TX    0x04
-#define SERIAL_FIFO_TRIGGER_14  0xC0
+/* IER bits */
+#define UART_IER_RDI     0x01 /* Enable receiver data interrupt */
+#define UART_IER_THRI    0x02 /* Enable transmitter holding register int */
 
-#define SERIAL_MCR_DTR          0x01
-#define SERIAL_MCR_RTS          0x02
-#define SERIAL_MCR_OUT2         0x08
+/* FCR bits */
+#define UART_FCR_ENABLE  0x01 /* Enable FIFO */
+#define UART_FCR_CLEAR_R 0x02 /* Clear receiver FIFO */
+#define UART_FCR_CLEAR_X 0x04 /* Clear transmitter FIFO */
+#define UART_FCR_T14     0xC0 /* Trigger level: 14 bytes */
 
-static uint16_t serial_port = COM1;
-static int serial_initialized = 0;
+/* MCR bits */
+#define UART_MCR_DTR     0x01 /* Data Terminal Ready */
+#define UART_MCR_RTS     0x02 /* Request To Send */
+#define UART_MCR_OUT2    0x08 /* Output2 (Required for IRQs on some chips) */
 
-static void serial_backend_putc(char c, int level) {
-  const char *ansi = klog_level_to_ansi(level);
-  if (level != KLOG_RAW && *ansi) {
-    while (*ansi) serial_write_char(*ansi++);
-  }
+static void serial8250_poll_putc(struct uart_port *port, char c) {
+    uint16_t base = (uint16_t)port->iobase;
+    int timeout = 100000;
 
-  serial_write_char(c);
-
-  if (level != KLOG_RAW && *ansi && c != '\n') {
-    const char *reset = ANS_RESET;
-    while (*reset) serial_write_char(*reset++);
-  }
+    while (!(inb(base + UART_LSR) & UART_LSR_THRE) && --timeout > 0);
+    outb(base + UART_TX, c);
 }
 
-static void serial_backend_write(const char *buf, size_t len, int level) {
-  if (len == 0) return;
-
-  const char *ansi = klog_level_to_ansi(level);
-  bool has_color = (level != KLOG_RAW && *ansi);
-
-  if (has_color) {
-    while (*ansi) serial_write_char(*ansi++);
-  }
-
-  // Check if the buffer ends with a newline
-  size_t effective_len = len;
-  bool trailing_newline = (buf[len - 1] == '\n');
-  if (trailing_newline && has_color) {
-    effective_len--; // Print the newline after the reset
-  }
-
-  for (size_t i = 0; i < effective_len; i++) {
-    serial_write_char(buf[i]);
-  }
-
-  if (has_color) {
-    const char *reset = ANS_RESET;
-    while (*reset) serial_write_char(*reset++);
-  }
-
-  if (trailing_newline && has_color) {
-    serial_write_char('\n');
-  }
+static int serial8250_poll_getc(struct uart_port *port) {
+    uint16_t base = (uint16_t)port->iobase;
+    if (!(inb(base + UART_LSR) & UART_LSR_DR)) return -1;
+    return inb(base + UART_RX);
 }
 
-/* Character Device Implementation */
-static int serial_char_open(struct char_device *cdev) {
-  (void) cdev;
-  return 0;
+static void serial8250_set_termios(struct uart_port *port, uint32_t baud, uint32_t cflag) {
+    (void)cflag;
+    uint16_t base = (uint16_t)port->iobase;
+    uint16_t divisor = 115200 / baud;
+
+    outb(base + UART_LCR, UART_LCR_DLAB);
+    outb(base + UART_DLL, divisor & 0xFF);
+    outb(base + UART_DLM, (divisor >> 8) & 0xFF);
+    outb(base + UART_LCR, UART_LCR_WLEN8 | UART_LCR_STOP1 | UART_LCR_PNONE);
 }
 
-static ssize_t serial_char_write(struct char_device *cdev, const void *buf, size_t count, vfs_loff_t *ppos) {
-  (void) cdev;
-  (void) ppos;
-  const char *data = buf;
-  for (size_t i = 0; i < count; i++) {
-    serial_write_char(data[i]);
-  }
-  return count;
-}
+static int serial8250_setup(struct uart_port *port) {
+    uint16_t base = (uint16_t)port->iobase;
 
-static struct char_operations serial_char_ops = {
-  .open = serial_char_open,
-  .write = serial_char_write,
-};
+    /* Disable all interrupts */
+    outb(base + UART_IER, 0x00);
 
-int serial_init_standard(void *unused) {
-  (void) unused;
-  uint16_t ports[] = {COM1, COM2, COM3, COM4};
+    /* Initialize hardware */
+    serial8250_set_termios(port, 38400, 0);
+    outb(base + UART_FCR, UART_FCR_ENABLE | UART_FCR_CLEAR_R | UART_FCR_CLEAR_X | UART_FCR_T14);
+    outb(base + UART_MCR, UART_MCR_DTR | UART_MCR_RTS | UART_MCR_OUT2);
 
-  for (int i = 0; i < 4; i++) {
-    if (serial_init_port(ports[i]) == 0) {
-      serial_initialized = 1;
-      /* Register using unified TTY interface */
-      tty_register_device(&serial_char_ops, nullptr);
-      return 0;
-    }
-  }
-
-  return -ENODEV;
-}
-
-static void serial_cleanup(void) {
-  if (serial_initialized) {
-    outb(serial_port + SERIAL_IER_REG, 0x00);
-  }
-}
-
-static int serial_suspend(void) {
-  if (serial_initialized) {
-    outb(serial_port + SERIAL_IER_REG, 0x00);
-    outb(serial_port + SERIAL_MCR_REG, 0x00);
-  }
-  return 0;
-}
-
-static int serial_resume(void) {
-  if (serial_initialized) {
-    outb(serial_port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2);
-    outb(serial_port + SERIAL_IER_REG, 0x00);
-  }
-  return 0;
-}
-
-int serial_is_initialized(void) {
-  return serial_initialized;
-}
-
-static printk_backend_t serial_backend = {
-  .name = "serial",
-  .priority = 50,
-  .putc = serial_backend_putc,
-  .write = serial_backend_write,
-  .probe = serial_probe,
-  .init = serial_init_standard,
-  .cleanup = serial_cleanup,
-  .is_active = serial_is_initialized,
-  .suspend = serial_suspend,
-  .resume = serial_resume,
-};
-
-const printk_backend_t *serial_get_backend(void) {
-  return &serial_backend;
-}
-
-static int serial_lsr_sane(uint16_t base) {
-  uint8_t lsr = inb(base + 5);
-  if (lsr == 0xFF || lsr == 0x00)
     return 0;
-  return 1;
 }
 
-int serial_port_exists(uint16_t base) {
-  uint8_t old = inb(base + 7);
-  outb(base + 7, 0xA5);
-  if (inb(base + 7) != 0xA5) goto fallback;
-  outb(base + 7, 0x5A);
-  if (inb(base + 7) != 0x5A) goto fallback;
-  outb(base + 7, old);
-  return 1;
-fallback:
-  outb(base + 7, old);
-  return serial_lsr_sane(base);
+static void serial8250_enable_rx_irq(struct uart_port *port) {
+    uint16_t base = (uint16_t)port->iobase;
+    uint8_t ier = inb(base + UART_IER);
+    outb(base + UART_IER, ier | UART_IER_RDI);
 }
 
-int serial_probe(void) {
-  uint16_t ports[] = {COM1, COM2, COM3, COM4};
-  for (int i = 0; i < 4; i++) {
-    if (serial_port_exists(ports[i])) return 1;
-  }
-  return 0;
+static void serial8250_disable_rx_irq(struct uart_port *port) {
+    uint16_t base = (uint16_t)port->iobase;
+    uint8_t ier = inb(base + UART_IER);
+    outb(base + UART_IER, ier & ~UART_IER_RDI);
 }
 
-int serial_init(void) {
-  return serial_init_port(COM1);
-}
+static const struct uart_ops serial8250_ops = {
+    .setup = serial8250_setup,
+    .poll_putc = serial8250_poll_putc,
+    .poll_getc = serial8250_poll_getc,
+    .set_termios = serial8250_set_termios,
+    .enable_rx_irq = serial8250_enable_rx_irq,
+    .disable_rx_irq = serial8250_disable_rx_irq,
+};
 
-int serial_init_port(uint16_t port) {
-  serial_port = port;
-  outb(port + SERIAL_IER_REG, 0x00);
-  outb(port + SERIAL_LCR_REG, SERIAL_LCR_DLAB);
-  outb(port + SERIAL_DIVISOR_LOW, 0x03);
-  outb(port + SERIAL_DIVISOR_HIGH, 0x00);
-  outb(port + SERIAL_LCR_REG, SERIAL_LCR_8BITS | SERIAL_LCR_NOPARITY | SERIAL_LCR_1STOP);
-  outb(port + SERIAL_FIFO_REG,
-       SERIAL_FIFO_ENABLE | SERIAL_FIFO_CLEAR_RX | SERIAL_FIFO_CLEAR_TX | SERIAL_FIFO_TRIGGER_14);
-
-  /* Initial MCR state */
-  outb(port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2);
-
-  /*
-   * Loopback test: bit 4 of MCR enables internal loopback.
-   * We write a pattern and expect it back. Some hardware needs a moment.
-   */
-  outb(port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2 | 0x10);
-  outb(port + SERIAL_DATA_REG, 0xAE);
-
-  bool success = false;
-  for (int i = 0; i < 100; i++) {
-    if (inb(port + SERIAL_DATA_REG) == 0xAE) {
-      success = true;
-      break;
-    }
-    io_wait();
-  }
-
-  if (!success) return -ENODEV;
-
-  /* Restore normal mode (disable loopback) */
-  outb(port + SERIAL_MCR_REG, SERIAL_MCR_DTR | SERIAL_MCR_RTS | SERIAL_MCR_OUT2);
-  serial_initialized = 1;
-  return 0;
-}
-
-int serial_transmit_empty(void) {
-  if (!serial_initialized) return 0;
-  return inb(serial_port + SERIAL_LSR_REG) & SERIAL_LSR_TRANSMIT_EMPTY;
-}
-
-void serial_write_char(const char a) {
-  if (!serial_initialized) return;
-  int timeout = 65536;
-  if (a == '\n') {
-    while (!serial_transmit_empty() && --timeout > 0);
-    if (timeout <= 0) return;
-    outb(serial_port + SERIAL_DATA_REG, '\r');
-    timeout = 65536;
-  }
-  while (!serial_transmit_empty() && --timeout > 0);
-  if (timeout <= 0) return;
-  outb(serial_port + SERIAL_DATA_REG, a);
-}
+static struct uart_port com1_port = {
+    .iobase = COM1,
+    .irq = 4,
+    .ops = &serial8250_ops,
+};
 
 int serial_mod_init(void) {
-  printk_register_backend(serial_get_backend());
-  return 0;
+    /* Register COM1 as a starting point */
+    return uart_register_port(&com1_port);
 }
 
-FKX_MODULE_DEFINE(
-  serial,
-  "0.0.1",
-  "assembler-0",
-  "Serial UART Module",
-  0,
-  FKX_PRINTK_CLASS,
-  KSYM_LICENSE_GPL,
-  FKX_SUBCLASS_UART,
-  FKX_NO_REQUIREMENTS,
-  serial_mod_init
-);
+void serial_mod_exit(void) {
+    uart_unregister_port(&com1_port);
+}
+
+asrx_module_init(serial_mod_init);
+asrx_module_exit(serial_mod_exit);
+asrx_module_info(uart8250, KSYM_LICENSE_GPL);

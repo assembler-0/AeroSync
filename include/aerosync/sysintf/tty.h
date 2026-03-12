@@ -16,10 +16,17 @@
 struct tty_struct;
 struct tty_driver;
 
+/* TTY Priority Tiers */
+#define TTY_PRIORITY_LOW       10   /* e.g. PTYs */
+#define TTY_PRIORITY_NORMAL    50   /* e.g. Standard UARTs */
+#define TTY_PRIORITY_HIGH      100  /* e.g. Primary Debug/Console UART */
+
 /**
  * struct tty_operations - Hardware-specific TTY operations
  */
 struct tty_operations {
+    uint32_t priority;
+
     int (*open)(struct tty_struct *tty);
     void (*close)(struct tty_struct *tty);
     ssize_t (*write)(struct tty_struct *tty, const void *buf, size_t count);
@@ -52,6 +59,7 @@ struct tty_struct {
  */
 int tty_register_driver(struct tty_driver *driver);
 
+void tty_unregister_device(struct char_device *cdev);
 /**
  * tty_receive_char - Call from IRQ to push data into TTY
  */
@@ -63,4 +71,4 @@ void tty_receive_char(struct tty_struct *tty, char c);
 const struct char_operations *tty_get_char_ops(void);
 
 /* Legacy/Helper API */
-struct char_device *tty_register_device(const struct char_operations *ops, void *private_data);
+struct char_device *tty_register_device(const struct tty_operations *ops, void *private_data);

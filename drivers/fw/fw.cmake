@@ -7,4 +7,4 @@ set(FW_SOURCES
         ${FW_SOURCE_DIR}/efi.c
 )
 
-add_fkx_module(fw ${FW_SOURCES})
+add_asrx_module(fw ${FW_SOURCES})

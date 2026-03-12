@@ -12,10 +12,11 @@ int strlen(const char *str);
 int strnlen(const char *str, size_t max);
 char *strchr(char *str, int c);
 char *strrchr(const char *str, int c);
-void strncpy(char *dest, const char *src, size_t max_len);
-void strcpy(char *dest, const char *src);
-void strcat(char *dest, const char *src);
-void strncat(char *dest, const char *src, size_t count);
+char *strncpy(char *dest, const char *src, size_t max_len);
+
+char *strcpy(char *dest, const char *src);
+char *strcat(char *dest, const char *src);
+char *strncat(char *dest, const char *src, size_t count);
 size_t strlcpy(char *dst, const char *src, size_t size);
 size_t strlcat(char *dst, const char *src, size_t size);
 char *kstrdup(const char *s);

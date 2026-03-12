@@ -19,10 +19,11 @@
  */
 
 #include <aerosync/classes.h>
-#include <aerosync/fkx/fkx.h>
+#include <aerosync/crypto.h>
+#include <aerosync/export.h>
 #include <aerosync/panic.h>
-#include <aerosync/timer.h>
 #include <aerosync/sched/sched.h>
+#include <aerosync/timer.h>
 #include <arch/x86_64/mm/layout.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/smp.h>
@@ -32,10 +33,9 @@
 #include <mm/gfp.h>
 #include <mm/page.h>
 #include <mm/slub.h>
+#include <mm/ssp.h>
 #include <mm/vmalloc.h>
 #include <mm/zone.h>
-#include <aerosync/crypto.h>
-#include <mm/ssp.h>
 
 static LIST_HEAD(slab_caches);
 static DEFINE_SPINLOCK(slab_lock);
@@ -53,7 +53,7 @@ static kmem_cache_t *find_mergeable(size_t size, size_t align,
     return nullptr;
 
   list_for_each_entry(s, &slab_caches, list) {
-    if (s->object_size == (int) size && s->align == (int) align &&
+    if (s->object_size == (int)size && s->align == (int)align &&
         s->flags == flags) {
       return s;
     }
@@ -92,7 +92,9 @@ static void poison_obj(kmem_cache_t *s, void *obj, uint8_t val) {
 #ifdef MM_HARDENING
   memset(obj, val, s->object_size);
 #else
-  (void) s; (void) obj; (void) val;
+  (void)s;
+  (void)obj;
+  (void)val;
 #endif
 }
 
@@ -103,7 +105,7 @@ static void check_poison(kmem_cache_t *s, void *obj) {
 
   /* Skip freelist pointer if it's within the object */
   /* Most common case: offset 0, size 8 */
-  if (s->offset == 0 && s->object_size >= (int) sizeof(void *)) {
+  if (s->offset == 0 && s->object_size >= (int)sizeof(void *)) {
     i = sizeof(void *);
   }
 
@@ -126,18 +128,18 @@ static void check_poison(kmem_cache_t *s, void *obj) {
 slow_path:
   for (; i < s->object_size; i++) {
     /* Skip freelist pointer if it's within the object */
-    if (i >= s->offset && i < s->offset + (int) sizeof(void *))
+    if (i >= s->offset && i < s->offset + (int)sizeof(void *))
       continue;
 
     if (p[i] != POISON_FREE) {
       panic(
-        "SLUB: Use-after-free detected in %s at %p (offset %d, val 0x%02x)\n",
-        s->name, obj, i, p[i]
-      );
+          "SLUB: Use-after-free detected in %s at %p (offset %d, val 0x%02x)\n",
+          s->name, obj, i, p[i]);
     }
   }
 #else
-  (void) s; (void) obj;
+  (void)s;
+  (void)obj;
 #endif
 }
 
@@ -145,10 +147,11 @@ static void set_redzone(kmem_cache_t *s, void *obj) {
 #ifdef MM_HARDENING
   if (!(s->flags & SLAB_RED_ZONE))
     return;
-  uint64_t *redzone = (uint64_t *) ((char *) obj + s->inuse);
+  uint64_t *redzone = (uint64_t *)((char *)obj + s->inuse);
   *redzone = STACK_CANARY_VALUE;
 #else
-  (void) s; (void) obj;
+  (void)s;
+  (void)obj;
 #endif
 }
 
@@ -156,25 +159,27 @@ static void check_redzone(kmem_cache_t *s, void *obj) {
 #ifdef MM_HARDENING
   if (!(s->flags & SLAB_RED_ZONE))
     return;
-  uint64_t *redzone = (uint64_t *) ((char *) obj + s->inuse);
+  uint64_t *redzone = (uint64_t *)((char *)obj + s->inuse);
   if (unlikely(*redzone != STACK_CANARY_VALUE)) {
     panic("SLUB: Redzone corruption detected in %s at %p", s->name, obj);
   }
 #else
-  (void) s; (void) obj;
+  (void)s;
+  (void)obj;
 #endif
 }
 
 /* Helper to get the next object in the freelist with XOR obfuscation */
 static inline void *get_freelist_next(void *obj, int offset) {
-  uint64_t val = *(uint64_t *) ((char *) obj + offset);
-  if (!val) return nullptr;
-  return (void *) (val ^ slab_secret ^ (uint64_t) obj);
+  uint64_t val = *(uint64_t *)((char *)obj + offset);
+  if (!val)
+    return nullptr;
+  return (void *)(val ^ slab_secret ^ (uint64_t)obj);
 }
 
 static inline void set_freelist_next(void *obj, int offset, void *next) {
-  uint64_t val = next ? ((uint64_t) next ^ slab_secret ^ (uint64_t) obj) : 0;
-  *(uint64_t *) ((char *) obj + offset) = val;
+  uint64_t val = next ? ((uint64_t)next ^ slab_secret ^ (uint64_t)obj) : 0;
+  *(uint64_t *)((char *)obj + offset) = val;
 }
 
 static struct page *allocate_slab(kmem_cache_t *s, gfp_t flags, int node) {
@@ -193,7 +198,7 @@ static struct page *allocate_slab(kmem_cache_t *s, gfp_t flags, int node) {
   page = &folio->page;
   start = page_address(page);
   page->slab_cache = s;
-  page->objects = (unsigned short) ((PAGE_SIZE << s->order) / s->size);
+  page->objects = (unsigned short)((PAGE_SIZE << s->order) / s->size);
   page->inuse = 0;
   page->frozen = 0;
   page->node = node;
@@ -202,16 +207,16 @@ static struct page *allocate_slab(kmem_cache_t *s, gfp_t flags, int node) {
 
   /* Build freelist */
   page->freelist = start;
-  for (int i = 0; i < (int) page->objects - 1; i++) {
-    p = (char *) start + i * s->size;
+  for (int i = 0; i < (int)page->objects - 1; i++) {
+    p = (char *)start + i * s->size;
     if (s->flags & SLAB_POISON)
       poison_obj(s, p, POISON_FREE);
     set_redzone(s, p);
-    set_freelist_next(p, s->offset, (char *) p + s->size);
+    set_freelist_next(p, s->offset, (char *)p + s->size);
   }
 
   /* Last object */
-  p = (char *) start + (page->objects - 1) * s->size;
+  p = (char *)start + (page->objects - 1) * s->size;
   if (s->flags & SLAB_POISON)
     poison_obj(s, p, POISON_FREE);
   set_redzone(s, p);
@@ -255,7 +260,7 @@ static void *__slab_alloc(kmem_cache_t *s, gfp_t gfpflags, int node,
   freelist = page->freelist;
   if (freelist) {
     page->freelist = nullptr; /* Take the whole freelist */
-    page->inuse = (unsigned short) page->objects;
+    page->inuse = (unsigned short)page->objects;
     spinlock_unlock(&n->list_lock);
     c->freelist = get_freelist_next(freelist, s->offset);
     c->tid = next_tid(c->tid);
@@ -336,7 +341,7 @@ freeze:
   c->page = page;
   freelist = page->freelist;
   page->freelist = nullptr;
-  page->inuse = (unsigned short) page->objects;
+  page->inuse = (unsigned short)page->objects;
   c->freelist = get_freelist_next(freelist, s->offset);
   c->tid = next_tid(c->tid);
 
@@ -350,7 +355,7 @@ static void __free_slab(kmem_cache_t *s, struct page *page) {
   ClearPageSlab(page);
 
   if (unlikely(s->flags & SLAB_TYPESAFE_BY_RCU)) {
-    struct rcu_head *head = (struct rcu_head *) &page->list;
+    struct rcu_head *head = (struct rcu_head *)&page->list;
     call_rcu(head, rcu_free_slab_callback);
   } else {
     __free_pages(page, s->order);
@@ -359,7 +364,7 @@ static void __free_slab(kmem_cache_t *s, struct page *page) {
 
 static void rcu_free_slab_callback(struct rcu_head *head) {
   struct page *page =
-      (struct page *) ((char *) head - offsetof(struct page, list));
+      (struct page *)((char *)head - offsetof(struct page, list));
   kmem_cache_t *s = page->slab_cache;
   __free_slab(s, page);
 }
@@ -507,7 +512,7 @@ static void __slab_free(kmem_cache_t *s, struct page *page, void *x) {
   page->freelist = x;
   page->inuse--;
 
-  was_frozen = (int) page->frozen;
+  was_frozen = (int)page->frozen;
 
   if (unlikely(!page->inuse)) {
     /* Slab is now empty */
@@ -654,7 +659,7 @@ int kmem_cache_alloc_bulk(kmem_cache_t *s, gfp_t flags, size_t size, void **p) {
       atomic_long_add(size, &s->total_objects);
       atomic_long_add(size, &s->alloc_fastpath);
       preempt_enable();
-      return (int) size;
+      return (int)size;
     }
   }
 
@@ -675,7 +680,7 @@ slowpath:;
     p[i] = obj;
     count++;
   }
-  return (int) count;
+  return (int)count;
 }
 
 void kmem_cache_free_bulk(kmem_cache_t *s, size_t size, void **p) {
@@ -711,7 +716,7 @@ static void init_kmem_cache_cpu(struct kmem_cache_cpu *c) {
 }
 
 static void flush_cpu_slab(void *info) {
-  kmem_cache_t *s = (kmem_cache_t *) info;
+  kmem_cache_t *s = (kmem_cache_t *)info;
   struct kmem_cache_cpu *c = &s->cpu_slab[smp_get_id()];
 
   /* 1. Flush magazines */
@@ -740,7 +745,7 @@ static void flush_cpu_slab(void *info) {
       curr = next;
     }
 
-    page->inuse -= (unsigned short) free_in_cpu;
+    page->inuse -= (unsigned short)free_in_cpu;
     page->frozen = 0;
 
     bool empty = (page->inuse == 0);
@@ -748,7 +753,8 @@ static void flush_cpu_slab(void *info) {
 
     struct kmem_cache_node *n = s->node[page->node];
     if (empty) {
-      /* If we have too many partials, free this one, otherwise put it on the list */
+      /* If we have too many partials, free this one, otherwise put it on the
+       * list */
       if (n->nr_partial > s->min_partial) {
         __free_slab(s, page);
         atomic_long_dec(&s->active_slabs);
@@ -838,16 +844,16 @@ void *kmalloc_aligned(size_t size, size_t align) {
     return nullptr;
 
   // Calculate aligned address, ensuring at least 16 bytes for metadata
-  uintptr_t aligned = (uintptr_t) raw + 2 * sizeof(void *);
+  uintptr_t aligned = (uintptr_t)raw + 2 * sizeof(void *);
   aligned = (aligned + align - 1) & ~(align - 1);
 
   // Store magic and original pointer before aligned address
-  void **magic_ptr = (void **) (aligned - 2 * sizeof(void *));
-  *magic_ptr = (void *) ALIGNED_MAGIC;
-  void **orig_ptr = (void **) (aligned - sizeof(void *));
+  void **magic_ptr = (void **)(aligned - 2 * sizeof(void *));
+  *magic_ptr = (void *)ALIGNED_MAGIC;
+  void **orig_ptr = (void **)(aligned - sizeof(void *));
   *orig_ptr = raw;
 
-  return (void *) aligned;
+  return (void *)aligned;
 }
 
 kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align,
@@ -868,8 +874,8 @@ kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align,
 
   memset(s, 0, sizeof(kmem_cache_t));
   s->name = name;
-  s->object_size = (int) size;
-  s->align = (int) align;
+  s->object_size = (int)size;
+  s->align = (int)align;
 
 #ifdef MM_HARDENING
   s->flags = flags;
@@ -881,7 +887,7 @@ kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align,
   if (align < 8)
     align = 8;
   size = (size + align - 1) & ~(align - 1);
-  s->inuse = (int) size;
+  s->inuse = (int)size;
 
   if (flags & SLAB_RED_ZONE) {
     size += sizeof(uint64_t); /* Redzone */
@@ -889,18 +895,18 @@ kmem_cache_t *kmem_cache_create(const char *name, size_t size, size_t align,
 
   if (size < sizeof(void *))
     size = sizeof(void *);
-  s->size = (int) size;
+  s->size = (int)size;
   s->offset = 0;
 
   /* Determine order - aim for at least 8 objects per slab if possible,
    * but don't exceed order 5 (128KB) unless the object itself is larger. */
   size_t min_order = 0;
-  while ((PAGE_SIZE << min_order) < (size_t) size) {
+  while ((PAGE_SIZE << min_order) < (size_t)size) {
     min_order++;
   }
 
   s->order = min_order;
-  while ((PAGE_SIZE << s->order) < (size_t) size * 8 && s->order < 5 &&
+  while ((PAGE_SIZE << s->order) < (size_t)size * 8 && s->order < 5 &&
          s->order < SLAB_MAX_ORDER) {
     s->order++;
   }
@@ -1082,8 +1088,8 @@ static struct kmem_cache *create_boot_cache(const char *name, size_t size,
   memset(s, 0, sizeof(kmem_cache_t));
 
   s->name = name;
-  s->object_size = (int) size;
-  s->size = (int) size;
+  s->object_size = (int)size;
+  s->size = (int)size;
 
   /* Enforce alignment: 8 bytes for small, 16 bytes for >= 16 to support
    * cmpxchg16b */
@@ -1095,10 +1101,10 @@ static struct kmem_cache *create_boot_cache(const char *name, size_t size,
     s->align = 16;
 
   s->flags = flags;
-  s->inuse = (int) size;
+  s->inuse = (int)size;
 
   s->order = 0;
-  while ((PAGE_SIZE << s->order) < (size_t) size * 4 &&
+  while ((PAGE_SIZE << s->order) < (size_t)size * 4 &&
          s->order < SLAB_MAX_ORDER) {
     s->order++;
   }
@@ -1126,7 +1132,8 @@ void slab_verify_all(void) {
   list_for_each_entry(s, &slab_caches, list) {
     for (int nid = 0; nid < MAX_NUMNODES; nid++) {
       struct kmem_cache_node *n = s->node[nid];
-      if (!n) continue;
+      if (!n)
+        continue;
 
       spinlock_lock(&n->list_lock);
       struct page *page;
@@ -1147,21 +1154,20 @@ void slab_verify_all(void) {
 
 int slab_init(void) {
   struct crypto_tfm *tfm = crypto_alloc_tfm("hw_rng", CRYPTO_ALG_TYPE_RNG);
-  if (!tfm) tfm = crypto_alloc_tfm("sw_rng", CRYPTO_ALG_TYPE_RNG);
+  if (!tfm)
+    tfm = crypto_alloc_tfm("sw_rng", CRYPTO_ALG_TYPE_RNG);
 
   if (tfm) {
-    crypto_rng_generate(tfm, (uint8_t *) &slab_secret, sizeof(slab_secret));
+    crypto_rng_generate(tfm, (uint8_t *)&slab_secret, sizeof(slab_secret));
     crypto_free_tfm(tfm);
   } else {
     slab_secret = 0xdeadbeef12345678ULL;
   }
 
-  char *names[] = {
-    "kmalloc-8", "kmalloc-16", "kmalloc-32", "kmalloc-64",
-    "kmalloc-128", "kmalloc-256", "kmalloc-512", "kmalloc-1k",
-    "kmalloc-2k", "kmalloc-4k", "kmalloc-8k", "kmalloc-16k",
-    "kmalloc-32k", "kmalloc-64k", "kmalloc-128k"
-  };
+  char *names[] = {"kmalloc-8",   "kmalloc-16",  "kmalloc-32",  "kmalloc-64",
+                   "kmalloc-128", "kmalloc-256", "kmalloc-512", "kmalloc-1k",
+                   "kmalloc-2k",  "kmalloc-4k",  "kmalloc-8k",  "kmalloc-16k",
+                   "kmalloc-32k", "kmalloc-64k", "kmalloc-128k"};
 
   INIT_LIST_HEAD(&slab_caches);
 
@@ -1226,9 +1232,9 @@ void kfree(void *ptr) {
    * memory at (ptr - 16) when ptr is at a page boundary.
    */
   if (ptr != page_address(page)) {
-    void *magic = *((void **) ((uintptr_t) ptr - 2 * sizeof(void *)));
+    void *magic = *((void **)((uintptr_t)ptr - 2 * sizeof(void *)));
     if (unlikely(magic == (void *)ALIGNED_MAGIC)) {
-      void *raw = *((void **) ((uintptr_t) ptr - sizeof(void *)));
+      void *raw = *((void **)((uintptr_t)ptr - sizeof(void *)));
       /* Ensure the raw pointer is actually within the same page or valid */
       if (raw && virt_to_head_page(raw) == page) {
         kfree(raw);
@@ -1268,7 +1274,7 @@ void slab_test(void) {
   /* Verify patterns */
   for (int i = 0; i < TEST_COUNT; i++) {
     uint8_t val = (i & 0xFF);
-    uint8_t *byte_ptr = (uint8_t *) ptrs[i];
+    uint8_t *byte_ptr = (uint8_t *)ptrs[i];
     for (int j = 0; j < 64; j++) {
       if (byte_ptr[j] != val) {
         panic(SLAB_CLASS "data corruption detected");
@@ -1313,14 +1319,14 @@ void slab_test(void) {
   void *a1 = kmalloc_aligned(16, 64);
   if (!a1)
     panic(SLAB_CLASS "aligned alloc 1 failed");
-  if ((uintptr_t) a1 & 63)
+  if ((uintptr_t)a1 & 63)
     panic(SLAB_CLASS "aligned alloc not 64-byte aligned!");
   kfree(a1);
 
   void *a2 = kmalloc_aligned(1024, 4096);
   if (!a2)
     panic(SLAB_CLASS "aligned alloc 2 failed");
-  if ((uintptr_t) a2 & 4095)
+  if ((uintptr_t)a2 & 4095)
     panic(SLAB_CLASS "aligned alloc not 4096-byte aligned!");
   kfree(a2);
   printk(KERN_DEBUG SLAB_CLASS "  - Aligned Allocations: OK\n");
@@ -1333,7 +1339,7 @@ void slab_test(void) {
     if (!n_ptr)
       panic(SLAB_CLASS "kmalloc_node failed");
     struct page *p = virt_to_head_page(n_ptr);
-    if (p->node != (uint32_t) i) {
+    if (p->node != (uint32_t)i) {
       printk(KERN_WARNING SLAB_CLASS
              "Object not on requested node %d (on %d)\n",
              i, p->node);
@@ -1442,8 +1448,8 @@ size_t ksize(const void *ptr) {
     return 0;
 
   /* Check if it's a vmalloc allocation */
-  if ((uintptr_t) ptr >= VMALLOC_VIRT_BASE &&
-      (uintptr_t) ptr < VMALLOC_VIRT_END) {
+  if ((uintptr_t)ptr >= VMALLOC_VIRT_BASE &&
+      (uintptr_t)ptr < VMALLOC_VIRT_END) {
     /* vmalloc doesn't track size easily, return 0 */
     return 0;
   }
@@ -1489,7 +1495,7 @@ void slab_numa_stats(void) {
         continue; /* Skip nodes with no activity */
 
       long total = hits + misses;
-      int hit_rate = total > 0 ? (int) ((hits * 100) / total) : 0;
+      int hit_rate = total > 0 ? (int)((hits * 100) / total) : 0;
 
       printk(KERN_INFO SLAB_CLASS
              "  Node %d: hits=%ld misses=%ld (hit_rate=%d%%) partial=%ld "
@@ -1511,9 +1517,10 @@ void *kvmalloc(const size_t size) {
 EXPORT_SYMBOL(kvmalloc);
 
 void kvfree(void *ptr) {
-  if (unlikely(!ptr)) return;
-  if ((uintptr_t) ptr >= VMALLOC_VIRT_BASE &&
-     (uintptr_t) ptr < VMALLOC_VIRT_END) {
+  if (unlikely(!ptr))
+    return;
+  if ((uintptr_t)ptr >= VMALLOC_VIRT_BASE &&
+      (uintptr_t)ptr < VMALLOC_VIRT_END) {
     vfree(ptr);
   } else {
     kfree(ptr);

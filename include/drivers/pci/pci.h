@@ -7,4 +7,5 @@
  */
 
 #pragma once
-#include <aerosync/sysintf/pci.h>
+
+int pci_init(void);

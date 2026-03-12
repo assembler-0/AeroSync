@@ -8,7 +8,7 @@
  */
 
 #include <aerosync/errno.h>
-#include <drivers/block/ide/ide.h>
+#include <drivers/block/ide.h>
 #include <arch/x86_64/io.h>
 
 void ide_read_pio(struct ide_device *ide, uint64_t lba, uint32_t count, void *buf) {

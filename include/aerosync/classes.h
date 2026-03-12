@@ -10,6 +10,7 @@
  * ========================================================================= */
 ///@section Boot & Initialization
 #define BOOT_CLASS "[aerosync::boot] " // Bootloader info, multiboot parsing
+#define ASIC_CLASS "[aerosync::asic] " // AeroSync Init Chain
 #define ACPI_CLASS "[aerosync::acpi] " // ACPI table parsing (RSDP, MADT, FADT)
 #define ACPI_BUTTON_CLASS                                                      \
   "[aerosync::acpi::btn] " // ACPI Power/Sleep button handling
@@ -178,3 +179,4 @@
 #define TEST_CLASS "[aerosync::misc::test] " // Unit tests running inside kernel
 #define DEBUG_CLASS "[aerosync::misc::debug] "
 #define iKDB_CLASS "[aerosync::core::ikdb] "
+#define EZXML_CLASS "[aerosync::lib::ezxml] "

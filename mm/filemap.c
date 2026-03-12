@@ -9,18 +9,18 @@
  * This file is part of the AeroSync kernel.
  */
 
-#include <mm/vm_object.h>
-#include <mm/vma.h>
+#include <aerosync/errno.h>
+#include <aerosync/export.h>
+#include <aerosync/resdomain.h>
+#include <arch/x86_64/mm/pmm.h>
+#include <fs/vfs.h>
+#include <lib/math.h>
+#include <lib/string.h>
+#include <lib/uaccess.h>
 #include <mm/page.h>
 #include <mm/slub.h>
-#include <fs/vfs.h>
-#include <aerosync/errno.h>
-#include <lib/string.h>
-#include <lib/math.h>
-#include <arch/x86_64/mm/pmm.h>
-#include <lib/uaccess.h>
-#include <aerosync/fkx/fkx.h>
-#include <aerosync/resdomain.h>
+#include <mm/vm_object.h>
+#include <mm/vma.h>
 
 /**
  * ubc_readahead - Advanced adaptive readahead logic.
@@ -37,12 +37,16 @@ static void ubc_readahead(struct vm_object *obj, uint64_t pgoff) {
     /* Sequential hit - double window */
 #ifdef CONFIG_MM_READAHEAD_THRASH_PROTECTION
     if (obj->readahead.thrash_count > 5) {
-      obj->readahead.size = min(ra_size + 1, (unsigned int)obj->readahead.ra_pages);
+      obj->readahead.size =
+          min(ra_size + 1, (unsigned int)obj->readahead.ra_pages);
     } else
 #endif
     {
-      if (ra_size == 0) obj->readahead.size = 4;
-      else obj->readahead.size = min(ra_size * 2, (unsigned int)obj->readahead.ra_pages);
+      if (ra_size == 0)
+        obj->readahead.size = 4;
+      else
+        obj->readahead.size =
+            min(ra_size * 2, (unsigned int)obj->readahead.ra_pages);
     }
     obj->readahead.start = pgoff;
   } else {
@@ -63,13 +67,16 @@ static void ubc_readahead(struct vm_object *obj, uint64_t pgoff) {
     uint64_t next_off = pgoff + i;
 
     /* Check EOF */
-    if (obj->size && (next_off << PAGE_SHIFT) >= obj->size) break;
+    if (obj->size && (next_off << PAGE_SHIFT) >= obj->size)
+      break;
 
     /* Fast check if already present */
-    if (vm_object_find_folio(obj, next_off)) continue;
+    if (vm_object_find_folio(obj, next_off))
+      continue;
 
     struct folio *folio = alloc_pages_node(obj->preferred_node, GFP_KERNEL, 0);
-    if (!folio) break;
+    if (!folio)
+      break;
 
     /* UBC Charging */
     if (obj->rd && resdomain_charge_mem(obj->rd, PAGE_SIZE, false) < 0) {
@@ -80,7 +87,8 @@ static void ubc_readahead(struct vm_object *obj, uint64_t pgoff) {
 
     if (obj->ops && obj->ops->read_folio) {
       if (obj->ops->read_folio(obj, folio) < 0) {
-        if (obj->rd) resdomain_uncharge_mem(obj->rd, PAGE_SIZE);
+        if (obj->rd)
+          resdomain_uncharge_mem(obj->rd, PAGE_SIZE);
         folio_put(folio);
         break;
       }
@@ -91,14 +99,16 @@ static void ubc_readahead(struct vm_object *obj, uint64_t pgoff) {
     down_write(&obj->lock);
     if (vm_object_find_folio(obj, next_off)) {
       up_write(&obj->lock);
-      if (obj->rd) resdomain_uncharge_mem(obj->rd, PAGE_SIZE);
+      if (obj->rd)
+        resdomain_uncharge_mem(obj->rd, PAGE_SIZE);
       folio_put(folio);
       continue;
     }
 
     if (vm_object_add_folio(obj, next_off, folio) < 0) {
       up_write(&obj->lock);
-      if (obj->rd) resdomain_uncharge_mem(obj->rd, PAGE_SIZE);
+      if (obj->rd)
+        resdomain_uncharge_mem(obj->rd, PAGE_SIZE);
       folio_put(folio);
       break;
     }
@@ -108,19 +118,22 @@ static void ubc_readahead(struct vm_object *obj, uint64_t pgoff) {
     folio_add_file_rmap(folio, obj, next_off);
   }
 #else
-  (void) obj; (void) pgoff;
+  (void)obj;
+  (void)pgoff;
 #endif
 }
 
 /**
  * filemap_fault - Production-grade fault handler for UBC.
  */
-int filemap_fault(struct vm_object *obj, struct vm_area_struct *vma, struct vm_fault *vmf) {
+int filemap_fault(struct vm_object *obj, struct vm_area_struct *vma,
+                  struct vm_fault *vmf) {
   struct folio *folio;
   int ret;
 
   /* Sanity Check for poisoned object */
-  if (unlikely((uintptr_t)obj == 0xadadadadadadadad || (uintptr_t)obj == 0xdeadbeefcafebabe))
+  if (unlikely((uintptr_t)obj == 0xadadadadadadadad ||
+               (uintptr_t)obj == 0xdeadbeefcafebabe))
     return VM_FAULT_SIGBUS;
 
   /* 1. Fast path: check cache under RCU/Shared lock */
@@ -128,15 +141,18 @@ int filemap_fault(struct vm_object *obj, struct vm_area_struct *vma, struct vm_f
   folio = vm_object_find_folio(obj, vmf->pgoff);
   if (folio && !xa_is_err(folio)) {
     /* Sanity check for poisoned folio */
-    if (unlikely((uintptr_t)folio == 0xadadadadadadadad || (uintptr_t)folio == 0xdeadbeefcafebabe)) {
-        up_read(&obj->lock);
-        return VM_FAULT_SIGBUS;
+    if (unlikely((uintptr_t)folio == 0xadadadadadadadad ||
+                 (uintptr_t)folio == 0xdeadbeefcafebabe)) {
+      up_read(&obj->lock);
+      return VM_FAULT_SIGBUS;
     }
     folio_get(folio);
     vmf->folio = folio;
     vmf->prot = vma ? vma->vm_page_prot : vm_get_page_prot(VM_READ);
-    if (!vma && (vmf->flags & FAULT_FLAG_WRITE)) vmf->prot |= PTE_RW;
-    if (vma && !(vma->vm_flags & VM_SHARED)) vmf->prot &= ~PTE_RW;
+    if (!vma && (vmf->flags & FAULT_FLAG_WRITE))
+      vmf->prot |= PTE_RW;
+    if (vma && !(vma->vm_flags & VM_SHARED))
+      vmf->prot &= ~PTE_RW;
     up_read(&obj->lock);
     return 0;
   }
@@ -152,22 +168,27 @@ int filemap_fault(struct vm_object *obj, struct vm_area_struct *vma, struct vm_f
 
   /* Allocate for current fault */
   int nid = vma ? vma->preferred_node : obj->preferred_node;
-  if (nid == -1) nid = this_node();
+  if (nid == -1)
+    nid = this_node();
   folio = alloc_pages_node(nid, GFP_KERNEL, 0);
-  if (!folio) return VM_FAULT_OOM;
+  if (!folio)
+    return VM_FAULT_OOM;
 
   /* Charge to ResDomain */
-  struct resdomain *rd = obj->rd ? obj->rd : (vma && vma->vm_mm ? vma->vm_mm->rd : nullptr);
+  struct resdomain *rd =
+      obj->rd ? obj->rd : (vma && vma->vm_mm ? vma->vm_mm->rd : nullptr);
   if (rd && resdomain_charge_mem(rd, PAGE_SIZE, false) < 0) {
     folio_put(folio);
     return VM_FAULT_OOM;
   }
   folio->page.rd = rd;
 
-  if (obj->ops && obj->ops != (void*)0xdeadbeefcafebabe && obj->ops->read_folio) {
+  if (obj->ops && obj->ops != (void *)0xdeadbeefcafebabe &&
+      obj->ops->read_folio) {
     ret = obj->ops->read_folio(obj, folio);
     if (ret < 0) {
-      if (rd) resdomain_uncharge_mem(rd, PAGE_SIZE);
+      if (rd)
+        resdomain_uncharge_mem(rd, PAGE_SIZE);
       folio_put(folio);
       return VM_FAULT_SIGBUS;
     }
@@ -179,22 +200,26 @@ int filemap_fault(struct vm_object *obj, struct vm_area_struct *vma, struct vm_f
   struct folio *existing = vm_object_find_folio(obj, vmf->pgoff);
   if (existing && !xa_is_err(existing)) {
     up_write(&obj->lock);
-    if (rd) resdomain_uncharge_mem(rd, PAGE_SIZE);
+    if (rd)
+      resdomain_uncharge_mem(rd, PAGE_SIZE);
     folio_put(folio);
-    
-    if (unlikely((uintptr_t)existing == 0xadadadadadadadad || (uintptr_t)existing == 0xdeadbeefcafebabe))
-        return VM_FAULT_SIGBUS;
+
+    if (unlikely((uintptr_t)existing == 0xadadadadadadadad ||
+                 (uintptr_t)existing == 0xdeadbeefcafebabe))
+      return VM_FAULT_SIGBUS;
 
     folio_get(existing);
     vmf->folio = existing;
     vmf->prot = vma ? vma->vm_page_prot : vm_get_page_prot(VM_READ);
-    if (!vma && (vmf->flags & FAULT_FLAG_WRITE)) vmf->prot |= PTE_RW;
+    if (!vma && (vmf->flags & FAULT_FLAG_WRITE))
+      vmf->prot |= PTE_RW;
     return 0;
   }
 
   if (vm_object_add_folio(obj, vmf->pgoff, folio) < 0) {
     up_write(&obj->lock);
-    if (rd) resdomain_uncharge_mem(rd, PAGE_SIZE);
+    if (rd)
+      resdomain_uncharge_mem(rd, PAGE_SIZE);
     folio_put(folio);
     return VM_FAULT_SIGBUS;
   }
@@ -202,16 +227,19 @@ int filemap_fault(struct vm_object *obj, struct vm_area_struct *vma, struct vm_f
   vmf->folio = folio;
   folio_get(folio);
   vmf->prot = vma ? vma->vm_page_prot : vm_get_page_prot(VM_READ);
-  if (!vma && (vmf->flags & FAULT_FLAG_WRITE)) vmf->prot |= PTE_RW;
-  if (vma && !(vma->vm_flags & VM_SHARED)) vmf->prot &= ~PTE_RW;
+  if (!vma && (vmf->flags & FAULT_FLAG_WRITE))
+    vmf->prot |= PTE_RW;
+  if (vma && !(vma->vm_flags & VM_SHARED))
+    vmf->prot &= ~PTE_RW;
   up_write(&obj->lock);
 
   folio_add_file_rmap(folio, obj, vmf->pgoff);
   return 0;
 }
 
-int filemap_page_mkwrite(struct vm_object *obj, struct vm_area_struct *vma, struct vm_fault *vmf) {
-  (void) vma;
+int filemap_page_mkwrite(struct vm_object *obj, struct vm_area_struct *vma,
+                         struct vm_fault *vmf) {
+  (void)vma;
   down_write(&obj->lock);
   struct folio *folio = vm_object_find_folio(obj, vmf->pgoff);
   if (folio) {
@@ -227,19 +255,21 @@ int filemap_page_mkwrite(struct vm_object *obj, struct vm_area_struct *vma, stru
 }
 
 const struct vm_object_operations vnode_ubc_ops = {
-  .fault = filemap_fault,
-  .page_mkwrite = filemap_page_mkwrite,
+    .fault = filemap_fault,
+    .page_mkwrite = filemap_page_mkwrite,
 };
 
 /**
  * filemap_read - Optimized batched UBC read.
  */
-ssize_t filemap_read(struct file *file, char *buf, size_t count, vfs_loff_t *ppos) {
+ssize_t filemap_read(struct file *file, char *buf, size_t count,
+                     vfs_loff_t *ppos) {
   struct inode *inode = file->f_inode;
   struct vm_object *obj = inode->i_ubc;
   size_t total_read = 0;
 
-  if (!obj) return -EINVAL;
+  if (!obj)
+    return -EINVAL;
 
   /* UBC Sequential Access Hint */
   ubc_readahead(obj, (*ppos) >> PAGE_SHIFT);
@@ -249,18 +279,22 @@ ssize_t filemap_read(struct file *file, char *buf, size_t count, vfs_loff_t *ppo
     size_t offset = (*ppos) & (PAGE_SIZE - 1);
     size_t n = min(count, PAGE_SIZE - offset);
 
-    if (*ppos >= inode->i_size) break;
-    if (*ppos + n > inode->i_size) n = inode->i_size - *ppos;
+    if (*ppos >= inode->i_size)
+      break;
+    if (*ppos + n > inode->i_size)
+      n = inode->i_size - *ppos;
 
     struct vm_fault vmf = {.pgoff = pgoff, .flags = 0};
     int ret = filemap_fault(obj, nullptr, &vmf);
-    if (ret != 0) return total_read ? (ssize_t) total_read : -EIO;
+    if (ret != 0)
+      return total_read ? (ssize_t)total_read : -EIO;
 
     void *kaddr = pmm_phys_to_virt(folio_to_phys(vmf.folio));
-    if (file->f_mode & FMODE_KERNEL) memcpy(buf, kaddr + offset, n);
+    if (file->f_mode & FMODE_KERNEL)
+      memcpy(buf, kaddr + offset, n);
     else if (copy_to_user(buf, kaddr + offset, n) != 0) {
       folio_put(vmf.folio);
-      return total_read ? (ssize_t) total_read : -EFAULT;
+      return total_read ? (ssize_t)total_read : -EFAULT;
     }
 
     folio_put(vmf.folio);
@@ -269,18 +303,20 @@ ssize_t filemap_read(struct file *file, char *buf, size_t count, vfs_loff_t *ppo
     *ppos += n;
     total_read += n;
   }
-  return (ssize_t) total_read;
+  return (ssize_t)total_read;
 }
 
 /**
  * filemap_write - Optimized batched UBC write with throttling.
  */
-ssize_t filemap_write(struct file *file, const char *buf, size_t count, vfs_loff_t *ppos) {
+ssize_t filemap_write(struct file *file, const char *buf, size_t count,
+                      vfs_loff_t *ppos) {
   struct inode *inode = file->f_inode;
   struct vm_object *obj = inode->i_ubc;
   size_t total_written = 0;
 
-  if (!obj) return -EINVAL;
+  if (!obj)
+    return -EINVAL;
 
   while (count > 0) {
     uint64_t pgoff = (*ppos) >> PAGE_SHIFT;
@@ -289,21 +325,23 @@ ssize_t filemap_write(struct file *file, const char *buf, size_t count, vfs_loff
 
     /* Extend file size if writing beyond EOF */
     if (*ppos + n > inode->i_size) {
-        inode->i_size = *ppos + n;
-        obj->size = inode->i_size;
+      inode->i_size = *ppos + n;
+      obj->size = inode->i_size;
     }
 
     struct vm_fault vmf = {.pgoff = pgoff, .flags = FAULT_FLAG_WRITE};
     int ret = filemap_fault(obj, nullptr, &vmf);
-    if (ret != 0) return total_written ? (ssize_t) total_written : -EIO;
+    if (ret != 0)
+      return total_written ? (ssize_t)total_written : -EIO;
 
     struct folio *folio = vmf.folio;
     void *kaddr = pmm_phys_to_virt(folio_to_phys(folio));
 
-    if (file->f_mode & FMODE_KERNEL) memcpy(kaddr + offset, buf, n);
+    if (file->f_mode & FMODE_KERNEL)
+      memcpy(kaddr + offset, buf, n);
     else if (copy_from_user(kaddr + offset, buf, n) != 0) {
       folio_put(folio);
-      return total_written ? (ssize_t) total_written : -EFAULT;
+      return total_written ? (ssize_t)total_written : -EFAULT;
     }
 
     down_write(&obj->lock);
@@ -323,14 +361,15 @@ ssize_t filemap_write(struct file *file, const char *buf, size_t count, vfs_loff
 
     balance_dirty_pages(obj);
   }
-  return (ssize_t) total_written;
+  return (ssize_t)total_written;
 }
 
 int generic_file_mmap(struct file *file, struct vm_area_struct *vma) {
   struct inode *inode = file->f_inode;
   if (!inode->i_ubc) {
     inode->i_ubc = vm_object_alloc(VM_OBJECT_VNODE);
-    if (!inode->i_ubc) return -ENOMEM;
+    if (!inode->i_ubc)
+      return -ENOMEM;
     inode->i_ubc->vnode = inode;
     inode->i_ubc->size = inode->i_size;
     inode->i_ubc->ops = &vnode_ubc_ops;
@@ -351,10 +390,12 @@ EXPORT_SYMBOL(generic_file_mmap);
 void *ubc_map_page(struct vm_object *obj, uint64_t pgoff) {
   struct vm_fault vmf = {.pgoff = pgoff, .flags = 0};
   int ret = filemap_fault(obj, nullptr, &vmf);
-  if (ret != 0) return nullptr;
+  if (ret != 0)
+    return nullptr;
   return pmm_phys_to_virt(folio_to_phys(vmf.folio));
 }
 
 void ubc_unmap_page(struct folio *folio) {
-  if (folio) folio_put(folio);
+  if (folio)
+    folio_put(folio);
 }

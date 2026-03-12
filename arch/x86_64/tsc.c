@@ -18,12 +18,12 @@
  * GNU General Public License for more details.
  */
 
+#include <aerosync/classes.h>
+#include <aerosync/export.h>
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/tsc.h>
-#include <aerosync/classes.h>
-#include <lib/printk.h>
-#include <aerosync/fkx/fkx.h>
 #include <drivers/timer/pit.h>
+#include <lib/printk.h>
 
 static uint64_t tsc_freq = 0;
 static uint64_t tsc_boot_offset = 0;
@@ -33,9 +33,7 @@ int tsc_calibrate_early(void) {
   return 0;
 }
 
-uint64_t tsc_freq_get() {
-  return tsc_freq;
-}
+uint64_t tsc_freq_get() { return tsc_freq; }
 
 void tsc_recalibrate_with_freq(uint64_t new_freq) {
   if (new_freq > 0) {
@@ -52,14 +50,14 @@ uint64_t get_time_ns() {
     return 0;
 
   uint64_t cycles = now - tsc_boot_offset;
-  
-  /* 
+
+  /*
    * Use a more robust calculation to avoid overflow:
    * (cycles / freq) * 1e9 + ((cycles % freq) * 1e9) / freq
    */
   uint64_t seconds = cycles / tsc_freq;
   uint64_t remainder = cycles % tsc_freq;
-  
+
   return (seconds * 1000000000ULL) + ((remainder * 1000000000ULL) / tsc_freq);
 }
 
@@ -78,11 +76,12 @@ uint64_t rdtscp(void) {
 void tsc_delay(uint64_t ns) {
   uint64_t start = rdtsc();
   uint64_t end;
-  
-  /* 
-   * Avoid overflow in (tsc_freq * ns) / 1e9 by using the same logic 
-   * in reverse or using __int128 if available. 
-   * Since we are in the kernel, we can use __int128 for simplicity if the compiler supports it.
+
+  /*
+   * Avoid overflow in (tsc_freq * ns) / 1e9 by using the same logic
+   * in reverse or using __int128 if available.
+   * Since we are in the kernel, we can use __int128 for simplicity if the
+   * compiler supports it.
    */
   unsigned __int128 ticks_128 = (unsigned __int128)tsc_freq * ns;
   uint64_t ticks = (uint64_t)(ticks_128 / 1000000000ULL);

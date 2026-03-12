@@ -18,15 +18,15 @@
  * GNU General Public License for more details.
  */
 
-#include <aerosync/compiler.h>
-#include <aerosync/panic.h>
 #include <aerosync/classes.h>
+#include <aerosync/compiler.h>
+#include <aerosync/export.h>
+#include <aerosync/panic.h>
 #include <mm/ssp.h>
-#include <aerosync/fkx/fkx.h>
 
 uint64_t __stack_chk_guard = STACK_CANARY_VALUE;
 
 void __exit __noreturn __stack_chk_fail(void) {
-    panic(STACK_CLASS "Stack overflow");
+  panic(STACK_CLASS "Stack overflow");
 }
 EXPORT_SYMBOL(__stack_chk_fail);

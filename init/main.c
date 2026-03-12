@@ -23,7 +23,6 @@
 #include <aerosync/classes.h>
 #include <aerosync/compiler.h>
 #include <aerosync/crypto.h>
-#include <aerosync/fkx/fkx.h>
 #include <aerosync/ksymtab.h>
 #include <aerosync/panic.h>
 #include <aerosync/percpu.h>
@@ -44,7 +43,10 @@
 #include <aerosync/font.h>
 #include <aerosync/drm/drm.h>
 #include <aerosync/drm/drm_console.h>
+#include <aerosync/sysintf/udm.h>
+#include <aerosync/asic.h>
 #include <arch/x86_64/cpu.h>
+#include <arch/x86_64/drivers/apic/ic.h>
 #include <arch/x86_64/entry.h>
 #include <arch/x86_64/features/features.h>
 #include <arch/x86_64/fpu.h>
@@ -57,6 +59,8 @@
 #include <arch/x86_64/smp.h>
 #include <arch/x86_64/tsc.h>
 #include <drivers/acpi/power.h>
+#include <drivers/pci/pci.h>
+#include <drivers/char/pty.h>
 #include <drivers/qemu/debugcon/debugcon.h>
 #include <fs/initramfs.h>
 #include <fs/vfs.h>
@@ -91,28 +95,6 @@ static int stdklib_init(void) {
   return 0;
 }
 
-static int __late_init __noinline __sysv_abi system_load_extensions(void) {
-  if (lmm_get_count() > 0) {
-    printk(KERN_DEBUG FKX_CLASS "Processing FKX modules via LMM...\n");
-
-    lmm_for_each_module(LMM_TYPE_FKX, lmm_load_fkx_callback, nullptr);
-
-    if (fkx_finalize_loading() != 0) {
-      printk(KERN_ERR FKX_CLASS "Failed to finalize module loading\n");
-      return -ENOSYS;
-    }
-  } else {
-    printk(KERN_NOTICE FKX_CLASS
-      "no modules found via LMM"
-      ", you probably do not want this"
-      ", this build of AeroSync does not have "
-      "any built-in hardware drivers"
-      ", expect exponential lack of hardware support.\n");
-    return -ENOENT;
-  }
-  return 0;
-}
-
 static int __late_init __noinline __sysv_abi system_load_modules(void) {
   if (lmm_get_count() > 0) {
     printk(KERN_DEBUG ASRX_CLASS "Processing ASRX modules via LMM...\n");
@@ -129,7 +111,10 @@ kernel_init(void *unused) {
   (void) unused;
 
   printk(KERN_INFO KERN_CLASS "finishing system initialization\n");
-  fkx_init_module_class(FKX_GENERIC_CLASS);
+
+  aerosync_extra_init(pty_init);
+
+  aerosync_core_init(system_load_modules);
 
   aerosync_core_init(rcu_spawn_kthreads);
 
@@ -163,8 +148,6 @@ kernel_init(void *unused) {
     vfs_run_tests();
 #endif
 
-  aerosync_extra_init(system_load_modules);
-
   /* Auto-enable swap if requested via cmdline */
   if (cmdline_find_option(current_cmdline, "swapfile", boot_swap, sizeof(boot_swap)) > 0) {
     printk(KERN_INFO SWAP_CLASS "Auto-enabling swap from cmdline: %s\n", boot_swap);
@@ -186,7 +169,7 @@ kernel_init(void *unused) {
 
   printk(KERN_DEBUG KERN_CLASS "attempting to run init process: %s\n",
          init_path);
-
+  
   const int ret = run_init_process(init_path);
   if (ret < 0)
 #ifdef CONFIG_PANIC_ON_INIT_FAIL
@@ -331,17 +314,16 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
 #ifdef CONFIG_LIMINE_MODULE_MANAGER
   aerosync_core_init(lmm_register_prober, initramfs_cpio_prober);
-  aerosync_core_init(lmm_register_prober, lmm_fkx_prober);
   aerosync_core_init(lmm_register_prober, lmm_asrx_prober);
   aerosync_core_init(lmm_init, get_module_request()->response);
 #endif
 
   aerosync_core_init(vfs_init);
-
   aerosync_core_init(resdomain_init);
-
   aerosync_core_init(sched_vfs_init);
   aerosync_core_init(mm_vfs_init);
+
+  aerosync_core_init(udm_init);
 
 #ifdef CONFIG_INCLUDE_MM_TESTS
   if (cmdline_find_option_bool(current_cmdline, "mtest")) {
@@ -358,20 +340,18 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
 
   aerosync_core_init(fw_init);
   aerosync_core_init(crypto_init);
+  aerosync_extra_init(vma_aslr_reseed);
 
-  aerosync_core_init(simpledrm_init);
-  aerosync_core_init(drm_console_init_default);
-
-  /* load all FKX images */
-  aerosync_core_init(system_load_extensions);
-
-  fkx_init_module_class(FKX_PRINTK_CLASS);
-  fkx_init_module_class(FKX_PANIC_HANDLER_CLASS);
+  if (!cmdline_find_option_bool(current_cmdline, "headless")) {
+    aerosync_core_init(drm_console_init_default);
+    aerosync_core_init(simpledrm_init);
+  }
 
   aerosync_core_init_exprcall(printk_init_late(), printk_late);
   panic_handler_install();
 
-  fkx_init_module_class(FKX_IC_CLASS);
+  aerosync_core_init(pci_init);
+  aerosync_core_init(x86_64_ic_register);
   aerosync_core_init(ic_register_lapic_get_id_early);
 
   aerosync_core_init(acpica_kernel_init_early);
@@ -384,7 +364,7 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
   acpica_notify_ic_ready();
 
   // --- Time Subsystem Initialization ---
-  fkx_init_module_class(FKX_TIMER_CLASS);
+  aerosync_core_init(timer_init);
   aerosync_core_init(time_init);
 
   // Recalibrate TSC
@@ -397,8 +377,6 @@ void __no_sanitize __init __noreturn __noinline __sysv_abi start_kernel(void) {
   aerosync_extra_init(acpi_power_init);
   if (cmdline_find_option_bool(current_cmdline, "acpi_enum"))
     aerosync_core_init(acpi_bus_enumerate);
-
-  fkx_init_module_class(FKX_DRIVER_CLASS);
 
 #ifdef CONFIG_LOG_DEVICE_TREE
   if (cmdline_find_option_bool(current_cmdline, "dumpdevtree"))

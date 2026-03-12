@@ -20,13 +20,13 @@
 
 #define MAX_PANIC_HANDLERS 8
 
-#include <lib/string.h>
-#include <aerosync/classes.h>
-#include <aerosync/fkx/fkx.h>
-#include <aerosync/panic.h>
-#include <lib/printk.h>
 #include <aerosync/atomic.h>
+#include <aerosync/classes.h>
+#include <aerosync/export.h>
+#include <aerosync/panic.h>
 #include <arch/x86_64/smp.h>
+#include <lib/printk.h>
+#include <lib/string.h>
 
 static const panic_ops_t *registered_backends[MAX_PANIC_HANDLERS];
 static int num_registered_backends = 0;
@@ -38,28 +38,28 @@ static atomic_t panic_cpu = ATOMIC_INIT(-1);
 
 /**
  * __panic_smp_check - Arbitrate which CPU handles the panic
- * 
+ *
  * Returns true if the current CPU is the "master" panic CPU.
  * Returns false if the current CPU should immediately halt.
  */
 static bool __no_cfi __panic_smp_check(void) {
-    int cpu = (int)smp_get_id();
-    int expected = -1;
+  int cpu = (int)smp_get_id();
+  int expected = -1;
 
-    if (atomic_try_cmpxchg(&panic_cpu, &expected, cpu)) {
-        /* We are the first to panic, we are the master */
-        __x86_64_smp_send_stop();
-        return true;
-    }
+  if (atomic_try_cmpxchg(&panic_cpu, &expected, cpu)) {
+    /* We are the first to panic, we are the master */
+    __x86_64_smp_send_stop();
+    return true;
+  }
 
-    if (expected == cpu) {
-        /* Recursion during panic! */
-        return true; 
-    }
+  if (expected == cpu) {
+    /* Recursion during panic! */
+    return true;
+  }
 
-    /* Someone else is already panicking, just stop */
-    system_hlt();
-    return false;
+  /* Someone else is already panicking, just stop */
+  system_hlt();
+  return false;
 }
 
 void __no_cfi panic_register_handler(const panic_ops_t *ops) {
@@ -92,7 +92,8 @@ void __no_cfi panic_handler_install() {
 EXPORT_SYMBOL(panic_handler_install);
 
 void __no_cfi panic_switch_handler(const char *name) {
-  if (!name) return;
+  if (!name)
+    return;
   for (int i = 0; i < num_registered_backends; i++) {
     const panic_ops_t *b = registered_backends[i];
     if (b && b->name && strcmp(b->name, name) == 0) {
@@ -103,7 +104,8 @@ void __no_cfi panic_switch_handler(const char *name) {
       if (b->init) {
         // same as above
         if (b->init() != 0) {
-          printk(KERN_ERR KERN_CLASS "failed to reinit printk backend %s\n", name);
+          printk(KERN_ERR KERN_CLASS "failed to reinit printk backend %s\n",
+                 name);
           return;
         }
       }
@@ -113,7 +115,8 @@ void __no_cfi panic_switch_handler(const char *name) {
 }
 
 void __no_cfi __exit __noinline __sysv_abi panic(const char *msg, ...) {
-  if (!__panic_smp_check()) __unreachable();
+  if (!__panic_smp_check())
+    __unreachable();
 
   va_list va;
   va_start(va, msg);
@@ -130,8 +133,10 @@ void __no_cfi __exit __noinline __sysv_abi panic(const char *msg, ...) {
 }
 EXPORT_SYMBOL(panic);
 
-void __no_cfi __exit __noinline __noreturn __sysv_abi panic_exception(cpu_regs *regs) {
-  if (!__panic_smp_check()) __unreachable();
+void __no_cfi __exit __noinline __noreturn __sysv_abi
+panic_exception(cpu_regs *regs) {
+  if (!__panic_smp_check())
+    __unreachable();
 
   active_backend->panic_exception(regs);
 #ifdef CONFIG_KDB
@@ -144,7 +149,8 @@ void __no_cfi __exit __noinline __noreturn __sysv_abi panic_exception(cpu_regs *
 EXPORT_SYMBOL(panic_exception);
 
 void __no_cfi __exit __noinline __noreturn __sysv_abi panic_early() {
-  if (!__panic_smp_check()) __unreachable();
+  if (!__panic_smp_check())
+    __unreachable();
 
   active_backend->panic_early();
 #ifdef CONFIG_KDB

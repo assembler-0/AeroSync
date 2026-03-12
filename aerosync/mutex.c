@@ -18,10 +18,10 @@
  * GNU General Public License for more details.
  */
 
+#include <aerosync/export.h>
 #include <aerosync/mutex.h>
 #include <aerosync/sched/sched.h>
 #include <aerosync/wait.h>
-#include <aerosync/fkx/fkx.h>
 #include <linux/container_of.h>
 
 void mutex_init(mutex_t *m) {
@@ -109,7 +109,7 @@ void mutex_unlock(mutex_t *m) {
         changed = true;
       }
     }
-    
+
     if (changed) {
       __update_task_prio(curr);
     }
@@ -122,8 +122,8 @@ void mutex_unlock(mutex_t *m) {
   /* Wake up one waiter */
   struct task_struct *waiter = wake_up_nr_ret_first(&m->wait_q, 1);
   if (waiter && waiter->cpu == smp_get_id()) {
-      /* XNU-style Direct Handoff: give our remaining slice to the waiter */
-      curr->direct_handoff = waiter;
+    /* XNU-style Direct Handoff: give our remaining slice to the waiter */
+    curr->direct_handoff = waiter;
   }
 
   spinlock_unlock_irqrestore(&m->lock, flags);

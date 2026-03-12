@@ -18,24 +18,26 @@
  * GNU General Public License for more details.
  */
 
+#include <aerosync/export.h>
 #include <arch/x86_64/cpu.h>
 #include <arch/x86_64/percpu.h>
-#include <aerosync/fkx/fkx.h>
 
 DEFINE_PER_CPU(unsigned long, this_cpu_off);
 DEFINE_PER_CPU(uint64_t, cpu_user_rsp);
 
-void cpuid(uint32_t leaf, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx) {
+void cpuid(uint32_t leaf, uint32_t *eax, uint32_t *ebx, uint32_t *ecx,
+           uint32_t *edx) {
   __asm__ volatile("cpuid"
-    : "=a"(*eax), "=b"(*ebx), "=c"(*ecx), "=d"(*edx)
-    : "a"(leaf));
+                   : "=a"(*eax), "=b"(*ebx), "=c"(*ecx), "=d"(*edx)
+                   : "a"(leaf));
 }
 EXPORT_SYMBOL(cpuid);
 
-void cpuid_count(uint32_t leaf, uint32_t subleaf, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx) {
+void cpuid_count(uint32_t leaf, uint32_t subleaf, uint32_t *eax, uint32_t *ebx,
+                 uint32_t *ecx, uint32_t *edx) {
   __asm__ volatile("cpuid"
-    : "=a"(*eax), "=b"(*ebx), "=c"(*ecx), "=d"(*edx)
-    : "a"(leaf), "c"(subleaf));
+                   : "=a"(*eax), "=b"(*ebx), "=c"(*ecx), "=d"(*edx)
+                   : "a"(leaf), "c"(subleaf));
 }
 EXPORT_SYMBOL(cpuid_count);
 
@@ -62,14 +64,14 @@ EXPORT_SYMBOL(is_host_hypervisor);
 uint64_t rdmsr(uint32_t msr) {
   uint32_t low, high;
   __asm__ volatile("rdmsr" : "=a"(low), "=d"(high) : "c"(msr));
-  return ((uint64_t) high << 32) | low;
+  return ((uint64_t)high << 32) | low;
 }
 EXPORT_SYMBOL(rdmsr);
 
 void wrmsr(uint32_t msr, uint64_t value) {
   uint32_t low = value & 0xFFFFFFFF;
   uint32_t high = value >> 32;
-  __asm__ volatile("wrmsr" :: "a"(low), "d"(high), "c"(msr));
+  __asm__ volatile("wrmsr" ::"a"(low), "d"(high), "c"(msr));
 }
 EXPORT_SYMBOL(wrmsr);
 
@@ -92,7 +94,5 @@ irq_flags_t local_irq_save(void) {
 }
 EXPORT_SYMBOL(local_irq_save);
 
-void local_irq_restore(irq_flags_t flags) {
-  restore_irq_flags(flags);
-}
+void local_irq_restore(irq_flags_t flags) { restore_irq_flags(flags); }
 EXPORT_SYMBOL(local_irq_restore);

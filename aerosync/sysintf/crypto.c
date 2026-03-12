@@ -3,7 +3,7 @@
  * AeroSync monolithic kernel
  *
  * @file aerosync/sysintf/crypto.c
- * @brief Core Cryptography API and System Interface
+ * @brief Core Cryptography API and System Interface (RCU Optimized)
  * @copyright (C) 2025-2026 assembler-0
  */
 
@@ -12,6 +12,8 @@
 #include <aerosync/panic.h>
 #include <aerosync/classes.h>
 #include <aerosync/errno.h>
+#include <aerosync/rcu.h>
+#include <linux/rculist.h>
 #include <lib/string.h>
 #include <lib/printk.h>
 #include <mm/slub.h>
@@ -41,7 +43,7 @@ int crypto_register_alg(struct crypto_alg *alg) {
     if (alg->priority > entry->priority)
       break;
   }
-  list_add_tail(&alg->list, pos);
+  list_add_tail_rcu(&alg->list, pos);
     
   mutex_unlock(&crypto_mutex);
   printk(KERN_DEBUG CRYPTO_CLASS "registered algorithm: %s (%s)\n", alg->name, alg->driver_name);
@@ -50,8 +52,9 @@ int crypto_register_alg(struct crypto_alg *alg) {
 
 int crypto_unregister_alg(struct crypto_alg *alg) {
   mutex_lock(&crypto_mutex);
-  list_del(&alg->list);
+  list_del_rcu(&alg->list);
   mutex_unlock(&crypto_mutex);
+  synchronize_rcu();
   return 0;
 }
 
@@ -59,15 +62,15 @@ struct crypto_tfm *crypto_alloc_tfm(const char *name, enum crypto_alg_type type)
   struct crypto_alg *alg = nullptr, *entry;
   struct crypto_tfm *tfm;
     
-  mutex_lock(&crypto_mutex);
-  list_for_each_entry(entry, &crypto_alg_list, list) {
+  rcu_read_lock();
+  list_for_each_entry_rcu(entry, &crypto_alg_list, list) {
     if (entry->type != type) continue;
     if (strcmp(entry->name, name) == 0 || strcmp(entry->driver_name, name) == 0) {
       alg = entry;
       break;
     }
   }
-  mutex_unlock(&crypto_mutex);
+  rcu_read_unlock();
     
   if (!alg) return nullptr;
         

@@ -19,7 +19,7 @@
  */
 
 #include <aerosync/errno.h>
-#include <aerosync/fkx/fkx.h>
+#include <aerosync/export.h>
 #include <aerosync/kref.h>
 #include <aerosync/resdomain.h>
 #include <aerosync/resource.h>

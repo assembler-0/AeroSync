@@ -1,5 +1,7 @@
 # ASRX Module Build System
 
+include(cmake/fkx.cmake)
+
 # Path to the signing key (Reuses FKX root key)
 set(FKX_KEY_DIR "${CMAKE_SOURCE_DIR}/keys")
 set(FKX_KEY_FILE "${FKX_KEY_DIR}/fkx_root.key")

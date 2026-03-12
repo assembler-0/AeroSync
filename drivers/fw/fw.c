@@ -7,7 +7,7 @@
  * @copyright (C) 2025-2026 assembler-0
  */
 
-#include <aerosync/fkx/fkx.h>
+#include <aerosync/asrx.h>
 
 extern int smbios_init(void);
 extern int nvram_init(void);
@@ -20,15 +20,8 @@ static int fw_module_init(void) {
   return 0;
 }
 
-FKX_MODULE_DEFINE(
-  fw,
-  "1.1.0",
-  "assembler-0",
-  "Firmware Subsystem (SMBIOS, NVRAM, UEFI)",
-  FKX_FLAG_CORE,
-  FKX_DRIVER_CLASS,
-  KSYM_LICENSE_GPL,
-  FKX_SUBCLASS_FW,
-  FKX_NO_REQUIREMENTS,
-  fw_module_init
-);
+static void fw_module_exit(void) { }
+
+asrx_module_init(fw_module_init);
+asrx_module_exit(fw_module_exit);
+asrx_module_info(fw, KSYM_LICENSE_GPL);

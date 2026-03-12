@@ -9,7 +9,7 @@
 
 #include <aerosync/asrx.h>
 #include <aerosync/mod_loader.h>
-#include <aerosync/fkx/elf_parser.h>
+#include <aerosync/elf_parser.h>
 #include <mm/vmalloc.h>
 #include <mm/slub.h>
 #include <lib/string.h>
@@ -18,7 +18,6 @@
 #include <aerosync/errno.h>
 #include <aerosync/limine_modules.h>
 #include <mm/vma.h>
-#include <fs/file.h>
 #include <fs/vfs.h>
 #include "fkx_key.h"
 
@@ -38,7 +37,7 @@ int asrx_load_from_memory(void *data, size_t size, const char *name_hint) {
   struct asrx_module *mod = kzalloc(sizeof(struct asrx_module));
   if (!mod) return -ENOMEM;
 
-  struct mod_image *img = (struct mod_image *)kmalloc(sizeof(struct mod_image));
+  const auto img = (struct mod_image *)kmalloc(sizeof(struct mod_image));
   if (!img) { kfree(mod); return -ENOMEM; }
   memset(img, 0, sizeof(struct mod_image));
 
@@ -109,7 +108,6 @@ int asrx_load_from_memory(void *data, size_t size, const char *name_hint) {
   /* img structure itself can be freed as its data is now in asrx_module */
   kfree(img);
 
-  printk(KERN_DEBUG ASRX_CLASS "Module '%s' loaded successfully\n", mod->name);
   return 0;
 }
 
@@ -148,7 +146,8 @@ int lmm_asrx_prober(const struct limine_file *file, uint32_t *out_type) {
 void __init lmm_load_asrx_callback(struct lmm_entry *entry, void *data) {
   (void)data;
   const struct limine_file *m = entry->file;
-  asrx_load_from_memory(m->address, m->size, m->path);
+  const int ret = asrx_load_from_memory(m->address, m->size, m->path);
+  printk(ASRX_CLASS "module '%s' load status: %s\n", m->path, IS_ERR_INT(ret) ? errname(ret) : "success");
 }
 
 int asrx_unload_module(const char *name) {
@@ -170,6 +169,6 @@ int asrx_unload_module(const char *name) {
   kfree(mod);
 
   mutex_unlock(&asrx_lock);
-  printk(KERN_DEBUG ASRX_CLASS "Module '%s' unloaded\n", name);
+  printk(KERN_DEBUG ASRX_CLASS "module '%s' unloaded\n", name);
   return 0;
 }

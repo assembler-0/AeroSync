@@ -1,14 +1,14 @@
-///SPDX-License-Identifier: GPL-2.0-only
+/// SPDX-License-Identifier: GPL-2.0-only
 /**
  * AeroSync monolithic kernel
  *
- * @file drivers/apic/pic.c
+ * @file arch/x86_64/drivers/apic/pic.c
  * @brief Legacy PIC interrupt controller driver
  * @copyright (C) 2025-2026 assembler-0
  */
 
-#include <aerosync/classes.h> 
-#include <aerosync/fkx/fkx.h>
+#include <aerosync/classes.h>
+#include <aerosync/export.h>
 #include <aerosync/sysintf/ic.h>
 #include <arch/x86_64/io.h>
 #include <drivers/timer/pit.h>
@@ -56,59 +56,30 @@ void pic_send_eoi(uint32_t interrupt_number) {
 }
 
 int pic_install(void) {
-  printk(KERN_NOTICE PIC_CLASS "PIC drivers does not come with builtin PIT timer\n");
-  
   outb(PIC1_COMMAND, ICW1_INIT | ICW1_ICW4);
   outb(PIC2_COMMAND, ICW1_INIT | ICW1_ICW4);
-  outb(PIC1_DATA, 0x20); 
-  outb(PIC2_DATA, 0x28); 
-  outb(PIC1_DATA, 4); 
-  outb(PIC2_DATA, 2); 
+  outb(PIC1_DATA, 0x20);
+  outb(PIC2_DATA, 0x28);
+  outb(PIC1_DATA, 4);
+  outb(PIC2_DATA, 2);
   outb(PIC1_DATA, ICW4_8086);
   outb(PIC2_DATA, ICW4_8086);
 
   return 1;
 }
 
-int pic_probe(void) {
-  return 1; 
-}
+int pic_probe(void) { return 1; }
 
 static void pic_shutdown(void) {
-    pic_mask_all();
-    printk(PIC_CLASS "PIC shut down.\n");
-}
-
-static void pit_io_wait_intneral(void) {
-  outb(0x80, 0);
-}
-
-static void pit_set_frequency_internal(uint32_t frequency) {
-  if (frequency == 0)
-    frequency = 100;
-  if (frequency > PIT_FREQUENCY_BASE)
-    frequency = PIT_FREQUENCY_BASE;
-
-  uint32_t divisor = PIT_FREQUENCY_BASE / frequency;
-  if (divisor > 65535)
-    divisor = 65535;
-
-  irq_flags_t flags = save_irq_flags();
-
-  outb(PIT_CMD_PORT, 0x34);
-  pit_io_wait_intneral();
-  outb(PIT_CH0_PORT, divisor & 0xFF);
-  pit_io_wait_intneral();
-  outb(PIT_CH0_PORT, (divisor >> 8) & 0xFF);
-
-  restore_irq_flags(flags);
+  pic_mask_all();
+  printk(PIC_CLASS "PIC shut down.\n");
 }
 
 static const interrupt_controller_interface_t pic_interface = {
     .type = INTC_PIC,
     .probe = pic_probe,
     .install = pic_install,
-    .timer_set = pit_set_frequency_internal,
+    .timer_set = pit_set_frequency,
     .enable_irq = pic_enable_irq,
     .disable_irq = pic_disable_irq,
     .send_eoi = pic_send_eoi,
@@ -117,6 +88,6 @@ static const interrupt_controller_interface_t pic_interface = {
     .priority = 50,
 };
 
-const interrupt_controller_interface_t* pic_get_driver(void) {
-    return &pic_interface;
+const interrupt_controller_interface_t *pic_get_driver(void) {
+  return &pic_interface;
 }

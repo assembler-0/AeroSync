@@ -3,27 +3,43 @@
  * AeroSync monolithic kernel
  *
  * @file aerosync/sysintf/dma.c
- * @brief Direct Memory Access engine
+ * @brief Direct Memory Access engine (Unified Model)
  * @copyright (C) 2025-2026 assembler-0
  */
 
 #include <aerosync/sysintf/dma.h>
 #include <aerosync/sysintf/device.h>
+#include <aerosync/sysintf/class.h>
+#include <aerosync/sysintf/iommu.h>
+#include <aerosync/rcu.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <lib/printk.h>
 #include <mm/gfp.h>
 #include <aerosync/fkx/fkx.h>
 #include <aerosync/classes.h>
 
+extern struct class iommu_class;
+
 static inline const struct dma_map_ops *get_dma_ops(struct device *dev) {
   if (dev && dev->dma_ops)
     return dev->dma_ops;
+
+  /* Use the active IOMMU's DMA ops if available */
+  rcu_read_lock();
+  struct device *iommu_dev = iommu_class.active_dev;
+  if (iommu_dev) {
+    const struct dma_map_ops *ops = (struct dma_map_ops *)iommu_dev->driver_data;
+    rcu_read_unlock();
+    return ops;
+  }
+  rcu_read_unlock();
+
   return &direct_dma_ops;
 }
 
 void *dma_alloc_coherent(struct device *dev, size_t size, dma_addr_t *dma_handle, gfp_t gfp) {
   const struct dma_map_ops *ops = get_dma_ops(dev);
-  if (ops->alloc)
+  if (ops && ops->alloc)
     return ops->alloc(dev, size, dma_handle, gfp);
   return nullptr;
 }
@@ -31,7 +47,7 @@ EXPORT_SYMBOL(dma_alloc_coherent);
 
 void dma_free_coherent(struct device *dev, size_t size, void *cpu_addr, dma_addr_t dma_handle) {
   const struct dma_map_ops *ops = get_dma_ops(dev);
-  if (ops->free)
+  if (ops && ops->free)
     ops->free(dev, size, cpu_addr, dma_handle);
 }
 EXPORT_SYMBOL(dma_free_coherent);
@@ -41,7 +57,7 @@ dma_addr_t dma_map_single(struct device *dev, void *ptr, size_t size, enum dma_d
   struct page *page = virt_to_page(ptr);
   unsigned long offset = (unsigned long)ptr & ~PAGE_MASK;
 
-  if (ops->map_page)
+  if (ops && ops->map_page)
     return ops->map_page(dev, page, offset, size, dir);
   return (dma_addr_t)-1;
 }
@@ -49,7 +65,7 @@ EXPORT_SYMBOL(dma_map_single);
 
 void dma_unmap_single(struct device *dev, dma_addr_t dma_addr, size_t size, enum dma_data_direction dir) {
   const struct dma_map_ops *ops = get_dma_ops(dev);
-  if (ops->unmap_page)
+  if (ops && ops->unmap_page)
     ops->unmap_page(dev, dma_addr, size, dir);
 }
 EXPORT_SYMBOL(dma_unmap_single);

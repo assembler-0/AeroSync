@@ -4,4 +4,4 @@ set(IDE_SOURCES
     drivers/block/ide/ide_dma.c
 )
 
-add_fkx_module(ide ${IDE_SOURCES})
+add_asrx_module(ide ${IDE_SOURCES})

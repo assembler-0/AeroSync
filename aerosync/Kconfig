@@ -2,6 +2,18 @@
 
 menu "system"
 
+config ASIC_DEBUG
+    bool "Enable ASIC debug logging"
+    default y
+    help
+      Enables verbose logging of each initcall as it executes.
+
+config ASIC_PROFILING
+    bool "Enable ASIC execution profiling"
+    default y
+    help
+      Measures and logs the execution time of each initcall.
+
 config ASYNC_PRINTK
     bool "Enable asynchronous printk"
     default y

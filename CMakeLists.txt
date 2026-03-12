@@ -63,11 +63,10 @@ include(HostTools)
 
 # Source Gathering
 include(source)       # Core kernel sources
-include(fkx)          # FKX framework
 include(asrx)         # ASRX framework
 
 # Driver & Library Modules
-include(fkx_modules)
+include(asrx_modules)
 
 # Kernel Target Definition & Compilation Rules
 include(aerosync-compile)

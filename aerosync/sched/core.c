@@ -23,8 +23,6 @@
 #include <arch/x86_64/mm/vmm.h>
 #include <arch/x86_64/percpu.h>
 #include <arch/x86_64/smp.h>
-#include <arch/x86_64/tsc.h>
-#include <drivers/apic/apic.h>
 #include <aerosync/classes.h>
 #include <aerosync/export.h>
 #include <aerosync/sched/cpumask.h>
@@ -44,6 +42,7 @@
 #include <arch/x86_64/gdt/gdt.h>
 #include <linux/rculist.h>
 #include <aerosync/errno.h>
+#include <arch/x86_64/drivers/apic/apic.h>
 
 DEFINE_PER_CPU(int, __preempt_count) = 0;
 DEFINE_PER_CPU(int, need_resched) = 0;

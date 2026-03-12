@@ -74,6 +74,14 @@ static inline const char *klog_level_to_ansi(int level) {
 #endif
 }
 
+typedef enum {
+  PRINTK_BACKEND_DEFAULT = 0, /* Traditional backend, assume ready or use probe() */
+  PRINTK_BACKEND_PENDING,     /* Registered but waiting for explicit readiness */
+  PRINTK_BACKEND_READY,       /* Explicitly ready */
+  PRINTK_BACKEND_FAULTED,     /* Encountered an error */
+  PRINTK_BACKEND_DISABLED     /* Explicitly disabled */
+} printk_backend_state_t;
+
 typedef struct printk_backend {
   const char *name;
   int priority; // bigger = preferred
@@ -85,6 +93,10 @@ typedef struct printk_backend {
   fn(int, is_active, void);
   fn(int, suspend, void);
   fn(int, resume, void);
+
+  /* New fields for state management */
+  int state;          /* Current readiness state (usually atomic_t but keep simple if no locks) */
+  void *private_data; /* Backend-specific context */
 } printk_backend_t;
 
 static int generic_backend_init(void *payload) {
@@ -95,14 +107,16 @@ static int generic_backend_init(void *payload) {
 #define PRINTK_BACKEND_NAME(b) (b ? b->name : nullptr)
 
 // Initialize printing subsystem
-void printk_register_backend(const printk_backend_t *backend);
-
+void printk_register_backend(printk_backend_t *backend);
+void printk_register_backend_pending(printk_backend_t *backend);
+void printk_backend_signal_ready(printk_backend_t *backend);
+int printk_unregister_backend(const printk_backend_t *backend, int force);
 /**
  * @function printk_auto_configure(2) - setup registered printk backedns
  * @param payload payload passed to init()
  * @param reinit status to check if should re-initialize or initialize
  */
-int __must_check printk_auto_configure(void *payload, int reinit);
+int printk_auto_configure(void *payload, int reinit);
 
 /* configure printk - select and init */
 #define printk_init_early() printk_auto_configure(nullptr, 0)
@@ -116,6 +130,8 @@ int __must_check printk_auto_configure(void *payload, int reinit);
  */
 int printk_set_sink(const char *backend_name, bool cleanup);
 void printk_shutdown(void);
+int printk_shutdown_backend(const printk_backend_t *b, int force);
+
 
 /**
  * @function printk_disable(0) - disable console output but keep kfifo logging

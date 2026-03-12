@@ -13,7 +13,7 @@
 
 #include <aerosync/atomic.h>
 #include <aerosync/classes.h>
-#include <aerosync/fkx/fkx.h>
+#include <aerosync/export.h>
 #include <aerosync/sched/process.h>
 #include <aerosync/sched/sched.h>
 #include <aerosync/spinlock.h>
@@ -57,7 +57,7 @@
 #define VMALLOC_NODE_SIZE (VMALLOC_VIRT_SIZE / MAX_NUMNODES)
 
 static inline unsigned long vmalloc_node_start(int nid) {
-  return VMALLOC_VIRT_BASE + ((unsigned long) nid * VMALLOC_NODE_SIZE);
+  return VMALLOC_VIRT_BASE + ((unsigned long)nid * VMALLOC_NODE_SIZE);
 }
 
 static inline unsigned long vmalloc_node_end(int nid) {
@@ -65,12 +65,12 @@ static inline unsigned long vmalloc_node_end(int nid) {
 }
 #else
 static inline unsigned long vmalloc_node_start(int nid) {
-  (void) nid;
+  (void)nid;
   return VMALLOC_VIRT_BASE;
 }
 
 static inline unsigned long vmalloc_node_end(int nid) {
-  (void) nid;
+  (void)nid;
   return VMALLOC_VIRT_END;
 }
 #endif
@@ -254,7 +254,8 @@ found:
   return va;
 }
 
-static void __vmap_area_remove_locked(struct vmap_node *vn, struct vmap_area *va) {
+static void __vmap_area_remove_locked(struct vmap_node *vn,
+                                      struct vmap_area *va) {
   MA_STATE(mas, &vn->va_mt, va->va_start, va->va_end - 1);
 
   mas_erase(&mas);
@@ -272,8 +273,7 @@ static void __vmap_area_remove_locked(struct vmap_node *vn, struct vmap_area *va
 static inline unsigned long vmap_area_compute_gap(struct vmap_area *va) {
   struct rb_node *prev_node = rb_prev(&va->rb_node);
   if (prev_node) {
-    struct
-    vmap_area *prev = rb_entry(prev_node, struct vmap_area, rb_node);
+    struct vmap_area *prev = rb_entry(prev_node, struct vmap_area, rb_node);
     return va->va_start - prev->va_end;
   }
   return va->va_start - VMALLOC_VIRT_BASE;
@@ -366,7 +366,8 @@ static struct vmap_area *alloc_vmap_area(unsigned long size,
           n = n->rb_right;
       }
       spinlock_unlock_irqrestore(&vn->lock, flags);
-      if (conflict) break;
+      if (conflict)
+        break;
     }
 
     if (!conflict)
@@ -405,7 +406,8 @@ found:
   return va;
 }
 
-static void __vmap_area_remove_locked(struct vmap_node *vn, struct vmap_area *va) {
+static void __vmap_area_remove_locked(struct vmap_node *vn,
+                                      struct vmap_area *va) {
   rb_erase_augmented(&va->rb_node, &vn->root, &vmap_area_rb_callbacks);
   list_del_rcu(&va->list);
   RB_CLEAR_NODE(&va->rb_node);
@@ -566,7 +568,7 @@ static void __purge_vmap_node(struct vmap_node *vn) {
 }
 
 static int kvmap_purged_thread(void *data) {
-  (void) data;
+  (void)data;
   while (1) {
     for (int i = 0; i < MAX_NUMNODES; i++) {
       if (atomic_long_read(&vmap_nodes[i].nr_purged) >
@@ -630,14 +632,14 @@ static void *vb_alloc(size_t size, int nid) {
       continue;
     if (spinlock_trylock(&vb->lock)) {
       unsigned long bit = bitmap_find_next_zero_area(
-        vb->free_map, VMAP_BBMAP_BITS, 0, pages, 0);
+          vb->free_map, VMAP_BBMAP_BITS, 0, pages, 0);
       if (bit < VMAP_BBMAP_BITS) {
         bitmap_set(vb->free_map, bit, pages);
-        vb->sizes[bit] = (uint8_t) pages;
+        vb->sizes[bit] = (uint8_t)pages;
         vb->free_count -= pages;
         spinlock_unlock(&vb->lock);
         rcu_read_unlock();
-        return (void *) (vb->va->va_start + (bit << PAGE_SHIFT));
+        return (void *)(vb->va->va_start + (bit << PAGE_SHIFT));
       }
       spinlock_unlock(&vb->lock);
     }
@@ -649,10 +651,10 @@ static void *vb_alloc(size_t size, int nid) {
     return nullptr;
   spinlock_lock(&vb->lock);
   bitmap_set(vb->free_map, 0, pages);
-  vb->sizes[0] = (uint8_t) pages;
+  vb->sizes[0] = (uint8_t)pages;
   vb->free_count -= pages;
   spinlock_unlock(&vb->lock);
-  return (void *) vb->va->va_start;
+  return (void *)vb->va->va_start;
 }
 
 /* ========================================================================
@@ -677,7 +679,7 @@ void *vmalloc_node_prot(size_t size, int nid, uint64_t pgprot) {
   if (size <= (VMAP_BLOCK_SIZE_BYTES / 2)) {
     void *p = vb_alloc(size, nid);
     if (p) {
-      addr = (unsigned long) p;
+      addr = (unsigned long)p;
       goto map;
     }
   }
@@ -706,7 +708,7 @@ map:
     }
     struct folio *folio = alloc_pages_node(nid, GFP_KERNEL, 0);
     if (!folio) {
-      vfree((void *) addr);
+      vfree((void *)addr);
       return nullptr;
     }
     vmm_map_page_no_flush(&init_mm, cur_vaddr, folio_to_phys(folio), pgprot);
@@ -714,7 +716,7 @@ map:
     remaining_pages--;
   }
   vmm_tlb_shootdown(&init_mm, addr, addr + size);
-  return (void *) addr;
+  return (void *)addr;
 }
 
 EXPORT_SYMBOL(vmalloc_node_prot);
@@ -723,7 +725,7 @@ void vfree(void *addr) {
   if (!addr)
     return;
 
-  unsigned long vaddr = (unsigned long) addr;
+  unsigned long vaddr = (unsigned long)addr;
 
   struct vmap_area *va = find_vmap_area(vaddr);
   if (!va)
@@ -822,7 +824,7 @@ void *vmalloc_node_stack(size_t size, int nid) {
     nid = this_node();
 
   struct vmap_area *va = alloc_vmap_area(
-    total_size, PAGE_SIZE, VMALLOC_VIRT_BASE, VMALLOC_VIRT_END, nid);
+      total_size, PAGE_SIZE, VMALLOC_VIRT_BASE, VMALLOC_VIRT_END, nid);
   if (!va)
     return nullptr;
 
@@ -839,7 +841,7 @@ void *vmalloc_node_stack(size_t size, int nid) {
   while (remaining_pages > 0) {
     struct folio *folio = alloc_pages_node(nid, GFP_KERNEL, 0);
     if (!folio) {
-      vfree((void *) va->va_start);
+      vfree((void *)va->va_start);
       return nullptr;
     }
     vmm_map_page_no_flush(&init_mm, cur_vaddr, folio_to_phys(folio), pgprot);
@@ -848,7 +850,7 @@ void *vmalloc_node_stack(size_t size, int nid) {
   }
 
   vmm_tlb_shootdown(&init_mm, stack_start, stack_start + size);
-  return (void *) stack_start;
+  return (void *)stack_start;
 }
 
 EXPORT_SYMBOL(vmalloc_node_stack);
@@ -857,22 +859,27 @@ EXPORT_SYMBOL(vmalloc_node_stack);
  * vmalloc_bulk_stacks - Efficiently allocate multiple kernel stacks
  * @count: Number of stacks to allocate
  * @node: NUMA node
- * @stacks: Array to store the allocated stack pointers (must be at least @count)
+ * @stacks: Array to store the allocated stack pointers (must be at least
+ * @count)
  *
  * This function allocates a single large virtual memory region and maps all
  * stacks within it, followed by a single TLB shootdown. This is significantly
  * faster than individual vmalloc_node_stack calls when creating many threads.
  */
 int vmalloc_bulk_stacks(int count, int node, void **stacks) {
-  if (count <= 0) return 0;
-  if (node == NUMA_NO_NODE) node = this_node();
+  if (count <= 0)
+    return 0;
+  if (node == NUMA_NO_NODE)
+    node = this_node();
 
   size_t stack_size = PAGE_SIZE * 4; // Standard AeroSync stack size
   size_t total_per_stack = stack_size + PAGE_SIZE; // Include guard page
   size_t total_size = count * total_per_stack;
 
-  struct vmap_area *va = alloc_vmap_area(total_size, PAGE_SIZE, VMALLOC_VIRT_BASE, VMALLOC_VIRT_END, node);
-  if (!va) return -ENOMEM;
+  struct vmap_area *va = alloc_vmap_area(
+      total_size, PAGE_SIZE, VMALLOC_VIRT_BASE, VMALLOC_VIRT_END, node);
+  if (!va)
+    return -ENOMEM;
 
   uint64_t pgprot = PTE_PRESENT | PTE_RW | PTE_NX | PTE_GLOBAL;
   uint64_t cur_va = va->va_start;
@@ -886,8 +893,9 @@ int vmalloc_bulk_stacks(int count, int node, void **stacks) {
       struct folio *folio = alloc_pages_node(node, GFP_KERNEL, 0);
       if (!folio) {
         /* Cleanup already allocated stacks */
-        // Simplified cleanup: vfree the whole thing, though it might leak some folios
-        // if not carefully handled. Real implementation should track them.
+        // Simplified cleanup: vfree the whole thing, though it might leak some
+        // folios if not carefully handled. Real implementation should track
+        // them.
         vfree((void *)va->va_start);
         return -ENOMEM;
       }
@@ -947,8 +955,9 @@ int vmalloc_init(void) {
      * - MT_FLAGS_USE_RCU: Enable RCU-safe lockless reads
      * - MT_FLAGS_LOCK_EXTERN: We manage locking externally via vn->lock
      */
-    mt_init_flags(&vmap_nodes[i].va_mt,
-                  MT_FLAGS_ALLOC_RANGE | MT_FLAGS_USE_RCU | MT_FLAGS_LOCK_EXTERN);
+    mt_init_flags(&vmap_nodes[i].va_mt, MT_FLAGS_ALLOC_RANGE |
+                                            MT_FLAGS_USE_RCU |
+                                            MT_FLAGS_LOCK_EXTERN);
 #else
     vmap_nodes[i].root = RB_ROOT;
 #endif
@@ -1018,7 +1027,7 @@ void *ioremap_prot(uint64_t phys_addr, size_t size, uint64_t pgprot) {
   vmm_map_pages_no_flush(&init_mm, va->va_start, phys_start,
                          page_aligned_size / PAGE_SIZE, pgprot);
   vmm_tlb_shootdown(&init_mm, va->va_start, va->va_start + page_aligned_size);
-  return (void *) (va->va_start + offset);
+  return (void *)(va->va_start + offset);
 }
 
 EXPORT_SYMBOL(ioremap_prot);
@@ -1053,8 +1062,8 @@ EXPORT_SYMBOL(iounmap);
 
 void *vmap(struct page **pages, unsigned int count, unsigned long flags,
            uint64_t pgprot) {
-  (void) flags;
-  size_t size = (size_t) count << PAGE_SHIFT;
+  (void)flags;
+  size_t size = (size_t)count << PAGE_SHIFT;
   struct vmap_area *va = alloc_vmap_area(size, PAGE_SIZE, VMALLOC_VIRT_BASE,
                                          VMALLOC_VIRT_END, NUMA_NO_NODE);
   if (!va)
@@ -1062,7 +1071,7 @@ void *vmap(struct page **pages, unsigned int count, unsigned long flags,
   for (unsigned int i = 0; i < count; i++)
     vmm_map_page_no_flush(&init_mm, va->va_start + (i << PAGE_SHIFT),
                           page_to_phys(pages[i]), pgprot | PTE_GLOBAL);
-  return (void *) va->va_start;
+  return (void *)va->va_start;
 }
 
 EXPORT_SYMBOL(vmap);

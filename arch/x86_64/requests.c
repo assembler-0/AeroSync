@@ -18,129 +18,93 @@
  * GNU General Public License for more details.
  */
 
+#include <aerosync/export.h>
 #include <arch/x86_64/requests.h>
-#include <aerosync/fkx/fkx.h>
 
 // Set Limine Request Start Marker
-__attribute__((
-  used,
-  section(".limine_requests_start"))) static volatile
-uint64_t limine_requests_start_marker[] = LIMINE_REQUESTS_START_MARKER;
+__attribute__((used,
+               section(".limine_requests_start"))) static volatile uint64_t
+    limine_requests_start_marker[] = LIMINE_REQUESTS_START_MARKER;
 
-__attribute__((
-  used,
-  section(".limine_requests"))) static volatile
-uint64_t limine_base_revision[3] = LIMINE_BASE_REVISION(4);
+__attribute__((used, section(".limine_requests"))) static volatile uint64_t
+    limine_base_revision[3] = LIMINE_BASE_REVISION(4);
 
 #ifdef CONFIG_FB_REQUEST
 __attribute__((
-  used,
-  section(".limine_requests"))) volatile
-struct limine_framebuffer_request framebuffer_request = {
-  .id = LIMINE_FRAMEBUFFER_REQUEST_ID, .revision = 0
-};
+    used,
+    section(".limine_requests"))) volatile struct limine_framebuffer_request
+    framebuffer_request = {.id = LIMINE_FRAMEBUFFER_REQUEST_ID, .revision = 0};
 #endif
 
 __attribute__((
-  used,
-  section(".limine_requests"))) static volatile
-struct limine_memmap_request memmap_request = {
-  .id = LIMINE_MEMMAP_REQUEST_ID, .revision = 0
-};
+    used,
+    section(".limine_requests"))) static volatile struct limine_memmap_request
+    memmap_request = {.id = LIMINE_MEMMAP_REQUEST_ID, .revision = 0};
 
 __attribute__((
-  used,
-  section(".limine_requests"))) static volatile
-struct limine_paging_mode_request paging_request = {
-  .id = LIMINE_PAGING_MODE_REQUEST_ID,
-  .revision = 0,
-  .mode = LIMINE_PAGING_MODE_X86_64_5LVL
-};
+    used,
+    section(
+        ".limine_requests"))) static volatile struct limine_paging_mode_request
+    paging_request = {.id = LIMINE_PAGING_MODE_REQUEST_ID,
+                      .revision = 0,
+                      .mode = LIMINE_PAGING_MODE_X86_64_5LVL};
 
 __attribute__((
-  used,
-  section(".limine_requests"))) static volatile
-struct limine_hhdm_request hhdm_request = {
-  .id = LIMINE_HHDM_REQUEST_ID, .revision = 0
-};
+    used,
+    section(".limine_requests"))) static volatile struct limine_hhdm_request
+    hhdm_request = {.id = LIMINE_HHDM_REQUEST_ID, .revision = 0};
 
 __attribute__((used,
-  section(".limine_requests"))) volatile
-struct limine_rsdp_request rsdp_request = {
-  .id = LIMINE_RSDP_REQUEST_ID, .revision = 0
-};
+               section(".limine_requests"))) volatile struct limine_rsdp_request
+    rsdp_request = {.id = LIMINE_RSDP_REQUEST_ID, .revision = 0};
 
 __attribute__((
-  used,
-  section(".limine_requests"))) static volatile
-struct limine_smbios_request smbios_request = {
-  .id = LIMINE_SMBIOS_REQUEST_ID, .revision = 0
-};
+    used,
+    section(".limine_requests"))) static volatile struct limine_smbios_request
+    smbios_request = {.id = LIMINE_SMBIOS_REQUEST_ID, .revision = 0};
+
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_efi_system_table_request efi_system_table_request = {
+        .id = LIMINE_EFI_SYSTEM_TABLE_REQUEST_ID, .revision = 0};
 
 __attribute__((
-  used,
-  section(".limine_requests"))) static volatile
-struct limine_efi_system_table_request efi_system_table_request = {
-  .id = LIMINE_EFI_SYSTEM_TABLE_REQUEST_ID, .revision = 0
-};
+    used,
+    section(".limine_requests"))) static volatile struct limine_module_request
+    module_request = {.id = LIMINE_MODULE_REQUEST_ID, .revision = 0};
+
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_bootloader_info_request bootloader_info_request = {
+        .id = LIMINE_BOOTLOADER_INFO_REQUEST_ID, .revision = 0};
+
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_bootloader_performance_request bootloader_performance_request = {
+        .id = LIMINE_BOOTLOADER_PERFORMANCE_REQUEST_ID, .revision = 0};
+
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_executable_cmdline_request cmdline_request = {
+        .id = LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID, .revision = 0};
+
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_executable_file_request executable_file_request = {
+        .id = LIMINE_EXECUTABLE_FILE_REQUEST_ID, .revision = 0};
+
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_firmware_type_request fw_request = {
+        .id = LIMINE_FIRMWARE_TYPE_REQUEST_ID, .revision = 0};
+
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_executable_address_request executable_address_request = {
+        .id = LIMINE_EXECUTABLE_ADDRESS_REQUEST_ID, .revision = 0};
 
 __attribute__((
-  used,
-  section(".limine_requests"))) static volatile
-struct limine_module_request module_request = {
-  .id = LIMINE_MODULE_REQUEST_ID, .revision = 0
-};
-
-__attribute__((
-  used,
-  section(".limine_requests"))) static volatile
-struct limine_bootloader_info_request bootloader_info_request = {
-  .id = LIMINE_BOOTLOADER_INFO_REQUEST_ID, .revision = 0
-};
-
-__attribute__((
-  used,
-  section(".limine_requests"))) static volatile
-struct limine_bootloader_performance_request bootloader_performance_request = {
-  .id = LIMINE_BOOTLOADER_PERFORMANCE_REQUEST_ID, .revision = 0
-};
-
-__attribute__((
-  used,
-  section(".limine_requests"))) static volatile
-struct limine_executable_cmdline_request cmdline_request = {
-  .id = LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID, .revision = 0
-};
-
-__attribute__((
-  used,
-  section(".limine_requests"))) static volatile
-struct limine_executable_file_request executable_file_request = {
-  .id = LIMINE_EXECUTABLE_FILE_REQUEST_ID, .revision = 0
-};
-
-__attribute__((used, section(".limine_requests"))) static volatile
-struct limine_firmware_type_request fw_request = {
-  .id = LIMINE_FIRMWARE_TYPE_REQUEST_ID, .revision = 0
-};
-
-__attribute__((
-  used,
-  section(".limine_requests"))) static volatile
-struct limine_executable_address_request executable_address_request = {
-  .id = LIMINE_EXECUTABLE_ADDRESS_REQUEST_ID, .revision = 0
-};
-
-__attribute__((
-  used,
-  section(".limine_requests"))) static volatile
-struct limine_date_at_boot_request date_at_boot_request = {
-  .id = LIMINE_DATE_AT_BOOT_REQUEST_ID,
-  .revision = 0
-};
+    used,
+    section(
+        ".limine_requests"))) static volatile struct limine_date_at_boot_request
+    date_at_boot_request = {.id = LIMINE_DATE_AT_BOOT_REQUEST_ID,
+                            .revision = 0};
 
 __attribute__((used, section(".limine_requests_end"))) static volatile uint64_t
-limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
+    limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
 
 volatile uint64_t *get_limine_base_revision(void) {
   return limine_base_revision;
@@ -176,7 +140,8 @@ volatile struct limine_smbios_request *get_smbios_request(void) {
 }
 EXPORT_SYMBOL(get_smbios_request);
 
-volatile struct limine_efi_system_table_request *get_efi_system_table_request(void) {
+volatile struct limine_efi_system_table_request *
+get_efi_system_table_request(void) {
   return &efi_system_table_request;
 }
 EXPORT_SYMBOL(get_efi_system_table_request);
@@ -186,12 +151,14 @@ volatile struct limine_module_request *get_module_request(void) {
 }
 EXPORT_SYMBOL(get_module_request);
 
-volatile struct limine_bootloader_info_request *get_bootloader_info_request(void) {
+volatile struct limine_bootloader_info_request *
+get_bootloader_info_request(void) {
   return &bootloader_info_request;
 }
 EXPORT_SYMBOL(get_bootloader_info_request);
 
-volatile struct limine_bootloader_performance_request *get_bootloader_performance_request(void) {
+volatile struct limine_bootloader_performance_request *
+get_bootloader_performance_request(void) {
   return &bootloader_performance_request;
 }
 EXPORT_SYMBOL(get_bootloader_performance_request);
@@ -201,7 +168,8 @@ volatile struct limine_executable_cmdline_request *get_cmdline_request(void) {
 }
 EXPORT_SYMBOL(get_cmdline_request);
 
-volatile struct limine_executable_file_request *get_executable_file_request(void) {
+volatile struct limine_executable_file_request *
+get_executable_file_request(void) {
   return &executable_file_request;
 }
 EXPORT_SYMBOL(get_executable_file_request);
@@ -216,7 +184,8 @@ volatile struct limine_date_at_boot_request *get_date_at_boot_request(void) {
 }
 EXPORT_SYMBOL(get_date_at_boot_request);
 
-volatile struct limine_executable_address_request *get_executable_address_request(void) {
+volatile struct limine_executable_address_request *
+get_executable_address_request(void) {
   return &executable_address_request;
 }
 EXPORT_SYMBOL(get_executable_address_request);

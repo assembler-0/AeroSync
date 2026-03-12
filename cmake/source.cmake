@@ -6,6 +6,7 @@ include(lib/acpica/acpica.cmake)
 file(GLOB ARCH_SOURCES "arch/x86_64/*.c")
 file(GLOB_RECURSE ARCH_FEATURE_SOURCES "arch/x86_64/features/*.c")
 file(GLOB_RECURSE ARCH_GDT_SOURCES "arch/x86_64/gdt/*.c")
+file(GLOB_RECURSE ARCH_DRIVER_SOURCES "arch/x86_64/drivers/*.c")
 file(GLOB_RECURSE ARCH_IDT_SOURCES "arch/x86_64/idt/*.c")
 file(GLOB_RECURSE ARCH_MM_SOURCES "arch/x86_64/mm/*.c")
 file(GLOB_RECURSE ARCH_IRQ_SOURCES "arch/x86_64/irq/*.c")
@@ -15,6 +16,7 @@ file(GLOB_RECURSE ARCH_ASM_SOURCES "arch/x86_64/*.asm")
 list(APPEND ARCH_SOURCES
     ${ARCH_FEATURE_SOURCES}
     ${ARCH_GDT_SOURCES}
+    ${ARCH_DRIVER_SOURCES}
     ${ARCH_IDT_SOURCES}
     ${ARCH_MM_SOURCES}
     ${ARCH_IRQ_SOURCES}
@@ -44,12 +46,18 @@ file(GLOB DRIVER_SOURCES "drivers/*.c")
 file(GLOB_RECURSE DRIVER_ACPI_SOURCES "drivers/acpi/*.c")
 file(GLOB_RECURSE DRIVER_BUILTINS_SOURCES "drivers/builtins/*.c")
 file(GLOB_RECURSE DRIVER_QEMU_SOURCES "drivers/qemu/*.c")
+file(GLOB_RECURSE DRIVER_CHAR_SOURCES "drivers/char/*.c")
+file(GLOB_RECURSE DRIVER_PCI_SOURCES "drivers/pci/*.c")
+file(GLOB_RECURSE DRIVER_TIMER_SOURCES "drivers/timer/*.c")
 file(GLOB_RECURSE DRIVER_DRM_SOURCES "drivers/graphics/drm/*.c")
 list(APPEND DRIVER_SOURCES
     ${DRIVER_ACPI_SOURCES}
     ${DRIVER_BUILTINS_SOURCES}
     ${DRIVER_QEMU_SOURCES}
     ${DRIVER_DRM_SOURCES}
+    ${DRIVER_TIMER_SOURCES}
+    ${DRIVER_CHAR_SOURCES}
+    ${DRIVER_PCI_SOURCES}
 )
 file(GLOB LIB_SOURCES "lib/*.c")
 file(GLOB_RECURSE LIB_FONT_SOURCES "lib/fonts/*.c")

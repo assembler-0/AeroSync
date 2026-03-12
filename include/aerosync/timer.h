@@ -14,6 +14,7 @@ struct timer_list {
 
 struct timespec;
 
+int timer_init(void); // start timer drivers
 int __must_check timer_init_subsystem(void);
 void timer_setup(struct timer_list *timer, void (*function)(struct timer_list *), void *data);
 void timer_add(struct timer_list *timer, uint64_t expires_ns);

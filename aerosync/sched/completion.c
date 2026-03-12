@@ -10,10 +10,10 @@
  */
 
 #include <aerosync/completion.h>
+#include <aerosync/export.h>
 #include <aerosync/sched/sched.h>
 #include <aerosync/spinlock.h>
 #include <aerosync/wait.h>
-#include <aerosync/fkx/fkx.h>
 
 void wait_for_completion(struct completion *x) {
   /* Use DEFINE_WAIT from wait.h which sets up wait_queue_t correctly for

@@ -3,7 +3,7 @@
  * AeroSync monolithic kernel
  *
  * @file aerosync/sysintf/fb.c
- * @brief Framebuffer class implementation
+ * @brief Framebuffer class implementation (Unified Model)
  * @copyright (C) 2026 assembler-0
  */
 
@@ -18,6 +18,7 @@ static struct class fb_class = {
   .naming_scheme = NAMING_NUMERIC,
   .category = DEV_CAT_FB,
   .flags = CLASS_FLAG_AUTO_DEVTMPFS,
+  .is_singleton = true, /* Active FB tracks the primary display */
 };
 
 static struct device_driver fb_driver = {
@@ -36,6 +37,7 @@ struct char_device *fb_register_device(const struct char_operations *ops, void *
 
   cdev->dev.class = &fb_class;
   cdev->dev.driver = &fb_driver;
+  cdev->dev.ops = (void *)ops;
   cdev->ops = ops;
   cdev->private_data = private_data;
 

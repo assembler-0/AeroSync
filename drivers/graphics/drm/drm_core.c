@@ -8,6 +8,7 @@
  */
 
 #include <aerosync/drm/drm.h>
+#include <aerosync/drm/drm_console.h>
 #include <aerosync/errno.h>
 #include <aerosync/sysintf/fb.h>
 #include <arch/x86_64/mm/pmm.h>
@@ -89,6 +90,9 @@ int drm_dev_register(struct drm_device *dev) {
   if (!dev->cdev) {
     return -ENOMEM;
   }
+
+  /* Rationale: A device is now available, signal console readiness */
+  drm_console_signal_ready();
 
   return 0;
 }

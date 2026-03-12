@@ -18,8 +18,8 @@
  */
 typedef enum {
   LMM_TYPE_UNKNOWN = 0,
-  LMM_TYPE_FKX,     /* AeroSync Kernel Extension */
-  LMM_TYPE_ASRX,    /* AeroSync Resource/Archive (future) */
+  LMM_TYPE_FKX,     /* Fused Kernel Extension */
+  LMM_TYPE_ASRX,    /* AeroSync Runtime eXtension  */
   LMM_TYPE_INITRD,  /* Initial Ramdisk (CPIO) */
   LMM_TYPE_FIRMWARE, /* Firmware blobs */
   LMM_TYPE_CONFIG,   /* Configuration files */

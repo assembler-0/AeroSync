@@ -178,19 +178,20 @@ char *strchr(char *str, int c) {
   return memchr(str, c, strlen(str) + 1);
 }
 
-void strncpy(char *dest, const char *src, size_t max_len) {
+char *strncpy(char *dest, const char *src, size_t max_len) {
   if (!dest || !src)
-    return;
+    return nullptr;
   size_t i = 0;
   for (; i + 1 < max_len && src[i]; i++)
     dest[i] = src[i];
   if (max_len > 0)
     dest[i] = '\0';
+  return dest;
 }
 
-void strcpy(char *dest, const char *src) {
+char *strcpy(char *dest, const char *src) {
   if (!dest || !src)
-    return;
+    return nullptr;
 #ifdef CONFIG_OPTIMIZED_STRING
   if (((uintptr_t) dest & 7) == 0 && ((uintptr_t) src & 7) == 0) {
     uint64_t *d64 = (uint64_t *) dest;
@@ -209,7 +210,7 @@ void strcpy(char *dest, const char *src) {
         char *d = (char *) d64;
         const char *s = (const char *) (s64 - 1);
         while ((*d++ = *s++));
-        return;
+        return dest;
       }
       *d64++ = val;
     }
@@ -220,26 +221,30 @@ void strcpy(char *dest, const char *src) {
 #else
   while ((*dest++ = *src++));
 #endif
+  return dest;
 }
 
-void strcat(char *dest, const char *src) {
+char *strcat(char *dest, const char *src) {
   if (!dest || !src)
-    return;
+    return nullptr;
   while (*dest)
     dest++;
   strcpy(dest, src);
+  return dest;
 }
 
 #ifdef CONFIG_LIBC_STRING_FULL
-void strncat(char *dest, const char *src, size_t count) {
+char *strncat(char *dest, const char *src, size_t count) {
+  if (!dest || !src) return nullptr;
   char *tmp = dest;
   while (*tmp)
     tmp++;
   while (count--) {
-    if (!(*tmp++ = *src++))
-      return;
+    if (!((*tmp++ = *src++)))
+      return nullptr;
   }
   *tmp = '\0';
+  return dest;
 }
 #endif
 

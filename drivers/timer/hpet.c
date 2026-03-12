@@ -8,13 +8,14 @@
  */
 
 #include <aerosync/classes.h>
-#include <aerosync/fkx/fkx.h>
+#include <aerosync/export.h>
 #include <aerosync/sysintf/acpi.h>
 #include <arch/x86_64/mm/paging.h>
 #include <arch/x86_64/tsc.h>
 #include <drivers/timer/hpet.h>
 #include <lib/printk.h>
 #include <mm/vmalloc.h>
+#include <aerosync/sysintf/time.h>
 
 hpet_info_t hpet_info = {0};
 static void *hpet_mapped_base = nullptr;
@@ -130,10 +131,8 @@ int hpet_init(void) {
 
   hpet_info.base_address = hpet->Address.Address;
   hpet_info.revision_id = hpet->Id & 0xFF;
-  hpet_info.vendor_id =
-      (hpet->Id >> 16) & 0xFFFF;
-  hpet_info.num_comparators =
-      ((hpet->Id >> 8) & 0x1F) + 1;
+  hpet_info.vendor_id = (hpet->Id >> 16) & 0xFFFF;
+  hpet_info.num_comparators = ((hpet->Id >> 8) & 0x1F) + 1;
   hpet_info.page_protection = hpet->Flags & 0x03;
 
   printk(KERN_DEBUG HPET_CLASS "HPET found:\n");

@@ -18,14 +18,14 @@
  * GNU General Public License for more details.
  */
 
-#include <arch/x86_64/cpu.h>
-#include <arch/x86_64/irq.h>
-#include <arch/x86_64/mm/tlb.h>
-#include <aerosync/sysintf/ic.h>
+#include <aerosync/export.h>
 #include <aerosync/panic.h>
 #include <aerosync/sched/sched.h>
 #include <aerosync/signal.h>
-#include <aerosync/fkx/fkx.h>
+#include <aerosync/sysintf/ic.h>
+#include <arch/x86_64/cpu.h>
+#include <arch/x86_64/irq.h>
+#include <arch/x86_64/mm/tlb.h>
 #include <lib/printk.h>
 
 #include <aerosync/timer.h>
@@ -61,22 +61,30 @@ void __used __hot __no_sanitize __no_cfi irq_common_stub(cpu_regs *regs) {
     if ((regs->cs & 3) != 0) {
       int sig = 0;
       switch (regs->interrupt_number) {
-        case 0: sig = SIGFPE;
-          break; // Divide by zero
-        case 1: sig = SIGTRAP;
-          // debug
-        case 3: sig = SIGTRAP;
-          break; // Breakpoint
-        case 4: sig = SIGSEGV;
-          // Overflow
-        case 5: sig = SIGSEGV;
-          break; // Bound range
-        case 6: sig = SIGILL;
-          break; // Invalid Opcode
-        case 13: sig = SIGSEGV;
-          break; // General Protection Fault
-        default: sig = SIGILL;
-          break;
+      case 0:
+        sig = SIGFPE;
+        break; // Divide by zero
+      case 1:
+        sig = SIGTRAP;
+        // debug
+      case 3:
+        sig = SIGTRAP;
+        break; // Breakpoint
+      case 4:
+        sig = SIGSEGV;
+        // Overflow
+      case 5:
+        sig = SIGSEGV;
+        break; // Bound range
+      case 6:
+        sig = SIGILL;
+        break; // Invalid Opcode
+      case 13:
+        sig = SIGSEGV;
+        break; // General Protection Fault
+      default:
+        sig = SIGILL;
+        break;
       }
       send_signal(sig, current);
       goto out_check_signals;
@@ -86,12 +94,14 @@ void __used __hot __no_sanitize __no_cfi irq_common_stub(cpu_regs *regs) {
   }
 
   // Only send EOI for hardware interrupts and IPIs, not for exceptions
-  if (regs->interrupt_number >= IRQ_BASE_VECTOR && regs->interrupt_number < MAX_INTERRUPTS) {
+  if (regs->interrupt_number >= IRQ_BASE_VECTOR &&
+      regs->interrupt_number < MAX_INTERRUPTS) {
     ic_send_eoi(regs->interrupt_number);
   }
 
   if (regs->interrupt_number >= MAX_INTERRUPTS) {
-    printk(KERN_ERR "Spurious interrupt with invalid vector: %llu\n", regs->interrupt_number);
+    printk(KERN_ERR "Spurious interrupt with invalid vector: %llu\n",
+           regs->interrupt_number);
     goto out_check_signals;
   }
 

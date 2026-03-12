@@ -9,49 +9,59 @@
 
 #include <aerosync/drm/drm.h>
 #include <aerosync/errno.h>
-#include <aerosync/fkx/fkx.h>
+#include <aerosync/export.h>
+#include <arch/x86_64/mm/pmm.h>
 #include <arch/x86_64/requests.h>
+#include <lib/string.h>
 #include <mm/slub.h>
 #include <mm/vmalloc.h>
-#include <arch/x86_64/mm/pmm.h>
-#include <lib/string.h>
 
 /**
  * @brief Optimized dirty rectangle flush using Write-Combining VRAM.
  */
-static void simpledrm_dirty_flush(struct drm_device *dev, int x, int y, int w, int h) {
+static void simpledrm_dirty_flush(struct drm_device *dev, int x, int y, int w,
+                                  int h) {
   struct drm_framebuffer *fb = &dev->fb;
-  if (!fb->vaddr || !fb->shadow) return;
+  if (!fb->vaddr || !fb->shadow)
+    return;
 
   /* Clamp coordinates to FB boundaries */
-  if (x < 0) x = 0;
-  if (y < 0) y = 0;
-  if (x + w > (int) fb->width) w = fb->width - x;
-  if (y + h > (int) fb->height) h = fb->height - y;
-  if (w <= 0 || h <= 0) return;
+  if (x < 0)
+    x = 0;
+  if (y < 0)
+    y = 0;
+  if (x + w > (int)fb->width)
+    w = fb->width - x;
+  if (y + h > (int)fb->height)
+    h = fb->height - y;
+  if (w <= 0 || h <= 0)
+    return;
 
   uint32_t bpp_bytes = fb->format.bpp / 8;
   size_t line_size = w * bpp_bytes;
 
-  if (x == 0 && (uint32_t) w == fb->width && fb->pitch == (fb->width * bpp_bytes)) {
-    memcpy((uint8_t *) fb->vaddr + y * fb->pitch, (uint8_t *) fb->shadow + y * fb->pitch, h * fb->pitch);
+  if (x == 0 && (uint32_t)w == fb->width &&
+      fb->pitch == (fb->width * bpp_bytes)) {
+    memcpy((uint8_t *)fb->vaddr + y * fb->pitch,
+           (uint8_t *)fb->shadow + y * fb->pitch, h * fb->pitch);
     return;
   }
 
   /* Otherwise, flush line by line */
   for (int i = 0; i < h; i++) {
-    uint8_t *dst = (uint8_t *) fb->vaddr + (y + i) * fb->pitch + x * bpp_bytes;
-    uint8_t *src = (uint8_t *) fb->shadow + (y + i) * fb->pitch + x * bpp_bytes;
+    uint8_t *dst = (uint8_t *)fb->vaddr + (y + i) * fb->pitch + x * bpp_bytes;
+    uint8_t *src = (uint8_t *)fb->shadow + (y + i) * fb->pitch + x * bpp_bytes;
     memcpy(dst, src, line_size);
   }
 }
 
 static struct drm_driver simpledrm_driver = {
-  .name = "simpledrm",
-  .dirty_flush = simpledrm_dirty_flush,
+    .name = "simpledrm",
+    .dirty_flush = simpledrm_dirty_flush,
 };
 
-static void fill_format(volatile struct limine_framebuffer *lfb, struct drm_format_info *fmt) {
+static void fill_format(volatile struct limine_framebuffer *lfb,
+                        struct drm_format_info *fmt) {
   fmt->bpp = lfb->bpp;
   fmt->r_size = lfb->red_mask_size;
   fmt->r_shift = lfb->red_mask_shift;
@@ -75,13 +85,15 @@ static void fill_format(volatile struct limine_framebuffer *lfb, struct drm_form
 
 int simpledrm_init(void) {
   volatile struct limine_framebuffer_request *req = get_framebuffer_request();
-  if (!req || !req->response || req->response->framebuffer_count == 0) return -ENODEV;
+  if (!req || !req->response || req->response->framebuffer_count == 0)
+    return -ENODEV;
 
   for (uint64_t i = 0; i < req->response->framebuffer_count; i++) {
     volatile struct limine_framebuffer *lfb = req->response->framebuffers[i];
 
     struct drm_device *dev = kzalloc(sizeof(struct drm_device));
-    if (!dev) return -ENOMEM;
+    if (!dev)
+      return -ENOMEM;
 
     dev->driver = &simpledrm_driver;
     dev->fb.width = lfb->width;

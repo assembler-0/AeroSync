@@ -3,7 +3,7 @@
  * AeroSync monolithic kernel
  *
  * @file aerosync/sysintf/char.c
- * @brief Character Device Registry
+ * @brief Character Device Registry (Unified Model)
  * @copyright (C) 2026 assembler-0
  */
 
@@ -11,6 +11,8 @@
 #include <aerosync/sysintf/class.h>
 #include <aerosync/errno.h>
 #include <aerosync/export.h>
+#include <aerosync/rcu.h>
+#include <linux/rculist.h>
 #include <aerosync/classes.h>
 #include <lib/printk.h>
 
@@ -26,13 +28,9 @@ static struct device_driver char_driver = {
     .name = "char_core",
 };
 
-static LIST_HEAD(char_devices);
-static struct mutex char_mutex;
-
 static void char_init_subsystem(void) {
   static int initialized = 0;
   if (!initialized) {
-    mutex_init(&char_mutex);
     class_register(&char_class);
     initialized = 1;
   }
@@ -50,52 +48,33 @@ int char_device_register(struct char_device *cdev) {
     if (!cdev->dev.driver)
         cdev->dev.driver = &char_driver;
 
-  if (kref_read(&cdev->dev.kref) == 0)
-    device_initialize(&cdev->dev);
-
-  int ret = device_add(&cdev->dev);
-  if (ret != 0) {
-    return ret;
-  }
-
-  mutex_lock(&char_mutex);
-  list_add_tail(&cdev->list, &char_devices);
-  mutex_unlock(&char_mutex);
-
-  printk(KERN_INFO CHAR_CLASS "Registered character device '%s' (major: %u, minor: %u)\n",
-         cdev->dev.name, MAJOR(cdev->dev_num), MINOR(cdev->dev_num));
-  return 0;
+  return device_register(&cdev->dev);
 }
-
 EXPORT_SYMBOL(char_device_register);
 
 void char_device_unregister(struct char_device *cdev) {
-  if (!cdev)
-    return;
-
-  mutex_lock(&char_mutex);
-  list_del(&cdev->list);
-  mutex_unlock(&char_mutex);
-
+  if (!cdev) return;
   device_unregister(&cdev->dev);
 }
-
 EXPORT_SYMBOL(char_device_unregister);
 
 struct char_device *chrdev_lookup(dev_t dev) {
-  struct char_device *cdev;
+  struct device *d;
+  struct char_device *found = nullptr;
 
-  mutex_lock(&char_mutex);
-  list_for_each_entry(cdev, &char_devices, list) {
+  rcu_read_lock();
+  /* Use the generic class walk provided by the driver model */
+  list_for_each_entry_rcu(d, &char_class.devices, class_node) {
+    struct char_device *cdev = container_of(d, struct char_device, dev);
     if (cdev->dev_num == dev) {
-      kref_get(&cdev->dev.kref);
-      mutex_unlock(&char_mutex);
-      return cdev;
+      if (get_device(d)) {
+        found = cdev;
+      }
+      break;
     }
   }
-  mutex_unlock(&char_mutex);
+  rcu_read_unlock();
 
-  return nullptr;
+  return found;
 }
-
 EXPORT_SYMBOL(chrdev_lookup);

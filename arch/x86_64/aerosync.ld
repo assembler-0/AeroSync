@@ -83,6 +83,11 @@ SECTIONS
         KEEP(*(ksymtab))
         _ksymtab_end = .;
 
+        . = ALIGN(8);
+        __asic_start = .;
+        KEEP(*(SORT_BY_NAME(.asic_data.*)))
+        __asic_end = .;
+
         . = ALIGN(4);
         __start___ex_table = .;
         KEEP(*(__ex_table))

@@ -8,7 +8,7 @@
  */
 
 #include <aerosync/mod_loader.h>
-#include <aerosync/fkx/elf_parser.h>
+#include <aerosync/elf_parser.h>
 #include <aerosync/crypto.h>
 #include <aerosync/errno.h>
 #include <mm/vmalloc.h>
@@ -79,8 +79,9 @@ int mod_map_segments(struct mod_image *img) {
 }
 
 int mod_relocate(struct mod_image *img) {
-  Elf64_Ehdr *hdr = (Elf64_Ehdr *)img->raw_data;
-  Elf64_Shdr *sections = (Elf64_Shdr *)((uint8_t *)img->raw_data + hdr->e_shoff);
+  int err = 0;
+  const auto *hdr = (Elf64_Ehdr *)img->raw_data;
+  const auto *sections = (Elf64_Shdr *)((uint8_t *)img->raw_data + hdr->e_shoff);
 
   for (int i = 0; i < hdr->e_shnum; i++) {
     if (sections[i].sh_type == SHT_RELA) {
@@ -111,10 +112,14 @@ int mod_relocate(struct mod_image *img) {
           } else {
             S = lookup_ksymbol_licensed(name, img->license);
             if (S == 0 && ELF64_ST_BIND(sym->st_info) != STB_WEAK) {
-              return -ENOENT;
+              printk(KERN_ERR ASRX_CLASS "undefined symbol '%s' in section %d\n", name, i);
+              err++;
+              continue;
             }
           }
         }
+
+        if (err > 0) return -ENOEXEC;
 
         switch (type) {
           case R_X86_64_64: *target = S + relas[j].r_addend; break;

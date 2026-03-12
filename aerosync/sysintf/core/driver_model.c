@@ -19,6 +19,8 @@
 #include <lib/string.h>
 #include <linux/container_of.h>
 #include <aerosync/kref.h>
+#include <aerosync/rcu.h>
+#include <linux/rculist.h>
 #include <mm/slub.h>
 #include <stdarg.h>
 #include <mm/vmalloc.h>
@@ -26,9 +28,9 @@
 #include <fs/devtmpfs.h>
 #include <fs/sysfs.h>
 
-static LIST_HEAD(global_device_list);
-static LIST_HEAD(global_class_list);
-static mutex_t device_model_lock;
+LIST_HEAD(global_device_list);
+LIST_HEAD(global_class_list);
+mutex_t device_model_lock;
 
 /* Initialization of the core driver model */
 static void driver_model_init(void) {
@@ -98,11 +100,19 @@ int class_register(struct class *cls) {
     ida_init(&cls->ida); // Support up to 1024 devices per class
   }
 
+  /* Initialize singleton registry if needed */
+  if (cls->is_singleton) {
+    cls->active_ops = nullptr;
+    cls->active_dev = nullptr;
+    mutex_init(&cls->service_lock);
+  }
+
   mutex_lock(&device_model_lock);
   list_add_tail(&cls->node, &global_class_list);
   mutex_unlock(&device_model_lock);
 
-  printk(KERN_DEBUG HAL_CLASS "Registered class '%s'\n", cls->name);
+  printk(KERN_DEBUG HAL_CLASS "Registered class '%s'%s\n", 
+         cls->name, cls->is_singleton ? " (Singleton)" : "");
   return 0;
 }
 
@@ -130,10 +140,78 @@ void class_unregister(struct class *cls) {
     ida_destroy(&cls->ida);
   }
 
+  if (cls->is_singleton) {
+    /* No dynamic allocation for singleton fields, just clear pointers */
+    cls->active_ops = nullptr;
+    cls->active_dev = nullptr;
+  }
+
   printk(KERN_DEBUG HAL_CLASS "Unregistered class '%s'\n", cls->name);
 }
 
 EXPORT_SYMBOL(class_unregister);
+
+void *class_get_active_interface(struct class *cls) {
+  if (!cls || !cls->is_singleton)
+    return nullptr;
+
+  return rcu_dereference(cls->active_ops);
+}
+
+EXPORT_SYMBOL(class_get_active_interface);
+
+static void class_reevaluate_active(struct class *cls) {
+  if (!cls || !cls->is_singleton)
+    return;
+
+  struct device *dev;
+  struct device *best_dev = nullptr;
+
+  mutex_lock(&cls->lock);
+  list_for_each_entry(dev, &cls->devices, class_node) {
+    if (!dev->ops) continue;
+
+    if (!best_dev) {
+      best_dev = dev;
+      continue;
+    }
+
+    if (cls->evaluate) {
+      if (cls->evaluate(dev, best_dev) > 0) {
+        best_dev = dev;
+      }
+    } else {
+      /* Default: Use service_priority if no evaluate function provided */
+      if (dev->service_priority > best_dev->service_priority) {
+        best_dev = dev;
+      }
+    }
+  }
+  mutex_unlock(&cls->lock);
+
+  mutex_lock(&cls->service_lock);
+  if (best_dev && cls->active_ops != best_dev->ops) {
+    void *old_ops = cls->active_ops;
+    
+    rcu_assign_pointer(cls->active_ops, best_dev->ops);
+    cls->active_dev = best_dev;
+
+    if (old_ops) {
+      synchronize_rcu();
+    }
+
+    printk(KERN_INFO HAL_CLASS "Class %s: Promoted %s as active provider\n",
+           cls->name, best_dev->name ? best_dev->name : "unnamed");
+  } else if (!best_dev && cls->active_ops != nullptr) {
+    /* No candidates left */
+    rcu_assign_pointer(cls->active_ops, nullptr);
+    synchronize_rcu();
+    cls->active_dev = nullptr;
+    
+    printk(KERN_INFO HAL_CLASS "Class %s: No active provider available\n", cls->name);
+  }
+  mutex_unlock(&cls->service_lock);
+}
 
 int __no_cfi class_for_each_dev(struct class *cls, struct device *start, void *data,
                        class_iter_fn func) {
@@ -188,23 +266,25 @@ static int __no_cfi device_attach_driver(struct device *dev) {
   if (!dev->bus)
     return -EINVAL;
 
-  mutex_lock(&dev->bus->lock);
-  list_for_each_entry(drv, &dev->bus->drivers_list, bus_node) {
+  rcu_read_lock();
+  list_for_each_entry_rcu(drv, &dev->bus->drivers_list, bus_node) {
     /* 1. Does the bus think they match? */
     if (dev->bus->match && !dev->bus->match(dev, drv))
       continue;
 
-    /* 2. Try to bind */
-    dev->driver = drv;
-    ret = device_bind_driver(dev);
-    if (likely(ret == 0)) {
-      goto out;
+    /* 2. Try to bind (must drop RCU and take mutex for binding) */
+    if (mutex_trylock(&dev->bus->lock)) {
+        dev->driver = drv;
+        ret = device_bind_driver(dev);
+        if (likely(ret == 0)) {
+          mutex_unlock(&dev->bus->lock);
+          break;
+        }
+        dev->driver = nullptr;
+        mutex_unlock(&dev->bus->lock);
     }
-    dev->driver = nullptr;
   }
-
-out:
-  mutex_unlock(&dev->bus->lock);
+  rcu_read_unlock();
   return ret;
 }
 
@@ -403,11 +483,15 @@ int __no_cfi device_add(struct device *dev) {
 
   if (dev->bus) {
     mutex_lock(&dev->bus->lock);
-    list_add_tail(&dev->bus_node, &dev->bus->devices_list);
+    list_add_tail_rcu(&dev->bus_node, &dev->bus->devices_list);
     mutex_unlock(&dev->bus->lock);
 
     /* Try to find a driver */
     device_attach_driver(dev);
+  }
+
+  if (dev->class && dev->class->is_singleton) {
+    class_reevaluate_active(dev->class);
   }
 
   return 0;
@@ -458,8 +542,9 @@ void __no_cfi device_del(struct device *dev) {
 
   if (dev->bus) {
     mutex_lock(&dev->bus->lock);
-    list_del(&dev->bus_node);
+    list_del_rcu(&dev->bus_node);
     mutex_unlock(&dev->bus->lock);
+    synchronize_rcu();
   }
 
   mutex_lock(&device_model_lock);
@@ -480,6 +565,10 @@ void __no_cfi device_del(struct device *dev) {
     }
     list_del(&dev->class_node);
     mutex_unlock(&dev->class->lock);
+
+    if (dev->class->is_singleton) {
+      class_reevaluate_active(dev->class);
+    }
   }
 
   if (dev->parent)
@@ -504,23 +593,26 @@ int __no_cfi driver_register(struct device_driver *drv) {
     return -EINVAL;
 
   mutex_lock(&drv->bus->lock);
-  list_add_tail(&drv->bus_node, &drv->bus->drivers_list);
+  list_add_tail_rcu(&drv->bus_node, &drv->bus->drivers_list);
   mutex_unlock(&drv->bus->lock);
 
   /* Try to bind this driver to existing devices on the bus */
   struct device *dev;
-  mutex_lock(&drv->bus->lock);
-  list_for_each_entry(dev, &drv->bus->devices_list, bus_node) {
+  rcu_read_lock();
+  list_for_each_entry_rcu(dev, &drv->bus->devices_list, bus_node) {
     if (!dev->driver) {
       if (drv->bus->match && drv->bus->match(dev, drv)) {
-        dev->driver = drv;
-        if (device_bind_driver(dev) != 0) {
-          dev->driver = nullptr;
+        if (mutex_trylock(&drv->bus->lock)) {
+            dev->driver = drv;
+            if (device_bind_driver(dev) != 0) {
+              dev->driver = nullptr;
+            }
+            mutex_unlock(&drv->bus->lock);
         }
       }
     }
   }
-  mutex_unlock(&drv->bus->lock);
+  rcu_read_unlock();
 
   return 0;
 }
@@ -542,11 +634,28 @@ void __no_cfi driver_unregister(struct device_driver *drv) {
       dev->driver = nullptr;
     }
   }
-  list_del(&drv->bus_node);
+  list_del_rcu(&drv->bus_node);
   mutex_unlock(&drv->bus->lock);
+  synchronize_rcu();
 }
 
 EXPORT_SYMBOL(driver_unregister);
+
+struct device *device_find_by_platform_data(const void *data) {
+  struct device *dev;
+  struct device *found = nullptr;
+
+  mutex_lock(&device_model_lock);
+  list_for_each_entry(dev, &global_device_list, node) {
+    if (dev->platform_data == data) {
+      found = get_device(dev);
+      break;
+    }
+  }
+  mutex_unlock(&device_model_lock);
+  return found;
+}
+EXPORT_SYMBOL(device_find_by_platform_data);
 
 struct device *device_find_by_name(const char *name) {
   struct device *dev;
@@ -573,8 +682,8 @@ int __no_cfi bus_for_each_dev(struct bus_type *bus, struct device *start, void *
   if (!bus)
     return -EINVAL;
 
-  mutex_lock(&bus->lock);
-  list_for_each_entry(dev, &bus->devices_list, bus_node) {
+  rcu_read_lock();
+  list_for_each_entry_rcu(dev, &bus->devices_list, bus_node) {
     if (start) {
       if (dev == start)
         start = nullptr;
@@ -584,7 +693,7 @@ int __no_cfi bus_for_each_dev(struct bus_type *bus, struct device *start, void *
     if (error)
       break;
   }
-  mutex_unlock(&bus->lock);
+  rcu_read_unlock();
   return error;
 }
 
@@ -598,8 +707,8 @@ int __no_cfi bus_for_each_drv(struct bus_type *bus, struct device_driver *start,
   if (!bus)
     return -EINVAL;
 
-  mutex_lock(&bus->lock);
-  list_for_each_entry(drv, &bus->drivers_list, bus_node) {
+  rcu_read_lock();
+  list_for_each_entry_rcu(drv, &bus->drivers_list, bus_node) {
     if (start) {
       if (drv == start)
         start = nullptr;
@@ -609,7 +718,7 @@ int __no_cfi bus_for_each_drv(struct bus_type *bus, struct device_driver *start,
     if (error)
       break;
   }
-  mutex_unlock(&bus->lock);
+  rcu_read_unlock();
   return error;
 }
 

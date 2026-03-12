@@ -23,6 +23,9 @@ enum iommu_cap {
 };
 
 struct iommu_ops {
+  const char *name;
+  uint32_t priority;
+
   int (*domain_init)(struct iommu_domain *domain);
   void (*domain_free)(struct iommu_domain *domain);
   int (*attach_dev)(struct iommu_domain *domain, struct device *dev);

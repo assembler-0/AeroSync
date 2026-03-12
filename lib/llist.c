@@ -11,10 +11,10 @@
  *   Author: Huang Ying <ying.huang@intel.com>
  */
 
-#include <aerosync/fkx/fkx.h>
-#include <linux/llist.h>
+#include <aerosync/export.h>
 #include <arch/x86_64/atomic.h>
 #include <arch/x86_64/cpu.h>
+#include <linux/llist.h>
 
 /**
  * llist_del_first - delete the first entry of lock-less list
@@ -30,18 +30,17 @@
  * but keep @head->first.  If multiple consumers are needed, please
  * use llist_del_all or use lock between consumers.
  */
-struct llist_node *llist_del_first(struct llist_head *head)
-{
-	struct llist_node *entry, *next;
+struct llist_node *llist_del_first(struct llist_head *head) {
+  struct llist_node *entry, *next;
 
-	entry = smp_load_acquire(&head->first);
-	do {
-		if (entry == nullptr)
-			return nullptr;
-		next = READ_ONCE(entry->next);
-	} while (!try_cmpxchg(&head->first, &entry, next));
+  entry = smp_load_acquire(&head->first);
+  do {
+    if (entry == nullptr)
+      return nullptr;
+    next = READ_ONCE(entry->next);
+  } while (!try_cmpxchg(&head->first, &entry, next));
 
-	return entry;
+  return entry;
 }
 EXPORT_SYMBOL(llist_del_first);
 
@@ -56,20 +55,18 @@ EXPORT_SYMBOL(llist_del_first);
  * Multiple callers can safely call this concurrently with multiple
  * llist_add() callers, providing all the callers offer a different @this.
  */
-bool llist_del_first_this(struct llist_head *head,
-			  struct llist_node *this)
-{
-	struct llist_node *entry, *next;
+bool llist_del_first_this(struct llist_head *head, struct llist_node *this) {
+  struct llist_node *entry, *next;
 
-	/* acquire ensures orderig wrt try_cmpxchg() is llist_del_first() */
-	entry = smp_load_acquire(&head->first);
-	do {
-		if (entry != this)
-			return false;
-		next = READ_ONCE(entry->next);
-	} while (!try_cmpxchg(&head->first, &entry, next));
+  /* acquire ensures orderig wrt try_cmpxchg() is llist_del_first() */
+  entry = smp_load_acquire(&head->first);
+  do {
+    if (entry != this)
+      return false;
+    next = READ_ONCE(entry->next);
+  } while (!try_cmpxchg(&head->first, &entry, next));
 
-	return true;
+  return true;
 }
 EXPORT_SYMBOL(llist_del_first_this);
 
@@ -80,17 +77,16 @@ EXPORT_SYMBOL(llist_del_first_this);
  * Reverse the order of a chain of llist entries and return the
  * new first entry.
  */
-struct llist_node *llist_reverse_order(struct llist_node *head)
-{
-	struct llist_node *new_head = nullptr;
+struct llist_node *llist_reverse_order(struct llist_node *head) {
+  struct llist_node *new_head = nullptr;
 
-	while (head) {
-		struct llist_node *tmp = head;
-		head = head->next;
-		tmp->next = new_head;
-		new_head = tmp;
-	}
+  while (head) {
+    struct llist_node *tmp = head;
+    head = head->next;
+    tmp->next = new_head;
+    new_head = tmp;
+  }
 
-	return new_head;
+  return new_head;
 }
 EXPORT_SYMBOL(llist_reverse_order);

@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 
 #include <aerosync/classes.h>
+#include <aerosync/errno.h>
 #include <aerosync/export.h>
-#include <aerosync/fkx/fkx.h>
 #include <aerosync/panic.h>
 #include <aerosync/percpu.h>
 #include <aerosync/sched/cpumask.h>
@@ -15,7 +15,6 @@
 #include <lib/printk.h>
 #include <lib/string.h>
 #include <mm/slub.h>
-#include <aerosync/errno.h>
 
 #ifndef CONFIG_PER_CPU_CHUNK_SIZE
 #define CONFIG_PER_CPU_CHUNK_SIZE 64

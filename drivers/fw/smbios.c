@@ -13,38 +13,8 @@
 #include <arch/x86_64/requests.h>
 #include <arch/x86_64/mm/pmm.h>
 #include <lib/printk.h>
-#include <lib/string.h>
 #include <aerosync/classes.h>
-
-struct smbios_entry_point_32 {
-  char anchor[4];
-  uint8_t checksum;
-  uint8_t length;
-  uint8_t major;
-  uint8_t minor;
-  uint16_t max_structure_size;
-  uint8_t revision;
-  uint8_t formatted[5];
-  char intermediate_anchor[5];
-  uint8_t intermediate_checksum;
-  uint16_t table_length;
-  uint32_t table_address;
-  uint16_t entry_count;
-  uint8_t bcd_revision;
-} __packed;
-
-struct smbios_entry_point_64 {
-  char anchor[5];
-  uint8_t checksum;
-  uint8_t length;
-  uint8_t major;
-  uint8_t minor;
-  uint8_t doc_rev;
-  uint8_t revision;
-  uint8_t reserved;
-  uint32_t table_max_size;
-  uint64_t table_address;
-} __packed;
+#include <drivers/fw/smbios.h>
 
 static struct firmware_device smbios_fw_dev;
 
@@ -191,4 +161,9 @@ int smbios_init(void) {
   smbios_fw_dev.pdev.dev.class = &fw_class;
   
   return platform_device_register(&smbios_fw_dev.pdev);
+}
+
+void smbios_deinit(void) {
+  platform_device_unregister(&smbios_fw_dev.pdev);
+  platform_driver_unregister(&smbios_driver);
 }

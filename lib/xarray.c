@@ -6,7 +6,7 @@
  * Author: Matthew Wilcox <willy@infradead.org>
  */
 
-#include <aerosync/fkx/fkx.h>
+#include <aerosync/export.h>
 #include <lib/math.h>
 #include <linux/xarray.h>
 #include <mm/slub.h>
@@ -30,7 +30,7 @@
  */
 
 static inline unsigned int xa_lock_type(const struct xarray *xa) {
-  return (__force unsigned int) xa->xa_flags & 3;
+  return (__force unsigned int)xa->xa_flags & 3;
 }
 
 static inline void xas_lock_type(struct xa_state *xas, unsigned int lock_type) {
@@ -42,7 +42,8 @@ static inline void xas_lock_type(struct xa_state *xas, unsigned int lock_type) {
     xas_lock(xas);
 }
 
-static inline void xas_unlock_type(struct xa_state *xas, unsigned int lock_type) {
+static inline void xas_unlock_type(struct xa_state *xas,
+                                   unsigned int lock_type) {
   if (lock_type == XA_LOCK_IRQ)
     xas_unlock_irq(xas);
   else if (lock_type == XA_LOCK_BH)
@@ -70,11 +71,11 @@ static inline void xa_mark_clear(struct xarray *xa, xa_mark_t mark) {
 }
 
 static inline unsigned long *node_marks(struct xa_node *node, xa_mark_t mark) {
-  return node->marks[(__force unsigned) mark];
+  return node->marks[(__force unsigned)mark];
 }
 
-static inline bool node_get_mark(struct xa_node *node,
-                                 unsigned int offset, xa_mark_t mark) {
+static inline bool node_get_mark(struct xa_node *node, unsigned int offset,
+                                 xa_mark_t mark) {
   return test_bit(offset, node_marks(node, mark));
 }
 
@@ -98,9 +99,10 @@ static inline void node_mark_all(struct xa_node *node, xa_mark_t mark) {
   bitmap_fill(node_marks(node, mark), XA_CHUNK_SIZE);
 }
 
-#define mark_inc(mark) do { \
-	mark = (__force xa_mark_t)((__force unsigned)(mark) + 1); \
-} while (0)
+#define mark_inc(mark)                                                         \
+  do {                                                                         \
+    mark = (__force xa_mark_t)((__force unsigned)(mark) + 1);                  \
+  } while (0)
 
 /*
  * xas_squash_marks() - Merge all marks to the first entry
@@ -229,7 +231,7 @@ void *xas_load(struct xa_state *xas) {
 
 EXPORT_SYMBOL(xas_load);
 
-#define XA_RCU_FREE	((struct xarray *)1)
+#define XA_RCU_FREE ((struct xarray *)1)
 
 static void xa_node_free(struct xa_node *node) {
   XA_NODE_BUG_ON(node, !list_empty(&node->private_list));
@@ -711,8 +713,8 @@ success:
 
 EXPORT_SYMBOL(xas_create_range);
 
-static void update_node(struct xa_state *xas, struct xa_node *node,
-                        int count, int values) {
+static void update_node(struct xa_state *xas, struct xa_node *node, int count,
+                        int values) {
   if (!node || (!count && !values))
     return;
 
@@ -924,7 +926,7 @@ static unsigned int node_get_marks(struct xa_node *node, unsigned int offset) {
 
   for (;;) {
     if (node_get_mark(node, offset, mark))
-      marks |= 1 << (__force unsigned int) mark;
+      marks |= 1 << (__force unsigned int)mark;
     if (mark == XA_MARK_MAX)
       break;
     mark_inc(mark);
@@ -951,7 +953,7 @@ static void node_set_marks(struct xa_node *node, unsigned int offset,
   xa_mark_t mark = XA_MARK_0;
 
   for (;;) {
-    if (marks & (1 << (__force unsigned int) mark)) {
+    if (marks & (1 << (__force unsigned int)mark)) {
       node_set_mark(node, offset, mark);
       if (child)
         node_mark_slots(child, sibs, mark);
@@ -1058,10 +1060,8 @@ void xas_split(struct xa_state *xas, void *entry, unsigned int order) {
       child->count = XA_CHUNK_SIZE;
       child->nr_values = xa_is_value(entry) ? XA_CHUNK_SIZE : 0;
       RCU_INIT_POINTER(child->parent, node);
-      node_set_marks(node, offset, child, xas->xa_sibs,
-                     marks);
-      rcu_assign_pointer(node->slots[offset],
-                         xa_mk_node(child));
+      node_set_marks(node, offset, child, xas->xa_sibs, marks);
+      rcu_assign_pointer(node->slots[offset], xa_mk_node(child));
       if (xa_is_value(curr))
         values--;
       xas_update(xas, child);
@@ -1071,10 +1071,8 @@ void xas_split(struct xa_state *xas, void *entry, unsigned int order) {
       node_set_marks(node, canon, nullptr, 0, marks);
       rcu_assign_pointer(node->slots[canon], entry);
       while (offset > canon)
-        rcu_assign_pointer(node->slots[offset--],
-                         xa_mk_sibling(canon));
-      values += (xa_is_value(entry) - xa_is_value(curr)) *
-          (xas->xa_sibs + 1);
+        rcu_assign_pointer(node->slots[offset--], xa_mk_sibling(canon));
+      values += (xa_is_value(entry) - xa_is_value(curr)) * (xas->xa_sibs + 1);
     }
   } while (offset-- > xas->xa_offset);
 
@@ -1143,8 +1141,7 @@ void xas_try_split(struct xa_state *xas, void *entry, unsigned int order) {
 
   if (xas->xa_shift < node->shift) {
     struct xa_node *child = xas->xa_alloc;
-    unsigned int expected_sibs =
-        (1 << ((order - 1) % XA_CHUNK_SHIFT)) - 1;
+    unsigned int expected_sibs = (1 << ((order - 1) % XA_CHUNK_SHIFT)) - 1;
 
     /*
      * No support for splitting sibling entries
@@ -1176,10 +1173,8 @@ void xas_try_split(struct xa_state *xas, void *entry, unsigned int order) {
     child->count = XA_CHUNK_SIZE;
     child->nr_values = xa_is_value(entry) ? XA_CHUNK_SIZE : 0;
     RCU_INIT_POINTER(child->parent, node);
-    node_set_marks(node, offset, child, xas->xa_sibs,
-                   marks);
-    rcu_assign_pointer(node->slots[offset],
-                       xa_mk_node(child));
+    node_set_marks(node, offset, child, xas->xa_sibs, marks);
+    rcu_assign_pointer(node->slots[offset], xa_mk_node(child));
     if (xa_is_value(curr))
       values--;
     xas_update(xas, child);
@@ -1190,10 +1185,8 @@ void xas_try_split(struct xa_state *xas, void *entry, unsigned int order) {
       node_set_marks(node, canon, nullptr, 0, marks);
       rcu_assign_pointer(node->slots[canon], entry);
       while (offset > canon)
-        rcu_assign_pointer(node->slots[offset--],
-                         xa_mk_sibling(canon));
-      values += (xa_is_value(entry) - xa_is_value(curr)) *
-          (xas->xa_sibs + 1);
+        rcu_assign_pointer(node->slots[offset--], xa_mk_sibling(canon));
+      values += (xa_is_value(entry) - xa_is_value(curr)) * (xas->xa_sibs + 1);
     } while (offset-- > xas->xa_offset);
   }
 
@@ -1634,7 +1627,8 @@ EXPORT_SYMBOL(xa_erase);
  * release and reacquire xa_lock if @gfp flags permit.
  * Return: The old entry at this index or xa_err() if an error happened.
  */
-void *__xa_store(struct xarray *xa, unsigned long index, void *entry, gfp_t gfp) {
+void *__xa_store(struct xarray *xa, unsigned long index, void *entry,
+                 gfp_t gfp) {
   XA_STATE(xas, xa, index);
   void *curr;
 
@@ -1701,8 +1695,8 @@ static inline void *__xa_cmpxchg_raw(struct xarray *xa, unsigned long index,
  * release and reacquire xa_lock if @gfp flags permit.
  * Return: The old value at this index or xa_err() if an error happened.
  */
-void *__xa_cmpxchg(struct xarray *xa, unsigned long index,
-                   void *old, void *entry, gfp_t gfp) {
+void *__xa_cmpxchg(struct xarray *xa, unsigned long index, void *old,
+                   void *entry, gfp_t gfp) {
   return xa_zero_to_null(__xa_cmpxchg_raw(xa, index, old, entry, gfp));
 }
 
@@ -1741,7 +1735,8 @@ static inline void *__xa_cmpxchg_raw(struct xarray *xa, unsigned long index,
  * Return: 0 if the store succeeded.  -EBUSY if another entry was present.
  * -ENOMEM if memory could not be allocated.
  */
-int __xa_insert(struct xarray *xa, unsigned long index, void *entry, gfp_t gfp) {
+int __xa_insert(struct xarray *xa, unsigned long index, void *entry,
+                gfp_t gfp) {
   void *curr;
   int errno;
 
@@ -1804,8 +1799,8 @@ static void xas_set_range(struct xa_state *xas, unsigned long first,
  * Return: %nullptr on success, xa_err(-EINVAL) if @entry cannot be stored in
  * an XArray, or xa_err(-ENOMEM) if memory allocation failed.
  */
-void *xa_store_range(struct xarray *xa, unsigned long first,
-                     unsigned long last, void *entry, gfp_t gfp) {
+void *xa_store_range(struct xarray *xa, unsigned long first, unsigned long last,
+                     void *entry, gfp_t gfp) {
   XA_STATE(xas, xa, 0);
 
   if (last < first)
@@ -1853,8 +1848,8 @@ int xas_get_order(struct xa_state *xas) {
   if (!xas->xa_node)
     return 0;
 
-  XA_NODE_BUG_ON(xas->xa_node, xa_is_sibling(xa_entry(xas->xa,
-                   xas->xa_node, xas->xa_offset)));
+  XA_NODE_BUG_ON(xas->xa_node, xa_is_sibling(xa_entry(xas->xa, xas->xa_node,
+                                                      xas->xa_offset)));
   for (;;) {
     unsigned int slot = xas->xa_offset + (1 << order);
 
@@ -2113,14 +2108,14 @@ EXPORT_SYMBOL(xa_clear_mark);
  * Context: Any context.  Takes and releases the RCU lock.
  * Return: The entry, if found, otherwise %nullptr.
  */
-void *xa_find(struct xarray *xa, unsigned long *indexp,
-              unsigned long max, xa_mark_t filter) {
+void *xa_find(struct xarray *xa, unsigned long *indexp, unsigned long max,
+              xa_mark_t filter) {
   XA_STATE(xas, xa, *indexp);
   void *entry;
 
   rcu_read_lock();
   do {
-    if ((__force unsigned int) filter < XA_MAX_MARKS)
+    if ((__force unsigned int)filter < XA_MAX_MARKS)
       entry = xas_find_marked(&xas, max, filter);
     else
       entry = xas_find(&xas, max);
@@ -2142,7 +2137,7 @@ static bool xas_sibling(struct xa_state *xas) {
     return false;
   mask = (XA_CHUNK_SIZE << node->shift) - 1;
   return (xas->xa_index & mask) >
-         ((unsigned long) xas->xa_offset << node->shift);
+         ((unsigned long)xas->xa_offset << node->shift);
 }
 
 /**
@@ -2162,8 +2157,8 @@ static bool xas_sibling(struct xa_state *xas) {
  * Context: Any context.  Takes and releases the RCU lock.
  * Return: The pointer, if found, otherwise %nullptr.
  */
-void *xa_find_after(struct xarray *xa, unsigned long *indexp,
-                    unsigned long max, xa_mark_t filter) {
+void *xa_find_after(struct xarray *xa, unsigned long *indexp, unsigned long max,
+                    xa_mark_t filter) {
   XA_STATE(xas, xa, *indexp + 1);
   void *entry;
 
@@ -2172,7 +2167,7 @@ void *xa_find_after(struct xarray *xa, unsigned long *indexp,
 
   rcu_read_lock();
   for (;;) {
-    if ((__force unsigned int) filter < XA_MAX_MARKS)
+    if ((__force unsigned int)filter < XA_MAX_MARKS)
       entry = xas_find_marked(&xas, max, filter);
     else
       entry = xas_find(&xas, max);
@@ -2212,7 +2207,8 @@ static unsigned int xas_extract_present(struct xa_state *xas, void **dst,
 }
 
 static unsigned int xas_extract_marked(struct xa_state *xas, void **dst,
-                                       unsigned long max, unsigned int n, xa_mark_t mark) {
+                                       unsigned long max, unsigned int n,
+                                       xa_mark_t mark) {
   void *entry;
   unsigned int i = 0;
 
@@ -2264,7 +2260,7 @@ unsigned int xa_extract(struct xarray *xa, void **dst, unsigned long start,
   if (!n)
     return 0;
 
-  if ((__force unsigned int) filter < XA_MAX_MARKS)
+  if ((__force unsigned int)filter < XA_MAX_MARKS)
     return xas_extract_marked(&xas, dst, max, n, filter);
   return xas_extract_present(&xas, dst, max, n);
 }
@@ -2280,13 +2276,12 @@ EXPORT_SYMBOL(xa_extract);
  */
 void xa_delete_node(struct xa_node *node, xa_update_node_t update) {
   struct xa_state xas = {
-    .xa = node->array,
-    .xa_index = (unsigned long) node->offset <<
-                (node->shift + XA_CHUNK_SHIFT),
-    .xa_shift = node->shift + XA_CHUNK_SHIFT,
-    .xa_offset = node->offset,
-    .xa_node = xa_parent_locked(node->array, node),
-    .xa_update = update,
+      .xa = node->array,
+      .xa_index = (unsigned long)node->offset << (node->shift + XA_CHUNK_SHIFT),
+      .xa_shift = node->shift + XA_CHUNK_SHIFT,
+      .xa_offset = node->offset,
+      .xa_node = xa_parent_locked(node->array, node),
+      .xa_update = update,
   };
 
   xas_store(&xas, nullptr);
