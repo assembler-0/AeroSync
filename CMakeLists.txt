@@ -23,7 +23,7 @@
 # Project & Toolchain Setup
 # ============================================================================
 
-cmake_minimum_required(VERSION 3.30)
+cmake_minimum_required(VERSION 3.28)
 project(AeroSync
     VERSION 5.4.9
     LANGUAGES C CXX ASM_NASM

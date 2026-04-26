@@ -111,7 +111,7 @@ pip3 install --user kconfiglib
 
 1. **Kconfig setup: (optional)**
     ```bash
-   cp kconfig/configs/<your desired config> .config
+   cp configuration/configs/<your desired config> .config
    ```
 
 2. **Configure the build:**

@@ -21,7 +21,7 @@ set(AEROSYNC_DEFCONFIG "" CACHE STRING "Initial Kconfig configuration to use")
 set(AEROSYNC_FORCE_DEFCONFIG OFF CACHE BOOL "Force re-application of defconfig, overwriting manual changes")
 
 if(AEROSYNC_DEFCONFIG)
-    set(_defconfig_path "${CMAKE_SOURCE_DIR}/kconfig/configs/${AEROSYNC_DEFCONFIG}")
+    set(_defconfig_path "${CMAKE_SOURCE_DIR}/configuration/configs/${AEROSYNC_DEFCONFIG}")
     if(EXISTS "${_defconfig_path}")
         set(_last_defconfig "" CACHE INTERNAL "Last applied Kconfig defconfig")
 

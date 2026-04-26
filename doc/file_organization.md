@@ -17,7 +17,7 @@ AeroSync/
 ├── fs/                # File system implementations
 ├── include/           # Header files
 ├── init/              # Kernel initialization
-├── kconfig/           # Kconfig build configuration
+├── configuration/           # Kconfig build configuration
 ├── lib/               # Common libraries
 ├── mm/                # Memory management
 ├── resources/         # Resource files
@@ -89,7 +89,7 @@ Public header files organized by subsystem:
 ### `init/` - Kernel Initialization
 Kernel startup and initialization code.
 
-### `kconfig/` - Build Configuration
+### `configuration/` - Build Configuration
 Kconfig files for kernel configuration system:
 - **compatability/** – Compatibility options
 - **miscellaneous/** - Miscellaneous configuration options

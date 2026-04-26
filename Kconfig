@@ -11,6 +11,6 @@ source "mm/Kconfig"
 source "crypto/Kconfig"
 source "aerosync/Kconfig"
 source "aerosync/sched/Kconfig"
-source "kconfig/compatability/Kconfig"
-source "kconfig/miscellaneous/Kconfig"
+source "configuration/compatability/Kconfig"
+source "configuration/miscellaneous/Kconfig"
 
