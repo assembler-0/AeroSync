@@ -28,7 +28,6 @@ if(QEMU_SYSTEM_X86_64)
             COMMAND ${QEMU_SYSTEM_X86_64}
             -M q35,hpet=on,kernel_irqchip=split
             -cpu max,+la57
-            -accel kvm
             -no-reboot -no-shutdown
             -m 4G
             -smp sockets=2,cores=2
@@ -49,11 +48,15 @@ if(QEMU_SYSTEM_X86_64)
 
     add_custom_target(run-bios
             COMMAND ${QEMU_SYSTEM_X86_64}
-            -M q35,kernel_irqchip=split,hpet=on
-            -cpu max
+            -M q35,hpet=on,kernel_irqchip=split
+            -cpu max,+la57
             -no-reboot -no-shutdown
-            -m 2G
-            -smp 4
+            -m 4G
+            -smp sockets=2,cores=2
+            -numa node,nodeid=0,cpus=0-1,memdev=mem0
+            -numa node,nodeid=1,cpus=2-3,memdev=mem1
+            -object memory-backend-ram,id=mem0,size=2G
+            -object memory-backend-ram,id=mem1,size=2G
             -debugcon file:bootstrap.log
             -serial stdio
             -boot d

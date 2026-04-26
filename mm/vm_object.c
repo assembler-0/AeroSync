@@ -132,32 +132,52 @@ void vm_object_get(struct vm_object *obj) {
 void vm_object_put(struct vm_object *obj) {
   if (!obj) return;
 
+  /*
+   * Snapshot backing before decrement.  After atomic_dec_and_test returns
+   * true, 'obj' may be freed by vm_object_free(), so we must not
+   * dereference it afterward.
+   */
   struct vm_object *backing = obj->backing_object;
 
   if (atomic_dec_and_test(&obj->refcount)) {
     vm_object_free(obj);
 
     /*
-     * If the object we just freed was the last shadow of its backing object,
-     * the backing object might now be eligible for collapsing into ITS child.
+     * If the object we just freed was the last shadow of its backing, the
+     * backing might now be collapsible.  We don't have a reverse pointer to
+     * the child, so schedule async work rather than risking a lock inversion.
      */
     if (backing && atomic_read(&backing->refcount) == 1 &&
         (backing->flags & VM_OBJECT_SHADOW)) {
-      /*
-       * We need to find the object that points to 'backing'.
-       * Since we don't have reverse pointers, we rely on the next fault
-       * or a periodic scan.
-       *
-       * IMPROVEMENT: Proactive collapse if we can identify the child.
-       */
+      /* TODO: schedule backing->collapse_work */
     }
-  } else if (backing && atomic_read(&obj->refcount) == 1 &&
-             (obj->flags & VM_OBJECT_SHADOW)) {
-    /*
-     * Aggressive Overhaul: If this object is now uniquely owned (refcount == 1),
-     * and it's a shadow, try to collapse it immediately.
-     */
-    vm_object_collapse(obj);
+    return;
+  }
+
+  /*
+   * BUG-7 FIX: Uniquely-owned shadow — attempt immediate collapse.
+   *
+   * vm_object_collapse() acquires obj->lock (write).  If the current
+   * call stack already holds that lock (e.g. speculative fault path after
+   * an up_write when refcount races to 1), re-entering would spin forever.
+   *
+   * Guard with VM_OBJECT_COLLAPSE_BUSY using an atomic fetch-or:
+   * - If the flag was already clear  -> we set it and proceed.
+   * - If the flag was already set    -> another thread is collapsing; skip.
+   * The __ATOMIC_ACQ_REL barrier pairs with the RELEASE in the clear below,
+   * ensuring the guard is globally visible before we enter the collapse.
+   */
+  if (backing && atomic_read(&obj->refcount) == 1 &&
+      (obj->flags & VM_OBJECT_SHADOW)) {
+    uint32_t old = __atomic_fetch_or(&obj->flags,
+                                     (uint32_t)VM_OBJECT_COLLAPSE_BUSY,
+                                     __ATOMIC_ACQ_REL);
+    if (!(old & VM_OBJECT_COLLAPSE_BUSY)) {
+      vm_object_collapse(obj);
+      __atomic_fetch_and(&obj->flags,
+                         ~(uint32_t)VM_OBJECT_COLLAPSE_BUSY,
+                         __ATOMIC_RELEASE);
+    }
   }
 }
 

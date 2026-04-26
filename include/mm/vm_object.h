@@ -18,18 +18,49 @@ typedef enum {
 #define VM_OBJECT_COLLAPSING    0x04  /* Collapse in progress */
 #define VM_OBJECT_DEAD          0x08  /* Object is being destroyed */
 #define VM_OBJECT_SWAP_BACKED   0x10  /* Has pages swapped out */
+#define VM_OBJECT_UNEVICTABLE   0x20  /* Pinned; never reclaim */
+#define VM_OBJECT_WRITEBACK     0x40  /* Currently under writeback */
+#define VM_OBJECT_ERROR         0x80  /* Writeback error recorded */
+#define VM_OBJECT_COLLAPSE_BUSY 0x100 /* Re-entrancy guard for collapse */
 
 /**
  * vm_object_operations - Operations on a VM object
  */
 struct folio;
 struct page;
+struct writeback_control;
 struct vm_object_operations {
+  /* --- VM ops (fault path) --- */
   int (*fault)(struct vm_object *obj, struct vm_area_struct *vma, struct vm_fault *vmf);
   int (*page_mkwrite)(struct vm_object *obj, struct vm_area_struct *vma, struct vm_fault *vmf);
+
+  /* --- Address-space ops (writeback / reclaim path) --- */
   int (*read_folio)(struct vm_object *obj, struct folio *folio);
   int (*write_folio)(struct vm_object *obj, struct folio *folio);
   int (*write_folios)(struct vm_object *obj, struct folio **folios, uint32_t count);
+
+  /*
+   * invalidatepage - called when a page is being truncated.
+   * Must flush any private state (e.g. buffer heads, DMA mappings).
+   * @offset / @length are byte ranges within the folio.
+   */
+  void (*invalidatepage)(struct vm_object *obj, struct folio *folio,
+                         size_t offset, size_t length);
+
+  /*
+   * migratepage - called during NUMA migration or CMA compaction.
+   * Must copy folio content and transfer all object-private state.
+   * Returns 0 on success, -EAGAIN if migration should be retried.
+   */
+  int (*migratepage)(struct vm_object *obj, struct folio *new_folio,
+                     struct folio *old_folio);
+
+  /*
+   * launder_folio - wait for folio to finish writeback so it can be reclaimed.
+   * Returns 0 when the folio is clean, negative errno on error.
+   */
+  int (*launder_folio)(struct vm_object *obj, struct folio *folio);
+
   void (*free)(struct vm_object *obj);
 };
 
@@ -70,6 +101,28 @@ struct vm_object {
   unsigned long last_writeback;     /* Timestamp of last writeback pass */
   uint64_t writeback_threshold;     /* Trigger writeback after this many dirty pages */
 
+  /*
+   * wb_err — writeback error sequence number (errseq_t semantics).
+   * Incremented on each writeback error. Consumers (e.g. fsync) sample
+   * this before and after to detect errors. We use uint32_t because the
+   * errseq trick only needs a monotonic counter with wrap-around tolerance.
+   */
+  uint32_t wb_err;                  /* Writeback error sequence (errseq_t) */
+
+  /*
+   * mapping_flags — analogous to Linux address_space::flags.
+   * Bit 0 (AS_EIO):         Writeback I/O error pending.
+   * Bit 1 (AS_ENOSPC):      Out of space error pending.
+   * Bit 2 (AS_UNEVICTABLE): Pages must not be reclaimed (e.g. ramfs).
+   * Bit 3 (AS_EXITING):     Object teardown in progress; block new faults.
+   */
+  unsigned long mapping_flags;
+
+#define AS_EIO          0
+#define AS_ENOSPC       1
+#define AS_UNEVICTABLE  2
+#define AS_EXITING      3
+
   /* Shadowing and COW support */
   struct vm_object *backing_object; /* For Shadow Objects / COW */
   uint64_t shadow_offset;           /* Offset into the backing object */
@@ -101,11 +154,9 @@ struct vm_object {
   /* Statistics */
   atomic_long_t nr_pages;           /* Number of pages in page_tree */
   atomic_long_t nr_swap;            /* Number of pages swapped out */
-  
+
   struct resdomain *rd;             /* Resource domain charging context */
 };
-
-#define VM_OBJECT_DIRTY         0x01
 
 /* API */
 extern atomic_long_t nr_shadow_objects;

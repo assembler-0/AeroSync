@@ -212,16 +212,29 @@ void mm_init(struct mm_struct *mm) {
   mm->last_hole = 0;
   mm->pml_root = nullptr;
   rwsem_init(&mm->mmap_lock);
+
+  /*
+   * mm_users=1: the creating task is the initial user of this mm.
+   * mm_count=1: structural reference; held until mm_users drops to 0
+   *             and mm_destroy completes, after which mmdrop frees it.
+   */
+  atomic_set(&mm->mm_users, 1);
   atomic_set(&mm->mm_count, 1);
+
   mm->vmacache_seqnum = 0;
   mm->preferred_node = -1;
   cpumask_clear(&mm->cpu_mask);
   atomic_set(&mm->mmap_seq, 0);
+  atomic_long_set(&mm->pgtables_bytes, 0);
 
   /* Batched TLB shootdown */
   INIT_LIST_HEAD(&mm->tlb_batch_list);
   atomic_set(&mm->tlb_batch_count, 0);
   spinlock_init(&mm->tlb_batch_lock);
+
+  /* NUMA balancing */
+  mm->numa_scan_offset = 0;
+  mm->numa_scan_seq    = 0;
 
   /* Initialize memory layout fields */
   mm->start_code = 0;
@@ -318,20 +331,54 @@ struct mm_struct *mm_create(void) {
 }
 EXPORT_SYMBOL(mm_create);
 
+/*
+ * mmget / mmput — task-level reference counting.
+ *
+ * mmget() is called when a new task begins using this mm (fork, exec,
+ * /proc attach).  mmput() is called on exit; when mm_users reaches 0
+ * the VMA tree is destroyed and one structural ref (mm_count) is
+ * released via mmdrop().
+ */
 void mm_get(struct mm_struct *mm) {
   if (mm)
-    atomic_inc(&mm->mm_count);
+    atomic_inc(&mm->mm_users);
 }
 EXPORT_SYMBOL(mm_get);
 
 void mm_put(struct mm_struct *mm) {
   if (!mm)
     return;
-  if (atomic_dec_and_test(&mm->mm_count)) {
+  if (atomic_dec_and_test(&mm->mm_users)) {
+    /* Last task exited: tear down the address space ... */
+    mm_destroy(mm);
+    /* ... then release the structural reference. */
     mm_free(mm);
   }
 }
 EXPORT_SYMBOL(mm_put);
+
+/*
+ * mmgrab / mmdrop — structural reference counting.
+ *
+ * mmgrab() is called by kthreads or kernel subsystems that need to
+ * keep the mm_struct alive (e.g. the kernel sampler, OOM killer) but
+ * do NOT use the address space.  mmdrop() releases the structural ref;
+ * when mm_count hits 0 the mm_struct itself is freed.
+ *
+ * mmgrab must only be called while mm_users > 0 (i.e. the mm is still
+ * alive from the task's perspective).
+ */
+static inline void mmgrab(struct mm_struct *mm) {
+  if (mm)
+    atomic_inc(&mm->mm_count);
+}
+
+static inline void mmdrop(struct mm_struct *mm) {
+  if (!mm)
+    return;
+  if (atomic_dec_and_test(&mm->mm_count))
+    kfree(mm);
+}
 
 struct mm_struct *mm_copy(struct mm_struct *old_mm) {
   struct mm_struct *new_mm = mm_create();
@@ -341,7 +388,7 @@ struct mm_struct *mm_copy(struct mm_struct *old_mm) {
   if (!old_mm)
     return new_mm;
 
-  down_write(&old_mm->mmap_lock);
+  down_read(&old_mm->mmap_lock);
 
   struct vm_area_struct *vma;
   for_each_vma(old_mm, vma) {
@@ -349,7 +396,7 @@ struct mm_struct *mm_copy(struct mm_struct *old_mm) {
         vma_create(vma->vm_start, vma->vm_end, vma->vm_flags);
     if (!new_vma) {
       mm_free(new_mm);
-      up_write(&old_mm->mmap_lock);
+      up_read(&old_mm->mmap_lock);
       return nullptr;
     }
 
@@ -371,7 +418,7 @@ struct mm_struct *mm_copy(struct mm_struct *old_mm) {
       if (vm_object_cow_prepare(vma, new_vma) < 0) {
         vma_free(new_vma);
         mm_free(new_mm);
-        up_write(&old_mm->mmap_lock);
+        up_read(&old_mm->mmap_lock);
         return nullptr;
       }
     } else {
@@ -385,7 +432,7 @@ struct mm_struct *mm_copy(struct mm_struct *old_mm) {
     if (vma_insert(new_mm, new_vma) != 0) {
       vma_free(new_vma);
       mm_free(new_mm);
-      up_write(&old_mm->mmap_lock);
+      up_read(&old_mm->mmap_lock);
       return nullptr;
     }
 
@@ -398,13 +445,13 @@ struct mm_struct *mm_copy(struct mm_struct *old_mm) {
   /* Copy page tables (COW) */
   if (vmm_copy_page_tables(old_mm, new_mm) < 0) {
     mm_free(new_mm);
-    up_write(&old_mm->mmap_lock);
+    up_read(&old_mm->mmap_lock);
     return nullptr;
   }
 
   vmm_tlb_shootdown(old_mm, 0, vmm_get_max_user_address());
 
-  up_write(&old_mm->mmap_lock);
+  up_read(&old_mm->mmap_lock);
   return new_mm;
 }
 EXPORT_SYMBOL(mm_copy);
@@ -413,7 +460,21 @@ void mm_destroy(struct mm_struct *mm) {
   if (!mm || mm == &init_mm)
     return;
 
-  down_write(&mm->mmap_lock);
+  /*
+   * BUG-8 FIX: Re-entrancy / recursive-lock guard.
+   *
+   * mm_destroy() must be called WITHOUT mm->mmap_lock held.  It acquires
+   * the write-lock itself to serialise against concurrent faults or VMA
+   * walks.  If a caller arrives with the lock already held (e.g. an error
+   * path that forgot to drop it), down_write() would spin forever.
+   *
+   * Use down_write_trylock() as a canary: if it fails, mmap_lock is already
+   * held by the current thread — that is a programming error, so panic.
+   * On success, we hold the lock and proceed normally.
+   */
+  if (unlikely(!down_write_trylock(&mm->mmap_lock))) {
+    panic("mm_destroy: called with mmap_lock already held — lock ordering violation");
+  }
 
   struct vm_area_struct *vma, *tmp;
   for_each_vma_safe(mm, vma, tmp) {
@@ -511,13 +572,27 @@ static void vma_free_rcu(struct rcu_head *head) {
   list_for_each_entry_safe(avc, tmp_avc, &vma->anon_vma_chain, same_vma) {
     struct anon_vma *av = avc->anon_vma;
 
+    /*
+     * BUG-3 FIX: anon_vma_free() must only be called when the anon_vma's
+     * own refcount drops to zero.  Previously it was called unconditionally
+     * here, which corrupts any other VMA that still shares the same
+     * anon_vma (e.g. the parent after fork, or sibling VMAs in the same
+     * address space).
+     *
+     * Correct sequence:
+     *  1. Unlink this chain entry from anon_vma->head under the spinlock.
+     *  2. Unlink from vma->anon_vma_chain and free the chain node.
+     *  3. Decrement anon_vma refcount; free iff it hits zero.
+     */
     irq_flags_t flags = spinlock_lock_irqsave(&av->lock);
     list_del(&avc->same_anon_vma);
     spinlock_unlock_irqrestore(&av->lock, flags);
 
-    anon_vma_free(av);
     list_del(&avc->same_vma);
     kfree(avc);
+
+    if (atomic_dec_and_test(&av->refcount))
+      anon_vma_free(av);
   }
 
   if (is_bootstrap_vma(vma)) {
@@ -758,7 +833,23 @@ void vma_remove(struct mm_struct *mm, struct vm_area_struct *vma) {
   if (!mm || !vma)
     return;
 
-  mtree_erase(&mm->mm_mt, vma->vm_start);
+  /*
+   * BUG-1 FIX: The Maple Tree stores VMAs via mtree_insert_range(), which
+   * keys entries by their full [vm_start, vm_end-1] range.  Using
+   * mtree_erase(vm_start) erases the entry at the *point* key vm_start —
+   * if the tree's internal layout placed the range under a different pivot,
+   * the erase silently no-ops, leaving a dangling pointer in the tree.
+   *
+   * The correct removal path is mas_erase() with an explicit MA_STATE that
+   * covers the exact range.  mas_erase() walks to the range, validates the
+   * stored pointer, removes it, and coalesces nodes — matching the semantics
+   * of mas_store() / mtree_insert_range() used on the insert side.
+   */
+  MA_STATE(mas, &mm->mm_mt, vma->vm_start, vma->vm_end - 1);
+  mas_lock(&mas);
+  mas_erase(&mas);
+  mas_unlock(&mas);
+
   vma_account_dec(mm, vma);
   mm->map_count--;
   vma_layout_changed(mm, vma);

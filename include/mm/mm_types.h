@@ -175,6 +175,20 @@ struct userfaultfd_ctx;
 /*
  * mm_struct
  * Represents the entire address space of a task.
+ *
+ * Reference counting semantics (Linux-compatible split):
+ *
+ *   mm_users  — counts active tasks using this address space.
+ *               Incremented by mmget() (fork, exec, /proc attach).
+ *               Decremented by mmput(); when it hits 0 the VMA
+ *               tree is torn down and mm_count is also decremented.
+ *
+ *   mm_count  — structural reference to the mm_struct itself.
+ *               Incremented by mmgrab() (e.g. kthread that pins the mm).
+ *               Decremented by mmdrop(); when it hits 0 the struct
+ *               is physically freed.  Always >= 1 while mm_users > 0.
+ *
+ * Rule: mmgrab/mmdrop NEVER touch the VMA tree.  mmget/mmput do.
  */
 struct mm_struct {
   struct maple_tree mm_mt;  /* Maple Tree for VMA management */
@@ -184,7 +198,20 @@ struct mm_struct {
 
   struct rw_semaphore mmap_lock; /* Protects VMA list/tree modifications */
 
-  atomic_t mm_count; /* Reference count */
+  /*
+   * mm_users: task-level reference count.
+   * Decremented on task exit; when it hits 0 the address space is torn
+   * down (mm_destroy) and mm_count is decremented once more.
+   */
+  atomic_t mm_users;
+
+  /*
+   * mm_count: structural reference count.
+   * Decremented by mmdrop(); the mm_struct is kfree'd when this hits 0.
+   * Must be >= 1 whenever mm_users > 0.
+   */
+  atomic_t mm_count;
+
   int map_count;     /* Number of VMAs */
 
   /* Speculative Page Fault Tracking */
@@ -202,6 +229,13 @@ struct mm_struct {
   size_t exec_vm;   /* VM_EXEC & ~VM_WRITE */
   size_t stack_vm;  /* VM_STACK */
 
+  /*
+   * pgtables_bytes: total bytes consumed by page-table structures.
+   * Updated atomically on each PTE/PMD/PUD alloc/free.
+   * Exported to /proc/<pid>/status as VmPTE.
+   */
+  atomic_long_t pgtables_bytes;
+
   uint64_t start_code, end_code, start_data, end_data;
   uint64_t start_brk, brk, start_stack;
   uint64_t arg_start, arg_end, env_start, env_end;
@@ -210,11 +244,27 @@ struct mm_struct {
 
   struct cpumask cpu_mask; /* CPUs currently using this mm */
   uint64_t tlb_gen[64];    /* TLB generation per CPU (for lazy PCID flush) */
-  struct resdomain *rd;    /* Resource domain for this address space */
+
+  /*
+   * rd: resource domain for per-mm memory charging.
+   * Replaces Linux's mem_cgroup pointer per the AeroSync design decision
+   * to extend resdomain rather than duplicate the cgroup hierarchy.
+   */
+  struct resdomain *rd;
 
   /* Batched TLB shootdown */
   struct list_head tlb_batch_list;  /* Pending TLB invalidations */
   atomic_t tlb_batch_count;         /* Current batch size */
   spinlock_t tlb_batch_lock;        /* Protects batch list */
 #define TLB_BATCH_THRESHOLD 32        /* Flush after this many entries */
+
+  /*
+   * NUMA balancing state.
+   * numa_scan_offset: VMA iterator position for the periodic PTE scanner.
+   *   The scanner marks PTEs PROT_NONE in a rolling window so that the
+   *   next access generates a NUMA fault and we can measure node affinity.
+   * numa_scan_seq: generation counter; wraps on overflow.
+   */
+  unsigned long numa_scan_offset; /* Rolling PTE-scan cursor (in pages) */
+  unsigned long numa_scan_seq;    /* Scan generation counter */
 };

@@ -433,36 +433,38 @@ static void rcu_test_callback(struct rcu_head *head) {
 }
 
 void rcu_test(void) {
-  struct rcu_test_data data;
-  data.done = 0;
+  struct rcu_test_data *data = kmalloc(sizeof(struct rcu_test_data));
+  data->done = 0;
 
   printk(KERN_INFO TEST_CLASS "Starting RCU smoke test...\n");
 
-  call_rcu(&data.rcu, rcu_test_callback);
+  call_rcu(&data->rcu, rcu_test_callback);
   synchronize_rcu();
 
   /* Wait a bit for callback if needed, but synchronize_rcu should be enough
      if we have a single GP. Actually, call_rcu might need another GP. */
   int timeout = 1000000;
-  while (!data.done && timeout--) {
+  while (!data->done && timeout--) {
     rcu_check_callbacks();
     cpu_relax();
   }
 
-  if (data.done) {
+  if (data->done) {
     printk(KERN_INFO TEST_CLASS "RCU smoke test passed!\n");
   } else {
     printk(KERN_ERR TEST_CLASS "RCU smoke test FAILED (callback not called)\n");
   }
 
   /* SRCU Test */
-  struct srcu_struct ss;
-  init_srcu_struct(&ss);
+  struct srcu_struct *ss = kmalloc(sizeof(struct srcu_struct));
+  init_srcu_struct(ss);
   printk(KERN_INFO TEST_CLASS "Starting SRCU smoke test...\n");
-  int idx = srcu_read_lock(&ss);
-  srcu_read_unlock(&ss, idx);
-  synchronize_srcu(&ss);
+  int idx = srcu_read_lock(ss);
+  srcu_read_unlock(ss, idx);
+  synchronize_srcu(ss);
   printk(KERN_INFO TEST_CLASS "SRCU smoke test passed!\n");
+  kfree(ss);
+  kfree(data);
 }
 
 EXPORT_SYMBOL(call_rcu);

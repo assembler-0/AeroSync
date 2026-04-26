@@ -358,9 +358,13 @@ void folio_add_lru(struct folio *folio) {
 }
 #endif
 
-#ifdef CONFIG_MM_LRU
+#if defined(CONFIG_MM_LRU)
 /**
- * folio_add_lru - Add a folio to the inactive LRU list.
+ * folio_add_lru - Add a folio to the inactive LRU list (classic two-list LRU).
+ *
+ * This branch is mutually exclusive with CONFIG_MM_MGLRU.  Having both
+ * enabled simultaneously would produce a duplicate symbol at link time;
+ * the #elif enforces the invariant at compile time.
  */
 void folio_add_lru(struct folio *folio) {
   if (!folio)
