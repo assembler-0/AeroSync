@@ -79,11 +79,10 @@ function(add_asrx_module MODULE_NAME)
 
     # Link flags
     target_link_options(${MODULE_NAME} PRIVATE
-            -fuse-ld=lld
             -nostdlib
             -shared
-            -Wl,-melf_x86_64
-            -Wl,--unresolved-symbols=ignore-all
+            -melf_x86_64
+            --unresolved-symbols=ignore-all
     )
 
 	if(MOD_SANITIZER)

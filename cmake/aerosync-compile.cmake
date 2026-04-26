@@ -143,6 +143,7 @@ if (COMPILER_IDENTIFIER STREQUAL "clang" AND LTO)
     target_compile_options(aerosync.krnl PRIVATE
         $<$<COMPILE_LANGUAGE:C>:
             -flto=full
+            -funified-lto
             -fvirtual-function-elimination
             -fwhole-program-vtables
         >
@@ -150,8 +151,8 @@ if (COMPILER_IDENTIFIER STREQUAL "clang" AND LTO)
 
     target_link_options(aerosync.krnl PRIVATE
         $<$<COMPILE_LANGUAGE:C>:
-            -flto=full
-            -Wl,--lto-O3
+            --lto=full
+            --lto-O3
         >
     )
 endif()
@@ -184,19 +185,18 @@ set(AEROSYNC_LINKER_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/arch/x86_64/aerosync.ld"
 set_target_properties(aerosync.krnl PROPERTIES LINK_DEPENDS "${AEROSYNC_LINKER_SCRIPT}")
 
 target_link_options(aerosync.krnl PRIVATE
-    -fuse-ld=lld
     -T ${AEROSYNC_LINKER_SCRIPT}
     -nostdlib
-    -Wl,-pie
-    -Wl,-Bsymbolic
-    -Wl,-melf_x86_64
-    -Wl,--gc-sections
-    -Wl,--icf=all
-    -Wl,-z,relro
-    -Wl,-z,now
-    -Wl,-z,noexecstack
-    -Wl,-z,separate-code
-    -Wl,--build-id=sha1
+    -pie
+    -Bsymbolic
+    -melf_x86_64
+    --gc-sections
+    --icf=all
+    -zrelro
+    -znow
+    -znoexecstack
+    -zseparate-code
+    --build-id=sha1
 )
 
 if (STRIP)
